@@ -1,5 +1,5 @@
 {
-  "name": "@knicks-knacks/sector-zero-site",
+  "name": "sector-zero-site",
   "version": "0.1.0",
   "private": true,
   "scripts": {

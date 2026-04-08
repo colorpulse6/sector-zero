@@ -1,0 +1,9 @@
+{
+  "name": "sector-zero",
+  "private": true,
+  "scripts": {
+    "game:dev": "cd game && yarn dev",
+    "site:dev": "cd site && yarn dev",
+    "build": "cd game && yarn build && cd ../site && yarn build"
+  }
+}
