@@ -1,0 +1,66 @@
+name: Deploy Sector Zero to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install game dependencies
+        run: cd game && yarn install
+
+      - name: Install site dependencies
+        run: cd site && yarn install
+
+      - name: Build Game
+        run: cd game && yarn build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_BASE_PATH: /sector-zero
+
+      - name: Build Site
+        run: cd site && yarn build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_BASE_PATH: /sector-zero/site
+
+      - name: Prepare deployment
+        run: |
+          mkdir -p deploy/site
+          cp -r game/out/* deploy/
+          cp -r site/out/* deploy/site/
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./deploy
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
