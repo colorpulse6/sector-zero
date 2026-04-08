@@ -1,5 +1,6 @@
 import Image from "next/image";
 import HudSection from "@/components/HudSection";
+import { withBasePath } from "@/lib/basePath";
 
 const colonyFeatures = [
   {
@@ -39,7 +40,7 @@ export default function ComingSoonPage() {
       <section className="relative text-center py-20 px-6 overflow-hidden">
         <div className="absolute inset-0 z-0">
           <Image
-            src="/images/backgrounds/colony-bg.png"
+            src={withBasePath("/images/backgrounds/colony-bg.png")}
             alt=""
             fill
             className="object-cover"
@@ -67,7 +68,7 @@ export default function ComingSoonPage() {
               {"image" in feature && feature.image && (
                 <div className="relative w-full h-40">
                   <Image
-                    src={feature.image}
+                    src={withBasePath(feature.image)}
                     alt={feature.name}
                     fill
                     className="object-cover"

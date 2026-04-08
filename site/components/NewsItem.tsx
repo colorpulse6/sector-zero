@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { PostFrontmatter } from "@/lib/posts";
+import { withBasePath } from "@/lib/basePath";
 
 interface NewsItemProps {
   post: PostFrontmatter;
@@ -12,7 +13,7 @@ export default function NewsItem({ post }: NewsItemProps) {
       <div className="flex gap-4 items-start">
         <div className="w-20 h-20 relative flex-shrink-0 border border-border-hud overflow-hidden">
           <Image
-            src={post.heroImage}
+            src={withBasePath(post.heroImage)}
             alt={post.title}
             fill
             className="object-cover"

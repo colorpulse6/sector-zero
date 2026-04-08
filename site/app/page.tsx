@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { getAllPosts } from "@/lib/posts";
 import { GAME_MODES } from "@/data/modes";
+import { withBasePath } from "@/lib/basePath";
 import HudSection from "@/components/HudSection";
 import ModeCard from "@/components/ModeCard";
 import NewsItem from "@/components/NewsItem";
@@ -15,7 +16,7 @@ export default function Home() {
       <section className="relative text-center py-24 px-6 overflow-hidden">
         <div className="absolute inset-0 z-0">
           <Image
-            src="/images/backgrounds/hero-bg.png"
+            src={withBasePath("/images/backgrounds/hero-bg.png")}
             alt=""
             fill
             className="object-cover"
@@ -45,7 +46,7 @@ export default function Home() {
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 z-0">
           <Image
-            src="/images/backgrounds/section-bg.png"
+            src={withBasePath("/images/backgrounds/section-bg.png")}
             alt=""
             fill
             className="object-cover opacity-40"

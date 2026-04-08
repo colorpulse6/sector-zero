@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getPostBySlug, getAllSlugs } from "@/lib/posts";
 import { mdxComponents } from "@/components/mdx-components";
+import { withBasePath } from "@/lib/basePath";
 
 export function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
@@ -46,7 +47,7 @@ export default async function PostPage({ params }: PostPageProps) {
       {post.heroImage && (
         <div className="relative w-full h-64 mb-8 border border-border-hud overflow-hidden">
           <Image
-            src={post.heroImage}
+            src={withBasePath(post.heroImage)}
             alt={post.title}
             fill
             className="object-contain bg-deep-lighter"

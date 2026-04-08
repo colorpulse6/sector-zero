@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { withBasePath } from "@/lib/basePath";
 
 interface GameImageProps {
   src: string;
@@ -11,7 +12,7 @@ export default function GameImage({ src, caption, alt }: GameImageProps) {
     <figure className="my-6 border border-border-hud overflow-hidden">
       <div className="relative w-full h-64">
         <Image
-          src={src}
+          src={withBasePath(src)}
           alt={alt || caption || "Game screenshot"}
           fill
           className="object-contain bg-deep-lighter"

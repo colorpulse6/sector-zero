@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { GameMode } from "@/data/modes";
+import { withBasePath } from "@/lib/basePath";
 
 interface ModeCardProps {
   mode: GameMode;
@@ -12,7 +13,7 @@ export default function ModeCard({ mode }: ModeCardProps) {
       <div className="flex items-stretch">
         <div className="w-24 h-24 relative bg-gradient-to-br from-purple-accent/20 to-cyan-accent/10 flex-shrink-0">
           <Image
-            src={mode.image}
+            src={withBasePath(mode.image)}
             alt={mode.name}
             fill
             className="object-cover"
