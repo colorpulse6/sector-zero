@@ -218,7 +218,7 @@ export function purchaseUpgrade(
 export function updateSectorZeroProfile(score: number): void {
   if (typeof window === "undefined") return;
   try {
-    const raw = localStorage.getItem("knicks-knacks-profile");
+    const raw = localStorage.getItem("sector-zero-profile");
     const profile = raw ? JSON.parse(raw) : null;
     if (!profile) return;
     const stats = profile.games?.["sector-zero"] || {
@@ -231,14 +231,14 @@ export function updateSectorZeroProfile(score: number): void {
     stats.lastPlayed = new Date().toISOString();
     profile.games["sector-zero"] = stats;
     profile.lastPlayed = stats.lastPlayed;
-    localStorage.setItem("knicks-knacks-profile", JSON.stringify(profile));
+    localStorage.setItem("sector-zero-profile", JSON.stringify(profile));
   } catch {}
 }
 
 export function getPlayerName(): string {
   if (typeof window === "undefined") return "Guest";
   try {
-    const raw = localStorage.getItem("knicks-knacks-profile");
+    const raw = localStorage.getItem("sector-zero-profile");
     const profile = raw ? JSON.parse(raw) : null;
     return profile?.name || "Guest";
   } catch {

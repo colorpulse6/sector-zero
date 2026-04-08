@@ -4,8 +4,8 @@
 
 Static companion website for the Sector Zero game. Deployed to GitHub Pages at:
 
-- **Site**: `https://colorpulse6.github.io/knicks-knacks/sector-zero-site/`
-- **Live game**: `https://colorpulse6.github.io/knicks-knacks/sector-zero/`
+- **Site**: `https://colorpulse6.github.io/sector-zero/site/`
+- **Live game**: `https://colorpulse6.github.io/sector-zero/`
 
 ## Tech Stack
 
@@ -140,7 +140,7 @@ yarn lint       # Run ESLint
 
 Deployment is automatic via GitHub Actions. Pushing to `main` with changes under `sites/**` triggers a build and deploys to the `gh-pages` branch.
 
-The static export is configured in `next.config.ts` with `output: 'export'` and `basePath: '/knicks-knacks/sector-zero-site'`.
+The static export is configured in `next.config.ts` with `output: 'export'` and `basePath: '/sector-zero/site'`.
 
 ## Future Features
 

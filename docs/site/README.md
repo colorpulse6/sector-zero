@@ -4,8 +4,8 @@
 
 A static companion website for the Sector Zero game, serving as the public-facing home for news, mode documentation, and lore. Deployed to GitHub Pages alongside the game itself.
 
-- **Site**: `https://colorpulse6.github.io/knicks-knacks/sector-zero-site/`
-- **Game**: `https://colorpulse6.github.io/knicks-knacks/sector-zero/`
+- **Site**: `https://colorpulse6.github.io/sector-zero/site/`
+- **Game**: `https://colorpulse6.github.io/sector-zero/`
 
 ---
 

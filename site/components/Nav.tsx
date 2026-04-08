@@ -26,7 +26,7 @@ export default function Nav() {
           </Link>
         ))}
         <a
-          href="https://colorpulse6.github.io/knicks-knacks/sector-zero/"
+          href="https://colorpulse6.github.io/sector-zero/"
           target="_blank"
           rel="noopener noreferrer"
           className="font-mono text-xs tracking-wider text-cyan-accent hover:text-white transition-colors"

@@ -33,7 +33,7 @@ export default function Home() {
             8 Sectors. 6 Modes. One Hivemind.
           </p>
           <CtaButton
-            href="https://colorpulse6.github.io/knicks-knacks/sector-zero/"
+            href="https://colorpulse6.github.io/sector-zero/"
             external
           >
             PLAY NOW
