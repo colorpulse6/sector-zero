@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@theme {
+  --color-deep: #0a0e17;
+  --color-deep-lighter: #0f1520;
+  --color-cyan-accent: #00f0ff;
+  --color-purple-accent: #7800ff;
+  --color-text-primary: #e0e6ed;
+  --color-text-muted: rgba(0, 240, 255, 0.5);
+  --color-danger-accent: #ff3366;
+  --color-border-hud: rgba(0, 240, 255, 0.15);
+  --color-border-purple: rgba(120, 0, 255, 0.4);
+
+  --font-mono: "Courier New", monospace;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-deep);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
+
+/* HUD section label: "// SECTION NAME" */
+.hud-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* CTA button base */
+.cta-button {
+  display: inline-block;
+  padding: 0.5rem 1.5rem;
+  border: 1px solid var(--color-cyan-accent);
+  color: var(--color-cyan-accent);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  transition: box-shadow 0.2s, background-color 0.2s;
+}
+
+.cta-button:hover {
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+  background-color: rgba(0, 240, 255, 0.05);
+}
+
+/* Purple left-border accent for news items */
+.news-accent {
+  border-left: 2px solid var(--color-border-purple);
+  padding-left: 0.75rem;
+}
+
+/* Mode card border */
+.mode-card {
+  border: 1px solid var(--color-border-hud);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.mode-card:hover {
+  border-color: var(--color-cyan-accent);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.15);
+}
