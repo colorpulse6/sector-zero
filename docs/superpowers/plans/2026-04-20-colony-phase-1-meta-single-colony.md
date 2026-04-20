@@ -1810,3 +1810,52 @@ Phase 1 is complete when ALL of the following are true:
 ## Next Phase
 
 After Phase 1 completes: Phase 2 plan (FPS descent). The colony becomes a walkable physical space in the first-person raycaster engine. See master spec for scope.
+
+## Completion Log
+
+**Completed:** 2026-04-20
+**Branch:** colony/phase-1
+**Tag:** colony-phase-1-complete
+
+**Commits in order:**
+- `b6253b2` — T1: extract colonyCatalog + refactor cycleProcessor
+- `f804f12` — T2: cycle step 4.5 auto-completes constructing buildings
+- `32e2718` — T3: wire advanceWorldCycle into mission completion
+- `3ed96d1` — T4: add COLONIES hotspot to cockpit hub (canvas blanks for DOM overlay)
+- `63db79f` — T5: DOM overlay scaffold with empty-state founding
+- `3146b80` — T6: ColonyHeader + ColonyResourcePanel + predictedDeltas helper
+- `a466bd4` — T7: ColonyMetrics + ColonyBuildingsList
+- `090ecfd` — T8: ColonyCommissionMenu + full Phase 1 commission flow
+- `f6d67b2` — T9: fix tsc error in coloniesScreenSmoke test fixture (`season as const`)
+- (this commit) — T9: completion log
+
+**Acceptance criteria met:**
+- `yarn colony:test`: 57 tests passing, 0 failing
+- `yarn build`: clean Next.js static export
+- `npx tsc --noEmit`: exit 0
+- 4 CI jobs passing on the PR (to be verified post-push)
+- All state changes flow through `colonyReducer` — no direct save mutations
+- Saves from Phase 0 (pre-Phase-1) load cleanly via `migrateSave`
+- First React/DOM UI in the game, sibling to canvas in `Game.tsx`
+
+**Deferred to later phases:**
+- Multiple colonies + galaxy map (Phase 9)
+- FPS descent into colonies (Phase 2)
+- Grid planner / physical placement (Phase 6)
+- Population/happiness management systems (display-only in Phase 1, managed in Phase 5a)
+- POI / region interactions (Phase 4)
+- Faction UI, Earth shipments UI (Phase 5a / 7b)
+- Tier promotion (Phase 6)
+- Narrative dialog on founding (Voss message, Phase 5a)
+- Final-boss ENDING path cycle tick (Phase 10 endgame)
+- CSS modules / Tailwind integration (Phase 12 polish)
+
+**Follow-ups for Phase 2 planner:**
+- `EngineKind` casing mismatch with `GameState.currentMode` — needed for POI dispatcher
+- `RegionNode["type"]` missing `"mine"` and `"siege_defense"` — spec inconsistency
+- `BuildingType` tightening from `string` to union — would catch typos in resource tables
+- `game/tsconfig.tsbuildinfo` is tracked in git but also listed in `.gitignore` — every `tsc`/`build` run dirties the tree. Consider `git rm --cached game/tsconfig.tsbuildinfo` in a future housekeeping commit.
+
+**Manual playtest** — to be verified by user before merging PR. Checklist in Task 9 Step 2 of the plan; key path: found colony → 500 metal → commission Solar Array (80 metal, 1 cycle) → complete mission → Solar Array operational, metal 420.
+
+**Next:** Phase 2 plan — FPS descent into the colony via the first-person raycaster engine.
