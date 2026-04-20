@@ -10,6 +10,7 @@ export function processCycle(colony: ColonyState, toCycle: number): ColonyState 
   state = step2_populationConsumption(state);
   state = step3_buildingUpkeep(state);
   state = step4_populationChange(state);
+  state = step4_5_buildingProgress(state);
   state = step5_happinessRecompute(state);
   state = step6_threatProgression(state);
   state = step7_earthShipmentTick(state);
@@ -90,6 +91,18 @@ function step4_populationChange(c: ColonyState): ColonyState {
     ...c,
     population: { ...c.population, total: nextTotal, growthRate: newborns - departures },
   };
+}
+
+function step4_5_buildingProgress(c: ColonyState): ColonyState {
+  const nextBuildings = c.buildings.map(b => {
+    if (b.status !== "constructing") return b;
+    const next = b.buildProgressCycles - 1;
+    if (next <= 0) {
+      return { ...b, status: "operational" as const, buildProgressCycles: 0 };
+    }
+    return { ...b, buildProgressCycles: next };
+  });
+  return { ...c, buildings: nextBuildings };
 }
 
 function step5_happinessRecompute(c: ColonyState): ColonyState {

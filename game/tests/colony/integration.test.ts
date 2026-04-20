@@ -60,16 +60,13 @@ test("5-cycle simulation: found colony, commission 2 buildings, run 5 cycles", (
   // Sanity: 500 - 80 - 100 - 120 = 200 metal left
   assert.equal(save.colonies[0].resources.metal, 200);
 
-  // 4. Run cycles, completing buildings when they're ready.
+  // 4. Run cycles; step 4.5 inside processCycle auto-completes constructing buildings.
   // Cycle 1: solar completes (cyclesToBuild=1)
   save = advanceWorldCycle(save);
-  save = colonyReducer(save, Events.buildingCompleted({ colonyId: "ashfall_primary", buildingId: "b_solar" }));
   assert.equal(save.missionsSinceStart, 1);
 
   // Cycle 2: farm + water purifier complete (cyclesToBuild=2)
   save = advanceWorldCycle(save);
-  save = colonyReducer(save, Events.buildingCompleted({ colonyId: "ashfall_primary", buildingId: "b_farm" }));
-  save = colonyReducer(save, Events.buildingCompleted({ colonyId: "ashfall_primary", buildingId: "b_water" }));
 
   // Cycles 3-5: colony now has operational farm+purifier+solar, should produce net-positive resources
   save = advanceWorldCycle(save);
