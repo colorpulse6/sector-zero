@@ -8,6 +8,7 @@ import { ColonyHeader } from "./ColonyHeader";
 import { ColonyResourcePanel } from "./ColonyResourcePanel";
 import { ColonyMetrics } from "./ColonyMetrics";
 import { ColonyBuildingsList } from "./ColonyBuildingsList";
+import { ColonyCommissionMenu } from "./ColonyCommissionMenu";
 
 export interface ColoniesScreenProps {
   save: SaveData;
@@ -61,13 +62,21 @@ export function ColoniesScreen({ save, onDispatch, onExit }: ColoniesScreenProps
       {save.colonies.length === 0 ? (
         <ColonyEmptyState onFound={handleFound} />
       ) : (
-        <PopulatedView save={save} onExit={onExit} />
+        <PopulatedView save={save} onDispatch={onDispatch} onExit={onExit} />
       )}
     </div>
   );
 }
 
-function PopulatedView({ save, onExit }: { save: SaveData; onExit: () => void }) {
+function PopulatedView({
+  save,
+  onDispatch,
+  onExit,
+}: {
+  save: SaveData;
+  onDispatch: (event: ColonyEvent) => void;
+  onExit: () => void;
+}) {
   const colony = save.colonies[0];
   return (
     <>
@@ -79,9 +88,7 @@ function PopulatedView({ save, onExit }: { save: SaveData; onExit: () => void })
       <ColonyResourcePanel colony={colony} />
       <ColonyMetrics colony={colony} />
       <ColonyBuildingsList colony={colony} />
-      <div style={{ padding: "32px", opacity: 0.6 }}>
-        [CommissionMenu lands in Task 8]
-      </div>
+      <ColonyCommissionMenu colony={colony} onDispatch={onDispatch} />
     </>
   );
 }
