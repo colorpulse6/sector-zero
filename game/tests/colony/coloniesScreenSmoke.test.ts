@@ -52,7 +52,7 @@ test("ColoniesScreen renders populated state without throwing", () => {
       happiness: 50,
       selfSufficient: false,
       lastCycleProcessed: 0,
-      lastGameClock: { day: 0, hour: 7, minute: 0, realtimeMsPerGameMinute: 1000, season: "standard" },
+      lastGameClock: { day: 0, hour: 7, minute: 0, realtimeMsPerGameMinute: 1000, season: "standard" as const },
       activeThreats: [],
       activeQuestlines: [],
       discoveredPoiIds: [],
