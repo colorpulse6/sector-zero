@@ -702,6 +702,9 @@ export default function Game() {
   // Keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Colonies screen uses a DOM overlay for input — let the overlay handle keys.
+      if (showCockpit && cockpitState.screen === "colonies") return;
+
       const isFirstPerson = gameState?.currentMode === "first-person";
 
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
@@ -870,7 +873,7 @@ export default function Game() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice]);
+  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice]);
 
   // Touch input
   useEffect(() => {

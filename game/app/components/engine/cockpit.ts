@@ -12,7 +12,7 @@ import { getAvailableSpecialMissions, isSpecialMissionCompleted } from "./specia
 
 // ─── Cockpit Screen Types ───────────────────────────────────────────
 
-export type CockpitScreen = "hub" | "starmap" | "armory" | "crew" | "missions" | "codex" | "bestiary" | "pilot";
+export type CockpitScreen = "hub" | "starmap" | "armory" | "crew" | "missions" | "codex" | "bestiary" | "pilot" | "colonies";
 
 export interface CockpitHubState {
   screen: CockpitScreen;
@@ -57,18 +57,20 @@ export const COCKPIT_HOTSPOTS: Hotspot[] = [
   { id: "codex",    name: "SHIP'S LOG",      x: 40,  y: 110, w: 120, h: 70, description: "Intel & research" },
   { id: "bestiary", name: "BESTIARY",         x: 310, y: 110, w: 120, h: 70, description: "Enemy database" },
   { id: "pilot",   name: "PILOT",             x: 190, y: 720, w: 100, h: 60, description: "Level & skills" },
+  { id: "colonies", name: "COLONIES",         x: 40,  y: 460, w: 130, h: 80, description: "Manage colonies" },
 ];
 
 // ─── Navigation Graph (which hotspot each arrow goes to) ────────────
 // Maps: [up, down, left, right] → hotspot index (-1 = no move)
 const NAV_GRAPH: Record<number, [number, number, number, number]> = {
-  0: [2, 1, 2, 3],    // starmap: up→crew(L), down→armory, left→crew, right→missions
+  0: [2, 1, 7, 3],    // starmap: up→crew, down→armory, left→colonies, right→missions
   1: [0, 6, -1, -1],  // armory: up→starmap, down→PILOT
-  2: [4, 0, -1, 3],   // crew: up→codex, down→starmap, right→missions
+  2: [4, 7, -1, 3],   // crew: up→codex, down→colonies, right→missions
   3: [5, 0, 2, -1],   // missions: up→bestiary, down→starmap, left→crew
   4: [-1, 2, -1, 5],  // codex: down→crew, right→bestiary
   5: [-1, 3, 4, -1],  // bestiary: down→missions, left→codex
   6: [1, -1, -1, -1], // pilot: up→armory
+  7: [2, -1, -1, 0],  // colonies: up→crew, right→starmap
 };
 
 // Transition duration in frames
