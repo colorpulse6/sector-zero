@@ -10,6 +10,14 @@ import {
   type StoryItemId,
   type WeaponType,
 } from "./types";
+import type {
+  ColonyState,
+  PlanetState,
+  EarthShipment,
+  FactionStanding,
+  Bounty,
+  GameClock,
+} from "../colony/shared/colonyTypes";
 import { unlockCodexEntries } from "./codex";
 import { calcPilotLevel, creditBonus, skillPointsAtLevel } from "./pilotLevel";
 import { getNode } from "./skillTree";
@@ -43,10 +51,23 @@ const defaultSave: SaveData = {
   pilotLevel: 1,
   skillPoints: 0,
   allocatedSkills: [],
+  colonies: [],
+  planets: [],
+  earthShipments: [],
+  factionStandings: [],
+  bounties: [],
+  missionsSinceStart: 0,
+  gameClock: {
+    day: 0,
+    hour: 7,
+    minute: 0,
+    realtimeMsPerGameMinute: 1000,
+    season: "standard",
+  },
 };
 
 /** Migrate old saves that lack new fields */
-function migrateSave(raw: Record<string, unknown>): SaveData {
+export function migrateSave(raw: Record<string, unknown>): SaveData {
   return {
     currentWorld: (raw.currentWorld as number) ?? 1,
     levels: (raw.levels as SaveData["levels"]) ?? {},
@@ -74,6 +95,19 @@ function migrateSave(raw: Record<string, unknown>): SaveData {
     pilotLevel: (raw.pilotLevel as number) ?? 1,
     skillPoints: (raw.skillPoints as number) ?? 0,
     allocatedSkills: (raw.allocatedSkills as SaveData["allocatedSkills"]) ?? [],
+    colonies: (raw.colonies as ColonyState[]) ?? [],
+    planets: (raw.planets as PlanetState[]) ?? [],
+    earthShipments: (raw.earthShipments as EarthShipment[]) ?? [],
+    factionStandings: (raw.factionStandings as FactionStanding[]) ?? [],
+    bounties: (raw.bounties as Bounty[]) ?? [],
+    missionsSinceStart: (raw.missionsSinceStart as number) ?? 0,
+    gameClock: (raw.gameClock as GameClock) ?? {
+      day: 0,
+      hour: 7,
+      minute: 0,
+      realtimeMsPerGameMinute: 1000,
+      season: "standard",
+    },
   };
 }
 

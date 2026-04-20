@@ -1,3 +1,12 @@
+import type {
+  ColonyState,
+  PlanetState,
+  EarthShipment,
+  FactionStanding,
+  Bounty,
+  GameClock,
+} from "../colony/shared/colonyTypes";
+
 // ─── Canvas ──────────────────────────────────────────────────────────
 export const CANVAS_WIDTH = 480;
 export const CANVAS_HEIGHT = 854;
@@ -1004,4 +1013,12 @@ export interface SaveData {
   pilotLevel: number;
   skillPoints: number;
   allocatedSkills: SkillNodeId[];
+  // Colony system fields (Phase 0 of colony system implementation)
+  colonies: ColonyState[];
+  planets: PlanetState[];
+  earthShipments: EarthShipment[];
+  factionStandings: FactionStanding[];
+  bounties: Bounty[];
+  missionsSinceStart: number;
+  gameClock: GameClock;
 }
