@@ -60,6 +60,7 @@ import { restoreCheckpoint } from "./engine/phases";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./engine/groundLevel";
 import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
 import { getSpecialMissionDef } from "./engine/specialMissions";
+import { advanceWorldCycle } from "./colony";
 import DevPanel from "./DevPanel";
 
 export default function Game() {
@@ -328,8 +329,9 @@ export default function Game() {
         newSave = unlockCodexEntry(newSave, missionDef.storyCodexId);
       }
 
-      saveSave(newSave);
-      setSaveData(newSave);
+      const cycledSave = advanceWorldCycle(newSave);
+      saveSave(cycledSave);
+      setSaveData(cycledSave);
       returnToCockpit();
       return;
     }
@@ -348,8 +350,9 @@ export default function Game() {
         }
       }
       newSave = { ...newSave, bestiary: updatedBestiary };
-      saveSave(newSave);
-      setSaveData(newSave);
+      const cycledSave = advanceWorldCycle(newSave);
+      saveSave(cycledSave);
+      setSaveData(cycledSave);
       returnToCockpit();
       return;
     }
@@ -415,11 +418,12 @@ export default function Game() {
       newSave = unlockSpecialMission(newSave, options.unlockSpecialMission);
     }
 
-    saveSave(newSave);
-    setSaveData(newSave);
+    const cycledSave = advanceWorldCycle(newSave);
+    saveSave(cycledSave);
+    setSaveData(cycledSave);
 
     if (options?.unlockSpecialMission && options.launchSpecialMission) {
-      startSpecialMission(options.unlockSpecialMission, newSave);
+      startSpecialMission(options.unlockSpecialMission, cycledSave);
       return;
     }
 
@@ -443,7 +447,7 @@ export default function Game() {
 
     if (nextLv <= maxLevels) {
       // Next level in same world
-      carryForward(createGameState(gameState.currentWorld, nextLv, newSave.upgrades, newSave.unlockedEnhancements, newSave.pilotLevel, newSave.allocatedSkills));
+      carryForward(createGameState(gameState.currentWorld, nextLv, cycledSave.upgrades, cycledSave.unlockedEnhancements, cycledSave.pilotLevel, cycledSave.allocatedSkills));
     } else {
       // World complete — try advancing to next world
       let nextWorld = gameState.currentWorld + 1;
@@ -451,7 +455,7 @@ export default function Game() {
         nextWorld++;
       }
       if (nextWorld <= 8 && getWorldLevelCount(nextWorld) > 0) {
-        carryForward(createGameState(nextWorld, 1, newSave.upgrades, newSave.unlockedEnhancements, newSave.pilotLevel, newSave.allocatedSkills));
+        carryForward(createGameState(nextWorld, 1, cycledSave.upgrades, cycledSave.unlockedEnhancements, cycledSave.pilotLevel, cycledSave.allocatedSkills));
       } else {
         startEnding();
       }
