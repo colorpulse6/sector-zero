@@ -4,6 +4,8 @@ import type { ColonyEvent } from "../shared/colonyEvents";
 import { Events } from "../shared/colonyEvents";
 import { hudColors, hudFonts } from "./hudTokens";
 import { ColonyEmptyState } from "./ColonyEmptyState";
+import { ColonyHeader } from "./ColonyHeader";
+import { ColonyResourcePanel } from "./ColonyResourcePanel";
 
 export interface ColoniesScreenProps {
   save: SaveData;
@@ -57,39 +59,25 @@ export function ColoniesScreen({ save, onDispatch, onExit }: ColoniesScreenProps
       {save.colonies.length === 0 ? (
         <ColonyEmptyState onFound={handleFound} />
       ) : (
-        <PopulatedPlaceholder save={save} onExit={onExit} />
+        <PopulatedView save={save} onExit={onExit} />
       )}
     </div>
   );
 }
 
-// Placeholder until Tasks 6-8 replace it with the real components.
-function PopulatedPlaceholder({ save, onExit }: { save: SaveData; onExit: () => void }) {
+function PopulatedView({ save, onExit }: { save: SaveData; onExit: () => void }) {
   const colony = save.colonies[0];
   return (
-    <div style={{ padding: "32px" }}>
-      <button onClick={onExit} style={{
-        background: "transparent",
-        border: "none",
-        color: hudColors.cyanAccent,
-        fontFamily: hudFonts.mono,
-        cursor: "pointer",
-        fontSize: "14px",
-      }}>
-        ← RETURN TO COCKPIT
-      </button>
-      <h1 style={{ color: hudColors.cyanAccent, marginTop: "16px" }}>
-        {colony.name}
-      </h1>
-      <p style={{ color: hudColors.textMuted, marginTop: "8px" }}>
-        Tier {colony.tier} · {colony.foundingType} · Cycle {save.missionsSinceStart}
-      </p>
-      <p style={{ marginTop: "24px", color: hudColors.textMuted }}>
-        [Populated screen lands in Tasks 6-8]
-      </p>
-      <p style={{ marginTop: "16px" }}>
-        Resources: food {colony.resources.food}, water {colony.resources.water}, metal {colony.resources.metal}
-      </p>
-    </div>
+    <>
+      <ColonyHeader
+        colony={colony}
+        missionsSinceStart={save.missionsSinceStart}
+        onBack={onExit}
+      />
+      <ColonyResourcePanel colony={colony} />
+      <div style={{ padding: "32px", opacity: 0.6 }}>
+        [ColonyMetrics / BuildingsList / CommissionMenu land in Tasks 7-8]
+      </div>
+    </>
   );
 }
