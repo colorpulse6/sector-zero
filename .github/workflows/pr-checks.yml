@@ -25,7 +25,7 @@ jobs:
           cache-dependency-path: game/yarn.lock
       - run: corepack enable
       - name: Install
-        run: cd game && yarn install --frozen-lockfile
+        run: cd game && yarn install
       - name: Type check
         run: cd game && npx tsc --noEmit -p tsconfig.json
 
@@ -41,7 +41,7 @@ jobs:
           cache-dependency-path: game/yarn.lock
       - run: corepack enable
       - name: Install
-        run: cd game && yarn install --frozen-lockfile
+        run: cd game && yarn install
       - name: Colony tests (runs only if tests/colony/ exists)
         run: |
           if [ -d game/tests/colony ]; then
@@ -62,7 +62,7 @@ jobs:
           cache-dependency-path: game/yarn.lock
       - run: corepack enable
       - name: Install
-        run: cd game && yarn install --frozen-lockfile
+        run: cd game && yarn install
       - name: Build
         run: cd game && yarn build
         env:
@@ -81,7 +81,7 @@ jobs:
           cache-dependency-path: site/yarn.lock
       - run: corepack enable
       - name: Install
-        run: cd site && yarn install --frozen-lockfile
+        run: cd site && yarn install
       - name: Build
         run: cd site && yarn build
         env:
