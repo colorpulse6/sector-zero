@@ -1,5 +1,7 @@
 import type { ColonyState, BuildingType, ColonyResources } from "./colonyTypes";
+import type { SaveData } from "../../engine/types";
 import { derivePowerGrid } from "./powerGrid";
+import { runStandardInvariants } from "./colonyAssert";
 
 // Spec Section E authoritative production/consumption values.
 // Only operational buildings contribute.
@@ -163,4 +165,19 @@ function applyResourceDelta(c: ColonyState, delta: Partial<ColonyResources>): Co
   if (delta.metal !== undefined) nextResources.metal = Math.max(0, nextResources.metal + delta.metal);
   if (delta.credits !== undefined) nextResources.credits = Math.max(0, nextResources.credits + delta.credits);
   return { ...c, resources: nextResources };
+}
+
+/**
+ * World-level cycle orchestrator. Called on mission completion.
+ * Increments missionsSinceStart by exactly 1 and runs processCycle for every colony.
+ * Invariants are asserted after each colony's cycle — panics loudly in dev, no-op in prod.
+ */
+export function advanceWorldCycle(save: SaveData): SaveData {
+  const newCycle = save.missionsSinceStart + 1;
+  const nextColonies = save.colonies.map(c => {
+    const next = processCycle(c, newCycle);
+    runStandardInvariants(next);
+    return next;
+  });
+  return { ...save, colonies: nextColonies, missionsSinceStart: newCycle };
 }
