@@ -288,42 +288,47 @@ Two separate events instead of baking the grant into the founded event. Rational
 
 ### Resource panel math
 
-Per-cycle deltas shown under each resource are computed inline by a pure helper:
+The panel displays **four tiles**: Food, Water, Metal, and Power. **Credits are not displayed in Phase 1** (no source for them yet — Marketplace income lands in Phase 7a). **Power is a derived grid value** (capacity/demand from Phase 0's `derivePowerGrid`), NOT a stockpile; it has its own display format (`capacity/demand` + surplus indicator) and is computed separately from the stockpile resources.
+
+Per-cycle deltas for the three stockpile resources (Food, Water, Metal) are computed inline by a pure helper. Credits are omitted from both the display and the helper since they stay at 0 throughout Phase 1.
 
 ```typescript
 // predictedDeltas.ts
 import { RESOURCE_PRODUCTION, RESOURCE_UPKEEP } from "../shared/colonyCatalog";
-import type { ColonyState, ColonyResources } from "../shared/colonyTypes";
+import type { ColonyState } from "../shared/colonyTypes";
 
-export function predictedDeltas(colony: ColonyState): Partial<ColonyResources> {
-  const delta: Partial<ColonyResources> = { food: 0, water: 0, metal: 0, credits: 0 };
+type StockpileDelta = { food: number; water: number; metal: number };
+
+export function predictedDeltas(colony: ColonyState): StockpileDelta {
+  const delta: StockpileDelta = { food: 0, water: 0, metal: 0 };
 
   // Production from operational buildings
   for (const b of colony.buildings) {
     if (b.status !== "operational") continue;
     const prod = RESOURCE_PRODUCTION[b.type];
-    if (prod?.food) delta.food! += prod.food;
-    if (prod?.water) delta.water! += prod.water;
-    if (prod?.metal) delta.metal! += prod.metal;
-    if (prod?.credits) delta.credits! += prod.credits;
+    if (prod?.food) delta.food += prod.food;
+    if (prod?.water) delta.water += prod.water;
+    if (prod?.metal) delta.metal += prod.metal;
   }
 
   // Upkeep from operational buildings
   for (const b of colony.buildings) {
     if (b.status !== "operational") continue;
     const up = RESOURCE_UPKEEP[b.type];
-    if (up?.food) delta.food! -= up.food;
-    if (up?.water) delta.water! -= up.water;
-    if (up?.metal) delta.metal! -= up.metal;
+    if (up?.food) delta.food -= up.food;
+    if (up?.water) delta.water -= up.water;
+    if (up?.metal) delta.metal -= up.metal;
   }
 
   // Population consumption
-  delta.food! -= colony.population.total;
-  delta.water! -= Math.floor(colony.population.total * 0.5);
+  delta.food -= colony.population.total;
+  delta.water -= Math.floor(colony.population.total * 0.5);
 
   return delta;
 }
 ```
+
+**Note on credits:** intentionally excluded. No building in Phase 1 produces credits, and population-driven Marketplace income lands in Phase 7a. Adding it to the Phase 1 helper would be noise that always returns 0.
 
 This mirrors the cycle processor's step math. Shared constants via `colonyCatalog.ts` keep them authoritative in one place.
 
@@ -343,7 +348,7 @@ const surplusColor = grid.surplus >= 0 ? "hud-green" : "hud-danger";
 Click `[BUILD]` on a commission card:
 
 1. **Affordability gate** (client-side): disable button if `colony.resources.metal < cost.metal`. Show helper text like "Need 20 more metal".
-2. **On click**: dispatch `Events.buildingCommissioned({ colonyId, buildingId: genBuildingId(colony), buildingType, costDeducted: cost, cyclesToBuild })`.
+2. **On click**: dispatch `Events.buildingCommissioned({ colonyId, buildingId: genBuildingId(colony, buildingType), buildingType, costDeducted: cost, cyclesToBuild })`.
 3. **Reducer validates** (Phase 0 logic) and updates state.
 4. **React re-renders** — commission card stays (multi-buildable), new entry appears in BuildingsList.
 
