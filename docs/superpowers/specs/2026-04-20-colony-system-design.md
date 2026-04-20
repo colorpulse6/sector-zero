@@ -221,10 +221,30 @@ interface ColonyResources {
   food: number;
   water: number;
   metal: number;
-  power: number;                       // realtime capacity — not a stockpile
   credits: number;                     // colony's treasury (separate from player wallet)
 }
 ```
+
+### Power — capacity, not a resource
+
+**Power is NOT in `ColonyResources` and never in any stockpile.** It is a derived capacity value, recomputed each cycle from the sum of operational power-producing buildings (Solar Array etc.) minus the sum of operational building demand.
+
+```typescript
+interface PowerGrid {
+  capacity: number;                    // supply from producers this cycle
+  demand: number;                      // sum of operational building upkeep
+  surplus: number;                     // capacity - demand; negative = brownout
+}
+```
+
+Every reference to "Power" elsewhere in this spec (building "cost" tables, upkeep columns, recipe columns) is resolved as follows:
+
+- **Building "cost" in Power** → *demand added when this building becomes operational.* Never deducted from a stockpile at construction time. The stockpile costs for construction are Metal, Food, or Water only.
+- **Building "upkeep" in Power** → ongoing demand applied during cycle step 3 (Building Upkeep). Grid recomputed after each new operational building.
+- **Refinery recipes referencing Power** → the recipe requires surplus capacity equal to or greater than the listed power value during the conversion cycle. No units "consumed" — capacity merely tied up.
+- **Earth Shipments cannot transport Power.** Physical electricity isn't shippable. Players wanting more power build more Solar Arrays or Generators.
+
+Brownout semantics when `surplus < 0`: random operational buildings flip to `"offline"` status (no production, no upkeep) until the player restores supply. Offline buildings do NOT go back online automatically — player must explicitly "restart" via planner UI (zero-cost action) once power is available.
 
 ### Npc
 
@@ -298,13 +318,21 @@ interface ElevationMeta {
 ```typescript
 interface EarthShipment {
   id: ShipmentId;
-  contents: Partial<ColonyResources & PlayerMaterials>;
+  contents: ShipmentContents;          // food, water, metal, credits, player combat materials — NEVER power
   eta: { missionCount: number };
   interceptionChance: number;
   interceptionTriggered: boolean;
   destinationColonyId: ColonyId;
   costPaid: number;
 }
+
+type ShipmentContents = {
+  food?: number;
+  water?: number;
+  metal?: number;
+  credits?: number;
+  combatMaterials?: Partial<Record<CombatMaterialId, number>>;
+};
 ```
 
 ### FactionStanding & Bounty (consequence system)
@@ -332,7 +360,6 @@ interface Bounty {
 
 ```typescript
 interface GameClock {
-  totalMissions: number;
   day: number;
   hour: number;                        // 0-23
   minute: number;                      // 0-59
@@ -340,6 +367,8 @@ interface GameClock {
   season: "standard" | "storm" | "bloom" | "deadzone";
 }
 ```
+
+**Cycle counter is `SaveData.missionsSinceStart` only.** `GameClock` deliberately does NOT duplicate it — `GameClock` exists solely for NPC schedules and day/night lighting. If any code needs a cycle count, it reads `missionsSinceStart` from `SaveData`.
 
 ### Data Model Design Rules
 
@@ -592,7 +621,7 @@ When `missionsSinceStart` increments, `cycleProcessor.ts` runs this pipeline per
 
 4. POPULATION CHANGE
    Apply growth rate (from happiness) → newborns / departures.
-   If happiness < 25 → collapse countdown.
+   If happiness < 25 → collapse countdown (see "Colony collapse rules" below).
 
 5. HAPPINESS RECOMPUTE
    Sum all modifiers. Clamp 0-100.
@@ -616,20 +645,42 @@ When `missionsSinceStart` increments, `cycleProcessor.ts` runs this pipeline per
 
 Each step is a pure function. Each is independently unit-testable. Whole pipeline is idempotent-per-cycle.
 
-### Offline catch-up
+### Single processing model — eager only
 
-Player ignores Colony X for 8 cycles while running campaign missions elsewhere. When they check it:
+**Canonical rule:** cycles are processed EAGERLY. When a mission completes, `missionsSinceStart` increments and `cycleProcessor` runs the per-colony pipeline for EVERY colony in the save. There is no "lazy" or "deferred" processing during normal play.
 
 ```typescript
-function catchUpColony(colony: ColonyState, currentCycle: number): void {
-  const missed = currentCycle - colony.lastCycleProcessed;
-  for (let i = 0; i < missed; i++) {
-    processCycle(colony, colony.lastCycleProcessed + i + 1);
-  }
+// Called once after mission completion
+function advanceWorldCycle(save: SaveData): SaveData {
+  const newCycle = save.missionsSinceStart + 1;
+  const nextColonies = save.colonies.map(c => processCycle(c, newCycle));
+  // emits one colony/cycleAdvanced event per colony
+  return { ...save, colonies: nextColonies, missionsSinceStart: newCycle };
 }
 ```
 
-One cycle at a time. No shortcuts. Because cycles only fire from missions, and missions trigger simultaneously across all colonies, this function typically runs with `missed = 0` or `1` — the only case missed > 1 is on save load after a migration.
+Every colony is always current: `forall c: c.lastCycleProcessed === save.missionsSinceStart` after any mission completion.
+
+### Catch-up — reserved for save migrations only
+
+The `catchUpColony` function exists but is **only invoked in two narrow scenarios**:
+
+1. **Save migration** — loading a save created in an earlier schema version that lacked colony state or had stale counters.
+2. **Dev/debug commands** — test harnesses that synthesize a save at a specific cycle number.
+
+```typescript
+// Not called during normal play
+function catchUpColony(colony: ColonyState, currentCycle: number): ColonyState {
+  const missed = currentCycle - colony.lastCycleProcessed;
+  let next = colony;
+  for (let i = 0; i < missed; i++) {
+    next = processCycle(next, next.lastCycleProcessed + 1);
+  }
+  return next;
+}
+```
+
+During normal play, `missed` is always 0 — the invariant `c.lastCycleProcessed === save.missionsSinceStart` holds.
 
 ### NPC schedule system
 
@@ -686,11 +737,11 @@ Silencing witnesses is a valid strategy. Witnesses flee toward Town Hall to repo
 
 | Standing | Rank | Effect |
 |---|---|---|
-| 80..100 | Allied | +10% prices, unique dialog, faction quests, armed backup |
-| 40..79 | Liked | +5% prices, friendly dialog, personal quests |
-| -39..39 | Neutral | Default |
-| -79..-40 | Hated | Guards shadow you, merchants refuse, 2x essentials |
-| -100..-80 | Hostile | Kill-on-sight, bounty hunters spawn, banned from colony |
+| 80..100 | Allied | **Buy prices -10%, sell prices +10%**, unique dialog, faction quests, armed backup |
+| 40..79 | Liked | **Buy prices -5%, sell prices +5%**, friendly dialog, personal quests |
+| -39..39 | Neutral | Default prices |
+| -79..-40 | Hated | **Buy prices 2×, sell prices -50%**, guards shadow you, some merchants refuse trade |
+| -100..-80 | Hostile | Kill-on-sight, bounty hunters spawn, banned from colony (no shops) |
 
 Every delta fires `colony/standingChanged` event for dialog/quest triggers.
 
@@ -705,6 +756,43 @@ deaths = baseDeathRate + disasterDeaths + raidDeaths - medBayReduction
 ```
 
 Named NPCs have individual death rolls + vulnerability from attacks/raids. A named death emits `colony/namedNpcDied` → potential funeral event, quest chain from relatives. Background colonists aggregately tracked.
+
+### Colony collapse rules
+
+Full operative rules for when a colony enters collapse.
+
+**Entry condition:** happiness drops below 25 at the end of a cycle's happiness recompute (step 5).
+
+**Collapse state:** colony flagged with `collapse: { active: true, cyclesRemaining: 8, startedAt: currentCycle }`. Data lives on `ColonyState`:
+
+```typescript
+interface CollapseState {
+  active: boolean;
+  cyclesRemaining: number;             // starts at 8
+  startedAt: number;                   // missionsSinceStart at entry
+}
+```
+
+**Per-cycle effects while collapsing:**
+- Population: lose 10% total colonists per cycle (rounded up). Named NPCs roll individual flee checks (base 25% per cycle; doubles if home building is damaged).
+- Buildings: each operational building has a 10% chance/cycle to take damage (hp -= 20). Damaged buildings may go offline.
+- Resource production: operational buildings produce at 50% output during collapse.
+- Happiness floor: happiness cannot rise above 25 while `collapse.active === true` (prevents bounce-out from a single good cycle).
+
+**Flee destinations for named NPCs:**
+- Flee to the player's nearest allied or liked colony (faction standing ≥ 40).
+- If none exists, NPC becomes `colonyId: null` (wandering/roamer) and is considered "lost" — may re-appear in a future Cantina rumor, but not auto-reassigned.
+- If the NPC has authored story importance, flee destination may be overridden by `elevationMetadata` or quest state.
+
+**Recovery condition (abort collapse):** sustained happiness ≥ 50 for 2 consecutive cycles. On recovery, `collapse.active = false`, `cyclesRemaining` resets to 8 (in case of re-entry). Population/buildings do NOT reset — damage sticks.
+
+**Terminal condition:** `cyclesRemaining` reaches 0 while still collapsing.
+- Colony status → `"collapsed"`.
+- All remaining NPCs become wandering or die (50/50 roll per NPC).
+- All buildings → `status: "destroyed"`.
+- Colony site enters refoundable cooldown: `regionNodeId` marked `refoundableAfter: currentCycle + 10`. After cooldown, player can re-found a new colony at the same site (new `ColonyId`; old colony's history preserved in a read-only "Lost Colonies" log in the galaxy map).
+
+**Resetting between collapses:** if a colony recovers then re-enters collapse later, the new 8-cycle countdown runs fresh — no accumulation.
 
 ### Threat progression
 
@@ -937,7 +1025,7 @@ interface Quest {
 }
 ```
 
-Active quest cap: 12 simultaneous. Semantics: when the player attempts to accept a 13th quest, the UI warns ("Your questlog is full — complete or abandon one first") but does NOT automatically refuse or queue. Quest giver remains available to re-offer. Emergent quests (colony-generated) bypass the cap since they're urgent by design.
+Active quest cap: **12 player-accepted quests simultaneously.** On attempted accept of a 13th, the UI blocks the acceptance with a dismissible prompt: *"Your questlog is full — complete or abandon one first."* The quest remains available from its giver indefinitely. Emergent quests (colony-generated, urgent by design) bypass this cap and push into the log regardless — there is no upper bound on active emergent quests.
 
 ### Random encounters during fast-travel
 
@@ -1000,11 +1088,13 @@ This unifies the mission → colony feedback loop.
 The Refinery (Tier 3 walkable) is the ONE place where colony resources bleed into combat materials:
 
 ```
-20 Metal  → 1 Kinetic-Core        (safe, 2-cycle delay)
-40 Metal + 5 Power  → 1 Energy-Cell      (10% failure)
-50 Metal + 20 Food  → 1 Incendiary-Plasma (20% failure)
-80 Metal + 30 Water → 1 Cryo-Shard       (30% failure)
+20 Metal                      → 1 Kinetic-Core        (safe, 2-cycle delay, needs 5 surplus power capacity during conversion)
+40 Metal                      → 1 Energy-Cell         (10% failure, needs 15 surplus power capacity during conversion)
+50 Metal + 20 Food            → 1 Incendiary-Plasma   (20% failure, needs 25 surplus power capacity during conversion)
+80 Metal + 30 Water           → 1 Cryo-Shard          (30% failure, needs 40 surplus power capacity during conversion)
 ```
+
+**Power semantics clarified:** the "surplus power capacity" is a *requirement*, not a consumable — the Refinery ties up that much grid capacity during the conversion cycle. If the colony lacks surplus capacity, the conversion cannot start (error in UI). No power number is deducted from any stockpile.
 
 **Failure semantics:** inputs consumed, no output produced. Additionally, a failure roll of <3% (rare) triggers a minor Refinery accident — building status → "damaged", requires 50 Metal to repair, halts further conversions until fixed. This gives Refinery a meaningful risk profile beyond pure material loss.
 
@@ -1266,6 +1356,27 @@ Nearby: Kadri (merchant) · Harlow (governor)
 - Nearby-NPC hint shows named NPCs within ~8 tiles
 - Quick keys: M = region map, F = fast-travel, Z = context interact
 
+### Travel matrix — authoritative contract
+
+This is the single source of truth for every travel transition in the colony system. Any earlier informal reference (e.g. `[F] FAST TRAVEL` on the HUD) resolves against this table.
+
+| Origin | Destination | Available From | Trigger | Notes |
+|---|---|---|---|---|
+| Cockpit Hub | Galaxy Map → Planet → Colony (DESCEND) | Phase 1 (meta-only, no FPS) / Phase 2 (full FPS descent) | Meta UI DESCEND button | Full FPS rendering from Phase 2 |
+| Colony FPS | Cockpit Hub (TAKE OFF) | Phase 2 | Landing pad menu only | Pad-gated at Phase 2; menu-anywhere added in Phase 6 |
+| Colony FPS | Cockpit Hub (anywhere) | Phase 6 | `[F]` key opens travel menu → "Return to Ship" | Unlocks alongside district fast-travel |
+| Colony FPS | POI on same planet | Phase 4 | Landing pad menu → "Fast Travel" sub-menu | Pad-gated at Phase 4; menu-anywhere added in Phase 6 |
+| Colony FPS | POI on same planet (anywhere) | Phase 6 | `[F]` key → region map | Unlocks alongside district fast-travel |
+| Colony FPS | Another district in same colony | Phase 6 | `[F]` key → district list | Tier 3+ colonies only (districts don't exist below T3) |
+| Colony FPS | Another colony (any planet) | — | Never direct | Must go via Cockpit Hub → Galaxy Map |
+| POI (inner engine) | Back to origin colony FPS | Phase 4 | On clear condition met / "Leave" option | Automatic on outcome resolution |
+| POI (inner engine) | Cockpit Hub | Phase 4 | Only after outcome resolves | Direct exit skips colony return |
+| Building Interior | Back to Colony FPS | Phase 2 | Exit door / `[Z]` interact | Same door the player entered |
+| Cockpit Hub | Campaign Mission | Existing | Mission Select → Launch | Unchanged by colony system |
+| Cockpit Hub | Emergent Mission | Phase 10 | Mission Select → Emergent tab → Launch | Colony-generated content stream |
+
+**Key rule:** the `[F] FAST TRAVEL` HUD key shown in Section I's HUD mockup does not work until Phase 6. Before Phase 6, fast-travel is strictly landing-pad-gated. Phase 2-5 HUD either hides the `[F]` hint or shows it greyed out.
+
 ### First-time onboarding
 
 1. Ashfall Forward Camp (existing content) becomes first "pseudo-colony" — already founded.
@@ -1303,13 +1414,14 @@ Runs alongside all phases. Prompts drafted before the phase needing them. Kanban
 
 **Phase 0 — Data Model & Reducer**
 
-- `game/app/components/colony/` scaffolded with all type files.
+- `game/app/components/colony/` scaffolded with all type files, including stub-type definitions (see Appendix A).
 - `colonyReducer` with ~10 core events.
-- `cycleProcessor` with 10-step pipeline (threats/shipments stubs).
+- `cycleProcessor` with 10-step pipeline (threats/shipments/quests stubs for now — real logic in Phases 5b/7b/5a).
 - `save.ts` extended + migration.
 - `colonyAssert.ts` initial invariants.
-- **Acceptance:** Reducer + cycle pipeline runs correctly against synthetic states. Save/load roundtrip preserves fields.
-- **Verification:** `yarn colony:test` pure-function harness.
+- `package.json` gets new script `colony:test` pointing at a Node test runner for pure-function pipeline tests (the project has no test framework — this is a small bespoke harness using `node --test` or similar).
+- **Acceptance:** Reducer + cycle pipeline runs correctly against synthetic states. Save/load roundtrip preserves fields. `yarn colony:test` exists and runs clean.
+- **Verification:** `yarn colony:test` green. `yarn build` green (all stub types compile).
 
 **Phase 1 — Meta Layer: Single Colony**
 
@@ -1369,15 +1481,26 @@ Runs alongside all phases. Prompts drafted before the phase needing them. Kanban
 
 ---
 
-**Phase 5 — Schedules + Consequences + Factions**
+**Phase 5a — Schedules + Standing + Dialog Reactions**
 
-- Full schedule system (multi-period).
-- `consequenceTracker.ts` + witness + bounty + flee-to-report.
+- Full schedule system (multi-period, named NPC routines).
 - `factionLedger.ts` — 3-5 factions, standing math, rank thresholds.
-- Faction-aware dialog across existing NPCs.
-- Guards spawn on bounty.
-- **Acceptance:** Crime → witness → bounty → decay. Silence witnesses → void. Hated merchants refuse.
-- **Verification:** Crime-to-decay test script over 20 cycles.
+- Faction-aware dialog branches across existing NPCs.
+- Price modifiers hooked into existing shop code.
+- No crime/bounty/witness yet (that's 5b).
+- **Acceptance:** NPCs visibly relocate by time of day. Standing changes alter dialog. Prices reflect rank.
+- **Verification:** 3 NPC-day test sweep. Standing delta → dialog variant A/B check. Price regression test across T2 and T4 markets.
+
+**Phase 5b — Crime + Witness + Bounty + Guards**
+
+- `consequenceTracker.ts` — attack detection hooks into firstPerson engine.
+- Witness detection (line-of-sight + radius).
+- Flee-to-report behavior (named witnesses path to Town Hall or nearest guard).
+- Bounty issuance + decay.
+- Guard spawning on colony entry based on bounty list.
+- Hostile/Hated merchant refusal logic.
+- **Acceptance:** Crime → witness → bounty → decay. Silence all witnesses before they report → void. Hated merchants refuse trade entirely.
+- **Verification:** Crime-to-decay scripted test over 20 cycles. Edge cases: no-Town-Hall, multi-witness, fleeing-witness-killed-en-route.
 
 **Phase 6 — Growth Ladder + Districts + Civic**
 
@@ -1390,16 +1513,25 @@ Runs alongside all phases. Prompts drafted before the phase needing them. Kanban
 - **Acceptance:** Grow T1 → T3 through play. Districts visible. Promenade merchants spawn.
 - **Verification:** Full growth playthrough. Tier 1-2 no regressions.
 
-**Phase 7 — Economy + Earth Shipments + Escort**
+**Phase 7a — Markets + Refinery + Reward Routing**
 
-- Earth shipments UI + full functionality.
-- Interception → Turret escort mission spawn.
-- Refinery conversion functional.
-- Spaceport transfers.
-- Dynamic market pricing.
-- Mission reward → destination colony.
-- **Acceptance:** Full economic loop end-to-end tested.
-- **Verification:** Balance sanity: T3 colony self-sustains 10 cycles.
+- Dynamic market pricing (base × supply/demand × faction × events) wired into existing shop code.
+- Refinery conversion UI + logic (recipes, failure rolls, damage on rare bad roll).
+- Mission reward → destination colony picker in mission select.
+- Colony resource routing from mission outcomes.
+- **Acceptance:** Buying at Allied-standing market costs less; Refinery conversion works with failure rolls; mission rewards land at chosen colony.
+- **Verification:** Price-modifier sweep across 5 standings × 3 items. 100 Refinery rolls per recipe for distribution check. End-to-end: mission → destination colony → resource deposited.
+
+**Phase 7b — Earth Shipments + Escorts + Spaceport Transfers**
+
+- Earth shipments UI (cockpit hub SUPPLY screen).
+- Interception roll at ETA-1; warning surfaced to player.
+- Escort mission spawn (Turret engine) with tiered outcomes.
+- Bribe option gated on faction intel (late-game).
+- Spaceport → Spaceport transfers (1-cycle delivery, 10% fee).
+- Comms Tower gating for shipments per colony.
+- **Acceptance:** Ship to a colony → wait → intercepted → accept escort → tiered outcome applied. Transfer resources between two Spaceports.
+- **Verification:** All 3 escort outcome tiers (full/partial/failure) triggered in test. Spaceport transfer integrity (no duplication, fee applied).
 
 ---
 
@@ -1431,13 +1563,20 @@ Runs alongside all phases. Prompts drafted before the phase needing them. Kanban
 
 **Phase 10 — Campaign Integration**
 
-- Pre-mission buff computation.
-- Emergent mission spawn (all 8 templates).
-- Mission select two-tab UI.
-- Soft-gated campaign missions.
-- Multi-ending structure (placeholder).
-- **Acceptance:** Buffs affect mission difficulty. Emergent appear + resolve. W4 gate enforced.
-- **Verification:** Campaign playthrough to W4 with colony-driven progression.
+Internally plan this as two chunks (both shipping under "Phase 10" but sequenced):
+
+- **10-chunk-1: Buffs + Gates + UI**
+  - Pre-mission buff computation from colony roster.
+  - Mission select two-tab UI (Campaign / Emergent).
+  - Soft-gated campaign missions (W4+/W6+/W8 gates enforced).
+  - Buff visibility in mission pre-flight HUD.
+- **10-chunk-2: Emergent Mission Generation + Endgame Placeholder**
+  - Emergent mission spawn system (all 8 templates from Section H).
+  - Emergent mission tab population/decay.
+  - Multi-ending structure wired (placeholder per open questions).
+
+- **Acceptance:** Buffs affect mission difficulty. Emergent missions appear and resolve correctly. W4 gate enforced. All 5 endings reachable in test harness.
+- **Verification:** Campaign playthrough to W4 with colony-driven progression. Scripted endgame-state tests for each ending branch.
 
 ---
 
@@ -1572,6 +1711,221 @@ The Colony System is successful if:
 8. **No regressions** in existing campaign feel — pre-colony playthroughs and post-colony playthroughs comparable.
 9. **Code review passes** on every phase before merge; no phase ships with unresolved review comments.
 10. **Architecture future-proof** — adding Deep Sim entity behaviors in a future release requires no changes to existing layer boundaries.
+
+---
+
+## Appendix A — Stub Type Definitions
+
+Section B forward-references several types whose concrete shape is developed in later phases. Phase 0 ships these as stub types — just enough to satisfy TypeScript compilation and serve as documentation of intent. Later phases flesh them out with real fields and behavior.
+
+```typescript
+// ---- Stubs for Phase 0: compile-clean, zero behavior ----
+
+// Defined properly in Phase 6 (Districts)
+interface District {
+  id: DistrictId;
+  colonyId: ColonyId;
+  kind: "residential" | "market" | "industrial" | "civic" | "military";
+  tiles: Array<[number, number]>;       // grid cells owned
+  travelAnchorId: string | null;         // fast-travel target ID, null until Phase 6
+}
+
+// Defined properly in Phase 8 (Threats)
+interface Threat {
+  id: string;
+  kind: "raid_incoming" | "siege_ongoing" | "disaster_active" | "supply_disruption";
+  cyclesUntilResolve: number;
+  severity: "minor" | "major" | "catastrophic";
+  targetBuildingId: BuildingInstanceId | null;
+  payload: unknown;                      // kind-specific metadata; refined in Phase 8
+}
+
+// Defined properly in Phase 5a (NPCs) / expanded in Phase 8 (threats)
+interface DeathRecord {
+  npcId: NpcId | null;                  // null = background colonist
+  cyclesAgo: number;
+  cause: "hunger" | "disease" | "raid" | "siege" | "disaster" | "player" | "natural";
+  colonyId: ColonyId;
+}
+
+// Defined properly in Phase 5a (schedules)
+interface Mood {
+  valence: number;                      // -1 to 1
+  dominant: "content" | "anxious" | "hopeful" | "angry" | "grieving" | "bored";
+  since: { missionCount: number };
+}
+
+// Defined properly in Phase 5b/10-chunk-2 (Quests)
+interface Objective {
+  id: string;
+  text: string;
+  kind: "kill" | "collect" | "escort" | "reach" | "survive" | "deliver" | "talk";
+  target: string;                       // kind-specific target identifier
+  count: number;                        // current progress
+  required: number;
+  complete: boolean;
+}
+
+interface QuestReward {
+  credits?: number;
+  xp?: number;
+  colonyResources?: Partial<ColonyResources>;
+  combatMaterials?: Partial<Record<CombatMaterialId, number>>;
+  factionStandingDeltas?: Array<{ factionId: FactionId; delta: number }>;
+  unlockIds?: string[];                 // unlocks narrative content, NPC dialog, POIs
+}
+
+interface GateCondition {
+  kind: "tier_at_least" | "faction_standing_at_least" | "quest_complete" | "campaign_world_at_least" | "building_operational";
+  value: number | string;
+  colonyId?: ColonyId | null;
+}
+
+// Defined properly in Phase 7a
+interface PriceModifier {
+  kind: "supply_demand" | "faction" | "event";
+  value: number;                        // multiplier: 1.0 = neutral
+  source: string;                       // human-readable reason
+}
+
+interface StockTable {
+  merchantId: NpcId;
+  items: Array<{ itemId: string; quantity: number; basePrice: number }>;
+}
+
+// Defined properly in Phase 5a/b
+interface NpcSlotDef {
+  npcId: NpcId;
+  anchorTile: [number, number];
+  facing: 0 | 1 | 2 | 3;                // N/E/S/W
+  scheduleOverride: ScheduleEntry[] | null;
+}
+
+interface NpcWorldPosition {
+  npcId: NpcId;
+  tileX: number;
+  tileY: number;
+  facing: number;
+  animationState: "idle" | "walking" | "working" | "sitting";
+}
+
+// Defined properly in Phase 4 (POI templates)
+interface EnemySlotDef {
+  anchorTile: [number, number];
+  enemyPool: EnemyClassId[];             // weighted roll
+  difficultyScale: number;
+}
+
+interface LootSlotDef {
+  anchorTile: [number, number];
+  lootTable: string;                     // identifier into loot table registry
+  rarityMin: number;
+  rarityMax: number;
+}
+
+interface PropDef {
+  kind: string;                          // "counter" | "crate" | "lore_object" | ...
+  tile: [number, number];
+  interactionId: string | null;
+}
+
+interface InteractionDef {
+  id: string;
+  kind: "dialog" | "shop" | "door" | "quest_hand_in" | "use_facility";
+  target: string;                        // kind-specific target
+  requiredStanding?: number;
+}
+
+interface EventHookDef {
+  triggerTile: [number, number];
+  radius: number;
+  event: string;                         // event ID fired on trigger
+  once: boolean;
+}
+
+interface ClearCond {
+  kind: "all_enemies_dead" | "reach_exit" | "collect_item" | "defend_cycles" | "escort_to_exit";
+  payload: unknown;
+}
+
+// Defined properly in Phase 4
+type SlotHint = { x: number; y: number } | { districtId: DistrictId } | null;
+
+type CommissionResult =
+  | { ok: true; buildingId: BuildingInstanceId }
+  | { ok: false; reason: "insufficient_resources" | "tier_requirement" | "slot_unavailable" | "duplicate_restricted" };
+
+type ShipmentResult =
+  | { ok: true; shipmentId: ShipmentId; eta: number }
+  | { ok: false; reason: "no_comms_tower" | "insufficient_credits" | "no_destination" };
+
+type PromotionResult =
+  | { ok: true; newTier: 1 | 2 | 3 | 4 }
+  | { ok: false; reason: "requirements_not_met"; missing: string[] };
+
+// Transitions dispatched from adapter to FP engine
+interface TransitionDirective {
+  kind: "enter_interior" | "deny" | "prompt_dialog";
+  payload: unknown;
+}
+
+interface DialogSession {
+  id: string;
+  treeId: DialogTreeId;
+  npcId: NpcId;
+  standingSnapshot: number;
+}
+
+// Defined properly in Phase 4
+interface PoiOutcome {
+  killed: EntityKillRecord[];
+  looted: LootDrop[];
+  questProgress: QuestEvent[];
+  playerDied: boolean;
+  cleared: boolean;
+}
+
+interface EntityKillRecord {
+  entityId: string;
+  kind: "enemy" | "npc" | "boss";
+  factionId: FactionId | null;
+}
+
+interface LootDrop {
+  kind: "credits" | "colony_resource" | "combat_material" | "quest_item";
+  itemId: string;
+  quantity: number;
+}
+
+interface QuestEvent {
+  questId: QuestId;
+  objectiveId: string;
+  delta: number;                         // objective progress advanced by this amount
+}
+
+// Type aliases — concrete values defined in respective phases
+type ColonyId = string;
+type PlanetId = string;
+type BuildingInstanceId = string;
+type BuildingType = string;              // "farm" | "marketplace" | ...
+type DistrictId = string;
+type NpcId = string;
+type DialogTreeId = string;
+type QuestId = string;
+type RegionNodeId = string;
+type TemplateId = string;
+type InteriorTemplateId = string;
+type FactionId = string;
+type BountyId = string;
+type ShipmentId = string;
+type CombatMaterialId = string;          // maps to existing weaponTypes.ts
+type EnemyClassId = string;              // maps to existing enemyClasses.ts
+type PlanetBiome = "ice" | "volcanic" | "ocean" | "desert" | "jungle" | "urban" | "barren" | "toxic";
+type PoiType = RegionNode["type"];
+type EngineKind = "firstPerson" | "boarding" | "groundRun" | "turret" | "shooter";
+```
+
+**Phase 0 contract:** all stub types compile, all reducer events can be constructed and asserted against, no runtime behavior depends on fields marked "defined properly in Phase N." Subsequent phases flesh out the types without breaking Phase 0 tests.
 
 ---
 
