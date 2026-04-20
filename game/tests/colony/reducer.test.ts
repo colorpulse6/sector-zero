@@ -91,3 +91,56 @@ test("colony/founded with duplicate colonyId throws", () => {
     /already exists/,
   );
 });
+
+test("colony/buildingCommissioned adds building with constructing status", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "Test", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  save.colonies[0] = { ...save.colonies[0], resources: { food: 0, water: 0, metal: 500, credits: 0 } };
+  save = colonyReducer(save, Events.buildingCommissioned({
+    colonyId: "c1",
+    buildingId: "b1",
+    buildingType: "solar_array",
+    costDeducted: { metal: 80 },
+    cyclesToBuild: 1,
+  }));
+  const colony = save.colonies[0];
+  assert.equal(colony.buildings.length, 1);
+  assert.equal(colony.buildings[0].id, "b1");
+  assert.equal(colony.buildings[0].status, "constructing");
+  assert.equal(colony.buildings[0].buildProgressCycles, 1);
+  assert.equal(colony.resources.metal, 420); // 500 - 80
+});
+
+test("colony/buildingCompleted flips status to operational", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "Test", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  save.colonies[0] = { ...save.colonies[0], resources: { food: 0, water: 0, metal: 500, credits: 0 } };
+  save = colonyReducer(save, Events.buildingCommissioned({
+    colonyId: "c1",
+    buildingId: "b1",
+    buildingType: "solar_array",
+    costDeducted: { metal: 80 },
+    cyclesToBuild: 1,
+  }));
+  save = colonyReducer(save, Events.buildingCompleted({ colonyId: "c1", buildingId: "b1" }));
+  const b = save.colonies[0].buildings[0];
+  assert.equal(b.status, "operational");
+  assert.equal(b.buildProgressCycles, 0);
+});
+
+test("colony/buildingCommissioned throws on unknown colonyId", () => {
+  const save = makeEmptySave();
+  assert.throws(
+    () => colonyReducer(save, Events.buildingCommissioned({
+      colonyId: "nonexistent", buildingId: "b1", buildingType: "solar_array",
+      costDeducted: { metal: 80 }, cyclesToBuild: 1,
+    })),
+    /not found/,
+  );
+});
