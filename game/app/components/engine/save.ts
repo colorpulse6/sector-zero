@@ -67,7 +67,7 @@ const defaultSave: SaveData = {
 };
 
 /** Migrate old saves that lack new fields */
-function migrateSave(raw: Record<string, unknown>): SaveData {
+export function migrateSave(raw: Record<string, unknown>): SaveData {
   return {
     currentWorld: (raw.currentWorld as number) ?? 1,
     levels: (raw.levels as SaveData["levels"]) ?? {},
