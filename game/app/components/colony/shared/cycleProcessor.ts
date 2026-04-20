@@ -1,24 +1,8 @@
-import type { ColonyState, BuildingType, ColonyResources } from "./colonyTypes";
+import type { ColonyState, ColonyResources } from "./colonyTypes";
 import type { SaveData } from "../../engine/types";
 import { derivePowerGrid, powerCapacityOf, powerDemandOf } from "./powerGrid";
 import { runStandardInvariants } from "./colonyAssert";
-
-// Spec Section E authoritative production/consumption values.
-// Only operational buildings contribute.
-const RESOURCE_PRODUCTION: Partial<Record<BuildingType, Partial<ColonyResources>>> = {
-  farm: { food: 15 },
-  water_purifier: { water: 12 },
-  mine: { metal: 10 },
-  // Marketplace income is population-driven; handled separately in Phase 7a.
-};
-
-const RESOURCE_UPKEEP: Partial<Record<BuildingType, Partial<ColonyResources>>> = {
-  farm: { water: 5 },
-  mine: {},
-  refinery: { metal: 5 },
-  barracks: { food: 3 },
-  // Upkeep-in-power handled via powerGrid, not resource consumption.
-};
+import { RESOURCE_PRODUCTION, RESOURCE_UPKEEP } from "./colonyCatalog";
 
 export function processCycle(colony: ColonyState, toCycle: number): ColonyState {
   let state = colony;
