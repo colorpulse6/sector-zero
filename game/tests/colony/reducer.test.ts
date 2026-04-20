@@ -144,3 +144,161 @@ test("colony/buildingCommissioned throws on unknown colonyId", () => {
     /not found/,
   );
 });
+
+test("colony/cycleAdvanced updates lastCycleProcessed and applies deltas", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "Test", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  save.colonies[0] = {
+    ...save.colonies[0],
+    resources: { food: 100, water: 100, metal: 100, credits: 0 },
+    population: { total: 10, capacity: 10, namedCount: 0, growthRate: 0, recentDeaths: [] },
+  };
+  save = colonyReducer(save, Events.cycleAdvanced({
+    colonyId: "c1",
+    toCycle: 1,
+    resourceDelta: { food: -10, metal: 10 },
+    populationDelta: 2,
+    happinessAfter: 65,
+  }));
+  const c = save.colonies[0];
+  assert.equal(c.lastCycleProcessed, 1);
+  assert.equal(c.resources.food, 90);
+  assert.equal(c.resources.metal, 110);
+  assert.equal(c.population.total, 12);
+  assert.equal(c.happiness, 65);
+});
+
+test("colony/resourceChanged applies delta without touching cycle", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "T", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  save.colonies[0] = { ...save.colonies[0], resources: { food: 50, water: 0, metal: 0, credits: 0 } };
+  save = colonyReducer(save, Events.resourceChanged({ colonyId: "c1", delta: { food: 20 }, reason: "mission_reward" }));
+  assert.equal(save.colonies[0].resources.food, 70);
+  assert.equal(save.colonies[0].lastCycleProcessed, 0);
+});
+
+test("colony/standingChanged updates factionStandings", () => {
+  let save = makeEmptySave();
+  save.factionStandings = [{ factionId: "ashfall_camp", standing: 10, rank: "neutral", permissions: [] }];
+  save = colonyReducer(save, Events.standingChanged({
+    factionId: "ashfall_camp", delta: 35, newStanding: 45,
+  }));
+  const fs = save.factionStandings.find(f => f.factionId === "ashfall_camp")!;
+  assert.equal(fs.standing, 45);
+  assert.equal(fs.rank, "liked");
+});
+
+test("colony/standingChanged creates faction entry if absent", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.standingChanged({
+    factionId: "new_faction", delta: 50, newStanding: 50,
+  }));
+  const fs = save.factionStandings.find(f => f.factionId === "new_faction")!;
+  assert.ok(fs);
+  assert.equal(fs.standing, 50);
+  assert.equal(fs.rank, "liked");
+});
+
+test("colony/poiCleared marks node cleared on matching planet", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "T", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  save.planets = [{
+    id: "ashfall",
+    regionMap: {
+      nodes: [{
+        id: "rn_ruins", type: "ruins", discovered: true, authored: false,
+        templateId: "t1", seed: 1, cleared: false, respawnMissions: null,
+        coords: { x: 0, y: 0 }, elevationMetadata: null,
+      }],
+      edges: [],
+    },
+    biome: "desert",
+    campaignUnlocked: true,
+  }];
+  save = colonyReducer(save, Events.poiCleared({ colonyId: "c1", regionNodeId: "rn_ruins" }));
+  assert.equal(save.planets[0].regionMap.nodes[0].cleared, true);
+});
+
+test("colony/attackIncoming appends a threat to the colony", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "T", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  save = colonyReducer(save, Events.attackIncoming({
+    colonyId: "c1",
+    threatKind: "raid_incoming",
+    cyclesUntilResolve: 3,
+  }));
+  assert.equal(save.colonies[0].activeThreats.length, 1);
+  assert.equal(save.colonies[0].activeThreats[0].kind, "raid_incoming");
+  assert.equal(save.colonies[0].activeThreats[0].cyclesUntilResolve, 3);
+});
+
+test("colony/shipmentOrdered adds shipment to earthShipments queue", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "T", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  save = colonyReducer(save, Events.shipmentOrdered({
+    colonyId: "c1",
+    shipmentId: "ship-1",
+    contents: { food: 100, metal: 50 },
+    etaCycles: 2,
+    costPaid: 300,
+  }));
+  assert.equal(save.earthShipments.length, 1);
+  assert.equal(save.earthShipments[0].id, "ship-1");
+  assert.equal(save.earthShipments[0].eta.missionCount, 2);
+  assert.equal(save.earthShipments[0].contents.food, 100);
+  assert.equal(save.earthShipments[0].destinationColonyId, "c1");
+});
+
+test("colony/shipmentArrived deposits contents and removes shipment from queue", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "T", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  save.colonies[0] = { ...save.colonies[0], resources: { food: 10, water: 0, metal: 5, credits: 0 } };
+  save = colonyReducer(save, Events.shipmentOrdered({
+    colonyId: "c1",
+    shipmentId: "ship-1",
+    contents: { food: 100, metal: 50 },
+    etaCycles: 0,
+    costPaid: 300,
+  }));
+  save = colonyReducer(save, Events.shipmentArrived({
+    colonyId: "c1",
+    shipmentId: "ship-1",
+    delivered: { food: 100, metal: 50 },
+  }));
+  assert.equal(save.colonies[0].resources.food, 110);
+  assert.equal(save.colonies[0].resources.metal, 55);
+  assert.equal(save.earthShipments.length, 0);
+});
+
+test("colony/shipmentArrived with unknown shipmentId is a no-op", () => {
+  let save = makeEmptySave();
+  save = colonyReducer(save, Events.founded({
+    colonyId: "c1", name: "T", planetId: "ashfall", foundingType: "outpost",
+    regionNodeId: "rn1", missionCount: 0, layoutSeed: 42,
+  }));
+  const before = save.colonies[0].resources.food;
+  save = colonyReducer(save, Events.shipmentArrived({
+    colonyId: "c1",
+    shipmentId: "nonexistent",
+    delivered: { food: 999 },
+  }));
+  assert.equal(save.colonies[0].resources.food, before);
+});
