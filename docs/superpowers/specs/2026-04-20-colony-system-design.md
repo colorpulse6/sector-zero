@@ -937,7 +937,7 @@ interface Quest {
 }
 ```
 
-Active quest cap: 12 simultaneous (soft, UX warning after).
+Active quest cap: 12 simultaneous. Semantics: when the player attempts to accept a 13th quest, the UI warns ("Your questlog is full — complete or abandon one first") but does NOT automatically refuse or queue. Quest giver remains available to re-offer. Emergent quests (colony-generated) bypass the cap since they're urgent by design.
 
 ### Random encounters during fast-travel
 
@@ -1006,6 +1006,8 @@ The Refinery (Tier 3 walkable) is the ONE place where colony resources bleed int
 80 Metal + 30 Water → 1 Cryo-Shard       (30% failure)
 ```
 
+**Failure semantics:** inputs consumed, no output produced. Additionally, a failure roll of <3% (rare) triggers a minor Refinery accident — building status → "damaged", requires 50 Metal to repair, halts further conversions until fixed. This gives Refinery a meaningful risk profile beyond pure material loss.
+
 Gated behind Tier 3 city. Higher-tier materials = higher failure chance.
 
 ### Markets — extending existing shops
@@ -1041,8 +1043,11 @@ A Marketplace in T2 Colony has 2 merchants. In T4 Capital has 6, plus quest brok
 
 **Interception choice (at ETA-1):**
 1. Let it happen → shipment lost, credits forfeit
-2. Escort (Turret defense) → success = shipment + bonus salvage
-3. Bribe (late-game, requires faction intel) → 2× cost, shipment arrives
+2. Escort (Turret defense):
+   - **Full success** (no waves breached) → shipment arrives + bonus salvage drop (~20% of shipment value)
+   - **Partial success** (≥50% waves survived, player did not die) → shipment arrives minus 30% contents
+   - **Failure** (escort mission lost) → shipment lost, credits forfeit (same as option 1)
+3. Bribe (late-game, requires faction intel) → 2× cost, shipment arrives guaranteed
 
 Escort missions are a generated content stream — always available.
 
@@ -1324,7 +1329,7 @@ Runs alongside all phases. Prompts drafted before the phase needing them. Kanban
 - New mode: `"colony-exploration"`.
 - Stub interiors for Phase 1 buildings.
 - Day/night tint.
-- Return from landing pad menu.
+- Exit path v1: landing pad menu only (`[TAKE OFF]` prompt). Fast-travel to cockpit from anywhere is a Phase 6 addition (alongside district fast-travel).
 - **Acceptance:** DESCEND works, procgen town layout, enter stub interiors, exit.
 - **Verification:** 3 different seeds manually tested.
 
@@ -1542,7 +1547,7 @@ Each asset passes visual-consistency check before registration:
 
 - **Endgame model** — Current multi-ending structure assumes campaign-conclusion point. With open-world sim layer, consider: (1) Skyrim-model where W8 is "main quest" but world persists, (2) chapter structure with W8 as Act I, (3) infinite play with escalating endgame threats. Revisit post-v1 playtesting.
 - **Mission cycle weighting** — Currently every mission = 1 cycle. Consider variable weighting (boss fight = 3 cycles, quick skirmish = 1) to give content pacing more flexibility. Balance-phase decision.
-- **Colony destruction handling** — When a colony fully collapses, is the slot lost or refoundable? Narrative vs gameplay tradeoff. Playtesting decision.
+- **Colony destruction handling** — The *mechanism* is specified (happiness <25 → 5-8 cycle collapse countdown, buildings decay, NPCs flee). What's deferred is the *consequence*: when collapse completes, is the colony site permanently lost or can the player refound at the same `regionNodeId`? Narrative vs gameplay tradeoff. Playtesting decision. Phase 8 plan should implement the mechanism with a placeholder consequence (v1: site becomes refoundable after 10-cycle cooldown) that can be tuned later.
 - **Save data size limits** — Unlimited colonies could bloat localStorage. May need IndexedDB or compression at Phase 9 if perf degrades.
 - **Colony naming** — Player-chosen vs auto-generated suggestions. Minor; UX polish in Phase 12.
 - **Witness escape pathing complexity** — Current design uses simple flee-to-Town-Hall pathing. Edge cases (no Town Hall, multiple simultaneous witnesses) need handling pass in Phase 5.
