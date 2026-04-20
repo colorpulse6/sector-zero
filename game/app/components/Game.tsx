@@ -60,7 +60,9 @@ import { restoreCheckpoint } from "./engine/phases";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./engine/groundLevel";
 import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
 import { getSpecialMissionDef } from "./engine/specialMissions";
-import { advanceWorldCycle } from "./colony";
+import { advanceWorldCycle, colonyReducer } from "./colony";
+import type { ColonyEvent } from "./colony";
+import { ColoniesScreen } from "./colony/meta";
 import DevPanel from "./DevPanel";
 
 export default function Game() {
@@ -214,6 +216,14 @@ export default function Game() {
     setSaveData(loadSave());
     resetCockpitKeys();
     audioRef.current?.switchMusic("menu");
+  }, []);
+
+  const handleColonyDispatch = useCallback((event: ColonyEvent) => {
+    setSaveData(prev => {
+      const next = colonyReducer(prev, event);
+      saveSave(next);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -1708,6 +1718,17 @@ export default function Game() {
       {/* Dev Panel — development only */}
       {process.env.NODE_ENV === "development" && (
         <DevPanel gameState={gameState} onAction={handleDevAction} />
+      )}
+
+      {/* Colonies DOM overlay — mounts over the canvas when cockpit screen is "colonies" */}
+      {showCockpit && cockpitState.screen === "colonies" && (
+        <ColoniesScreen
+          save={saveData}
+          onDispatch={handleColonyDispatch}
+          onExit={() => {
+            setCockpitState(prev => ({ ...prev, screen: "hub" }));
+          }}
+        />
       )}
     </div>
   );
