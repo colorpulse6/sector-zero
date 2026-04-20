@@ -190,7 +190,7 @@ function handleAttackIncoming(state: SaveData, p: Extract<ColonyEvent, { type: "
   next[idx] = {
     ...colony,
     activeThreats: [...colony.activeThreats, {
-      id: `threat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `threat-${p.colonyId}-${colony.activeThreats.length}-${p.threatKind}`,
       kind: p.threatKind,
       cyclesUntilResolve: p.cyclesUntilResolve,
       severity: "minor",

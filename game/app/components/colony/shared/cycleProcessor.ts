@@ -1,6 +1,6 @@
 import type { ColonyState, BuildingType, ColonyResources } from "./colonyTypes";
 import type { SaveData } from "../../engine/types";
-import { derivePowerGrid } from "./powerGrid";
+import { derivePowerGrid, powerCapacityOf, powerDemandOf } from "./powerGrid";
 import { runStandardInvariants } from "./colonyAssert";
 
 // Spec Section E authoritative production/consumption values.
@@ -69,18 +69,22 @@ function step3_buildingUpkeep(c: ColonyState): ColonyState {
   }
   state = applyResourceDelta(state, delta);
 
-  // Power grid brownout: if surplus < 0, flip random operational buildings offline.
+  // Power grid brownout: if surplus < 0, shed operational consumers until covered.
+  // Never shed buildings that contribute capacity (would deepen the deficit).
   const grid = derivePowerGrid(state);
   if (grid.surplus < 0) {
     const deficit = -grid.surplus;
-    const operational = state.buildings.filter(b => b.status === "operational");
     let shed = 0;
     const nextBuildings = state.buildings.map(b => ({ ...b }));
-    for (const b of operational) {
+    for (const b of state.buildings) {
       if (shed >= deficit) break;
+      if (b.status !== "operational") continue;
+      if (powerCapacityOf(b.type) > 0) continue;  // never shed a capacity producer
+      const demand = powerDemandOf(b.type);
+      if (demand <= 0) continue;                    // no point shedding a zero-demand building
       const i = nextBuildings.findIndex(nb => nb.id === b.id);
       nextBuildings[i].status = "offline";
-      shed += 1;
+      shed += demand;                               // accumulate in power units
     }
     state = { ...state, buildings: nextBuildings };
   }

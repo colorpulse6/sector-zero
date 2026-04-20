@@ -89,3 +89,26 @@ test("processCycle advances lastCycleProcessed even with empty colony", () => {
   const after = processCycle(before, 1);
   assert.equal(after.lastCycleProcessed, 1);
 });
+
+test("processCycle step 3: brownout does not shed a power producer", () => {
+  const before = makeTestColony({
+    resources: { food: 100, water: 100, metal: 0, credits: 0 },
+    buildings: [
+      // Only 10 capacity, but 14 demand → -4 surplus, brownout triggers.
+      { id: "s1", type: "solar_array", tier: 1, status: "operational", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null },
+      { id: "f1", type: "farm", tier: 1, status: "operational", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null }, // 2 demand
+      { id: "w1", type: "water_purifier", tier: 1, status: "operational", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null }, // 3 demand
+      { id: "m1", type: "mine", tier: 1, status: "operational", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null }, // 3 demand
+      { id: "b1", type: "barracks", tier: 1, status: "operational", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null }, // 5 demand → total 13 demand, -3 surplus
+      // Add habitat to push over the deficit threshold further
+      { id: "h1", type: "habitat_module", tier: 1, status: "operational", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null }, // 2 demand → total 15, deficit 5
+    ],
+  });
+  const after = processCycle(before, 1);
+  // Solar array must remain operational (it's a capacity producer)
+  const solar = after.buildings.find(b => b.id === "s1");
+  assert.equal(solar!.status, "operational");
+  // Some consumer must have been shed to clear the 5-unit deficit
+  const offlineCount = after.buildings.filter(b => b.status === "offline").length;
+  assert.ok(offlineCount >= 1, `expected at least one building offline, got ${offlineCount}`);
+});
