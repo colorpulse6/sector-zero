@@ -2,12 +2,13 @@ import type {
   ColonyId, BuildingInstanceId, BuildingType, NpcId, FactionId, ShipmentId,
   RegionNodeId, BountyId, ColonyResources, ShipmentContents,
 } from "./colonyTypes";
+import type { PlanetId } from "../../engine/types";
 
 export type ColonyEvent =
   | { type: "colony/founded"; payload: {
       colonyId: ColonyId;
       name: string;
-      planetId: string;
+      planetId: PlanetId;
       foundingType: "outpost" | "colony" | "stronghold";
       regionNodeId: RegionNodeId;
       missionCount: number;

@@ -10,12 +10,13 @@
 // marked "defined properly in Phase N." Subsequent phases flesh out these
 // types without breaking Phase 0 tests.
 
+import type { PlanetId } from "../../engine/types";
+
 // ---------------------------------------------------------------------------
 // Type aliases — concrete values defined in respective phases
 // ---------------------------------------------------------------------------
 
 export type ColonyId = string;
-export type PlanetId = string;
 export type BuildingInstanceId = string;
 export type BuildingType = string;              // "farm" | "marketplace" | ...
 export type DistrictId = string;

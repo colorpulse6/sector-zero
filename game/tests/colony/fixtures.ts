@@ -1,4 +1,5 @@
-import type { ColonyState, ColonyId, PlanetId } from "../../app/components/colony/shared/colonyTypes";
+import type { ColonyState, ColonyId } from "../../app/components/colony/shared/colonyTypes";
+import type { PlanetId } from "../../app/components/engine/types";
 
 export function makeTestColony(overrides: Partial<ColonyState> = {}): ColonyState {
   return {
