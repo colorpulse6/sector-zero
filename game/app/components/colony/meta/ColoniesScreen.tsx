@@ -6,6 +6,8 @@ import { hudColors, hudFonts } from "./hudTokens";
 import { ColonyEmptyState } from "./ColonyEmptyState";
 import { ColonyHeader } from "./ColonyHeader";
 import { ColonyResourcePanel } from "./ColonyResourcePanel";
+import { ColonyMetrics } from "./ColonyMetrics";
+import { ColonyBuildingsList } from "./ColonyBuildingsList";
 
 export interface ColoniesScreenProps {
   save: SaveData;
@@ -75,8 +77,10 @@ function PopulatedView({ save, onExit }: { save: SaveData; onExit: () => void })
         onBack={onExit}
       />
       <ColonyResourcePanel colony={colony} />
+      <ColonyMetrics colony={colony} />
+      <ColonyBuildingsList colony={colony} />
       <div style={{ padding: "32px", opacity: 0.6 }}>
-        [ColonyMetrics / BuildingsList / CommissionMenu land in Tasks 7-8]
+        [CommissionMenu lands in Task 8]
       </div>
     </>
   );
