@@ -2356,3 +2356,47 @@ Phase 0 is complete when ALL of the following are true:
 ## Next Phase
 
 After Phase 0 completes and is committed/tagged: Phase 1 plan (`2026-04-NN-colony-phase-1-meta-single-colony.md`) — build the React meta UI for a single colony, wire the COLONIES cockpit hub station, auto-found the starter colony at Ashfall on first run, enable 4 building types.
+
+## Completion Log
+
+**Completed:** 2026-04-20
+**Branch:** colony/phase-0
+**Tag:** colony-phase-0-complete
+
+**Commits in order:**
+- `0953eca` — T1: tsx devDep + colony:test script
+- `2c9008c` — T2: type surface (colonyTypes.ts + fixtures.ts)
+- `99c5b51` — T3: invariant helpers (colonyAssert.ts)
+- `d7b49d7` — T4: derivePowerGrid
+- `0238bc0` — T5: faction ledger stub
+- `7c46ba3` — T6: ColonyEvent discriminated union
+- `a7fd922` — T7: SaveData extension + PlanetId unification with engine
+- `d9e1c78` — T8: migrateSave export + roundtrip tests
+- `eac4850` — T9: reducer skeleton + colony/founded
+- `5afbe79` — T10: reducer building lifecycle events
+- `2a7500b` — T11: reducer remaining 9 events
+- `4718a01` — T12: cycle processor 10-step pipeline
+- `a238124` — T13: advanceWorldCycle + catchUpColony
+- `b9cdf1e` — T14: public API (colony/index.ts)
+- `d8eeb55` — T15: end-to-end 5-cycle integration test
+- (this commit) — T16: completion log
+
+**Acceptance criteria met:**
+- `yarn colony:test`: **46/46 passing, 0 failures**
+- `yarn build`: green Next.js static export (6/6 static pages, 3/3 exported)
+- Save roundtrip: verified via saveRoundtrip.test.ts
+- 5-cycle synthetic simulation: verified via integration.test.ts
+- No existing engine file modified (save.ts and types.ts were extended, not rewritten)
+- No UI changes visible to players
+- All commits small, incremental, reviewable
+- Two-stage review process ran clean: all tasks spec-compliant + code-quality-approved on first or second review pass
+
+**Deferred to later phases (per spec):**
+- Cycle pipeline steps 6-9 are stubs — full logic lands in Phases 5b, 7b, 8, 10.
+- No NPC registry yet — `colony/npcKilled` and `colony/witnessed` are placeholder handlers.
+- Power grid brownout shedding is deterministic one-at-a-time; Phase 8 refines under attack/damage conditions.
+- `EngineKind` casing mismatch with `GameState.currentMode` — noted for Phase 4 dispatcher.
+- `RegionNode["type"]` missing `"mine"` and `"siege_defense"` — spec inconsistency to resolve before Phase 4.
+- `CollapseState` field on ColonyState — deferred to Phase 5b/8 per spec intent.
+
+**Next:** Phase 1 plan (docs/superpowers/plans/2026-04-NN-colony-phase-1-meta-single-colony.md) — meta-layer React UI for single colony, cockpit COLONIES station wiring, 4 building types buildable.
