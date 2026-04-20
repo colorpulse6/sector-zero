@@ -1,0 +1,89 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  game-typecheck:
+    name: Game · TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "yarn"
+          cache-dependency-path: game/yarn.lock
+      - run: corepack enable
+      - name: Install
+        run: cd game && yarn install
+      - name: Type check
+        run: cd game && npx tsc --noEmit -p tsconfig.json
+
+  game-tests:
+    name: Game · Colony tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "yarn"
+          cache-dependency-path: game/yarn.lock
+      - run: corepack enable
+      - name: Install
+        run: cd game && yarn install
+      - name: Colony tests (runs only if tests/colony/ exists)
+        run: |
+          if [ -d game/tests/colony ]; then
+            cd game && yarn colony:test
+          else
+            echo "No colony tests directory — skipping."
+          fi
+
+  game-build:
+    name: Game · Next build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "yarn"
+          cache-dependency-path: game/yarn.lock
+      - run: corepack enable
+      - name: Install
+        run: cd game && yarn install
+      - name: Build
+        run: cd game && yarn build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_BASE_PATH: /sector-zero
+
+  site-build:
+    name: Site · Next build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "yarn"
+          cache-dependency-path: site/yarn.lock
+      - run: corepack enable
+      - name: Install
+        run: cd site && yarn install
+      - name: Build
+        run: cd site && yarn build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_BASE_PATH: /sector-zero/site
