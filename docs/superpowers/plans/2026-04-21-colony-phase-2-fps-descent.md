@@ -2602,3 +2602,54 @@ After Phase 2 completes: decision point.
 - Phase 3 plan — Hub interiors (Marketplace, Cantina, Town Hall) with named NPC placeholders
 - Alternative: Phase 5a — NPC scheduling system (consequences + factions + dialog)
 - Or: breadth pass — more colony types beyond Tier 1 Outpost
+
+## Completion Log
+
+**Completed:** 2026-04-21
+**Branch:** colony/phase-2
+**Tag:** colony-phase-2-complete
+
+**Commits in order:**
+- `4c27d25` — T1: GameMode + FirstPersonState plumbing
+- `cccac16` — T1.5: asset prompt templates (parallel workstream)
+- `9212661` — T2: outpost template + building tile registry
+- `9fa40ab` — T3: exterior layout generator + reducer-order invariant
+- `895a0b0` — T4: scene stack + exploration public API
+- `c6a4254` — T5: interior templates + generator + full transition flow
+- `aa8fd82` — T6: engine hook points + anti-bounce gate + day/night tint
+- `b6dd349` — T7: Game.tsx wiring + descend button + exit menu
+- `<this sha>` — T7: completion log
+
+**Acceptance criteria met:**
+- yarn colony:test: 100 tests passing (63 prior baseline + 37 new across T2-T6)
+- yarn build: clean Next.js static export
+- npx tsc --noEmit: exit 0
+- firstPersonEngine.ts diff: 30 lines, all inside one `if (fp.colonyContext)` guard — audit passed
+- Color-tint fallback renders cleanly when Phase 2 sprites are not yet generated
+- No regressions in Ashfall Camp or existing campaign flows (verified by test)
+
+**Manual playtest status:** NOT YET VERIFIED. User should:
+1. Run `cd game && yarn dev`, navigate to cockpit → COLONIES → DESCEND TO COLONY
+2. Verify spawn on landing pad facing north
+3. Verify building footprints render around plaza
+4. Press Z facing an operational door → interior loads
+5. Press Z on exit door → back outside facing south
+6. Verify held-Z does not ping-pong (anti-bounce gate)
+7. Walk onto landing pad, press Z → exit menu appears
+8. Take Off → back to cockpit
+9. Verify Ashfall Forward Camp + existing campaign missions still work
+
+**Asset pipeline status:**
+- 11 asset prompts drafted in `docs/assets/prompts/colony-phase-2/`
+- Images NOT yet generated — placeholder tints in game
+- Separate follow-up PR will register sprites in `sprites.ts` once images land
+
+**Deferred to later phases:**
+- NPCs in colonies (Phase 3/5a)
+- Hub interiors (Phase 3)
+- Biome-aware sprite selection (Phase 4+)
+- POI / region graph (Phase 4)
+- Day/night gameplay effects (Phase 5a)
+- Tier promotion (Phase 6)
+
+**Next:** Phase 2 PR → merge → decision point on what's next (Phase 3 hub interiors, Phase 5a NPCs, or another direction).
