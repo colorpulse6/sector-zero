@@ -1,6 +1,8 @@
 import type { SaveData, GameMode, FirstPersonState } from "../../engine/types";
 import type { ColonyId, ColonyState } from "../shared/colonyTypes";
-import { generateExteriorState } from "./colonyLayout";
+import { generateExteriorState, generateInteriorState } from "./colonyLayout";
+import { OUTPOST_TEMPLATE } from "./outpostTemplate";
+import { BUILDING_FOOTPRINTS } from "./buildingTiles";
 import { type SceneStack, type SceneLayer, pushInterior, popToExterior, isInInterior } from "./sceneStack";
 import type { ColonyContext, DoorInteractResult, LandingPadResult } from "./colonyContext";
 
@@ -38,7 +40,7 @@ export function enterColonyExploration(save: SaveData, colonyId: ColonyId): Ente
  * Step the exploration state forward one frame.
  * Reads the engine's `colonyTransitionRequest`, performs push/pop if set,
  * and returns the updated SceneStack.
- * Pure function.
+ * Not pure: consumes colonyTransitionRequest on current.state as a one-shot message.
  */
 export function stepColonyExploration(
   stack: SceneStack,
@@ -55,12 +57,55 @@ export function stepColonyExploration(
   stack.current.state.colonyTransitionRequest = undefined;
 
   if (request.kind === "enter_interior") {
-    // Task 5 implements the interior generator + this full transition
-    // Stub: return stack unchanged; Task 5 replaces this body
-    return stack;
+    const colony = save.colonies.find(c => c.id === stack.colonyId);
+    if (!colony) return stack;
+    const building = colony.buildings.find(b => b.id === request.buildingId);
+    if (!building) return stack;
+
+    // Derive interior seed from colony seed + buildingId (deterministic, no RNG)
+    const hashed = Array.from(request.buildingId).reduce((a, ch) => a * 31 + ch.charCodeAt(0), 0);
+    const interiorSeed = colony.layoutSeed ^ hashed;
+
+    const interiorState = generateInteriorState(building, interiorSeed);
+    // Fill in the colonyId on the interior context (it defaults to empty string in the generator)
+    interiorState.colonyContext!.colonyId = stack.colonyId;
+
+    // Compute door tile on the exterior (used as returnToTile for when the interior is popped)
+    const rotation = colony.layoutSeed % 6;
+    const idx = colony.buildings.findIndex(b => b.id === request.buildingId);
+    if (idx < 0) return stack;
+    const slotId = (rotation + idx) % 6;
+    const slot = OUTPOST_TEMPLATE.slots[slotId];
+    const fpSpec = BUILDING_FOOTPRINTS[building.type];
+    if (!fpSpec) return stack;
+    const doorTile = {
+      x: fpSpec.doorSide === "east" ? slot.anchorX + fpSpec.w - 1
+       : fpSpec.doorSide === "west" ? slot.anchorX
+       : slot.anchorX + Math.floor(fpSpec.w / 2),
+      y: fpSpec.doorSide === "south" ? slot.anchorY + fpSpec.h - 1
+       : fpSpec.doorSide === "north" ? slot.anchorY
+       : slot.anchorY + Math.floor(fpSpec.h / 2),
+    };
+
+    return pushInterior(stack, building, interiorState, doorTile);
   }
   if (request.kind === "exit_interior") {
-    return popToExterior(stack);
+    // Grab returnToTile from the (about-to-be-popped) interior layer BEFORE popping
+    const stashedReturn = stack.current.returnToTile;
+    const popped = popToExterior(stack);
+
+    if (stashedReturn) {
+      // Reposition player one tile south of the door, facing south (away from building).
+      // Phase 2 assumes all doors are south-facing (all 4 Phase 1 buildings use doorSide: "south").
+      // Future footprints with other doorSides will need side-aware repositioning.
+      popped.current.state.posX = stashedReturn.x + 0.5;
+      popped.current.state.posY = stashedReturn.y + 1.5;
+      popped.current.state.dirX = 0;
+      popped.current.state.dirY = 1;  // south
+    }
+    popped.current.state.colonyInteractArmed = false;
+    popped.current.state.colonyInteractCooldownFrames = 15;
+    return popped;
   }
   if (request.kind === "show_exit_menu") {
     // Handled by Game.tsx (opens exitMenu DOM). Orchestrator no-op here.

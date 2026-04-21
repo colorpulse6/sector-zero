@@ -206,6 +206,79 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
 }
 
 export function generateInteriorState(building: ColonyBuilding, seed: number): FirstPersonState {
-  // Implementation lands in Task 5
-  throw new Error("generateInteriorState: implement in Task 5");
+  const fp = BUILDING_FOOTPRINTS[building.type];
+  if (!fp) throw new Error(`[colonyLayout] no footprint for building type ${building.type}`);
+  const template = INTERIOR_TEMPLATES[fp.interiorTemplateId];
+  if (!template) throw new Error(`[colonyLayout] no interior template ${fp.interiorTemplateId}`);
+
+  // Convert template.tiles (string rows) into BoardingTileType[][]
+  // '#' wall, '.' floor, 'D' door (exit), other chars (prop placeholders) = floor.
+  const tiles: BoardingTileType[][] = template.tiles.map(row =>
+    [...row].map(c =>
+      c === "#" ? ("wall" as BoardingTileType)
+      : c === "D" ? ("door" as BoardingTileType)
+      : ("floor" as BoardingTileType)
+    )
+  );
+
+  // Find exit door coord (the single 'D' in the template)
+  let exitX = 0, exitY = 0;
+  for (let y = 0; y < template.height; y++) {
+    for (let x = 0; x < template.width; x++) {
+      if (template.tiles[y][x] === "D") { exitX = x; exitY = y; }
+    }
+  }
+
+  const colonyContext: ColonyContext = {
+    colonyId: "" as ColonyId,  // orchestrator fills from SceneStack context
+    mode: "interior",
+    interiorBuildingId: building.id,
+    onDoorInteract: (standingOn, _facingTile) => {
+      if (standingOn.x === exitX && standingOn.y === exitY) {
+        return { kind: "exit_interior" };
+      }
+      return { kind: "no_door" };
+    },
+    onLandingPadInteract: (_standingOn) => ({ kind: "not_on_pad" }),
+  };
+
+  // Convert propSlots to engine FPProp billboards
+  const props = template.propSlots.map((p, i) => ({
+    id: i,
+    x: p.x + 0.5,
+    y: p.y + 0.5,
+    sprite: p.spriteId,
+    scale: p.scale,
+  }));
+
+  return {
+    map: {
+      width: template.width,
+      height: template.height,
+      tileSize: 64,
+      tiles,
+    },
+    posX: template.spawn.x + 0.5,
+    posY: template.spawn.y + 0.5,
+    dirX: 0, dirY: -1,  // facing north per spec
+    planeX: 0.66, planeY: 0,
+    moveSpeed: 0.06,
+    rotSpeed: 0.04,
+    goalReached: false,
+    enemies: [],
+    gunFireTimer: 0,
+    gunCooldown: 0,
+    npcs: [],
+    dialogState: null,
+    environmentArt: {
+      // Interior: neutral lighting, no tint (Phase 2 decision)
+      skySprite: "/sector-zero/sprites/explore/outpost-sky.png",
+      wallSprite: "/sector-zero/sprites/explore/outpost-wall-exterior.png",
+      floorSprite: "/sector-zero/sprites/explore/outpost-ground.png",
+    },
+    props,
+    colonyContext,
+    colonyInteractArmed: false,   // orchestrator just swapped in; require key release before fire
+    colonyInteractCooldownFrames: 15,  // 250ms cooldown
+  };
 }
