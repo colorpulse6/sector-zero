@@ -70,6 +70,7 @@ import {
 } from "./colony";
 import type { ColonyEvent, SceneStack } from "./colony";
 import { ColoniesScreen } from "./colony/meta";
+import { applyColonyFixture, findFixture } from "./colony/dev/seedColony";
 import DevPanel from "./DevPanel";
 
 export default function Game() {
@@ -559,6 +560,40 @@ export default function Game() {
           briefingTimer: 0,
           devInvincible: gameState?.devInvincible ?? false,
         });
+        return;
+      }
+
+      if (action.startsWith("seed-colony:")) {
+        const fxId = action.split(":")[1];
+        const fx = findFixture(fxId);
+        if (!fx) return;
+        const { save: seeded, colonyId } = applyColonyFixture(saveData, fx);
+        saveSave(seeded);
+        setSaveData(seeded);
+        ensureAudio();
+        setShowStartScreen(false);
+        setShowMap(false);
+        setShowCockpit(false);
+        const result = enterColonyExploration(seeded, colonyId);
+        const baseState = createGameState(
+          1, 1,
+          seeded.upgrades,
+          seeded.unlockedEnhancements,
+          seeded.pilotLevel,
+          seeded.allocatedSkills,
+        );
+        setGameState({
+          ...baseState,
+          screen: GameScreen.PLAYING,
+          currentMode: "colony-exploration",
+          currentPhase: 0,
+          totalPhases: 1,
+          firstPersonState: result.firstPersonState,
+          briefingTimer: 0,
+          devInvincible: false,
+        });
+        setSceneStack(result.sceneStack);
+        setCockpitState(prev => ({ ...prev, screen: "hub" }));
         return;
       }
 

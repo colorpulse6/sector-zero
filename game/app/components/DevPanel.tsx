@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { type GameState, GameScreen } from "./engine/types";
 import { ALL_LEVELS, WORLD_NAMES } from "./engine/levels";
 import { PLANET_DEFS } from "./engine/planets";
+import { COLONY_FIXTURES } from "./colony/dev/seedColony";
 
 interface DevPanelProps {
   gameState: GameState | null;
@@ -197,6 +198,23 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
           >
             ASHFALL CAMP
           </button>
+        </div>
+      </div>
+
+      {/* Colony Seeds — Phase 2 FPS descent, bypasses resource grind */}
+      <div className="space-y-1">
+        <div className="text-cyan-500 border-b border-cyan-900 pb-1">COLONY SEEDS</div>
+        <div className="grid grid-cols-3 gap-1">
+          {COLONY_FIXTURES.map(fx => (
+            <button
+              key={fx.id}
+              onClick={() => onAction(`seed-colony:${fx.id}`)}
+              className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
+              title={`Seed + descend into ${fx.label.toLowerCase()} colony`}
+            >
+              {fx.label.replace("SEED ", "")}
+            </button>
+          ))}
         </div>
       </div>
 
