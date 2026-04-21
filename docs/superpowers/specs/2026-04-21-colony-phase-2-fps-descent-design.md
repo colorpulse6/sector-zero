@@ -47,7 +47,7 @@ Phase 2 specifically applies this principle via:
 - New `GameMode` value: `"colony-exploration"`
 - New folder `game/app/components/colony/exploration/` with 7 files (see File Layout)
 - Template-based 24×24 Outpost layout (central plaza, 6 slots, south-center landing pad)
-- Deterministic slot assignment from `layoutSeed` + `buildingId` sort order
+- Deterministic slot assignment from `layoutSeed` + `colony.buildings` insertion order (see Section C for the exact algorithm and the reducer-invariant it relies on)
 - Multi-tile building footprints for the 4 Phase 1 building types (Solar Array, Farm, Water Purifier, Habitat Module)
 - 4 stub interior templates (one per Phase 1 building type, ~6×6 tiles, one prop, no NPCs)
 - Scene stack for exterior ↔ interior transitions (max depth 2)
@@ -147,7 +147,7 @@ GameMode =
 ### Boundaries
 
 - **Orchestrator writes FirstPersonState; engine consumes.** `colonyLayout.generateExteriorState` produces the state, `updateFirstPerson` steps it frame-by-frame. All colony-specific logic runs before/after the engine tick, never inside.
-- **Engine's `colonyContext` is consulted in exactly 2 places.** The shoot/interact handler calls `colonyContext?.onDoorInteract(tileX, tileY)` and `colonyContext?.onLandingPadInteract()`. Nothing else. Diff audit verifies this at Task 6 commit.
+- **Engine's `colonyContext` is consulted in exactly 2 places.** The shoot/interact handler calls `colonyContext?.onDoorInteract(standingOn, facingTile)` and `colonyContext?.onLandingPadInteract()`. Both tile coords are computed in the engine from `posX/posY/dirX/dirY` (see Section B for the dominant-axis rule); nothing else. Diff audit verifies this at Task 6 commit.
 - **No reads from `SaveData` inside the engine.** The orchestrator reads SaveData to build the FirstPersonState; the engine never sees SaveData directly.
 
 ---
@@ -163,14 +163,24 @@ export interface ColonyContext {
   mode: "exterior" | "interior";
   interiorBuildingId: BuildingInstanceId | null;
 
-  /** Invoked when player presses the interact key while standing adjacent to a potential door tile.
-   *  The engine computes `(tileX, tileY)` as the integer tile one step ahead of the player's
-   *  facing direction (rounded from `dirX/dirY`), NOT the tile the player currently stands on.
-   *  This matches Daggerfall-style "face the door, press interact". */
-  onDoorInteract(tileX: number, tileY: number): DoorInteractResult;
+  /** Invoked when player presses the interact key. Engine passes BOTH tile coords so the
+   *  adapter can resolve which semantics apply based on `mode`:
+   *    - `standingOn`: integer tile coords of the player's current position (floor(posX), floor(posY))
+   *    - `facingTile`: integer tile one cardinal step ahead, computed via DOMINANT AXIS of (dirX, dirY)
+   *                    (not component-wise rounding, which mis-targets at non-cardinal headings).
+   *                    If |dirX| >= |dirY|: step = (sign(dirX), 0). Else: step = (0, sign(dirY)).
+   *                    `facingTile = { x: floor(posX) + step.x, y: floor(posY) + step.y }`.
+   *
+   *  Resolution rules:
+   *    - In EXTERIOR mode: check `facingTile` for an exterior-door tile → enter_interior.
+   *      "Face the door, press interact."
+   *    - In INTERIOR mode: check `standingOn` for the exit-door tile → exit_interior.
+   *      Interior player spawns ON the exit door, so one press exits. No facing requirement.
+   *    - If neither resolves: return `no_door`. */
+  onDoorInteract(standingOn: { x: number; y: number }, facingTile: { x: number; y: number }): DoorInteractResult;
 
   /** Invoked when player presses interact while standing ON a landing-pad tile.
-   *  (Landing pad uses "stand on" rather than "face" because pad is the player's natural spawn.) */
+   *  Landing pad uses "stand on" semantics — pad is the player's natural spawn and re-entry point. */
   onLandingPadInteract(): LandingPadResult;
 }
 
@@ -549,7 +559,7 @@ generateExteriorState(colony, gameClock):
        colonyId: colony.id,
        mode: "exterior",
        interiorBuildingId: null,
-       onDoorInteract: (x, y) => resolveDoor(colony, x, y, slotAssignment),
+       onDoorInteract: (standingOn, facingTile) => resolveDoor(colony, "exterior", standingOn, facingTile, slotAssignment),
        onLandingPadInteract: () => OUTPOST_TEMPLATE contains (x,y)? show_exit_menu : not_on_pad,
      }
   8. return FirstPersonState {
@@ -567,19 +577,38 @@ generateExteriorState(colony, gameClock):
 ### Interior transition (handled by orchestrator)
 
 ```
-onDoorInteract(tileX, tileY):
-  building = find operational building whose door tile is at (tileX, tileY)
+onDoorInteract(standingOn, facingTile):
+  if colonyContext.mode === "interior":
+    # Interior: resolve via standing-tile. Player spawned on the exit door.
+    if the interior template's exit-door tile matches standingOn:
+      return { kind: "exit_interior" }
+    return { kind: "no_door" }
+
+  # Exterior: resolve via facingTile (dominant-axis step from player).
+  building = find building whose door tile coordinate matches facingTile
+  if not building:
+    return { kind: "no_door" }
   if building.status !== "operational":
-    return { kind: "locked", reason: "building under construction" } // or damaged/destroyed reason
+    return { kind: "locked", reason: `${building.type} — ${building.status}` }
   return { kind: "enter_interior", buildingId: building.id }
 
 stepColonyExploration reads colonyTransitionRequest:
   on { kind: "enter_interior", buildingId }:
     building = colony.buildings.find(id=buildingId)
-    interiorState = generateInteriorState(building, colony.layoutSeed + buildingId hash)
-    sceneStack = pushInterior(sceneStack, building, seed, doorTile)
-    // fade-to-black 300ms overlay (DOM, not engine)
-    // engine next frame runs against interiorState
+    doorTile = exteriorDoorTileOf(building)               # for returnToTile
+    interiorSeed = colony.layoutSeed ^ hashString(buildingId)
+    interiorState = generateInteriorState(building, interiorSeed)   # orchestrator builds
+    sceneStack = pushInterior(sceneStack, building, interiorState, doorTile)
+    # fade-to-black 300ms overlay (DOM, not engine)
+    # engine next frame runs against interiorState
+
+  on { kind: "exit_interior" }:
+    sceneStack = popToExterior(sceneStack)
+    # Orchestrator repositions player on exterior state:
+    #   posX = returnToTile.x + 0.5, posY = returnToTile.y + 0.5
+    #   facing = south (away from building) so door isn't immediately re-triggered
+    # fade-to-black 300ms overlay
+    # engine next frame runs against exterior state
 ```
 
 ---
@@ -598,18 +627,20 @@ stepColonyExploration reads colonyTransitionRequest:
 7. enterColonyExploration(save, colonyId) runs. Returns FirstPersonState + SceneStack.
 8. Canvas takes over. Player spawns at (11.5, 22.5) facing north.
 9. Walking north: player sees the plaza and (up to 6) buildings around it.
-10. Approach a building's door tile. HUD hint (canvas-drawn): "[Z] ENTER <BUILDING NAME>"
-      - operational → prompt shows, press Z enters
+10. Approach a building (stand in front of its door tile). HUD hint (canvas-drawn): "[Z] ENTER <BUILDING NAME>"
+      - operational → prompt shows, press Z enters (engine resolves via facingTile from dominant-axis step)
       - constructing → prompt: "N cycles remaining"
       - damaged → prompt: "damaged — cannot enter"
-11. Press Z on operational door:
-      - Engine writes colonyTransitionRequest
+11. Press Z while facing operational door:
+      - Engine writes colonyTransitionRequest { kind: "enter_interior" }
       - Orchestrator swaps scene: fade-to-black 300ms, interior state active
-      - Player spawns on interior exit door, facing north (into room)
-12. Walk around ~6×6 interior. See the one prop. No NPCs.
-13. Walk onto exit door, press Z:
-      - Engine writes transition request
-      - Orchestrator pops scene, restores exterior, spawns player at outer door coord facing away from building
+      - Player spawns ON the interior exit-door tile, facing north (into room) — this is deliberate:
+        pressing Z immediately would exit (stand-on-exit semantics). Player walks north first to explore.
+12. Walk around ~6×6 interior. See the one prop. No NPCs. HUD hint when on exit tile: "[Z] EXIT".
+13. Walk back onto exit-door tile, press Z:
+      - Engine writes transition request { kind: "exit_interior" } (resolved via standingOn in interior mode)
+      - Orchestrator pops scene, restores exterior, repositions player at returnToTile (door coord)
+        facing south (away from building) so the door isn't immediately re-triggered
 14. Walk to landing pad. Step onto it. Press Z:
       - exitMenu DOM overlay appears: [TAKE OFF] / [STAY]
       - STAY: menu dismisses, player remains on pad
