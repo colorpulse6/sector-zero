@@ -60,8 +60,15 @@ import { restoreCheckpoint } from "./engine/phases";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./engine/groundLevel";
 import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
 import { getSpecialMissionDef } from "./engine/specialMissions";
-import { advanceWorldCycle, colonyReducer } from "./colony";
-import type { ColonyEvent } from "./colony";
+import {
+  advanceWorldCycle,
+  colonyReducer,
+  enterColonyExploration,
+  stepColonyExploration,
+  exitColonyExploration,
+  LandingPadExitMenu,
+} from "./colony";
+import type { ColonyEvent, SceneStack } from "./colony";
 import { ColoniesScreen } from "./colony/meta";
 import DevPanel from "./DevPanel";
 
@@ -83,6 +90,8 @@ export default function Game() {
   const [activePlanetId, setActivePlanetId] = useState<PlanetId | null>(null);
   const [activeSpecialMissionId, setActiveSpecialMissionId] = useState<SpecialMissionId | null>(null);
   const [specialPromptChoice, setSpecialPromptChoice] = useState(0);
+  const [sceneStack, setSceneStack] = useState<SceneStack | null>(null);
+  const [exitMenuOpen, setExitMenuOpen] = useState(false);
 
   const keysRef = useRef<Keys>({
     left: false,
@@ -214,6 +223,8 @@ export default function Game() {
     setEndingChoice(null);
     setShowCockpit(true);
     setSaveData(loadSave());
+    setSceneStack(null);
+    setExitMenuOpen(false);
     resetCockpitKeys();
     audioRef.current?.switchMusic("menu");
   }, []);
@@ -232,6 +243,31 @@ export default function Game() {
   const handleColoniesExit = useCallback(() => {
     setCockpitState(prev => ({ ...prev, screen: "hub" }));
   }, []);
+
+  const handleDescend = useCallback((colonyId: string) => {
+    ensureAudio();
+    const result = enterColonyExploration(saveData, colonyId);
+    const baseState = createGameState(
+      1, 1,
+      saveData.upgrades,
+      saveData.unlockedEnhancements,
+      saveData.pilotLevel,
+      saveData.allocatedSkills
+    );
+    setGameState({
+      ...baseState,
+      screen: GameScreen.PLAYING,
+      currentMode: "colony-exploration",
+      currentPhase: 0,
+      totalPhases: 1,
+      firstPersonState: result.firstPersonState,
+      briefingTimer: 0,
+      devInvincible: false,
+    });
+    setSceneStack(result.sceneStack);
+    setShowCockpit(false);
+    setCockpitState(prev => ({ ...prev, screen: "hub" }));
+  }, [saveData, ensureAudio]);
 
   useEffect(() => {
     if (shouldPromptKeplerMission) {
@@ -721,8 +757,12 @@ export default function Game() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Colonies screen uses a DOM overlay for input — let the overlay handle keys.
       if (showCockpit && cockpitState.screen === "colonies") return;
+      // Landing-pad exit menu is a DOM overlay on top of canvas — let DOM handle keys.
+      if (exitMenuOpen) return;
 
-      const isFirstPerson = gameState?.currentMode === "first-person";
+      const isFirstPerson =
+        gameState?.currentMode === "first-person" ||
+        gameState?.currentMode === "colony-exploration";
 
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
         e.preventDefault();
@@ -890,7 +930,7 @@ export default function Game() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice]);
+  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen]);
 
   // Touch input
   useEffect(() => {
@@ -1206,9 +1246,16 @@ export default function Game() {
         if (m.down) keysRef.current.shoot = true;
       }
 
+      // In colony-exploration mode, suppress input when exit menu is open (DOM handles it)
+      const effectiveKeys = (gameState.currentMode === "colony-exploration" && exitMenuOpen)
+        ? { left: false, right: false, up: false, down: false,
+            strafeLeft: false, strafeRight: false,
+            shoot: false, bomb: false, jump: false }
+        : keysRef.current;
+
       const newState = updateGame(
         gameState,
-        keysRef.current,
+        effectiveKeys,
         touchPosRef.current?.x ?? null,
         touchPosRef.current?.y ?? null
       );
@@ -1216,6 +1263,27 @@ export default function Game() {
       // Play audio events
       for (const event of newState.audioEvents) {
         audioRef.current?.play(event);
+      }
+
+      // ── Colony exploration orchestrator step ──
+      if (newState.currentMode === "colony-exploration" && sceneStack) {
+        const fp = newState.firstPersonState;
+        const req = fp?.colonyTransitionRequest as { kind?: string } | undefined;
+        // Detect show_exit_menu request (LandingPadResult) before stepping
+        if (req && req.kind === "show_exit_menu") {
+          setExitMenuOpen(true);
+          if (fp) fp.colonyTransitionRequest = undefined;
+        } else {
+          const nextStack = stepColonyExploration(sceneStack, saveData, 16);
+          if (nextStack !== sceneStack) {
+            setSceneStack(nextStack);
+            // When stack layer changes (interior enter/exit), propagate the new
+            // firstPersonState to gameState so the renderer sees the new layer.
+            if (nextStack.current.state !== newState.firstPersonState) {
+              newState.firstPersonState = nextStack.current.state;
+            }
+          }
+        }
       }
 
       setGameState(newState);
@@ -1231,7 +1299,7 @@ export default function Game() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameState, showStartScreen, showCockpit, showMap, saveData]);
+  }, [gameState, showStartScreen, showCockpit, showMap, saveData, sceneStack, exitMenuOpen]);
 
   // Auto-trigger ending when game engine sets ENDING screen (final boss defeated)
   useEffect(() => {
@@ -1733,6 +1801,20 @@ export default function Game() {
           save={saveData}
           onDispatch={handleColonyDispatch}
           onExit={handleColoniesExit}
+          onDescend={handleDescend}
+        />
+      )}
+
+      {/* Landing-pad exit menu — mounts over the canvas during colony-exploration */}
+      {exitMenuOpen && sceneStack && (
+        <LandingPadExitMenu
+          onTakeOff={() => {
+            setExitMenuOpen(false);
+            exitColonyExploration(sceneStack);
+            setSceneStack(null);
+            returnToCockpit();
+          }}
+          onStay={() => setExitMenuOpen(false)}
         />
       )}
     </div>

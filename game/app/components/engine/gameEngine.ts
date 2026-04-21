@@ -495,6 +495,14 @@ export function updateGame(
     return s;
   }
 
+  // ── Colony exploration (first-person raycaster + colonyContext) dispatch ──
+  if (state.currentMode === "colony-exploration") {
+    const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
+    updateFirstPerson(s, keys);
+    if (s.screenShake > 0) s.screenShake *= 0.9;
+    return s;
+  }
+
   // ── Ship turret mode dispatch ──
   if (state.currentMode === "turret") {
     const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };

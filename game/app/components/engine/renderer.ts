@@ -95,6 +95,13 @@ export function drawGame(
     return;
   }
 
+  // Colony exploration mode — shares the raycaster renderer
+  if (state.currentMode === "colony-exploration") {
+    drawFirstPerson(ctx, state);
+    ctx.restore();
+    return;
+  }
+
   // Ship turret mode
   if (state.currentMode === "turret") {
     drawTurretGame(ctx, state);

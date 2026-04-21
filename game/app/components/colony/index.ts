@@ -18,6 +18,7 @@ export {
   enterColonyExploration,
   stepColonyExploration,
   exitColonyExploration,
+  LandingPadExitMenu,
 } from "./exploration";
 export type {
   SceneStack,
@@ -25,6 +26,7 @@ export type {
   ColonyContext,
   DoorInteractResult,
   LandingPadResult,
+  ExitMenuProps,
 } from "./exploration";
 
 // Re-export types

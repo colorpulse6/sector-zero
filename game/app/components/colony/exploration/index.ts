@@ -119,3 +119,6 @@ export function exitColonyExploration(_stack: SceneStack): { returnToCockpit: tr
 }
 
 export { isInInterior };
+
+export { LandingPadExitMenu } from "./exitMenu";
+export type { ExitMenuProps } from "./exitMenu";
