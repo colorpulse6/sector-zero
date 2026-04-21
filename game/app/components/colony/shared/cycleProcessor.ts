@@ -1,24 +1,8 @@
-import type { ColonyState, BuildingType, ColonyResources } from "./colonyTypes";
+import type { ColonyState, ColonyResources } from "./colonyTypes";
 import type { SaveData } from "../../engine/types";
 import { derivePowerGrid, powerCapacityOf, powerDemandOf } from "./powerGrid";
 import { runStandardInvariants } from "./colonyAssert";
-
-// Spec Section E authoritative production/consumption values.
-// Only operational buildings contribute.
-const RESOURCE_PRODUCTION: Partial<Record<BuildingType, Partial<ColonyResources>>> = {
-  farm: { food: 15 },
-  water_purifier: { water: 12 },
-  mine: { metal: 10 },
-  // Marketplace income is population-driven; handled separately in Phase 7a.
-};
-
-const RESOURCE_UPKEEP: Partial<Record<BuildingType, Partial<ColonyResources>>> = {
-  farm: { water: 5 },
-  mine: {},
-  refinery: { metal: 5 },
-  barracks: { food: 3 },
-  // Upkeep-in-power handled via powerGrid, not resource consumption.
-};
+import { RESOURCE_PRODUCTION, RESOURCE_UPKEEP } from "./colonyCatalog";
 
 export function processCycle(colony: ColonyState, toCycle: number): ColonyState {
   let state = colony;
@@ -26,6 +10,7 @@ export function processCycle(colony: ColonyState, toCycle: number): ColonyState 
   state = step2_populationConsumption(state);
   state = step3_buildingUpkeep(state);
   state = step4_populationChange(state);
+  state = step4_5_buildingProgress(state);
   state = step5_happinessRecompute(state);
   state = step6_threatProgression(state);
   state = step7_earthShipmentTick(state);
@@ -106,6 +91,18 @@ function step4_populationChange(c: ColonyState): ColonyState {
     ...c,
     population: { ...c.population, total: nextTotal, growthRate: newborns - departures },
   };
+}
+
+function step4_5_buildingProgress(c: ColonyState): ColonyState {
+  const nextBuildings = c.buildings.map(b => {
+    if (b.status !== "constructing") return b;
+    const next = b.buildProgressCycles - 1;
+    if (next <= 0) {
+      return { ...b, status: "operational" as const, buildProgressCycles: 0 };
+    }
+    return { ...b, buildProgressCycles: next };
+  });
+  return { ...c, buildings: nextBuildings };
 }
 
 function step5_happinessRecompute(c: ColonyState): ColonyState {

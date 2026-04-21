@@ -60,6 +60,9 @@ import { restoreCheckpoint } from "./engine/phases";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./engine/groundLevel";
 import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
 import { getSpecialMissionDef } from "./engine/specialMissions";
+import { advanceWorldCycle, colonyReducer } from "./colony";
+import type { ColonyEvent } from "./colony";
+import { ColoniesScreen } from "./colony/meta";
 import DevPanel from "./DevPanel";
 
 export default function Game() {
@@ -215,6 +218,14 @@ export default function Game() {
     audioRef.current?.switchMusic("menu");
   }, []);
 
+  const handleColonyDispatch = useCallback((event: ColonyEvent) => {
+    setSaveData(prev => {
+      const next = colonyReducer(prev, event);
+      saveSave(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (shouldPromptKeplerMission) {
       setSpecialPromptChoice(0);
@@ -328,8 +339,9 @@ export default function Game() {
         newSave = unlockCodexEntry(newSave, missionDef.storyCodexId);
       }
 
-      saveSave(newSave);
-      setSaveData(newSave);
+      const cycledSave = advanceWorldCycle(newSave);
+      saveSave(cycledSave);
+      setSaveData(cycledSave);
       returnToCockpit();
       return;
     }
@@ -348,8 +360,9 @@ export default function Game() {
         }
       }
       newSave = { ...newSave, bestiary: updatedBestiary };
-      saveSave(newSave);
-      setSaveData(newSave);
+      const cycledSave = advanceWorldCycle(newSave);
+      saveSave(cycledSave);
+      setSaveData(cycledSave);
       returnToCockpit();
       return;
     }
@@ -415,11 +428,12 @@ export default function Game() {
       newSave = unlockSpecialMission(newSave, options.unlockSpecialMission);
     }
 
-    saveSave(newSave);
-    setSaveData(newSave);
+    const cycledSave = advanceWorldCycle(newSave);
+    saveSave(cycledSave);
+    setSaveData(cycledSave);
 
     if (options?.unlockSpecialMission && options.launchSpecialMission) {
-      startSpecialMission(options.unlockSpecialMission, newSave);
+      startSpecialMission(options.unlockSpecialMission, cycledSave);
       return;
     }
 
@@ -443,7 +457,7 @@ export default function Game() {
 
     if (nextLv <= maxLevels) {
       // Next level in same world
-      carryForward(createGameState(gameState.currentWorld, nextLv, newSave.upgrades, newSave.unlockedEnhancements, newSave.pilotLevel, newSave.allocatedSkills));
+      carryForward(createGameState(gameState.currentWorld, nextLv, cycledSave.upgrades, cycledSave.unlockedEnhancements, cycledSave.pilotLevel, cycledSave.allocatedSkills));
     } else {
       // World complete — try advancing to next world
       let nextWorld = gameState.currentWorld + 1;
@@ -451,7 +465,7 @@ export default function Game() {
         nextWorld++;
       }
       if (nextWorld <= 8 && getWorldLevelCount(nextWorld) > 0) {
-        carryForward(createGameState(nextWorld, 1, newSave.upgrades, newSave.unlockedEnhancements, newSave.pilotLevel, newSave.allocatedSkills));
+        carryForward(createGameState(nextWorld, 1, cycledSave.upgrades, cycledSave.unlockedEnhancements, cycledSave.pilotLevel, cycledSave.allocatedSkills));
       } else {
         startEnding();
       }
@@ -698,6 +712,9 @@ export default function Game() {
   // Keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Colonies screen uses a DOM overlay for input — let the overlay handle keys.
+      if (showCockpit && cockpitState.screen === "colonies") return;
+
       const isFirstPerson = gameState?.currentMode === "first-person";
 
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
@@ -866,7 +883,7 @@ export default function Game() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice]);
+  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice]);
 
   // Touch input
   useEffect(() => {
@@ -1701,6 +1718,17 @@ export default function Game() {
       {/* Dev Panel — development only */}
       {process.env.NODE_ENV === "development" && (
         <DevPanel gameState={gameState} onAction={handleDevAction} />
+      )}
+
+      {/* Colonies DOM overlay — mounts over the canvas when cockpit screen is "colonies" */}
+      {showCockpit && cockpitState.screen === "colonies" && (
+        <ColoniesScreen
+          save={saveData}
+          onDispatch={handleColonyDispatch}
+          onExit={() => {
+            setCockpitState(prev => ({ ...prev, screen: "hub" }));
+          }}
+        />
       )}
     </div>
   );

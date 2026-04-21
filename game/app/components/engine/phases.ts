@@ -7,6 +7,11 @@ import type {
 } from "./types";
 import type { LevelData } from "./levels";
 
+// IMPORTANT: Do NOT call advanceWorldCycle() when transitioning between phases
+// of a multi-phase level. One completed mission = one cycle. Only the final
+// phase's completion routes through Game.tsx nextLevel(), which is where
+// advanceWorldCycle fires. Adding a call here would double-tick the cycle.
+
 /** Snapshot player state at phase entry for checkpoint restart. */
 export function createCheckpoint(state: GameState): CheckpointState {
   return {

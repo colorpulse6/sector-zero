@@ -22,6 +22,11 @@ export function drawCockpit(
   state: CockpitHubState,
   save: SaveData
 ): void {
+  // Colonies sub-screen is rendered by a DOM overlay — canvas stays blank.
+  if (state.screen === "colonies") {
+    return;
+  }
+
   ctx.save();
 
   if (state.screen === "hub") {
