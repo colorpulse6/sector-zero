@@ -163,10 +163,14 @@ export interface ColonyContext {
   mode: "exterior" | "interior";
   interiorBuildingId: BuildingInstanceId | null;
 
-  /** Invoked when player presses Z on a door tile. */
+  /** Invoked when player presses the interact key while standing adjacent to a potential door tile.
+   *  The engine computes `(tileX, tileY)` as the integer tile one step ahead of the player's
+   *  facing direction (rounded from `dirX/dirY`), NOT the tile the player currently stands on.
+   *  This matches Daggerfall-style "face the door, press interact". */
   onDoorInteract(tileX: number, tileY: number): DoorInteractResult;
 
-  /** Invoked when player presses Z on a landing-pad tile. */
+  /** Invoked when player presses interact while standing ON a landing-pad tile.
+   *  (Landing pad uses "stand on" rather than "face" because pad is the player's natural spawn.) */
   onLandingPadInteract(): LandingPadResult;
 }
 
@@ -180,6 +184,10 @@ export type LandingPadResult =
   | { kind: "show_exit_menu" }
   | { kind: "not_on_pad" };
 ```
+
+### Input key convention
+
+"Press Z on a door" in this spec = the player's existing FPS-mode interact key, which the codebase routes through `keys.shoot` in `firstPersonEngine.ts:154-178`. No new input binding is introduced. The Z-label in user-facing prompts is consistent with the rest of the game's FPS mode (same key used to talk to Ashfall NPCs).
 
 ### Engine → Orchestrator message channel
 
@@ -223,8 +231,8 @@ export interface SceneLayer {
 export function pushInterior(
   stack: SceneStack,
   building: ColonyBuilding,
-  seed: number,
-  doorTile: { x: number; y: number }
+  interiorState: FirstPersonState,   // built by caller via generateInteriorState
+  returnToTile: { x: number; y: number }
 ): SceneStack;
 
 export function popToExterior(stack: SceneStack): SceneStack;
@@ -232,7 +240,9 @@ export function popToExterior(stack: SceneStack): SceneStack;
 export function isInInterior(stack: SceneStack): boolean;
 ```
 
-Phase 2 never exceeds depth 2. An invariant test enforces this.
+**Responsibility split:** `generateInteriorState(building, seed)` is the pure generator. The orchestrator (`stepColonyExploration`) calls it, then passes the resulting `FirstPersonState` into `pushInterior`. `pushInterior` itself is a pure stack operation — it does not know how to construct states.
+
+Phase 2 never exceeds depth 2. An invariant test enforces this. The single-`parent` linked-list shape keeps the type simple for Phase 2; Phase 6+ may refactor to an array-backed stack if deeper nesting (Tier 3 hub districts) becomes necessary.
 
 ### Orchestrator public API
 
@@ -356,12 +366,13 @@ export const OUTPOST_TEMPLATE = {
 
 ### Slot-filling algorithm
 
+Uses **insertion order** in `colony.buildings` (not id-sort), because the Phase 0 reducer appends new buildings to the end of the array via `handleBuildingCommissioned`. Index-in-array equals commission order and is stable across future mutations that don't reorder the array.
+
 ```typescript
 function assignSlots(colony: ColonyState): Map<BuildingInstanceId, SlotId> {
-  const sorted = [...colony.buildings].sort((a, b) => a.id.localeCompare(b.id));
   const rotation = colony.layoutSeed % 6;
   const map = new Map<BuildingInstanceId, SlotId>();
-  sorted.slice(0, 6).forEach((b, i) => {
+  colony.buildings.slice(0, 6).forEach((b, i) => {
     map.set(b.id, ((rotation + i) % 6) as SlotId);
   });
   return map;
@@ -369,10 +380,12 @@ function assignSlots(colony: ColonyState): Map<BuildingInstanceId, SlotId> {
 ```
 
 Properties:
-- Deterministic — same colony always looks the same
+- Deterministic — same colony always looks the same (no sort needed; relies on reducer insertion order)
 - Different `layoutSeed` → rotated slot assignment → cross-colony variety
-- Commissioning a new building fills the next slot; prior buildings don't shuffle
+- Commissioning a new building fills the next slot; prior buildings don't shuffle, because their array position is stable
 - Buildings past slot 6 are silently skipped in Phase 2
+
+**Invariant relied upon:** the Phase 0 reducer never sorts or reorders `colony.buildings`; it only appends (`handleBuildingCommissioned`) and in-place mutates individual entries (`handleBuildingCompleted`, cycle processor step 4.5). Task 2 of the plan includes a test asserting that the reducer preserves array order under all Phase 0/1 events.
 
 ### Building footprint registry
 
@@ -502,7 +515,7 @@ export function tintForHour(hour: number): HslShift {
 }
 ```
 
-Applied as a render-time post-process on sky/ground/wall sprites via a new optional `environmentTint` field on `environmentArt`. Interior rendering uses a fixed neutral tint (exteriors only cycle in Phase 2).
+Applied as a render-time post-process on sky/ground/wall sprites via a new optional `environmentTint` field on `FPEnvironmentArt` (the type in `engine/types.ts`). **The tint application happens in `firstPersonRenderer.ts`, not in `firstPersonEngine.ts`** — so the renderer gains a small block that reads `environmentArt.environmentTint` and applies HSL shift during sprite draw. This is outside the "≤10-line engine diff" audit gate (which applies to `firstPersonEngine.ts` only); the renderer edit is tracked separately and audited in Task 6. Interior rendering uses a fixed neutral tint (exteriors only cycle in Phase 2).
 
 ### Generator call sequence
 
@@ -647,7 +660,7 @@ stepColonyExploration reads colonyTransitionRequest:
 **Manual playtest (Task 7 deliverable):**
 Full checklist — descend, walk, enter each building type interior, verify transition fade, exit via pad menu, confirm cycle counter unchanged, confirm no save-data mutation during exploration, confirm existing campaign missions still work.
 
-### Implementation micro-phases (7 tasks)
+### Implementation micro-phases (8 tasks counting the parallel asset-prompt task)
 
 1. **Task 1 — GameMode extension + FirstPersonState field plumbing**
    Add `"colony-exploration"` to GameMode union. Add optional `colonyContext?: ColonyContext` and `colonyTransitionRequest?` fields to FirstPersonState. No behavior — types only. Build green, colony tests still 57/57.
