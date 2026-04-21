@@ -147,7 +147,8 @@ GameMode =
 ### Boundaries
 
 - **Orchestrator writes FirstPersonState; engine consumes.** `colonyLayout.generateExteriorState` produces the state, `updateFirstPerson` steps it frame-by-frame. All colony-specific logic runs before/after the engine tick, never inside.
-- **Engine's `colonyContext` is consulted in exactly 2 places.** The shoot/interact handler calls `colonyContext?.onDoorInteract(standingOn, facingTile)` and `colonyContext?.onLandingPadInteract()`. Both tile coords are computed in the engine from `posX/posY/dirX/dirY` (see Section B for the dominant-axis rule); nothing else. Diff audit verifies this at Task 6 commit.
+- **Engine's `colonyContext` is consulted in exactly 2 places.** The shoot/interact handler calls `colonyContext?.onDoorInteract(standingOn, facingTile)` and `colonyContext?.onLandingPadInteract(standingOn)`. Both tile coords are computed in the engine from `posX/posY/dirX/dirY` (see Section B for the dominant-axis rule); nothing else. Diff audit verifies this at Task 6 commit.
+- **Anti-bounce for interior transitions.** `keys.shoot` is level-triggered (stays `true` while Z is held), so without gating a held Z press can enter a building and immediately re-trigger `exit_interior` from the post-spawn standing-on-exit-door position (and vice versa, ping-ponging). The engine enforces an **edge-triggered + cooldown** gate on colony-interact hooks: see "Anti-bounce rule" in Section B.
 - **No reads from `SaveData` inside the engine.** The orchestrator reads SaveData to build the FirstPersonState; the engine never sees SaveData directly.
 
 ---
@@ -180,8 +181,9 @@ export interface ColonyContext {
   onDoorInteract(standingOn: { x: number; y: number }, facingTile: { x: number; y: number }): DoorInteractResult;
 
   /** Invoked when player presses interact while standing ON a landing-pad tile.
-   *  Landing pad uses "stand on" semantics — pad is the player's natural spawn and re-entry point. */
-  onLandingPadInteract(): LandingPadResult;
+   *  Engine passes `standingOn` (same coord as in `onDoorInteract`) so the adapter can verify
+   *  the player is actually on the pad region — the engine does not know colony geometry. */
+  onLandingPadInteract(standingOn: { x: number; y: number }): LandingPadResult;
 }
 
 export type DoorInteractResult =
@@ -201,13 +203,17 @@ export type LandingPadResult =
 
 ### Engine → Orchestrator message channel
 
-Single optional field added to `FirstPersonState`:
+Two optional fields added to `FirstPersonState`:
 
 ```typescript
 interface FirstPersonState {
   // ... existing fields unchanged
   colonyContext?: ColonyContext;
   colonyTransitionRequest?: DoorInteractResult | LandingPadResult;
+
+  // Anti-bounce gate state (only used when colonyContext is defined)
+  colonyInteractArmed?: boolean;        // true iff Z has been released since last hook fire
+  colonyInteractCooldownFrames?: number; // decrements each frame; >0 blocks hooks
 }
 ```
 
@@ -215,9 +221,61 @@ Each frame, the orchestrator (`stepColonyExploration`):
 1. Reads `colonyTransitionRequest` if set
 2. Performs the transition (push/pop scene stack, swap `FirstPersonState`, fade overlay)
 3. Clears `colonyTransitionRequest`
-4. Hands control back to the engine
+4. Sets `colonyInteractArmed = false` and `colonyInteractCooldownFrames = 15` on the NEW state (~250ms at 60fps)
+5. Hands control back to the engine
 
 One-shot message pattern; no race conditions; pure-function composable.
+
+### Anti-bounce rule (load-bearing for correctness)
+
+`keys.shoot` is level-triggered in the existing engine (stays `true` while Z held). Without gating, a held Z press would cause auto-ping-pong across scene transitions (enter building → spawn on exit tile → exit immediately → spawn outside door → re-trigger enter → …). The engine enforces **edge-triggered + post-transition cooldown** specifically for `colonyContext` hook calls:
+
+```
+// Inside firstPersonEngine interact handler (pseudocode):
+if (fp.colonyContext) {
+  // decrement cooldown each frame regardless of input
+  fp.colonyInteractCooldownFrames = Math.max(0, (fp.colonyInteractCooldownFrames ?? 0) - 1);
+
+  // track release edge
+  if (!keys.shoot) fp.colonyInteractArmed = true;
+
+  // fire hooks only when: armed AND cooldown clear AND Z is currently pressed
+  const canFire = fp.colonyInteractArmed && fp.colonyInteractCooldownFrames === 0 && keys.shoot;
+  if (canFire) {
+    const standingOn = { x: Math.floor(fp.posX), y: Math.floor(fp.posY) };
+    const step = Math.abs(fp.dirX) >= Math.abs(fp.dirY)
+      ? { x: Math.sign(fp.dirX), y: 0 }
+      : { x: 0, y: Math.sign(fp.dirY) };
+    const facingTile = { x: standingOn.x + step.x, y: standingOn.y + step.y };
+
+    // Try pad first (cheap to reject), then door
+    const padResult = fp.colonyContext.onLandingPadInteract(standingOn);
+    if (padResult.kind === "show_exit_menu") {
+      fp.colonyTransitionRequest = padResult;
+      fp.colonyInteractArmed = false;  // require release before next fire
+    } else {
+      const doorResult = fp.colonyContext.onDoorInteract(standingOn, facingTile);
+      if (doorResult.kind !== "no_door") {
+        fp.colonyTransitionRequest = doorResult;
+        fp.colonyInteractArmed = false;
+      }
+    }
+  }
+
+  // When colonyContext is defined, skip the engine's default NPC-interact path
+  // (Phase 2 colonies have no NPCs; the NPC path stays intact for Ashfall).
+  return;
+}
+// else: existing non-colony interact logic (NPCs, objective pickup, etc.)
+```
+
+**Why both gates:**
+- **Edge-trigger** (`colonyInteractArmed`): prevents held-Z from re-firing on subsequent frames after one hook call. Requires key release.
+- **Cooldown** (`colonyInteractCooldownFrames`): covers the window DURING the scene transition itself. The orchestrator sets cooldown on the new state, so even if the player rapidly taps Z during the fade, no interact fires until ~250ms after transition completes.
+
+Defense in depth. Either gate alone would technically suffice, but both together make the interaction impossible to accidentally misuse.
+
+**Engine-diff impact:** the anti-bounce logic lives inside the `if (fp.colonyContext)` branch, so it's all under the same single guard. The ≤10-line engine audit gate now expands to ~25 lines to cover the logic above. Section D Task 6's acceptance criterion is updated: ≤30 lines of pure additions in `firstPersonEngine.ts`, all inside one `if (fp.colonyContext)` block, with zero changes to existing non-colony code paths.
 
 ### Scene stack
 
@@ -560,6 +618,7 @@ generateExteriorState(colony, gameClock):
        mode: "exterior",
        interiorBuildingId: null,
        onDoorInteract: (standingOn, facingTile) => resolveDoor(colony, "exterior", standingOn, facingTile, slotAssignment),
+       onLandingPadInteract: (standingOn) => inPadRegion(standingOn) ? { kind: "show_exit_menu" } : { kind: "not_on_pad" },
        onLandingPadInteract: () => OUTPOST_TEMPLATE contains (x,y)? show_exit_menu : not_on_pad,
      }
   8. return FirstPersonState {
@@ -686,7 +745,13 @@ stepColonyExploration reads colonyTransitionRequest:
    - `tintForHour(0)` is night (low lightness)
    - Tint is monotonic in each quadrant
 
-**Total new tests: ~18.** Cumulative after Phase 2: **~75 tests.**
+6. **`antiBounceGate.test.ts`** (~4 tests) — covers the edge-trigger + cooldown gate
+   - Held `keys.shoot` for multiple frames fires the hook at most once until release
+   - After a hook fires, 15 consecutive frames with `keys.shoot=true` fire no further hooks
+   - Releasing `keys.shoot` then pressing again AFTER cooldown clears fires the hook
+   - The gate is a no-op when `colonyContext` is undefined (Ashfall/campaign FPS unaffected)
+
+**Total new tests: ~22.** Cumulative after Phase 2: **~79 tests.**
 
 **Manual playtest (Task 7 deliverable):**
 Full checklist — descend, walk, enter each building type interior, verify transition fade, exit via pad menu, confirm cycle counter unchanged, confirm no save-data mutation during exploration, confirm existing campaign missions still work.
@@ -711,8 +776,8 @@ Full checklist — descend, walk, enter each building type interior, verify tran
 6. **Task 5 — Interior templates + interior generator**
    Implementation of `generateInteriorState`, 4 interior template literals, exit-door spawn logic. +3 tests (via existing registry test).
 
-7. **Task 6 — Engine hook points (`colonyContext` + transition-request channel)**
-   Edit `firstPersonEngine.ts` at exactly 2 lines: interact-handler consults `colonyContext?.onDoorInteract` / `.onLandingPadInteract` and writes `colonyTransitionRequest`. Audit diff → should be ≤10 lines of changes in the engine. +2 tests (day/night tint math + integration smoke).
+7. **Task 6 — Engine hook points + anti-bounce gate**
+   Edit `firstPersonEngine.ts` — add a single `if (fp.colonyContext)` block containing: dominant-axis facingTile computation, anti-bounce gate (`colonyInteractArmed` edge-trigger + `colonyInteractCooldownFrames` cooldown), the 2 hook calls (`onDoorInteract`, `onLandingPadInteract`), and `colonyTransitionRequest` writes. Audit gate: ≤30 lines of pure additions, all inside the one guard, zero changes to existing non-colony paths. +7 tests: 3 day/night tint math + 4 anti-bounce gate (`antiBounceGate.test.ts`).
 
 8. **Task 7 — Game.tsx wiring + Phase 1 DOM button + exit menu + playtest + completion**
    - Add "Descend to Colony" button to `ColoniesScreen`
@@ -725,13 +790,13 @@ Each task ships in a single commit; plan includes exact acceptance criteria + ve
 
 ### Success criteria
 
-- [ ] `yarn colony:test` green — ~75 tests passing (57 prior + ~18 new)
+- [ ] `yarn colony:test` green — ~79 tests passing (57 prior + ~22 new, including the anti-bounce gate suite)
 - [ ] `yarn build` green
 - [ ] `npx tsc --noEmit` green
 - [ ] All 4 CI jobs + GitGuardian pass on the Phase 2 PR
 - [ ] Manual playtest checklist 100%
 - [ ] No regressions in existing campaign, Ashfall Camp FPS, or Phase 1 flow
-- [ ] `firstPersonEngine.ts` diff ≤ 10 lines (audit verified)
+- [ ] `firstPersonEngine.ts` diff ≤ 30 lines, all inside one `if (fp.colonyContext)` guard (audit verified) — covers the 2 hook calls, dominant-axis facing computation, and the edge-triggered + cooldown anti-bounce gate
 - [ ] `generateExteriorState` deterministic (test verified)
 - [ ] `SceneStack` depth invariant holds (test verified)
 - [ ] Old saves (pre-Phase-2) load cleanly — Phase 2 adds no new `SaveData` fields
@@ -741,7 +806,8 @@ Each task ships in a single commit; plan includes exact acceptance criteria + ve
 
 | Risk | Mitigation |
 |---|---|
-| Engine gains colony-awareness by accident | Spec reviewer checks engine diff in Task 6; ≤10-line audit gate |
+| Engine gains colony-awareness by accident | Spec reviewer checks engine diff in Task 6; ≤30-line audit gate, all inside one `if (fp.colonyContext)` block |
+| Held Z causes interaction ping-pong across scene transitions | Edge-triggered + cooldown anti-bounce gate (Section B "Anti-bounce rule"); 4 dedicated tests |
 | Scene stack mis-manages state references | Test asserts depth ≤ 2; explicit `parent = null` on pop |
 | Interior transition causes raycaster desync | 300ms fade-to-black DOM overlay hides swap; engine sees only the new state |
 | Placeholder sprites look broken | Acceptable — renderer already falls back to color-tint on missing sprite. Asset pipeline is independent track |
