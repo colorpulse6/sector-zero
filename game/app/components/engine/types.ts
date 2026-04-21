@@ -6,6 +6,7 @@ import type {
   Bounty,
   GameClock,
 } from "../colony/shared/colonyTypes";
+import type { ColonyContext } from "../colony/exploration/colonyContext";
 
 // ─── Canvas ──────────────────────────────────────────────────────────
 export const CANVAS_WIDTH = 480;
@@ -684,7 +685,7 @@ export type SpecialMissionId = "kepler-black-box";
 export type StoryItemId = "kepler-black-box";
 
 // ─── Multi-Phase Levels ─────────────────────────────────────────────
-export type GameMode = "shooter" | "ground-run" | "boarding" | "first-person" | "turret" | "base-defense" | "mech-duel";
+export type GameMode = "shooter" | "ground-run" | "boarding" | "first-person" | "turret" | "base-defense" | "mech-duel" | "colony-exploration";
 
 export interface PhaseConfig {
   mode: GameMode;
@@ -919,6 +920,13 @@ export interface FPEnvironmentArt {
   wallSprite?: string;
   floorSprite?: string;
   ceilingSprite?: string;
+  /** Optional HSL shift applied by firstPersonRenderer during environment sprite draw.
+   *  Used by colony exploration for day/night tint; safe to omit for other modes. */
+  environmentTint?: {
+    hueShift: number;
+    saturationMul: number;
+    lightnessMul: number;
+  };
 }
 
 export interface FPProp {
@@ -956,6 +964,13 @@ export interface FirstPersonState {
   environmentArt?: FPEnvironmentArt;
   props?: FPProp[];
   missionLabel?: string;
+  // Colony exploration extensions (Phase 2 of colony system)
+  // When colonyContext is defined, the engine enters colony-exploration mode
+  // with anti-bounce gating for door/pad interaction.
+  colonyContext?: ColonyContext;
+  colonyTransitionRequest?: unknown;  // DoorInteractResult | LandingPadResult — typed as unknown to avoid circular import
+  colonyInteractArmed?: boolean;      // true iff keys.shoot has been released since last hook fire
+  colonyInteractCooldownFrames?: number;  // decrements each frame; >0 blocks hooks
 }
 
 // ─── Pilot Leveling ─────────────────────────────────────────────────
