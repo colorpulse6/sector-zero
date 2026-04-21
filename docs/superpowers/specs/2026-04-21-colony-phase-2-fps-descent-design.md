@@ -54,9 +54,9 @@ Phase 2 specifically applies this principle via:
 - Day/night tint (cosmetic, hour-driven)
 - "Descend to Colony" button added to Phase 1's `ColoniesScreen`
 - Landing-pad "TAKE OFF / STAY" menu
-- `ColonyContext` adapter field + `colonyTransitionRequest` message field on `FirstPersonState`
-- Engine audit: exactly 2 hook calls to `colonyContext` (door + landing-pad interact)
-- ~15 new tests: layout determinism, slot geometry, scene stack, interior template registry, day/night tint math
+- `ColonyContext` adapter field + `colonyTransitionRequest` message field + anti-bounce gate fields (`colonyInteractArmed`, `colonyInteractCooldownFrames`) on `FirstPersonState`
+- Engine audit: one `if (fp.colonyContext)` block containing the 2 hook calls (door + landing-pad interact), dominant-axis facing computation, and the edge-triggered + cooldown anti-bounce gate. ≤30 lines of pure additions, zero changes to non-colony code paths.
+- ~22 new tests: layout determinism, slot geometry, scene stack, interior template registry, day/night tint math, and the anti-bounce gate suite
 - Asset prompt documents in `docs/assets/prompts/colony-phase-2/` (11 assets catalogued + placeholder-prompt structure; images themselves ship later, independent track)
 
 ### Out of scope for Phase 2 (deferred)
@@ -275,7 +275,7 @@ if (fp.colonyContext) {
 
 Defense in depth. Either gate alone would technically suffice, but both together make the interaction impossible to accidentally misuse.
 
-**Engine-diff impact:** the anti-bounce logic lives inside the `if (fp.colonyContext)` branch, so it's all under the same single guard. The ≤10-line engine audit gate now expands to ~25 lines to cover the logic above. Section D Task 6's acceptance criterion is updated: ≤30 lines of pure additions in `firstPersonEngine.ts`, all inside one `if (fp.colonyContext)` block, with zero changes to existing non-colony code paths.
+**Engine-diff impact:** all of the above (dominant-axis facing, anti-bounce gate, 2 hook calls, `colonyTransitionRequest` writes) lives inside a single `if (fp.colonyContext)` guard. Task 6's audit criterion: **≤30 lines of pure additions in `firstPersonEngine.ts`, all inside that one guard, with zero changes to existing non-colony code paths.**
 
 ### Scene stack
 
@@ -367,6 +367,8 @@ Both pure functions. Deterministic: same inputs → identical outputs.
 | `SceneStack`, `SceneLayer` | `colony/exploration/sceneStack.ts` | Internal to `exploration/` |
 | `FirstPersonState.colonyContext?` | `engine/types.ts` | Engine extension |
 | `FirstPersonState.colonyTransitionRequest?` | `engine/types.ts` | Engine extension |
+| `FirstPersonState.colonyInteractArmed?` | `engine/types.ts` | Engine extension (anti-bounce gate state) |
+| `FirstPersonState.colonyInteractCooldownFrames?` | `engine/types.ts` | Engine extension (anti-bounce gate state) |
 | `GameMode = ... \| "colony-exploration"` | `engine/types.ts` | Union extension |
 
 ---
@@ -583,7 +585,7 @@ export function tintForHour(hour: number): HslShift {
 }
 ```
 
-Applied as a render-time post-process on sky/ground/wall sprites via a new optional `environmentTint` field on `FPEnvironmentArt` (the type in `engine/types.ts`). **The tint application happens in `firstPersonRenderer.ts`, not in `firstPersonEngine.ts`** — so the renderer gains a small block that reads `environmentArt.environmentTint` and applies HSL shift during sprite draw. This is outside the "≤10-line engine diff" audit gate (which applies to `firstPersonEngine.ts` only); the renderer edit is tracked separately and audited in Task 6. Interior rendering uses a fixed neutral tint (exteriors only cycle in Phase 2).
+Applied as a render-time post-process on sky/ground/wall sprites via a new optional `environmentTint` field on `FPEnvironmentArt` (the type in `engine/types.ts`). **The tint application happens in `firstPersonRenderer.ts`, not in `firstPersonEngine.ts`** — so the renderer gains a small block that reads `environmentArt.environmentTint` and applies HSL shift during sprite draw. This is outside the "≤30-line engine diff" audit gate (which applies to `firstPersonEngine.ts` only); the renderer edit is tracked separately and audited in Task 6. Interior rendering uses a fixed neutral tint (exteriors only cycle in Phase 2).
 
 ### Generator call sequence
 
@@ -619,7 +621,6 @@ generateExteriorState(colony, gameClock):
        interiorBuildingId: null,
        onDoorInteract: (standingOn, facingTile) => resolveDoor(colony, "exterior", standingOn, facingTile, slotAssignment),
        onLandingPadInteract: (standingOn) => inPadRegion(standingOn) ? { kind: "show_exit_menu" } : { kind: "not_on_pad" },
-       onLandingPadInteract: () => OUTPOST_TEMPLATE contains (x,y)? show_exit_menu : not_on_pad,
      }
   8. return FirstPersonState {
        map: tileMap,
@@ -759,7 +760,7 @@ Full checklist — descend, walk, enter each building type interior, verify tran
 ### Implementation micro-phases (8 tasks counting the parallel asset-prompt task)
 
 1. **Task 1 — GameMode extension + FirstPersonState field plumbing**
-   Add `"colony-exploration"` to GameMode union. Add optional `colonyContext?: ColonyContext` and `colonyTransitionRequest?` fields to FirstPersonState. No behavior — types only. Build green, colony tests still 57/57.
+   Add `"colony-exploration"` to GameMode union. Add optional `colonyContext?: ColonyContext`, `colonyTransitionRequest?`, `colonyInteractArmed?`, and `colonyInteractCooldownFrames?` fields to FirstPersonState. No behavior — types only. Build green, colony tests still 57/57.
 
 2. **Task 1.5 — Asset prompt drafts (parallel, non-blocking)**
    Create `docs/assets/prompts/colony-phase-2/` with 5 files (shared style guide + 4 class files). Each asset has a prompt block, dimensions, placeholder status. Commit separately from code. Non-blocking for Tasks 2-7 since code uses placeholder tints.
