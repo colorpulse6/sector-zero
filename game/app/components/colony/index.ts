@@ -14,6 +14,19 @@ export {
 export { Events } from "./shared/colonyEvents";
 export type { ColonyEvent } from "./shared/colonyEvents";
 
+export {
+  enterColonyExploration,
+  stepColonyExploration,
+  exitColonyExploration,
+} from "./exploration";
+export type {
+  SceneStack,
+  SceneLayer,
+  ColonyContext,
+  DoorInteractResult,
+  LandingPadResult,
+} from "./exploration";
+
 // Re-export types
 export type {
   ColonyState,
