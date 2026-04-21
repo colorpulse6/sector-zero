@@ -45,7 +45,7 @@ Phase 2 specifically applies this principle via:
 ### In scope for Phase 2
 
 - New `GameMode` value: `"colony-exploration"`
-- New folder `game/app/components/colony/exploration/` with 7 files (see File Layout)
+- New folder `game/app/components/colony/exploration/` with 8 files (see File Layout)
 - Template-based 24×24 Outpost layout (central plaza, 6 slots, south-center landing pad)
 - Deterministic slot assignment from `layoutSeed` + `colony.buildings` insertion order (see Section C for the exact algorithm and the reducer-invariant it relies on)
 - Multi-tile building footprints for the 4 Phase 1 building types (Solar Array, Farm, Water Purifier, Habitat Module)
@@ -114,9 +114,15 @@ docs/assets/prompts/
 game/app/components/Game.tsx          # currentMode === "colony-exploration" branch,
                                       # descend/exit wiring, keydown routing
 game/app/components/engine/
-├── firstPersonEngine.ts              # add optional colonyContext + colonyTransitionRequest
-│                                     # to FirstPersonState; 2 hook-call edits total
-└── types.ts                          # GameMode union gains "colony-exploration"
+├── firstPersonEngine.ts              # inject single `if (fp.colonyContext)` guard containing
+│                                     # dominant-axis facingTile, edge-triggered + cooldown
+│                                     # anti-bounce gate, 2 hook calls (door + pad), and
+│                                     # colonyTransitionRequest writes. Audit: ≤30 lines of
+│                                     # pure additions, zero changes to non-colony paths.
+└── types.ts                          # GameMode union gains "colony-exploration";
+                                      # FirstPersonState gains colonyContext?, colonyTransitionRequest?,
+                                      # colonyInteractArmed?, colonyInteractCooldownFrames? fields;
+                                      # FPEnvironmentArt gains environmentTint? field.
 game/app/components/colony/
 ├── index.ts                          # re-export enterColonyExploration / exitColonyExploration
 └── meta/
