@@ -150,6 +150,36 @@ export function updateFirstPerson(gs: GameState, keys: Keys): void {
     return; // Don't process movement/combat while in dialog
   }
 
+  // ─── Colony exploration hook + anti-bounce gate (Phase 2) ───
+  if (fp.colonyContext) {
+    fp.colonyInteractCooldownFrames = Math.max(0, (fp.colonyInteractCooldownFrames ?? 0) - 1);
+    if (!keys.shoot) fp.colonyInteractArmed = true;
+    const canFire =
+      (fp.colonyInteractArmed ?? true) &&
+      (fp.colonyInteractCooldownFrames ?? 0) === 0 &&
+      keys.shoot;
+    if (canFire) {
+      const standingOn = { x: Math.floor(fp.posX), y: Math.floor(fp.posY) };
+      const step = Math.abs(fp.dirX) >= Math.abs(fp.dirY)
+        ? { x: Math.sign(fp.dirX), y: 0 }
+        : { x: 0, y: Math.sign(fp.dirY) };
+      const facingTile = { x: standingOn.x + step.x, y: standingOn.y + step.y };
+      const padResult = fp.colonyContext.onLandingPadInteract(standingOn);
+      if (padResult.kind === "show_exit_menu") {
+        fp.colonyTransitionRequest = padResult;
+        fp.colonyInteractArmed = false;
+      } else {
+        const doorResult = fp.colonyContext.onDoorInteract(standingOn, facingTile);
+        if (doorResult.kind !== "no_door") {
+          fp.colonyTransitionRequest = doorResult;
+          fp.colonyInteractArmed = false;
+        }
+      }
+    }
+    return;
+  }
+  // ─── End colony hook block ───
+
   // ── NPC Interaction (press shoot near NPC) ──
   if (fp.npcs && keys.shoot && fp.gunCooldown <= 0) {
     const NPC_INTERACT_RANGE = 2.0;

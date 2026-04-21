@@ -26,6 +26,15 @@ function getSpritePathOrFallback(path: string | undefined, fallback: string): st
   return path ?? fallback;
 }
 
+// Canvas filter — applied temporarily during draw. Call sites use ctx.save/restore.
+function applyTint(
+  ctx: CanvasRenderingContext2D,
+  tint: { hueShift: number; saturationMul: number; lightnessMul: number } | undefined,
+): void {
+  if (!tint) return;
+  ctx.filter = `hue-rotate(${tint.hueShift}deg) saturate(${tint.saturationMul}) brightness(${tint.lightnessMul})`;
+}
+
 function createDepthBuffer(wallHits: (RayHit | null)[]): number[] {
   const zBuffer: number[] = new Array(CANVAS_WIDTH);
   for (let x = 0; x < CANVAS_WIDTH; x++) {
@@ -678,6 +687,8 @@ export function drawFirstPerson(
   const ceilingTexture = fp.environmentArt?.ceilingSprite ? getSprite(fp.environmentArt.ceilingSprite) : null;
 
   // ── Ceiling / sky ──
+  ctx.save();
+  applyTint(ctx, fp.environmentArt?.environmentTint);
   if (skyTexture) {
     const offset = ((Math.atan2(fp.dirY, fp.dirX) + Math.PI) / (Math.PI * 2)) * skyTexture.width;
     const pattern = ctx.createPattern(skyTexture, "repeat-x");
@@ -720,6 +731,7 @@ export function drawFirstPerson(
     ctx.fillStyle = floorGrad;
     ctx.fillRect(0, GAME_AREA_HEIGHT / 2, CANVAS_WIDTH, GAME_AREA_HEIGHT / 2);
   }
+  ctx.restore();
 
   // ── Cast rays ──
   const hits = castAllRays(
@@ -731,6 +743,8 @@ export function drawFirstPerson(
   );
 
   // ── Draw walls ──
+  ctx.save();
+  applyTint(ctx, fp.environmentArt?.environmentTint);
   for (let x = 0; x < CANVAS_WIDTH; x++) {
     const hit = hits[x];
     if (!hit) continue;
@@ -780,6 +794,7 @@ export function drawFirstPerson(
       ctx.fillRect(x, drawStart, 1, stripHeight);
     }
   }
+  ctx.restore();
 
   // ── Door highlights ──
   // Doors are walkable but we can add a subtle glow when looking at one
