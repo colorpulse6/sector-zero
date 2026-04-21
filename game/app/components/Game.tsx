@@ -219,11 +219,18 @@ export default function Game() {
   }, []);
 
   const handleColonyDispatch = useCallback((event: ColonyEvent) => {
-    setSaveData(prev => {
-      const next = colonyReducer(prev, event);
-      saveSave(next);
-      return next;
-    });
+    // Read saveData at call time and persist synchronously. Matches the pattern
+    // used by all other saveSave call-sites in this file. If two dispatches
+    // ever fire in the same React batch (unreachable in Phase 1 — each is
+    // triggered by a discrete user action), the second would reduce against
+    // stale state; in that case, refactor to a separate save effect.
+    const next = colonyReducer(saveData, event);
+    saveSave(next);
+    setSaveData(next);
+  }, [saveData]);
+
+  const handleColoniesExit = useCallback(() => {
+    setCockpitState(prev => ({ ...prev, screen: "hub" }));
   }, []);
 
   useEffect(() => {
@@ -1725,9 +1732,7 @@ export default function Game() {
         <ColoniesScreen
           save={saveData}
           onDispatch={handleColonyDispatch}
-          onExit={() => {
-            setCockpitState(prev => ({ ...prev, screen: "hub" }));
-          }}
+          onExit={handleColoniesExit}
         />
       )}
     </div>

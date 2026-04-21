@@ -29,9 +29,14 @@ export function colonyReducer(state: SaveData, event: ColonyEvent): SaveData {
       return handleShipmentOrdered(state, event.payload);
     case "colony/shipmentArrived":
       return handleShipmentArrived(state, event.payload);
-    default:
-      // All 12 Phase 0 events handled above.
+    default: {
+      // Exhaustiveness check: if a new ColonyEvent variant is added to the union
+      // without a corresponding handler above, this line will fail to compile
+      // ("Type 'X' is not assignable to type 'never'").
+      const _exhaustive: never = event;
+      void _exhaustive;  // suppress "declared but not used" in strict unused-locals
       return state;
+    }
   }
 }
 

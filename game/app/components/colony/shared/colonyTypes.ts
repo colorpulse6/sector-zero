@@ -18,7 +18,33 @@ import type { PlanetId } from "../../engine/types";
 
 export type ColonyId = string;
 export type BuildingInstanceId = string;
-export type BuildingType = string;              // "farm" | "marketplace" | ...
+/**
+ * All building types known to the colony system (Phase 0/1 baseline).
+ * Tightened from `string` in Polish-T2 so per-building tables
+ * (RESOURCE_PRODUCTION, POWER_CAPACITY, BUILDING_FOOTPRINTS, etc.)
+ * catch typos at compile time.
+ *
+ * Additions land when their Phase spec is authored. Phase 2 adds none.
+ */
+export type BuildingType =
+  | "solar_array"
+  | "farm"
+  | "water_purifier"
+  | "mine"
+  | "refinery"
+  | "habitat_module"
+  | "med_bay"
+  | "marketplace"
+  | "cantina"
+  | "town_hall"
+  | "barracks"
+  | "turret_defense"
+  | "shield_generator"
+  | "radar_array"
+  | "comms_tower"
+  | "spaceport"
+  | "research_lab"
+  | "atmosphere_processor";
 export type DistrictId = string;
 export type NpcId = string;
 export type DialogTreeId = string;

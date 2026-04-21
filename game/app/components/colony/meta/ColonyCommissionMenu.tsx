@@ -41,6 +41,32 @@ function costLabel(cost: Partial<ColonyResources>): string {
   return parts.join(" · ");
 }
 
+/**
+ * Compute a human-readable message describing what the colony is missing
+ * to afford a given cost. Returns empty string if affordable.
+ *
+ * Exported for testing; the UI consumes it directly via the BUILD button
+ * label. Handles all 4 ColonyResources fields uniformly — future building
+ * types with food/water/credit costs work without code changes.
+ */
+export function shortfallMessage(
+  have: ColonyResources,
+  cost: Partial<ColonyResources>
+): string {
+  const missing: string[] = [];
+  const keys: (keyof ColonyResources)[] = ["metal", "food", "water", "credits"];
+  for (const key of keys) {
+    const need = cost[key] ?? 0;
+    if (need <= 0) continue;
+    const shortfall = need - have[key];
+    if (shortfall > 0) {
+      missing.push(`${shortfall} more ${key}`);
+    }
+  }
+  if (missing.length === 0) return "";
+  return `Need ${missing.join(", ")}`;
+}
+
 export function ColonyCommissionMenu({ colony, onDispatch }: ColonyCommissionMenuProps) {
   const handleBuild = (opt: BuildOption) => {
     onDispatch(Events.buildingCommissioned({
@@ -118,7 +144,7 @@ export function ColonyCommissionMenu({ colony, onDispatch }: ColonyCommissionMen
                   textTransform: "uppercase",
                 }}
               >
-                {affordable ? "Build" : `Need ${(opt.cost.metal ?? 0) - colony.resources.metal} more metal`}
+                {affordable ? "Build" : shortfallMessage(colony.resources, opt.cost)}
               </button>
             </div>
           );
