@@ -7,6 +7,7 @@ import type {
   ColonyId,
 } from "../shared/colonyTypes";
 import type { FirstPersonState, BoardingTileType, BoardingMap } from "../../engine/types";
+import { SPRITES } from "../../engine/sprites";
 import { OUTPOST_TEMPLATE, type Slot, type SlotId } from "./outpostTemplate";
 import { BUILDING_FOOTPRINTS, INTERIOR_TEMPLATES } from "./buildingTiles";
 import { tintForHour } from "./dayNightTint";
@@ -192,10 +193,11 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
     npcs: [],
     dialogState: null,
     environmentArt: {
-      // Reuse Ashfall sprites for Phase 2 (colony is on Ashfall)
-      skySprite: "/sector-zero/sprites/explore/outpost-sky.png",
-      wallSprite: "/sector-zero/sprites/explore/outpost-wall-exterior.png",
-      floorSprite: "/sector-zero/sprites/explore/outpost-ground.png",
+      // Reuse Ashfall sprites for Phase 2 (colony is on Ashfall).
+      // getSprite prepends NEXT_PUBLIC_BASE_PATH — never hardcode /sector-zero/.
+      skySprite: SPRITES.EXPLORE_OUTPOST_SKY,
+      wallSprite: SPRITES.EXPLORE_OUTPOST_WALL_EXTERIOR,
+      floorSprite: SPRITES.EXPLORE_OUTPOST_GROUND,
       environmentTint: tintForHour(gameClock.hour),
     },
     props: [],  // Phase 2 exterior props (plaza decor, scaffolding on constructing slots) — stub for now
@@ -272,9 +274,9 @@ export function generateInteriorState(building: ColonyBuilding, seed: number): F
     dialogState: null,
     environmentArt: {
       // Interior: neutral lighting, no tint (Phase 2 decision)
-      skySprite: "/sector-zero/sprites/explore/outpost-sky.png",
-      wallSprite: "/sector-zero/sprites/explore/outpost-wall-exterior.png",
-      floorSprite: "/sector-zero/sprites/explore/outpost-ground.png",
+      skySprite: SPRITES.EXPLORE_OUTPOST_SKY,
+      wallSprite: SPRITES.EXPLORE_OUTPOST_WALL_INTERIOR,
+      floorSprite: SPRITES.EXPLORE_OUTPOST_FLOOR_METAL,
     },
     props,
     colonyContext,

@@ -45,14 +45,14 @@ export const COLONY_FIXTURES: ColonyFixture[] = [
   },
   {
     id: "build",
-    label: "SEED BUILD",
+    label: "SEED DAWN",
     buildings: [
       { type: "solar_array", operational: true },
       { type: "farm", operational: true },
       { type: "water_purifier", operational: false },
       { type: "habitat_module", operational: false },
     ],
-    hour: 8,
+    hour: 6,
     layoutSeed: 7,
   },
 ];
