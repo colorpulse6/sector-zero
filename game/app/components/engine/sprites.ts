@@ -284,6 +284,23 @@ export const SPRITES = {
   FP_ENEMY_FLINCH: "/sprites/boarding/enemy-fp-flinch.png",
   FP_ENEMY_DEATH: "/sprites/boarding/enemy-fp-death.png",
   GROUND_BG_MID: "/sprites/ground/bg-surface-mid.png",
+
+  // Colony Phase 2 — building wall textures
+  COLONY_WALL_SOLAR: "/sprites/walls/solar.png",
+  COLONY_WALL_FARM: "/sprites/walls/farm.png",
+  COLONY_WALL_PURIFIER: "/sprites/walls/purifier.png",
+  COLONY_WALL_HABITAT: "/sprites/walls/habitat.png",
+
+  // Colony Phase 2 — environment tiles (pad/foundation 3D pending floor-casting)
+  COLONY_LANDING_PAD: "/sprites/environment/landing-pad.png",
+  COLONY_FOUNDATION: "/sprites/environment/foundation.png",
+
+  // Colony Phase 2 — billboards
+  COLONY_SCAFFOLDING: "/sprites/props/scaffolding.png",
+  INTERIOR_SOLAR_PANEL: "/sprites/interiors/solar-panel.png",
+  INTERIOR_FARM_CRATE: "/sprites/interiors/farm-crate.png",
+  INTERIOR_PURIFIER_PUMP: "/sprites/interiors/purifier-pump.png",
+  INTERIOR_BUNK: "/sprites/interiors/bunk.png",
 };
 
 export async function preloadAll(): Promise<void> {

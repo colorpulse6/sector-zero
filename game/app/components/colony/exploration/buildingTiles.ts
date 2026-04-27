@@ -1,11 +1,12 @@
 import type { BuildingType, InteriorTemplateId } from "../shared/colonyTypes";
+import { SPRITES } from "../../engine/sprites";
 
 export interface FootprintSpec {
   w: number;
   h: number;
   doorSide: "north" | "south" | "east" | "west";
   interiorTemplateId: InteriorTemplateId;
-  wallSpriteId: string;  // canonical sprite ID (color-tint fallback at runtime)
+  wallSpriteId: string;  // resolved sprite path (loaded by preloadAll, fetched via getSprite)
 }
 
 export interface PropSlot {
@@ -34,25 +35,25 @@ export const BUILDING_FOOTPRINTS: Partial<Record<BuildingType, FootprintSpec>> =
     w: 3, h: 3,
     doorSide: "south",
     interiorTemplateId: "solar_array_stub",
-    wallSpriteId: "COLONY_WALL_SOLAR",
+    wallSpriteId: SPRITES.COLONY_WALL_SOLAR,
   },
   farm: {
     w: 4, h: 3,
     doorSide: "south",
     interiorTemplateId: "farm_stub",
-    wallSpriteId: "COLONY_WALL_FARM",
+    wallSpriteId: SPRITES.COLONY_WALL_FARM,
   },
   water_purifier: {
     w: 3, h: 3,
     doorSide: "south",
     interiorTemplateId: "purifier_stub",
-    wallSpriteId: "COLONY_WALL_PURIFIER",
+    wallSpriteId: SPRITES.COLONY_WALL_PURIFIER,
   },
   habitat_module: {
     w: 4, h: 4,
     doorSide: "south",
     interiorTemplateId: "habitat_stub",
-    wallSpriteId: "COLONY_WALL_HABITAT",
+    wallSpriteId: SPRITES.COLONY_WALL_HABITAT,
   },
 };
 
@@ -73,7 +74,7 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
       "#....#",
       "##D###",   // D = exit door
     ],
-    propSlots: [{ x: 2, y: 3, spriteId: "INTERIOR_SOLAR_PANEL", scale: 1.0 }],
+    propSlots: [{ x: 2, y: 3, spriteId: SPRITES.INTERIOR_SOLAR_PANEL, scale: 1.0 }],
     spawn: { x: 2, y: 5, facing: "north" },
   },
   farm_stub: {
@@ -86,7 +87,7 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
       "#....#",
       "##D###",
     ],
-    propSlots: [{ x: 2, y: 2, spriteId: "INTERIOR_FARM_CRATE", scale: 1.0 }],
+    propSlots: [{ x: 2, y: 2, spriteId: SPRITES.INTERIOR_FARM_CRATE, scale: 1.0 }],
     spawn: { x: 2, y: 5, facing: "north" },
   },
   purifier_stub: {
@@ -99,7 +100,7 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
       "#....#",
       "##D###",
     ],
-    propSlots: [{ x: 3, y: 2, spriteId: "INTERIOR_PURIFIER_PUMP", scale: 1.2 }],
+    propSlots: [{ x: 3, y: 2, spriteId: SPRITES.INTERIOR_PURIFIER_PUMP, scale: 1.2 }],
     spawn: { x: 2, y: 5, facing: "north" },
   },
   habitat_stub: {
@@ -113,10 +114,10 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
       "##D###",
     ],
     propSlots: [
-      { x: 1, y: 1, spriteId: "INTERIOR_BUNK", scale: 1.0 },
-      { x: 4, y: 1, spriteId: "INTERIOR_BUNK", scale: 1.0 },
-      { x: 1, y: 4, spriteId: "INTERIOR_BUNK", scale: 1.0 },
-      { x: 4, y: 4, spriteId: "INTERIOR_BUNK", scale: 1.0 },
+      { x: 1, y: 1, spriteId: SPRITES.INTERIOR_BUNK, scale: 1.0 },
+      { x: 4, y: 1, spriteId: SPRITES.INTERIOR_BUNK, scale: 1.0 },
+      { x: 1, y: 4, spriteId: SPRITES.INTERIOR_BUNK, scale: 1.0 },
+      { x: 4, y: 4, spriteId: SPRITES.INTERIOR_BUNK, scale: 1.0 },
     ],
     spawn: { x: 2, y: 5, facing: "north" },
   },

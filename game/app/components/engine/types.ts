@@ -800,6 +800,12 @@ export interface BoardingMap {
   height: number;
   tileSize: number;
   tiles: BoardingTileType[][];
+  /** Optional per-tile wall texture override (sprite path). Same dims as `tiles`.
+   *  Used by the colony exterior to render per-building wall textures. */
+  wallTextureMap?: (string | null)[][];
+  /** Optional set of tile coords flagged as landing-pad / foundation, for minimap distinction. */
+  landingPadTiles?: ReadonlySet<string>;
+  foundationTiles?: ReadonlySet<string>;
 }
 
 export interface BoardingState {

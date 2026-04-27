@@ -69,30 +69,52 @@ function writeLandingPad(tiles: BoardingTileType[][]): void {
   }
 }
 
+interface BuildingWriteResult {
+  scaffoldingProp: { x: number; y: number } | null;  // center of constructing footprint
+  foundationCells: Array<{ x: number; y: number }>;
+}
+
 function writeBuildingAt(
   tiles: BoardingTileType[][],
+  wallTextureMap: (string | null)[][],
   building: ColonyBuilding,
   slot: Slot,
-): void {
+): BuildingWriteResult {
   const fp = BUILDING_FOOTPRINTS[building.type];
-  if (!fp) return;  // unsupported building type — silently skip
+  if (!fp) return { scaffoldingProp: null, foundationCells: [] };
 
-  // For Phase 2: constructing → no tiles written (foundation rendered via floor-tile sprite variant, deferred).
-  // Only operational/damaged/offline render walls. Destroyed renders rubble (no walls).
-  if (building.status === "constructing" || building.status === "destroyed") {
-    return;
-  }
-
-  // Write perimeter walls with a door on `fp.doorSide`
   const { w, h, doorSide } = fp;
   const x0 = slot.anchorX;
   const y0 = slot.anchorY;
 
+  // Constructing → no walls; emit foundation cells + a single scaffolding prop center
+  if (building.status === "constructing") {
+    const cells: Array<{ x: number; y: number }> = [];
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        cells.push({ x: x0 + dx, y: y0 + dy });
+      }
+    }
+    return {
+      scaffoldingProp: { x: x0 + w / 2, y: y0 + h / 2 },
+      foundationCells: cells,
+    };
+  }
+
+  // Destroyed → rubble (no walls). Out of scope for Phase 2 visuals.
+  if (building.status === "destroyed") {
+    return { scaffoldingProp: null, foundationCells: [] };
+  }
+
+  // operational / damaged / offline → write walls with per-building texture
   for (let dy = 0; dy < h; dy++) {
     for (let dx = 0; dx < w; dx++) {
       const isPerimeter = dx === 0 || dx === w - 1 || dy === 0 || dy === h - 1;
       if (!isPerimeter) continue;
-      tiles[y0 + dy][x0 + dx] = "wall";
+      const tx = x0 + dx;
+      const ty = y0 + dy;
+      tiles[ty][tx] = "wall";
+      wallTextureMap[ty][tx] = fp.wallSpriteId;
     }
   }
 
@@ -104,6 +126,9 @@ function writeBuildingAt(
               : doorSide === "north" ? y0
               : y0 + Math.floor(h / 2);
   tiles[doorY][doorX] = "door";
+  wallTextureMap[doorY][doorX] = null;  // doors don't carry a wall texture
+
+  return { scaffoldingProp: null, foundationCells: [] };
 }
 
 // ─── Hook resolvers ────────────────────────────────────────────────────
@@ -139,14 +164,31 @@ export function inPadRegion(tile: { x: number; y: number }): boolean {
 
 export function generateExteriorState(colony: ColonyState, gameClock: GameClock): FirstPersonState {
   const tiles = blankMap(OUTPOST_TEMPLATE.width, OUTPOST_TEMPLATE.height);
+  const wallTextureMap: (string | null)[][] = Array.from(
+    { length: OUTPOST_TEMPLATE.height },
+    () => new Array(OUTPOST_TEMPLATE.width).fill(null),
+  );
   fillFrame(tiles);
   writeLandingPad(tiles);
 
   const slotMap = assignSlots(colony);
+  const scaffoldingProps: Array<{ x: number; y: number }> = [];
+  const foundationTiles = new Set<string>();
+
   for (const [bid, sid] of slotMap) {
     const building = colony.buildings.find(b => b.id === bid);
     if (!building) continue;
-    writeBuildingAt(tiles, building, OUTPOST_TEMPLATE.slots[sid]);
+    const result = writeBuildingAt(tiles, wallTextureMap, building, OUTPOST_TEMPLATE.slots[sid]);
+    if (result.scaffoldingProp) scaffoldingProps.push(result.scaffoldingProp);
+    for (const cell of result.foundationCells) foundationTiles.add(`${cell.x},${cell.y}`);
+  }
+
+  const landingPadTiles = new Set<string>();
+  const pad = OUTPOST_TEMPLATE.landingPad;
+  for (let y = pad.y; y < pad.y + pad.h; y++) {
+    for (let x = pad.x; x < pad.x + pad.w; x++) {
+      landingPadTiles.add(`${x},${y}`);
+    }
   }
 
   const colonyContext: ColonyContext = {
@@ -173,6 +215,9 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
     height: OUTPOST_TEMPLATE.height,
     tileSize: 64,
     tiles,
+    wallTextureMap,
+    landingPadTiles,
+    foundationTiles,
   };
 
   const { spawn } = OUTPOST_TEMPLATE;
@@ -200,7 +245,13 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
       floorSprite: SPRITES.EXPLORE_OUTPOST_GROUND,
       environmentTint: tintForHour(gameClock.hour),
     },
-    props: [],  // Phase 2 exterior props (plaza decor, scaffolding on constructing slots) — stub for now
+    props: scaffoldingProps.map((p, i) => ({
+      id: i + 1,
+      x: p.x,
+      y: p.y,
+      sprite: SPRITES.COLONY_SCAFFOLDING,
+      scale: 1.4,
+    })),
     colonyContext,
     colonyInteractArmed: true,
     colonyInteractCooldownFrames: 0,

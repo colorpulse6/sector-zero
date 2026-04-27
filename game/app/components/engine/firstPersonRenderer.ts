@@ -65,6 +65,8 @@ function drawMiniMap(
   ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
   ctx.fillRect(mx - 2, my - 2, mw + 4, mh + 4);
 
+  const padTiles = fp.map.landingPadTiles;
+  const foundationTiles = fp.map.foundationTiles;
   for (let r = 0; r < fp.map.height; r++) {
     for (let c = 0; c < fp.map.width; c++) {
       const tile = fp.map.tiles[r][c];
@@ -76,6 +78,12 @@ function drawMiniMap(
         ctx.fillRect(mx + c * scale, my + r * scale, scale, scale);
       } else if (tile === "door") {
         ctx.fillStyle = "#264";
+        ctx.fillRect(mx + c * scale, my + r * scale, scale, scale);
+      } else if (foundationTiles?.has(`${c},${r}`)) {
+        ctx.fillStyle = "#a87830";  // amber — under construction
+        ctx.fillRect(mx + c * scale, my + r * scale, scale, scale);
+      } else if (padTiles?.has(`${c},${r}`)) {
+        ctx.fillStyle = "#0aa";  // cyan — landing pad
         ctx.fillRect(mx + c * scale, my + r * scale, scale, scale);
       }
     }
@@ -745,9 +753,17 @@ export function drawFirstPerson(
   // ── Draw walls ──
   ctx.save();
   applyTint(ctx, fp.environmentArt?.environmentTint);
+  const wallTextureMap = fp.map.wallTextureMap;
   for (let x = 0; x < CANVAS_WIDTH; x++) {
     const hit = hits[x];
     if (!hit) continue;
+
+    // Per-tile wall texture override (colony exterior buildings each have their own).
+    // Falls back to environmentArt.wallSprite for outer-frame walls.
+    const overridePath = wallTextureMap?.[hit.mapY]?.[hit.mapX] ?? null;
+    const stripPath = overridePath ?? wallTexturePath;
+    const stripTexture = overridePath ? getSprite(overridePath) : wallTexture;
+    const stripIsAtlas = !overridePath && stripPath === SPRITES.BOARDING_TILES;
 
     // Calculate wall strip height
     const lineHeight = Math.floor(GAME_AREA_HEIGHT / hit.distance);
@@ -755,28 +771,25 @@ export function drawFirstPerson(
     const drawEnd = Math.min(GAME_AREA_HEIGHT - 1, Math.floor(GAME_AREA_HEIGHT / 2 + lineHeight / 2));
     const stripHeight = drawEnd - drawStart;
 
-    if (wallTexture) {
-      const isBoardingTiles = wallTexturePath === SPRITES.BOARDING_TILES;
-      const texWidth = isBoardingTiles ? wallTexture.width / 3 : wallTexture.width;
-      const texHeight = wallTexture.height;
+    if (stripTexture) {
+      const texWidth = stripIsAtlas ? stripTexture.width / 3 : stripTexture.width;
+      const texHeight = stripTexture.height;
       const texX = Math.floor(hit.wallX * texWidth);
-      const srcX = isBoardingTiles
+      const srcX = stripIsAtlas
         ? texWidth + Math.min(texX, texWidth - 1)
         : Math.min(texX, texWidth - 1);
 
       ctx.drawImage(
-        wallTexture,
-        srcX, 0, 1, texHeight,    // Source: 1-pixel-wide column from texture
-        x, drawStart, 1, stripHeight  // Dest: 1-pixel-wide column on screen
+        stripTexture,
+        srcX, 0, 1, texHeight,
+        x, drawStart, 1, stripHeight
       );
 
-      // Darken one side for depth (side 1 = horizontal wall = darker)
       if (hit.side === 1) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
         ctx.fillRect(x, drawStart, 1, stripHeight);
       }
 
-      // Distance fog
       const fogAmount = Math.min(0.7, hit.distance * 0.08);
       if (fogAmount > 0.05) {
         ctx.fillStyle = `rgba(5, 5, 16, ${fogAmount})`;
@@ -788,7 +801,6 @@ export function drawFirstPerson(
       ctx.fillStyle = hit.side === 1 ? colors.dark : colors.light;
       ctx.fillRect(x, drawStart, 1, stripHeight);
 
-      // Distance fog
       const fogAmount = Math.min(0.7, hit.distance * 0.08);
       ctx.fillStyle = `rgba(5, 5, 16, ${fogAmount})`;
       ctx.fillRect(x, drawStart, 1, stripHeight);
