@@ -230,8 +230,10 @@ const BILLBOARD_MAX = 256;
 
 /** Class fallback colors — keep visual continuity with the classic
  *  WALL_COLORS record while an image loads / if it 404s. */
+// 0xAABBGGRR packing! tile fallback = classic cool blue-grey #3a4a5a
+// → packed 0xff5a4a3a (B=0x5a, G=0x4a, R=0x3a).
 const FALLBACK: Record<TexKind, number> = {
-  tile: 0xff5a5a6e, sky: 0xff2e1c14, billboard: 0x00000000,
+  tile: 0xff5a4a3a, sky: 0xff2e1c14, billboard: 0x00000000,
 };
 
 export class TextureRegistry {
@@ -363,6 +365,14 @@ export interface BillboardInput {
   texId: number;
   scale: number;        // world-height scale (classic ×0.6 applied in core)
   alpha256: number;     // 256 = opaque; dying enemies fade
+  widthFactor: number;  // width = height × this. NPCs are portraits: 0.4 (classic
+                        //   firstPersonRenderer.ts:493). Enemies/props: 1.
+  vAnchor: "center" | "npc" | "prop";
+                        // vertical anchor, ported from classic draw math:
+                        //   center → sy0 = half − size/2 (enemies)
+                        //   npc    → sy0 = half − size/3 (feet on ground, :496)
+                        //   prop   → sy0 = half − 0.55·size (:343-346)
+  minSizeFrac?: number; // props: 20/714 of fb height (classic 20px floor, :344)
 }
 
 export interface RenderScene {
@@ -392,6 +402,9 @@ export class SceneBuilder {
   private scene: RenderScene | null = null;
   private lastMap: BoardingMap | null = null;
 
+  /** Last built scene — overlays (HP bars, tags, labels) project through it. */
+  get lastBuilt(): RenderScene | null { return this.scene; }
+
   build(fp: FirstPersonState, reg: TextureRegistry): RenderScene {
     if (!this.scene) this.scene = emptyScene();
     const s = this.scene;
@@ -414,25 +427,26 @@ export class SceneBuilder {
     s.billboards.length = 0;
     s.noDepthBillboards.length = 0;
     for (const p of fp.props ?? []) {
-      s.billboards.push({ x: p.x, y: p.y, texId: reg.idFor(p.sprite, "billboard"), scale: p.scale ?? 1, alpha256: 256 });
+      s.billboards.push({ x: p.x, y: p.y, texId: reg.idFor(p.sprite, "billboard"), scale: p.scale ?? 1, alpha256: 256, widthFactor: 1, vAnchor: "prop", minSizeFrac: 20 / 714 });
     }
     for (const e of fp.enemies) {
       if (e.deathTimer === -1) continue;
       // PORT VERBATIM: frame selection + fade from drawEnemyBillboards
-      // (firstPersonRenderer.ts:~230-260): death frame while deathTimer>0 with
+      // (firstPersonRenderer.ts:239-267): death frame while deathTimer>0 with
       // alpha = deathTimer/30; flinch frame under the classic flinch condition;
       // front frame otherwise.
       const sprite = /* ported conditional → */ SPRITES.FP_ENEMY_FRONT;
       const alpha = e.deathTimer > 0 ? Math.round((e.deathTimer / 30) * 256) : 256;
-      s.billboards.push({ x: e.x, y: e.y, texId: reg.idFor(sprite, "billboard"), scale: 1, alpha256: alpha });
+      s.billboards.push({ x: e.x, y: e.y, texId: reg.idFor(sprite, "billboard"), scale: 1, alpha256: alpha, widthFactor: 1, vAnchor: "center" });
     }
     for (const n of fp.npcs) {
-      s.billboards.push({ x: n.x, y: n.y, texId: reg.idFor(NPC_SPRITE_MAP[n.name] ?? SPRITES.NPC_SURVIVOR, "billboard"), scale: 1, alpha256: 256 });
+      s.billboards.push({ x: n.x, y: n.y, texId: reg.idFor(NPC_SPRITE_MAP[n.name] ?? SPRITES.NPC_SURVIVOR, "billboard"), scale: 1, alpha256: 256, widthFactor: 0.4, vAnchor: "npc" });
     }
-    if (fp.objectivePickup && !fp.objectiveCollected) {
-      // Spec exception: wayfinding beacon draws THROUGH walls (no z-test).
-      s.noDepthBillboards.push({ x: fp.objectivePickup.x, y: fp.objectivePickup.y, texId: -1, scale: 0.5, alpha256: 200 });
-    }
+    // Objective marker: NOT pushed here. It stays the classic overlay
+    // (drawObjectiveBillboard — glow + label are vector draws that already
+    // render over everything, satisfying the spec's through-wall exception).
+    // noDepthBillboards stays as the generic no-z-test mechanism (golden 8b
+    // exercises it via fixtures); nothing populates it yet.
     // Task 3 fills these; identity until then:
     s.baseLight = null; s.pointLights.length = 0;
     return s;
@@ -550,7 +564,14 @@ function drawWalls(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void 
     let dist = side === 0 ? sideDistX - dDX : sideDistY - dDY;
     if (dist < 0.01) dist = 0.01;
     zbuf[x] = hit ? dist : 1e30;
-    colDoor[x] = s.doorTiles ? s.doorTiles[mapY * mw + mapX] ?? 0 : 0;
+    // Door glow metadata: doors are WALKABLE (never DDA hits), so the classic
+    // glow (firstPersonRenderer.ts:813-826) checks the tile the ray stepped
+    // THROUGH in front of the hit wall — record that stepped-back tile:
+    if (s.doorTiles && hit) {
+      const backX = side === 0 ? mapX - stepX : mapX;
+      const backY = side === 1 ? mapY - stepY : mapY;
+      colDoor[x] = s.doorTiles[backY * mw + backX] ?? 0;
+    } else colDoor[x] = 0;
     if (!hit) { colTop[x] = half; colBot[x] = half; continue; }
 
     const lineH = (h / dist) | 0;
@@ -592,19 +613,25 @@ function drawBillboards(fb: Framebuffer, s: RenderScene, reg: TextureRegistry,
     const trX = invDet * (s.dirY * rx - s.dirX * ry);
     const trY = invDet * (-s.planeY * rx + s.planeX * ry);
     if (trY <= 0.05) continue;
+    if (b.texId < 0) continue;                 // guard: unresolved sprite
     const screenX = ((w / 2) * (1 + trX / trY)) | 0;
-    const size = ((Math.abs(h / trY) * BILLBOARD_SCALE * b.scale) | 0);
+    let size = ((Math.abs(h / trY) * BILLBOARD_SCALE * b.scale) | 0);
+    if (b.minSizeFrac) size = Math.max(size, (b.minSizeFrac * h) | 0);
     if (size < 2) continue;
     const tex = reg.get(b.texId);
-    let sx0 = screenX - (size >> 1), sx1 = sx0 + size - 1;
-    let sy0 = half - (size >> 1), sy1 = sy0 + size - 1;
+    const bw = (size * b.widthFactor) | 0;     // NPC portraits are 0.4×
+    let sx0 = screenX - (bw >> 1), sx1 = sx0 + bw - 1;
+    let sy0 = b.vAnchor === "npc" ? half - ((size / 3) | 0)
+            : b.vAnchor === "prop" ? half - ((size * 0.55) | 0)
+            : half - (size >> 1);
+    let sy1 = sy0 + size - 1;
     const cx0 = Math.max(0, sx0), cx1 = Math.min(w - 1, sx1);
     const cy0 = Math.max(0, sy0), cy1 = Math.min(h - 1, sy1);
     let fogF = (trY * FOG_SCALE * 256) | 0; if (fogF > FOG_MAX) fogF = FOG_MAX;
     const a = b.alpha256;
     for (let x = cx0; x <= cx1; x++) {
       if (depthTest && trY >= zbuf[x]) continue;
-      const texX = (((x - sx0) * tex.w / size) | 0) & tex.wMask;
+      const texX = (((x - sx0) * tex.w / bw) | 0) & tex.wMask;
       for (let y = cy0; y <= cy1; y++) {
         const texY = (((y - sy0) * tex.h / size) | 0) & tex.hMask;
         const c = tex.texels[texY * tex.w + texX];
@@ -630,7 +657,12 @@ function shade(c: number, rMul: number, gMul: number, bMul: number, fogF: number
 }
 
 function blend(dst: number, src: number, a256: number): number { /* per-channel lerp */ }
-function tileFill(/* screen-space repeat fill with tint — parity with createPattern */): void {}
+function tileFill(/* screen-space repeat fill with tint — parity with createPattern.
+  PARITY NOTE: the classic floor-texture path also draws a darken overlay
+  rgba(10,8,12,0.28) over the pattern (firstPersonRenderer.ts:732-733) — fold it
+  in as a constant lerp toward packed (10,8,12) with factor 72/256 for FLOOR
+  fills only (not ceiling). Task 2's perspective floor cast inherits the same
+  constant so the look doesn't shift between commits. */): void {}
 function gradientFill(/* per-row two-stop gradient between packed colors */): void {}
 
 /** Camera-space projection for overlay drawing (HP bars, name tags). */
@@ -683,12 +715,12 @@ drawDoorGlowOverlay(ctx);   // reads currentFrame().colDoor/colTop/colBot — po
                             // classic glow colors/alpha verbatim from lines 813-826
 ```
 
-Then: **delete** `drawEnemyBillboards`, `drawPropBillboards`, `drawNPCBillboards` (sprite drawing now in core) — but first extract from them: (a) the enemy HP-bar drawing and NPC name/type tag drawing into new overlay functions `drawEnemyHpBars(ctx)` / `drawNPCTags(ctx)` that iterate entities, call `projectBillboard(...)`, skip if `null` or `dist >= currentFrame().zbuf[screenX|0]` (occluded), and draw the same rects/text at the projected screen position; (b) the enemy frame-selection conditional and `NPC_SPRITE_MAP` (moved to `sceneInput.ts` in Step 1.7). Also delete `createDepthBuffer`, `WALL_COLORS` (fallbacks now live in the registry), the module color constants that moved into `renderCore.ts`, and the `applyTint`/`ctx.filter` calls around scene passes (billboards keep identity tint in this commit anyway; full lighting comes in Task 3 — **note:** classic applied the HSL filter to walls/floor/ceiling, and the new pipeline applies the converted RGB tint there, so colony day/night keeps working through this commit).
+Then: **delete** `drawEnemyBillboards`, `drawPropBillboards`, `drawNPCBillboards` (sprite drawing now in core) — but first extract from them: (a) the enemy HP-bar drawing, NPC name/type tag drawing, **and prop `label` text drawing** (`firstPersonRenderer.ts:381-387` — Ashfall props like "CAMP RIG" depend on it) into new overlay functions `drawEnemyHpBars(ctx)` / `drawNPCTags(ctx)` / `drawPropLabels(ctx)` that iterate entities, call `projectBillboard(...)`, skip if `null` or `dist >= currentFrame().zbuf[screenX|0]` (occluded), and draw the same rects/text at the projected screen position; (b) the enemy frame-selection conditional and `NPC_SPRITE_MAP` (moved to `sceneInput.ts` in Step 1.7). Also delete `createDepthBuffer`, `WALL_COLORS` (fallbacks now live in the registry), the module color constants that moved into `renderCore.ts`, and the `applyTint`/`ctx.filter` calls around scene passes (billboards keep identity tint in this commit anyway; full lighting comes in Task 3 — **note:** classic applied the HSL filter to walls/floor/ceiling, and the new pipeline applies the converted RGB tint there, so colony day/night keeps working through this commit).
 `drawObjectiveBillboard`, `drawGunHUD`, `drawMiniMap`, `drawCrosshair`, `drawCompass`, `drawDialogBox`, dashboard call: **unchanged**.
 
 - [ ] **Step 1.11: Record goldens, add remaining Task-1 tests**
 
-Run `UPDATE_GOLDENS=1 yarn engine:test`, paste printed hashes over the `REPLACE_ME_*` placeholders. Add to `renderCore.test.ts`: per-tile wall override changes the hash (golden 2); billboard occluded by nearer wall leaves wall pixels intact vs no-depth billboard overwrites them (golden 8, two hashes); tint identity vs non-identity hashes differ (golden 7); randomized-camera property test (100 random open-cell cameras → no exception, all pixels opaque).
+Run `UPDATE_GOLDENS=1 yarn engine:test`, paste printed hashes over the `REPLACE_ME_*` placeholders. Add to `renderCore.test.ts`: per-tile wall override changes the hash (golden 2); **fog monotonicity** — probe one wall column near vs one far, assert the far column's mid-strip pixel is closer to packed fog `(5,5,16)` per channel (golden 5, spec-required); billboard occluded by nearer wall leaves wall pixels intact vs no-depth billboard overwrites them (golden 8, two hashes); tint identity vs non-identity hashes differ (golden 7); randomized-camera property test (100 random open-cell cameras → no exception, all pixels opaque).
 
 - [ ] **Step 1.12: Verify everything**
 
@@ -774,7 +806,7 @@ Ordering rule: paint gradients (or sky) for both halves FIRST, then the cast ove
 
 `types.ts` — add to `BoardingMap` (after `wallTextureMap`): `floorTextureMap?: (string | null)[][];`
 `sceneInput.ts::rebuildMapArrays` — populate `s.map.floorTexture` from it (same pattern as walls).
-`colonyLayout.ts` — in `generateExteriorState`: build `floorTextureMap` writing `SPRITES.COLONY_LANDING_PAD` on the 4×4 pad region and `SPRITES.COLONY_FOUNDATION` on `foundationCells`; in `generateInteriorState`: fill all floor tiles with the interior floor sprite already used for `environmentArt.floorSprite` (per-template variety is future data, not new code).
+`colonyLayout.ts` — in `generateExteriorState`: build `floorTextureMap` writing `SPRITES.COLONY_LANDING_PAD` on the 4×4 pad region and `SPRITES.COLONY_FOUNDATION` on `foundationCells`; in `generateInteriorState`: fill all floor tiles with the interior floor sprite already used for `environmentArt.floorSprite` (per-template variety is future data, not new code). **Plaza tiles: deliberately not written** — they fall through to the default ground texture until a paving asset exists (spec records this; the format supports it the day the asset lands, zero code).
 
 - [ ] **Step 2.5: Colony test + verify**
 
@@ -799,11 +831,23 @@ Add to `colonyLayout.test.ts`: pad tile `(11,20)` has `floorTextureMap` = landin
 
 ```typescript
 test("point light falls off with squared distance and caps at 320", () => {
-  const grid = buildLightGrid(8, 8, null, [{ x: 4.5, y: 4.5, r: 255, g: 200, b: 150, power: 3 }],
+  // NOTE: neutral base is 256 with cap 320 — only 64 of headroom. Probe cells
+  // must be far enough that the contribution is UNclamped, or the assertion is
+  // unsatisfiable. With dim base 100 and power 1:
+  //   at(4,4): 100 + 255·1/1        → clamped 320
+  //   at(6,4): 100 + 255·1/(1+4)    = 151   (unclamped)
+  //   at(7,4): 100 + 255·1/(1+9)    ≈ 125   (unclamped)
+  const base = new Uint8Array(64).fill(100);
+  const grid = buildLightGrid(8, 8, base, [{ x: 4.5, y: 4.5, r: 255, g: 200, b: 150, power: 1 }],
     { rMul: 256, gMul: 256, bMul: 256 });
   const at = (x: number, y: number) => grid.r[y * 8 + x];
-  assert.ok(at(4, 4) > at(6, 4));
-  assert.ok(at(4, 4) <= 320);
+  assert.equal(at(4, 4), 320, "center clamps at 320");
+  assert.ok(at(6, 4) > at(7, 4), "unclamped falloff is monotonic");
+  assert.ok(at(6, 4) < 320 && at(7, 4) < 320);
+});
+test("neutral grid is 256 (hour-12 identity)", () => {
+  const g = buildLightGrid(2, 2, null, [], { rMul: 256, gMul: 256, bMul: 256 });
+  assert.equal(g.r[0], 256); assert.equal(g.g[0], 256); assert.equal(g.b[0], 256);
 });
 test("baseLight scales and tint multiplies", () => { /* baseLight 128 → half; night tint composes */ });
 ```
@@ -837,7 +881,7 @@ export function buildLightGrid(
 }
 ```
 
-Fixed-point convention: grid values are **light multipliers ×(value/255)** — renderCore uses `(channel * grid) >> 8` after converting: store as 0–320 where 256 = neutral. (`base=255, tint=identity` → `(255*256)>>8 = 255` — normalize by storing `((base*tintMul)>>8) * 256 / 255 | 0`; write it exactly this way so hour-12 identity holds. Unit test asserts neutral grid == 256.)
+Fixed-point convention: grid values are **light multipliers**, 0–320 with 256 = neutral. Store the base+tint term as `Math.round((base / 255) * tintMul)` so `base=255, tint=256` → exactly 256 (hour-12 identity; unit-tested above), then add point-light contributions `L.channel * power / (1 + d²)` and clamp to 320.
 
 - [ ] **Step 3.3: Wire into the pipeline**
 
@@ -903,7 +947,7 @@ export function drawFirstPersonPixel(ctx: CanvasRenderingContext2D, fp: FirstPer
 }
 ```
 
-Init: read `localStorage.getItem(RES_KEY)` (`"half"` → start locked half). Half-res framebuffer note: 357 is odd — the framebuffer is 240×357 and presents to 480×714 (2× exact). All `h >> 1` horizon math already handles odd heights.
+Init: read `localStorage.getItem(RES_KEY)` (`"half"` → start locked half) — **lazily on the first `drawFirstPersonPixel` call, NOT at module scope**: this module is in Next's prerender graph and `localStorage`/`document` at import time breaks `yarn build`. (Same reason `presentFramebuffer` creates its canvas lazily.) Half-res framebuffer note: 357 is odd — the framebuffer is 240×357 and presents to 480×714 (2× exact). All `h >> 1` horizon math already handles odd heights.
 
 - [ ] **Step 5.3: DevPanel** — new section `FP RENDER`: live text `p50/p95 ms + FULL|HALF`, refreshed on the panel's existing tick; three buttons calling `setResolutionMode`. Match the COLONY SEEDS section's styling/markup exactly.
 
@@ -925,11 +969,15 @@ Init: read `localStorage.getItem(RES_KEY)` (`"half"` → start locked half). Hal
 
 - [ ] **Step 6.2: Scale the three engines**
 
-Pattern per engine: `const dtF = Math.min(dtMs / 16.67, 3);` — multiply **positional deltas and rotations** by `dtF` (`MOVE_SPEED`, `ROT_SPEED`, enemy `speed` steps); **decrement frame-counter timers by `dtF`** instead of 1 (`gunFireTimer`, `gunCooldown`, `fireTimer`, `deathTimer`, `colonyInteractCooldownFrames`) and change their `=== 0` checks to `<= 0` (clamp at 0). Collision: unchanged (`moveWithCollision` already takes the delta as argument). Keep constants' names/values — semantics stay "per 16.67ms".
+Pattern per engine: `const dtF = Math.min(dtMs / 16.67, 3);` — multiply **positional deltas and rotations** by `dtF` (`MOVE_SPEED`, `ROT_SPEED`, enemy `speed` steps); **decrement frame-counter timers by `dtF`** instead of 1 (`gunFireTimer`, `gunCooldown`, `fireTimer`, `colonyInteractCooldownFrames`), changing `=== 0` checks to `<= 0` **with a floor at 0** for cooldown-style timers.
+
+**Exception — `deathTimer` (do NOT clamp at 0):** it uses −1 as the "remove me" sentinel — the engine sets exactly −1 when the countdown ends (`firstPersonEngine.ts:288`), removal filters `!== -1` (`:381`), and alive checks are `!== 0` (`:225`). Decrement by `dtF` only; the existing `if (deathTimer <= 0) deathTimer = -1` transition already handles fractional values. Clamping it at 0 makes dying enemies immortal.
+
+Also scale `groundEngine.ts:287`'s `fireTimer += 1` (flyer bob accumulator) by `dtF`, or bob frequency becomes framerate-dependent. Collision: unchanged (`moveWithCollision` already takes the delta as argument). Keep constants' names/values — semantics stay "per 16.67ms".
 
 - [ ] **Step 6.3: Self-tests + verify**
 
-Extend `__runFirstPersonSelfTests`: two updates at `dtMs=8.33` move the same distance as one at `16.67` (±1e-9); `dtMs=200` clamps to 3 frames' worth; cooldown at `dtF=3` never skips the `<= 0` firing window. Full verification commands + manual: normal feel at 60fps; DevTools 6× CPU throttle → game slower in fps but movement speed unchanged in wall-clock terms.
+Extend `__runFirstPersonSelfTests`: two updates at `dtMs=8.33` move the same distance as one at `16.67` (±1e-9); `dtMs=200` clamps to 3 frames' worth; cooldown at `dtF=3` never skips the `<= 0` firing window; a dying enemy at `dtF=3` still transitions to `deathTimer === -1` and gets removed. **Ground/boarding engines have no existing self-test functions** — do not invent test harnesses for them; their dt scaling is verified by the same code-pattern review plus the manual throttle playtest below (they share the identical `dtF` mechanism). Full verification commands + manual: normal feel at 60fps; DevTools 6× CPU throttle → game slower in fps but movement speed unchanged in wall-clock terms, in all three modes (FP, ground-run, boarding).
 
 - [ ] **Step 6.4: Commit** — `feat(engine): frame-rate-independent movement (FP, ground, boarding)`
 
