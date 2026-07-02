@@ -61,16 +61,31 @@ function synthTexture(w: number, h: number, seed: number): Uint32Array {
   return t;
 }
 
-function benchRegistry(): TextureRegistry {
+/** Ids captured from registerRaw's return value rather than assumed by
+ *  position — reordering a registration must not silently shift every
+ *  texture reference below. */
+interface BenchTextures {
+  wallDefault: number;
+  wallPillar: number;
+  floor: number;
+  ceiling: number;
+  sky: number;
+  bbA: number;
+  bbB: number;
+}
+
+function benchRegistry(): { reg: TextureRegistry; tex: BenchTextures } {
   const reg = new TextureRegistry();
-  reg.registerRaw("wall-default", synthTexture(128, 128, 1), 128, 128);  // id 0
-  reg.registerRaw("wall-pillar", synthTexture(128, 128, 2), 128, 128);   // id 1
-  reg.registerRaw("floor", synthTexture(128, 128, 3), 128, 128);         // id 2
-  reg.registerRaw("ceiling", synthTexture(128, 128, 4), 128, 128);       // id 3
-  reg.registerRaw("sky", synthTexture(512, 256, 5), 512, 256);           // id 4
-  reg.registerRaw("bb-a", synthTexture(128, 128, 6), 128, 128);          // id 5
-  reg.registerRaw("bb-b", synthTexture(128, 128, 7), 128, 128);          // id 6
-  return reg;
+  const tex: BenchTextures = {
+    wallDefault: reg.registerRaw("wall-default", synthTexture(128, 128, 1), 128, 128),
+    wallPillar: reg.registerRaw("wall-pillar", synthTexture(128, 128, 2), 128, 128),
+    floor: reg.registerRaw("floor", synthTexture(128, 128, 3), 128, 128),
+    ceiling: reg.registerRaw("ceiling", synthTexture(128, 128, 4), 128, 128),
+    sky: reg.registerRaw("sky", synthTexture(512, 256, 5), 512, 256),
+    bbA: reg.registerRaw("bb-a", synthTexture(128, 128, 6), 128, 128),
+    bbB: reg.registerRaw("bb-b", synthTexture(128, 128, 7), 128, 128),
+  };
+  return { reg, tex };
 }
 
 // ─── Colony-scale map ─────────────────────────────────────────────────────
@@ -84,21 +99,21 @@ function benchRegistry(): TextureRegistry {
 // (sky vs. cast ceiling), not incidental map-topology differences.
 const MAP_SIZE = 24;
 
-function benchMap(): RenderScene["map"] {
+function benchMap(wallPillarTexId: number): RenderScene["map"] {
   const w = MAP_SIZE, h = MAP_SIZE;
   const solid = new Uint8Array(w * h);
   const wallTexture = new Int16Array(w * h).fill(-1);
   const floorTexture = new Int16Array(w * h).fill(-1);
   for (let x = 0; x < w; x++) { solid[x] = 1; solid[(h - 1) * w + x] = 1; }
   for (let y = 0; y < h; y++) { solid[y * w] = 1; solid[y * w + w - 1] = 1; }
-  // A handful of interior pillars (texture id 1) — breaks up sightlines like
-  // real colony plazas/interiors without enclosing the camera's start tile.
+  // A handful of interior pillars (pillar wall texture) — breaks up sightlines
+  // like real colony plazas/interiors without enclosing the camera's start tile.
   const pillars: [number, number][] = [[6, 6], [17, 6], [6, 17], [17, 17], [11, 11], [12, 12]];
-  for (const [px, py] of pillars) { solid[py * w + px] = 1; wallTexture[py * w + px] = 1; }
+  for (const [px, py] of pillars) { solid[py * w + px] = 1; wallTexture[py * w + px] = wallPillarTexId; }
   return { width: w, height: h, solid, wallTexture, floorTexture };
 }
 
-function benchBillboards(): BillboardInput[] {
+function benchBillboards(bbATexId: number, bbBTexId: number): BillboardInput[] {
   // 8 mixed billboards (prop/npc/enemy-shaped) scattered around the map —
   // representative of a populated colony plaza, not an empty room.
   const list: BillboardInput[] = [];
@@ -107,7 +122,7 @@ function benchBillboards(): BillboardInput[] {
     list.push({
       x: 3 + (i % 4) * 5,
       y: 3 + ((i / 4) | 0) * 16,
-      texId: 5 + (i % 2),
+      texId: i % 2 === 0 ? bbATexId : bbBTexId,
       scale: 1,
       alpha256: 256,
       widthFactor: kind === 0 ? 0.4 : 1,
@@ -124,16 +139,16 @@ interface Scenario {
   fbH: number;
 }
 
-function buildScenarios(): Scenario[] {
-  const map = benchMap();
-  const billboards = benchBillboards();
+function buildScenarios(tex: BenchTextures): Scenario[] {
+  const map = benchMap(tex.wallPillar);
+  const billboards = benchBillboards(tex.bbA, tex.bbB);
 
   // Exterior: sky present -> ceiling painted by panorama sample (top-half
   // loop), only the floor gets the per-row perspective cast.
   const exterior = tinyScene({
     camX: 12, camY: 12, dirX: 1, dirY: 0, planeX: 0, planeY: 0.66,
     map, billboards,
-    art: { skyTexId: 4, wallTexId: 0, floorTexId: 2, ceilingTexId: -1 },
+    art: { skyTexId: tex.sky, wallTexId: tex.wallDefault, floorTexId: tex.floor, ceilingTexId: -1 },
     pointLights: [{ x: 12.5, y: 12.5, r: 255, g: 220, b: 180, power: 1 }],
   });
 
@@ -145,7 +160,7 @@ function buildScenarios(): Scenario[] {
   const interior = tinyScene({
     camX: 12, camY: 12, dirX: 1, dirY: 0, planeX: 0, planeY: 0.66,
     map, billboards,
-    art: { skyTexId: -1, wallTexId: 0, floorTexId: 2, ceilingTexId: 3 },
+    art: { skyTexId: -1, wallTexId: tex.wallDefault, floorTexId: tex.floor, ceilingTexId: tex.ceiling },
     baseLight: new Uint8Array(MAP_SIZE * MAP_SIZE).fill(200),
     pointLights: [
       { x: 8.5, y: 8.5, r: 255, g: 200, b: 140, power: 1.2 },
@@ -179,6 +194,12 @@ function orbit(scene: RenderScene, frame: number): void {
   scene.planeX = -scene.dirY * 0.66; scene.planeY = scene.dirX * 0.66;
 }
 
+// Heap-delta footnote: the FIRST scenario's heapΔ reads high. One-time JIT/IC
+// code-object allocations from the process's first measured bracket are
+// attributed to whichever scenario runs first (verified by reordering the
+// scenarios — the inflated delta follows position #1, not the scene content).
+// Compare like-ordered runs; treat scenario #1's heapΔ as including engine
+// warmup, not as that scenario allocating.
 function runScenario(reg: TextureRegistry, s: Scenario): void {
   const fb = new Framebuffer(s.fbW, s.fbH);
   const gc = (globalThis as { gc?: () => void }).gc;
@@ -218,8 +239,8 @@ function runScenario(reg: TextureRegistry, s: Scenario): void {
 function main(): void {
   const gcAvailable = typeof (globalThis as { gc?: () => void }).gc === "function";
   console.log(`renderBench — node ${process.version}, ${WARMUP_FRAMES}f warmup + ${MEASURED_FRAMES}f measured per scenario, gc=${gcAvailable ? "forced" : "unforced"}\n`);
-  const reg = benchRegistry();
-  for (const scenario of buildScenarios()) {
+  const { reg, tex } = benchRegistry();
+  for (const scenario of buildScenarios(tex)) {
     runScenario(reg, scenario);
   }
 }

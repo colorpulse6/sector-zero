@@ -5,7 +5,13 @@ import { type GameState, GameScreen } from "./engine/types";
 import { ALL_LEVELS, WORLD_NAMES } from "./engine/levels";
 import { PLANET_DEFS } from "./engine/planets";
 import { COLONY_FIXTURES } from "./colony/dev/seedColony";
-import { setResolutionMode, getPerfStats } from "./engine/fpRender";
+import { setResolutionMode, getPerfStats, type FpPerfStats, type ResMode } from "./engine/fpRender";
+
+const RES_MODE_TITLES: Record<ResMode, string> = {
+  full: "Force full internal resolution (480x714)",
+  half: "Force half internal resolution (240x357)",
+  auto: "Adaptive — downgrades once if p95 exceeds budget, then stays",
+};
 
 interface DevPanelProps {
   gameState: GameState | null;
@@ -17,7 +23,14 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
   const fpsRef = useRef(0);
   const frameTimesRef = useRef<number[]>([]);
   const [fps, setFps] = useState(0);
-  const [fpPerf, setFpPerf] = useState<{ p50: number; p95: number; res: string }>({ p50: 0, p95: 0, res: "full" });
+  const [fpPerf, setFpPerf] = useState<FpPerfStats>({ p50: 0, p95: 0, res: "full", mode: "auto" });
+
+  // Apply a resolution mode + refresh the readout immediately — waiting for
+  // the next 500ms poll makes the label lag the click.
+  const applyRes = (m: ResMode) => {
+    setResolutionMode(m);
+    setFpPerf(getPerfStats());
+  };
 
   // FPS counter
   useEffect(() => {
@@ -236,27 +249,20 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
           p50 {fpPerf.p50.toFixed(1)}ms / p95 {fpPerf.p95.toFixed(1)}ms — <span className="text-cyan-400">{fpPerf.res.toUpperCase()}</span>
         </div>
         <div className="grid grid-cols-3 gap-1">
-          <button
-            onClick={() => setResolutionMode("full")}
-            className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
-            title="Force full internal resolution (480x714)"
-          >
-            FULL
-          </button>
-          <button
-            onClick={() => setResolutionMode("half")}
-            className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
-            title="Force half internal resolution (240x357)"
-          >
-            HALF
-          </button>
-          <button
-            onClick={() => setResolutionMode("auto")}
-            className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
-            title="Adaptive — downgrades once if p95 exceeds budget, then stays"
-          >
-            AUTO
-          </button>
+          {(["full", "half", "auto"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => applyRes(m)}
+              className={`px-1 py-1.5 border transition-colors text-center ${
+                fpPerf.mode === m
+                  ? "border-cyan-400 bg-cyan-400/20 text-cyan-300"
+                  : "border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300"
+              }`}
+              title={RES_MODE_TITLES[m]}
+            >
+              {m.toUpperCase()}
+            </button>
+          ))}
         </div>
       </div>
 

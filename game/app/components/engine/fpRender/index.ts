@@ -19,7 +19,19 @@ const builder = new SceneBuilder();
 // (framebuffer.ts) is keyed by Framebuffer object identity, so these two
 // stable singletons each get their own lazily-created ImageData/offscreen
 // canvas entry with zero extra plumbing here.
-type ResMode = "auto" | "full" | "half";
+export type ResMode = "auto" | "full" | "half";
+export type FpResolution = "full" | "half";
+
+/** DevPanel-facing readout shape. `res` is what is actually rendering right
+ *  now; `mode` is what was selected — the two differ under AUTO, which can
+ *  read FULL before a downgrade and HALF after (that distinction is exactly
+ *  why both fields exist). */
+export interface FpPerfStats {
+  p50: number;
+  p95: number;
+  res: FpResolution;
+  mode: ResMode;
+}
 
 const RES_KEY = "szFpResolution";
 
@@ -28,7 +40,7 @@ const fbHalf = new Framebuffer(CANVAS_WIDTH / 2, GAME_AREA_HEIGHT / 2);
 let activeFb: Framebuffer = fbFull;
 
 let resMode: ResMode = "auto";
-let locked: "full" | "half" = "full";      // AUTO never switches back up mid-session
+let locked: FpResolution = "full";         // AUTO never switches back up mid-session
 let initialized = false;                   // gates the lazy localStorage read below
 
 // 120-entry rolling frame-time window (ms), preallocated and reused forever —
@@ -103,7 +115,7 @@ function maybeDowngrade(): void {
   if (frameCount < FRAME_WINDOW) return;
   if (windowP95ExceedsBudget()) {
     locked = "half";
-    persist("half");
+    persist("half");   // deliberate: downgrade persists as forced-half so the next session skips re-probing
   }
 }
 
@@ -114,15 +126,16 @@ function pickFramebuffer(): Framebuffer {
 
 /** DevPanel-facing perf readout. Allocates (Array.from + sort) — fine here,
  *  this only runs on the panel's own refresh interval, not per frame. */
-export function getPerfStats(): { p50: number; p95: number; res: string } {
+export function getPerfStats(): FpPerfStats {
   ensureInit();   // panel may poll before the first FP frame ever draws
   const n = Math.min(frameCount, FRAME_WINDOW);
-  if (n === 0) return { p50: 0, p95: 0, res: locked };
+  if (n === 0) return { p50: 0, p95: 0, res: locked, mode: resMode };
   const sorted = Array.from(frameMs.subarray(0, n)).sort((a, b) => a - b);
   return {
     p50: sorted[Math.floor(0.5 * (n - 1))],
     p95: sorted[Math.floor(0.95 * (n - 1))],
     res: locked,
+    mode: resMode,
   };
 }
 
