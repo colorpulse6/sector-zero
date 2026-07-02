@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { generateExteriorState } from "../../app/components/colony/exploration/colonyLayout";
 import { makeTestColony } from "./fixtures";
 import type { GameClock } from "../../app/components/colony/shared/colonyTypes";
+import { SPRITES } from "../../app/components/engine/sprites";
 
 const clock: GameClock = { day: 0, hour: 12, minute: 0, realtimeMsPerGameMinute: 1000, season: "standard" };
 
@@ -79,6 +80,24 @@ test("generateExteriorState: empty colony renders only frame + pad + plaza", () 
     const walls = countWallTilesInRegion(state.map.tiles, slot.x, slot.y, 4, 4);
     assert.equal(walls, 0, `empty slot at (${slot.x},${slot.y}) should have no walls`);
   }
+});
+
+test("generateExteriorState: landing pad tiles carry the landing-pad floor sprite", () => {
+  const colony = makeTestColony({ layoutSeed: 0, buildings: [] });
+  const state = generateExteriorState(colony, clock);
+  // (11,20) is inside the 4x4 pad region { x: 10, y: 19, w: 4, h: 4 }.
+  assert.equal(state.map.floorTextureMap?.[20]?.[11], SPRITES.COLONY_LANDING_PAD);
+});
+
+test("generateExteriorState: constructing building writes foundation floor sprite on its footprint", () => {
+  const colony = makeTestColony({
+    layoutSeed: 0,   // rotation=0 -> slot 0 -> NW corner anchored at (2,2), 3x3 solar_array footprint
+    buildings: [
+      { id: "b1", type: "solar_array", tier: 1, status: "constructing", buildProgressCycles: 1, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null },
+    ],
+  });
+  const state = generateExteriorState(colony, clock);
+  assert.equal(state.map.floorTextureMap?.[2]?.[2], SPRITES.COLONY_FOUNDATION);
 });
 
 // Helper

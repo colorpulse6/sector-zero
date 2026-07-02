@@ -803,6 +803,10 @@ export interface BoardingMap {
   /** Optional per-tile wall texture override (sprite path). Same dims as `tiles`.
    *  Used by the colony exterior to render per-building wall textures. */
   wallTextureMap?: (string | null)[][];
+  /** Optional per-tile floor texture override (sprite path). Same dims as `tiles`.
+   *  Used by the colony exterior/interior to render textured floors (landing pad,
+   *  foundations, per-building interiors) via the perspective floor cast. */
+  floorTextureMap?: (string | null)[][];
   /** Optional set of tile coords flagged as landing-pad / foundation, for minimap distinction. */
   landingPadTiles?: ReadonlySet<string>;
   foundationTiles?: ReadonlySet<string>;

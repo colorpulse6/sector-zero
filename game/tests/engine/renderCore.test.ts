@@ -144,6 +144,83 @@ test("golden: environment tint identity vs non-identity differ (golden 7)", () =
   assert.equal(h, "b59e0669");
 });
 
+test("golden: floor casting resolves per-tile overrides at the correct map cell (golden 3)", () => {
+  // Flat (single-color) floor textures for this probe. The quadrant-patterned
+  // textures used elsewhere in this file vary by texel (tx,ty) *within* a
+  // tile — fine for whole-hash comparisons, but this test's straddle probe
+  // lands at a camera position whose fractional Y (camY=4.5) sits exactly on
+  // this texture size's internal quadrant boundary (0.5*4 == 2.0 exactly),
+  // making the *sub-tile* texel picked floating-point-order sensitive
+  // (irrelevant noise for a test that only cares which TILE was sampled).
+  // Flat colors make every pixel in a tile identical regardless of texel,
+  // isolating the thing this test actually checks: does the override land on
+  // the correct map cell.
+  const reg = new TextureRegistry();
+  reg.registerRaw("wall-default", quadTexture(RED, GREEN, BLUE, GREY), 4, 4);        // id 0
+  const defaultFloorId = reg.registerRaw("floor-flat-default", quadTexture(BLUE, BLUE, BLUE, BLUE), 4, 4);
+  const overrideFloorId = reg.registerRaw("floor-flat-override", quadTexture(RED, RED, RED, RED), 4, 4);
+  const textured = { skyTexId: -1, wallTexId: 0, floorTexId: defaultFloorId, ceilingTexId: -1 };
+
+  const base = new Framebuffer(W, H);
+  renderScene(base, tinyScene({ art: textured }), reg);
+  const baseHash = hashFrame(base.px);
+
+  const overridden = tinyScene({ art: textured });
+  overridden.map.floorTexture[4 * 8 + 3] = overrideFloorId;   // tile (x=3,y=4)
+  const overrideFb = new Framebuffer(W, H);
+  renderScene(overrideFb, overridden, reg);
+  const overrideHash = hashFrame(overrideFb.px);
+
+  assert.notEqual(overrideHash, baseHash, "per-tile floor override must change the rendered frame");
+
+  // Straddle probe: camera at (2.5,4.5) facing +X (dirX=1,dirY=0). The CENTER
+  // screen column (x=W/2=48, cameraX=0) rides along y=4.5 (cellY=4 for the
+  // whole column) and crosses the tile-3/tile-4 world boundary (worldX=4.0)
+  // at rowDist=1.5 -> screen row y = h/2 + (h/2)/1.5 ~= 118.33 (h=142,
+  // half=71). Rows 118/119 straddle that boundary: y=118 -> cellX=4 (default
+  // floor), y=119 -> cellX=3 (the overridden tile) — derived from the exact
+  // cast formula in renderCore.ts and confirmed against the actual render.
+  const col = W >> 1;
+  const farSide = overrideFb.px[118 * W + col];   // still tile 4 (default)
+  const nearSide = overrideFb.px[119 * W + col];  // now tile 3 (override)
+  assert.notEqual(farSide, nearSide,
+    "pixels straddling the tile-3/4 boundary must differ once tile 3 is overridden");
+  assert.equal(base.px[118 * W + col], base.px[119 * W + col],
+    "without the override, both sides of the boundary render the same default floor");
+
+  if (process.env.UPDATE_GOLDENS) console.log("GOLDEN floor-boundary:", overrideHash);
+  assert.equal(overrideHash, "8099cff1");
+});
+
+test("golden: perspective ceiling cast when no sky is set (golden 4)", () => {
+  const reg = registry();
+  const scene = tinyScene({ art: { skyTexId: -1, wallTexId: 0, floorTexId: -1, ceilingTexId: 2 } });
+  const fb = new Framebuffer(W, H);
+  renderScene(fb, scene, reg);
+  const h = hashFrame(fb.px);
+
+  const gradientFb = new Framebuffer(W, H);
+  renderScene(gradientFb, tinyScene(), reg);
+  assert.notEqual(h, hashFrame(gradientFb.px),
+    "textured ceiling cast must differ from the gradient-ceiling baseline");
+
+  if (process.env.UPDATE_GOLDENS) console.log("GOLDEN ceiling-cast:", h);
+  assert.equal(h, "a5032349");
+});
+
+test("golden: sky panorama sample with the default fixture camera (deterministic angle)", () => {
+  // dirX=1, dirY=0 (tinyScene default camera) -> atan2(0,1) is exactly 0 by
+  // IEEE-754 spec, so the sky pan offset is bit-deterministic cross-platform.
+  const reg = registry();
+  const skyId = reg.registerRaw("sky", quadTexture(RED, GREEN, BLUE, GREY), 4, 4);
+  const scene = tinyScene({ art: { skyTexId: skyId, wallTexId: 0, floorTexId: -1, ceilingTexId: -1 } });
+  const fb = new Framebuffer(W, H);
+  renderScene(fb, scene, reg);
+  const h = hashFrame(fb.px);
+  if (process.env.UPDATE_GOLDENS) console.log("GOLDEN sky:", h);
+  assert.equal(h, "baea1930");
+});
+
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {

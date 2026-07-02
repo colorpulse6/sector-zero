@@ -117,6 +117,8 @@ function rebuildMapArrays(s: RenderScene, map: BoardingMap, reg: TextureRegistry
       if (t === "door") s.doorTiles[i] = 1;
       const override = map.wallTextureMap?.[y]?.[x];
       if (override) s.map.wallTexture[i] = reg.idFor(override, "tile");
+      const floorOverride = map.floorTextureMap?.[y]?.[x];
+      if (floorOverride) s.map.floorTexture[i] = reg.idFor(floorOverride, "tile");
     }
   }
 }

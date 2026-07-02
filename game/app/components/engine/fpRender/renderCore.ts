@@ -18,7 +18,7 @@ const FLOOR_TOP = 0xff2a1a1a, FLOOR_BOT = 0xff150a0a;
 const DARKEN_R = 10, DARKEN_G = 8, DARKEN_B = 12, DARKEN_F = 72;
 
 export function renderScene(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void {
-  drawEnvironment(fb, s, reg);   // Task 1: screen-space fills; Task 2: true casting
+  drawEnvironment(fb, s, reg);   // gradient/sky base + perspective floor/ceiling cast
   drawWalls(fb, s, reg);
   drawBillboards(fb, s, reg, s.billboards, true);
   drawBillboards(fb, s, reg, s.noDepthBillboards, false);
@@ -27,7 +27,12 @@ export function renderScene(fb: Framebuffer, s: RenderScene, reg: TextureRegistr
 function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void {
   const { w, h, px } = fb;
   const half = h >> 1;
-  // Ceiling / sky (top half)
+  // Ceiling / sky (top half) — painted FIRST as a base layer. Sky is a
+  // panorama sample (already correct, no perspective cast needed) and owns
+  // the whole top half when present. Otherwise the gradient is the base that
+  // the perspective ceiling cast below overwrites where a ceiling texture is
+  // set — painting it unconditionally (even when a ceiling texture exists)
+  // keeps the no-texture fallback correct without a per-pixel branch.
   if (s.art.skyTexId >= 0) {
     const sky = reg.get(s.art.skyTexId);
     // Angle-offset horizontal sample, screen-space vertical — parity with the
@@ -44,17 +49,62 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
     }
     // classic warm haze overlay rgba(28,12,10,0.18) — fold into a constant
     // multiply here ONLY if playtest shows it's missed; start without it.
-  } else if (s.art.ceilingTexId >= 0) {
-    tileFill(fb, reg, s.art.ceilingTexId, 0, half, s.tint, false);   // pattern parity
   } else {
     gradientFill(fb, 0, half, CEIL_TOP, CEIL_BOT);
   }
-  // Floor (bottom half)
-  if (s.art.floorTexId >= 0) {
-    tileFill(fb, reg, s.art.floorTexId, half, h, s.tint, true);
-  } else {
-    gradientFill(fb, half, h, FLOOR_TOP, FLOOR_BOT);
+  // Floor (bottom half) — same base-layer-first rule as the ceiling above.
+  gradientFill(fb, half, h, FLOOR_TOP, FLOOR_BOT);
+
+  // Perspective floor/ceiling cast (standard per-row technique): world-space
+  // step per screen row, incremented per pixel across the row. Ceiling reuses
+  // the same (fx,fy) walk mirrored across the horizon (rowC = h-1-y) since a
+  // camera at the floor/ceiling midpoint sees symmetric distances both ways.
+  const rd0x = s.dirX - s.planeX, rd0y = s.dirY - s.planeY;
+  const rd1x = s.dirX + s.planeX, rd1y = s.dirY + s.planeY;
+  const floorDefault = s.art.floorTexId >= 0 ? reg.get(s.art.floorTexId) : null;
+  const ceilTex = s.art.ceilingTexId >= 0 ? reg.get(s.art.ceilingTexId) : null;
+  const { width: mw, height: mh, floorTexture } = s.map;
+  for (let y = half + 1; y < h; y++) {
+    const rowDist = (h * 0.5) / (y - h * 0.5);
+    const stepX = rowDist * (rd1x - rd0x) / w;
+    const stepY = rowDist * (rd1y - rd0y) / w;
+    let fx = s.camX + rowDist * rd0x;
+    let fy = s.camY + rowDist * rd0y;
+    let fogF = (rowDist * FOG_SCALE * 256) | 0; if (fogF > FOG_MAX) fogF = FOG_MAX;
+    const rowF = y * w, rowC = (h - 1 - y) * w;
+    for (let x = 0; x < w; x++) {
+      const cellX = fx | 0, cellY = fy | 0;
+      let ftex = floorDefault;
+      if (cellX >= 0 && cellX < mw && cellY >= 0 && cellY < mh) {
+        const ov = floorTexture[cellY * mw + cellX];
+        if (ov >= 0) ftex = reg.get(ov);
+      }
+      if (ftex) {
+        const tx = ((fx - cellX) * ftex.w) | 0, ty = ((fy - cellY) * ftex.h) | 0;
+        const c = shade(ftex.texels[ty * ftex.w + tx], s.tint.rMul, s.tint.gMul, s.tint.bMul, fogF);
+        // Classic floor-darken overlay rgba(10,8,12,0.28), applied AFTER
+        // shade() — same fold Task 1's tileFill used for textured floors.
+        // Ceiling never darkens (FLOOR only, matches the classic renderer).
+        px[rowF + x] = darkenFloor(c);
+      } // else keep the gradient already painted for this row (paint gradient first)
+      if (ceilTex && s.art.skyTexId < 0) {   // sky takes precedence (Task-1 semantics)
+        const tx = ((fx - cellX) * ceilTex.w) | 0, ty = ((fy - cellY) * ceilTex.h) | 0;
+        px[rowC + x] = shade(ceilTex.texels[ty * ceilTex.w + tx], s.tint.rMul, s.tint.gMul, s.tint.bMul, fogF);
+      }
+      fx += stepX; fy += stepY;
+    }
   }
+}
+
+/** Lerp packed color c toward packed (DARKEN_R,G,B) by DARKEN_F/256 — the
+ *  classic floor-texture darken overlay (rgba(10,8,12,0.28)), folded in as a
+ *  constant multiply. FLOOR fills only, never ceiling (see callers). */
+function darkenFloor(c: number): number {
+  let r = c & 0xff, g = (c >>> 8) & 0xff, b = (c >>> 16) & 0xff;
+  r += ((DARKEN_R - r) * DARKEN_F) >> 8;
+  g += ((DARKEN_G - g) * DARKEN_F) >> 8;
+  b += ((DARKEN_B - b) * DARKEN_F) >> 8;
+  return 0xff000000 | (b << 16) | (g << 8) | r;
 }
 
 // Inline DDA raycast per column — based on the classic Wolfenstein 3D / lodev
@@ -217,32 +267,6 @@ function blend(dst: number, src: number, a256: number): number {
   const g = (((dst >>> 8) & 0xff) * inv + ((src >>> 8) & 0xff) * a256) >> 8;
   const b = (((dst >>> 16) & 0xff) * inv + ((src >>> 16) & 0xff) * a256) >> 8;
   return 0xff000000 | (b << 16) | (g << 8) | r;
-}
-
-/** Screen-space repeat fill with tint — parity with the classic canvas
- *  pattern fills. `floorDarken` folds the classic floor darken overlay rgba(10,8,12,0.28)
- *  (firstPersonRenderer.ts:732-733) in as a constant lerp — FLOOR fills only,
- *  not ceiling. Task 2's perspective floor cast inherits the same constant so
- *  the look doesn't shift between commits. */
-function tileFill(fb: Framebuffer, reg: TextureRegistry, texId: number,
-                  y0: number, y1: number, tint: RenderScene["tint"], floorDarken: boolean): void {
-  const { w, px } = fb;
-  const tex = reg.get(texId);
-  for (let y = y0; y < y1; y++) {
-    const trow = (y & tex.hMask) * tex.w;
-    const row = y * w;
-    for (let x = 0; x < w; x++) {
-      let c = shade(tex.texels[trow + (x & tex.wMask)], tint.rMul, tint.gMul, tint.bMul, 0);
-      if (floorDarken) {
-        let r = c & 0xff, g = (c >>> 8) & 0xff, b = (c >>> 16) & 0xff;
-        r += ((DARKEN_R - r) * DARKEN_F) >> 8;
-        g += ((DARKEN_G - g) * DARKEN_F) >> 8;
-        b += ((DARKEN_B - b) * DARKEN_F) >> 8;
-        c = 0xff000000 | (b << 16) | (g << 8) | r;
-      }
-      px[row + x] = c;
-    }
-  }
 }
 
 /** Per-row two-stop gradient between packed colors over rows [y0, y1). */

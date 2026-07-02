@@ -168,6 +168,10 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
     { length: OUTPOST_TEMPLATE.height },
     () => new Array(OUTPOST_TEMPLATE.width).fill(null),
   );
+  const floorTextureMap: (string | null)[][] = Array.from(
+    { length: OUTPOST_TEMPLATE.height },
+    () => new Array(OUTPOST_TEMPLATE.width).fill(null),
+  );
   fillFrame(tiles);
   writeLandingPad(tiles);
 
@@ -180,7 +184,10 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
     if (!building) continue;
     const result = writeBuildingAt(tiles, wallTextureMap, building, OUTPOST_TEMPLATE.slots[sid]);
     if (result.scaffoldingProp) scaffoldingProps.push(result.scaffoldingProp);
-    for (const cell of result.foundationCells) foundationTiles.add(`${cell.x},${cell.y}`);
+    for (const cell of result.foundationCells) {
+      foundationTiles.add(`${cell.x},${cell.y}`);
+      floorTextureMap[cell.y][cell.x] = SPRITES.COLONY_FOUNDATION;
+    }
   }
 
   const landingPadTiles = new Set<string>();
@@ -188,6 +195,7 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
   for (let y = pad.y; y < pad.y + pad.h; y++) {
     for (let x = pad.x; x < pad.x + pad.w; x++) {
       landingPadTiles.add(`${x},${y}`);
+      floorTextureMap[y][x] = SPRITES.COLONY_LANDING_PAD;
     }
   }
 
@@ -216,6 +224,7 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
     tileSize: 64,
     tiles,
     wallTextureMap,
+    floorTextureMap,
     landingPadTiles,
     foundationTiles,
   };
@@ -304,12 +313,22 @@ export function generateInteriorState(building: ColonyBuilding, seed: number): F
     scale: p.scale,
   }));
 
+  // Interior floor texture: uniform fill with the same sprite as
+  // environmentArt.floorSprite below. Per-template variety (e.g. distinct
+  // floors per building type) is future data, not new code — the map already
+  // supports per-tile overrides the day that art lands.
+  const floorTextureMap: (string | null)[][] = Array.from(
+    { length: template.height },
+    () => new Array(template.width).fill(SPRITES.EXPLORE_OUTPOST_FLOOR_METAL),
+  );
+
   return {
     map: {
       width: template.width,
       height: template.height,
       tileSize: 64,
       tiles,
+      floorTextureMap,
     },
     posX: template.spawn.x + 0.5,
     posY: template.spawn.y + 0.5,
