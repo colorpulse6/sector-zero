@@ -171,7 +171,7 @@ interface RenderScene {
 
 ### LightGrid
 
-- Recomputed once per frame (map W×H ≤ 24×24 = 576 cells): `cellLight = clamp(baseLight[i] × tint × Σ pointLightFalloff)` per RGB channel, stored as three `Int16Array`s in 0–320 fixed-point (values >256 allow modest over-brightening near lights).
+- Recomputed once per frame, sized to map dimensions (current maps: 24×24 colony = 576 cells, 27×25 Ashfall = 675 cells — trivial either way): `cellLight = clamp(baseLight[i] × tint × Σ pointLightFalloff)` per RGB channel, stored as three `Int16Array`s in 0–320 fixed-point (values >256 allow modest over-brightening near lights).
 - Point-light falloff: `power / (1 + d²)` with d in tile units — no sqrt, matches the bench.
 - Per-pixel cost in the render passes is therefore **three multiplies + shifts**, no divisions. Floor pixels sample the grid at their world tile; wall columns sample at the hit tile; billboards at their anchor tile.
 - Distance fog applied after light: `ch += ((fogCh − ch) × fogF) >> 8`, with `fogF = min(0.7, dist × 0.08)` in fixed point and fog color `rgb(5,5,16)` — **identical constants to the classic renderer**, so default scenes keep their look.
@@ -187,7 +187,7 @@ Per frame, in order, all into preallocated buffers:
 2. **Ceiling half.** Exterior (`skyTexId ≥ 0`): per-column panorama sample by ray angle (`atan2(rayDirY, rayDirX)` folded to texture U; V spans the half-height) — replaces the per-frame `createPattern`. Interior: perspective ceiling cast mirroring the floor rows, sampling `ceilingTexId`. No texture: the existing two-stop gradient colors, computed per row.
 3. **Floor half.** Standard per-row perspective cast: `rowDist = (h/2) / (y − h/2)`; world coords stepped incrementally per pixel; each pixel resolves its tile → `floorTexture[tile]` override or environment default; shade = tile light + row fog.
 4. **Walls.** Inline DDA per column over `solid`; per-tile texture via `wallTexture` (populated from the existing `wallTextureMap`); nearest-neighbor sampling with fixed-point `texPos` stepping; shade = side-shade (×0.7 on side 1 — current constant) × tile light, then fog; writes `zbuf[x] = perpDist`.
-5. **Billboards.** One flattened list (props, enemies with flinch/death frame selection preserved, NPCs, objective marker), sorted far→near into a reused scratch array; camera-space transform; per-column `zbuf` test; per-pixel alpha test (`texel >>> 24 === 0` skip); size scale preserves the current `×0.6` factor. Replaces three separate passes and their three per-frame depth-buffer allocations and clip-path rectangles.
+5. **Billboards.** One flattened list (props, enemies with flinch/death frame selection preserved, NPCs), sorted far→near into a reused scratch array; camera-space transform; per-column `zbuf` test; per-pixel alpha test (`texel >>> 24 === 0` skip); per-billboard scalar alpha (0–256) blended in the inner loop — this carries the dying-enemy fade (`deathTimer / 30`, today done via `globalAlpha`). Size scale preserves the current `×0.6` factor. Replaces three separate passes and their three per-frame depth-buffer allocations and clip-path rectangles. **Exception — objective marker:** today it deliberately draws *through* walls as a wayfinding beacon (`drawObjectiveBillboard` takes no z-buffer); that behavior is gameplay-load-bearing in W5-L3/Kepler, so it renders after the depth-tested pass with the z-test skipped, distance-scaled as before.
 6. **Present.** `putImageData` → offscreen canvas → single `drawImage` to the game canvas (integer 1× or 2× scale, smoothing off). Direct `putImageData` to the displayed canvas is avoided (measured slow path).
 7. HUD/dialog/minimap/gun/dashboard draw over the presented scene — unchanged code.
 
@@ -260,7 +260,7 @@ One PR, ~6 sequential commits, **each green (`yarn build`, `npx tsc --noEmit`, t
 |---|---|---|---|
 | 1 | Texture registry + framebuffer + full pixel pipeline at parity | walls, fog, tint, billboards, gradient/pattern-equivalent floor & ceiling; classic scene code deleted same commit | goldens 1–2, 5, 7–9; playtest all 4 surfaces |
 | 2 | Floor + ceiling casting & sky sampling | pipeline steps 2–3; colony floor data opt-in | goldens 3–4; pad/foundation visible in playtest |
-| 3 | Lighting system | light grid, point lights, day/night-as-lighting, door glow port; `ctx.filter` removed | goldens 6–7; NIGHT fixture playtest |
+| 3 | Lighting system | light grid, point lights, day/night-as-lighting, door glow port; `ctx.filter` removed; **billboards join the lighting model here — an intended visual change** (today sprites draw full-bright even at night, since `applyTint` never wrapped them; commit 1 keeps tint off billboards to preserve strict parity) | goldens 6–7; NIGHT fixture playtest |
 | 4 | Billboard unification polish | enemy frames/HP-bar overlay verified across surfaces; three legacy depth-buffer allocs gone | golden 8; Ashfall + W5-L3 combat playtest |
 | 5 | Adaptive resolution + DevPanel perf readout | AUTO/FULL/HALF, localStorage, readout | golden 10; forced-HALF playtest |
 | 6 | Delta-time movement (FP + ground + boarding) | `dtMs` plumb, clamp, self-tests | existing suites + slow-machine simulation (CPU throttle in devtools) |
