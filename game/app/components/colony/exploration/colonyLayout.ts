@@ -313,13 +313,15 @@ export function generateInteriorState(building: ColonyBuilding, seed: number): F
     scale: p.scale,
   }));
 
-  // Interior floor texture: uniform fill with the same sprite as
-  // environmentArt.floorSprite below. Per-template variety (e.g. distinct
-  // floors per building type) is future data, not new code — the map already
-  // supports per-tile overrides the day that art lands.
+  // Interior floor sprite — single source for BOTH environmentArt.floorSprite
+  // and the per-tile floorTextureMap fill below, so they can't silently
+  // diverge. Per-template variety (e.g. distinct floors per building type) is
+  // future data, not new code — the map already supports per-tile overrides
+  // the day that art lands.
+  const interiorFloorSprite = SPRITES.EXPLORE_OUTPOST_FLOOR_METAL;
   const floorTextureMap: (string | null)[][] = Array.from(
     { length: template.height },
-    () => new Array(template.width).fill(SPRITES.EXPLORE_OUTPOST_FLOOR_METAL),
+    () => new Array(template.width).fill(interiorFloorSprite),
   );
 
   return {
@@ -346,7 +348,7 @@ export function generateInteriorState(building: ColonyBuilding, seed: number): F
       // Interior: neutral lighting, no tint (Phase 2 decision)
       skySprite: SPRITES.EXPLORE_OUTPOST_SKY,
       wallSprite: SPRITES.EXPLORE_OUTPOST_WALL_INTERIOR,
-      floorSprite: SPRITES.EXPLORE_OUTPOST_FLOOR_METAL,
+      floorSprite: interiorFloorSprite,
     },
     props,
     colonyContext,

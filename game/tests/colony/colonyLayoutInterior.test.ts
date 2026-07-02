@@ -49,3 +49,22 @@ test("generateInteriorState: onLandingPadInteract returns not_on_pad", () => {
   const result = state.colonyContext!.onLandingPadInteract({ x: 2, y: 5 });
   assert.equal(result.kind, "not_on_pad");
 });
+
+test("generateInteriorState: floorTextureMap fills every floor tile with the interior floor sprite", () => {
+  for (const type of ["solar_array", "farm", "water_purifier", "habitat_module"]) {
+    const state = generateInteriorState(stubBuilding(type), 42);
+    const floorSprite = state.environmentArt?.floorSprite;
+    assert.ok(floorSprite, `${type}: environmentArt.floorSprite must be set`);
+    const { tiles, floorTextureMap } = state.map;
+    assert.ok(floorTextureMap, `${type}: interior map must carry a floorTextureMap`);
+    for (let y = 0; y < state.map.height; y++) {
+      for (let x = 0; x < state.map.width; x++) {
+        if (tiles[y][x] !== "floor") continue;
+        // Pinned to environmentArt.floorSprite (not the sprite constant): the
+        // two are single-sourced in colonyLayout.ts and must never diverge.
+        assert.equal(floorTextureMap![y][x], floorSprite,
+          `${type}: floor tile (${x},${y}) must carry the interior floor sprite`);
+      }
+    }
+  }
+});

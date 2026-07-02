@@ -62,7 +62,11 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
   const rd0x = s.dirX - s.planeX, rd0y = s.dirY - s.planeY;
   const rd1x = s.dirX + s.planeX, rd1y = s.dirY + s.planeY;
   const floorDefault = s.art.floorTexId >= 0 ? reg.get(s.art.floorTexId) : null;
-  const ceilTex = s.art.ceilingTexId >= 0 ? reg.get(s.art.ceilingTexId) : null;
+  // Sky takes precedence over a ceiling texture (Task-1 semantics) — resolved
+  // once here so the pixel loop tests a single reference.
+  const castCeil = s.art.skyTexId < 0 && s.art.ceilingTexId >= 0 ? reg.get(s.art.ceilingTexId) : null;
+  // Loop invariants hoisted out of the pixel loop (matches drawWalls' style).
+  const { rMul, gMul, bMul } = s.tint;
   const { width: mw, height: mh, floorTexture } = s.map;
   for (let y = half + 1; y < h; y++) {
     const rowDist = (h * 0.5) / (y - h * 0.5);
@@ -80,16 +84,22 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
         if (ov >= 0) ftex = reg.get(ov);
       }
       if (ftex) {
-        const tx = ((fx - cellX) * ftex.w) | 0, ty = ((fy - cellY) * ftex.h) | 0;
-        const c = shade(ftex.texels[ty * ftex.w + tx], s.tint.rMul, s.tint.gMul, s.tint.bMul, fogF);
+        // Texel reads masked like walls/billboards: `|0` truncates toward
+        // zero, so fx in (-1,0) yields a NEGATIVE fraction -> negative index
+        // -> undefined texel (silent black). Unreachable from current maps'
+        // camera positions, but masking is free and kills the latent smear.
+        const tx = (((fx - cellX) * ftex.w) | 0) & ftex.wMask;
+        const ty = (((fy - cellY) * ftex.h) | 0) & ftex.hMask;
+        const c = shade(ftex.texels[ty * ftex.w + tx], rMul, gMul, bMul, fogF);
         // Classic floor-darken overlay rgba(10,8,12,0.28), applied AFTER
         // shade() — same fold Task 1's tileFill used for textured floors.
         // Ceiling never darkens (FLOOR only, matches the classic renderer).
         px[rowF + x] = darkenFloor(c);
       } // else keep the gradient already painted for this row (paint gradient first)
-      if (ceilTex && s.art.skyTexId < 0) {   // sky takes precedence (Task-1 semantics)
-        const tx = ((fx - cellX) * ceilTex.w) | 0, ty = ((fy - cellY) * ceilTex.h) | 0;
-        px[rowC + x] = shade(ceilTex.texels[ty * ceilTex.w + tx], s.tint.rMul, s.tint.gMul, s.tint.bMul, fogF);
+      if (castCeil) {
+        const tx = (((fx - cellX) * castCeil.w) | 0) & castCeil.wMask;
+        const ty = (((fy - cellY) * castCeil.h) | 0) & castCeil.hMask;
+        px[rowC + x] = shade(castCeil.texels[ty * castCeil.w + tx], rMul, gMul, bMul, fogF);
       }
       fx += stepX; fy += stepY;
     }
