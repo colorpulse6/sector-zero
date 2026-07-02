@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "colony:test": "tsx --test tests/colony/*.test.ts"
+    "colony:test": "tsx --test tests/colony/*.test.ts",
+    "engine:test": "tsx --test tests/engine/*.test.ts"
   },
   "dependencies": {
     "next": "15.3.1",

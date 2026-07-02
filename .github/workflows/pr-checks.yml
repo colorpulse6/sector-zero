@@ -49,6 +49,13 @@ jobs:
           else
             echo "No colony tests directory — skipping."
           fi
+      - name: Engine tests (runs only if tests/engine/ exists)
+        run: |
+          if [ -d game/tests/engine ]; then
+            cd game && yarn engine:test
+          else
+            echo "No engine tests directory — skipping."
+          fi
 
   game-build:
     name: Game · Next build
