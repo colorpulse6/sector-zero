@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sector Zero — FP Graphics Pipeline Benchmark</title>
+<style>
+  body { background:#0a0a14; color:#9fe8ff; font-family:monospace; margin:16px; }
+  canvas { border:1px solid #234; image-rendering: pixelated; }
+  #results { white-space:pre; margin-top:12px; color:#ffd479; }
+  h1 { font-size:14px; }
+</style>
+</head>
+<body>
+<h1>Sector Zero — FP graphics pipeline benchmark (480&times;714 game area)</h1>
+<canvas id="cv" width="480" height="714"></canvas>
+<div id="results">warming up…</div>
+<script>
+"use strict";
+// ============================================================================
+// Benchmark: three rendering pipelines over the same synthetic colony scene.
+//   C  "current-style"  : Canvas2D immediate mode — 1px drawImage wall strips,
+//                         pattern-fill floor, gradient ceiling, fillRect fog,
+//                         drawImage billboards.  (mirrors firstPersonRenderer.ts)
+//   A  "pixel-full"     : Uint32Array framebuffer at 480x714 — textured walls,
+//                         TRUE floor+ceiling perspective casting w/ per-tile
+//                         textures, per-pixel fog+point-lights+day/night tint,
+//                         depth-tested alpha billboards, single putImageData.
+//   B  "pixel-half"     : same pipeline at 240x357, nearest-neighbor 2x upscale.
+// Scene: 24x24 map (perimeter walls + pillar clusters), camera orbiting,
+// 8 billboards, 2 point lights, global tint — pessimistic per-pixel work.
+// ============================================================================
+
+const W = 480, H = 714;            // game-area size in the real game
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const resultsEl = document.getElementById("results");
+
+// ---------------------------------------------------------------- map ------
+const MAP_W = 24, MAP_H = 24;
+const map = new Uint8Array(MAP_W * MAP_H);       // 0 floor, 1..2 wall variants
+for (let x = 0; x < MAP_W; x++) { map[x] = 1; map[(MAP_H - 1) * MAP_W + x] = 1; }
+for (let y = 0; y < MAP_H; y++) { map[y * MAP_W] = 1; map[y * MAP_W + MAP_W - 1] = 1; }
+// pillar clusters (like colony buildings) — two wall texture variants
+for (const [cx, cy] of [[6, 6], [17, 6], [6, 17], [17, 17]]) {
+  for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+    map[(cy + dy) * MAP_W + cx + dx] = ((cx + cy) & 1) ? 2 : 1;
+  }
+}
+
+// ---------------------------------------------------------- textures -------
+const TEX = 64;
+function makeTexture(kind) {
+  const t = new Uint32Array(TEX * TEX);
+  for (let y = 0; y < TEX; y++) for (let x = 0; x < TEX; x++) {
+    let r, g, b;
+    if (kind === 0) {            // wall A: rusty panels
+      const seam = (x % 16 === 0 || y % 16 === 0) ? 0.55 : 1.0;
+      const n = ((x * 7 + y * 13) % 23) / 23 * 30;
+      r = (120 + n) * seam; g = (78 + n * 0.6) * seam; b = (52 + n * 0.4) * seam;
+    } else if (kind === 1) {     // wall B: blue-grey alloy
+      const seam = ((x + 8) % 16 === 0 || (y + 8) % 16 === 0) ? 0.5 : 1.0;
+      const n = ((x * 5 + y * 11) % 17) / 17 * 24;
+      r = (58 + n * 0.5) * seam; g = (74 + n * 0.7) * seam; b = (96 + n) * seam;
+    } else if (kind === 2) {     // ground: regolith
+      const n = ((x * 3 + y * 7 + ((x * y) >> 3)) % 29) / 29;
+      r = 96 + n * 26; g = 74 + n * 20; b = 58 + n * 14;
+    } else if (kind === 3) {     // landing pad: hazard-striped plate
+      const stripe = (((x + y) >> 3) & 1) ? 1.0 : 0.62;
+      const edge = (x < 3 || y < 3 || x > TEX - 4 || y > TEX - 4) ? 0.45 : 1.0;
+      r = 190 * stripe * edge; g = 168 * stripe * edge; b = 60 * stripe * edge;
+    } else {                     // ceiling/interior plate
+      const seam = (x % 32 === 0 || y % 32 === 0) ? 0.5 : 1.0;
+      const n = ((x * 9 + y * 5) % 19) / 19 * 18;
+      r = (44 + n) * seam; g = (52 + n) * seam; b = (66 + n) * seam;
+    }
+    t[y * TEX + x] = 0xff000000 | ((b & 0xff) << 16) | ((g & 0xff) << 8) | (r & 0xff);
+  }
+  return t;
+}
+const wallTexA = makeTexture(0), wallTexB = makeTexture(1);
+const floorTexGround = makeTexture(2), floorTexPad = makeTexture(3), ceilTex = makeTexture(4);
+
+// billboard sprite: 64x64 glowing crate with transparent corners (alpha test)
+const spriteTex = new Uint32Array(TEX * TEX);
+for (let y = 0; y < TEX; y++) for (let x = 0; x < TEX; x++) {
+  const dx = x - 32, dy = y - 32;
+  if (dx * dx + dy * dy > 30 * 30) { spriteTex[y * TEX + x] = 0; continue; }  // alpha 0
+  const rim = (dx * dx + dy * dy > 24 * 24) ? 1.6 : 1.0;
+  const r = Math.min(255, 60 * rim), g = Math.min(255, 200 * rim), b = Math.min(255, 220 * rim);
+  spriteTex[y * TEX + x] = 0xff000000 | (b << 16) | (g << 8) | r;
+}
+
+// canvas-image versions of textures for the "current-style" drawImage pipeline
+function texToCanvas(t) {
+  const c = document.createElement("canvas"); c.width = TEX; c.height = TEX;
+  const id = new ImageData(new Uint8ClampedArray(t.buffer.slice(0)), TEX, TEX);
+  c.getContext("2d").putImageData(id, 0, 0);
+  return c;
+}
+const wallImgA = texToCanvas(wallTexA), wallImgB = texToCanvas(wallTexB);
+const floorImg = texToCanvas(floorTexGround), spriteImg = texToCanvas(spriteTex);
+
+// ------------------------------------------------------------ camera -------
+let camT = 0;
+function cameraAt(t) {
+  const ang = t * 0.008, r = 6;
+  const px = 12 + Math.cos(ang) * r, py = 12 + Math.sin(ang) * r;
+  const dir = ang + Math.PI * 0.75 + Math.sin(t * 0.003) * 0.5;
+  const dirX = Math.cos(dir), dirY = Math.sin(dir);
+  return { px, py, dirX, dirY, planeX: -dirY * 0.66, planeY: dirX * 0.66 };
+}
+
+// 8 billboards scattered in open space
+const sprites = [
+  [3.5, 12.5], [12.5, 3.5], [20.5, 12.5], [12.5, 20.5],
+  [9.5, 9.5], [14.5, 9.5], [9.5, 14.5], [14.5, 14.5],
+].map(([x, y]) => ({ x, y }));
+
+// 2 point lights + day/night tint (dusk-ish) — matches proposed lighting model
+const lights = [{ x: 12, y: 12, power: 3.0 }, { x: 6.5, y: 17.5, power: 2.0 }];
+const TINT_R = 250, TINT_G = 225, TINT_B = 205;   // 0..256 multipliers (dusk)
+const FOG_R = 5, FOG_G = 5, FOG_B = 16;
+
+// ================================================================
+// Pipeline A/B: per-pixel software framebuffer
+// ================================================================
+function makePixelRenderer(rw, rh) {
+  const imageData = new ImageData(rw, rh);
+  const buf32 = new Uint32Array(imageData.data.buffer);
+  const zbuf = new Float32Array(rw);
+  const horizon = rh >> 1;
+  const off = document.createElement("canvas");
+  off.width = rw; off.height = rh;
+  const offCtx = off.getContext("2d");
+  const scale = W / rw;
+
+  function render(cam) {
+    const tJs0 = performance.now();
+    const { px, py, dirX, dirY, planeX, planeY } = cam;
+
+    // ---- floor + ceiling casting (per-row perspective, per-pixel tile) ----
+    const rd0x = dirX - planeX, rd0y = dirY - planeY;
+    const rd1x = dirX + planeX, rd1y = dirY + planeY;
+    for (let y = horizon + 1; y < rh; y++) {
+      const rowDist = (rh * 0.5) / (y - rh * 0.5);
+      const stepX = rowDist * (rd1x - rd0x) / rw;
+      const stepY = rowDist * (rd1y - rd0y) / rw;
+      let fx = px + rowDist * rd0x;
+      let fy = py + rowDist * rd0y;
+      // fog factor for this row (0..256)
+      let fogF = (rowDist * 0.08 * 256) | 0; if (fogF > 179) fogF = 179;
+      const rowFloor = y * rw, rowCeil = (rh - 1 - y) * rw;
+      for (let x = 0; x < rw; x++) {
+        const cellX = fx | 0, cellY = fy | 0;
+        const tx = ((fx - cellX) * TEX) | 0, ty = ((fy - cellY) * TEX) | 0;
+        const ti = ty * TEX + tx;
+        // per-tile floor texture (landing-pad plate on a 2x2 region, ground elsewhere)
+        const ftex = (cellX >= 10 && cellX < 14 && cellY >= 18 && cellY < 22) ? floorTexPad : floorTexGround;
+        // point-light contribution (per-pixel, 2 lights)
+        let lightBoost = 0;
+        {
+          const dxa = fx - lights[0].x, dya = fy - lights[0].y;
+          lightBoost += lights[0].power * 64 / (1 + dxa * dxa + dya * dya);
+          const dxb = fx - lights[1].x, dyb = fy - lights[1].y;
+          lightBoost += lights[1].power * 64 / (1 + dxb * dxb + dyb * dyb);
+        }
+        let lr = TINT_R + lightBoost, lg = TINT_G + lightBoost, lb = TINT_B + lightBoost;
+        if (lr > 320) lr = 320; if (lg > 320) lg = 320; if (lb > 320) lb = 320;
+
+        // floor pixel
+        let c = ftex[ti];
+        let r = (((c & 0xff) * lr) >> 8), g = ((((c >>> 8) & 0xff) * lg) >> 8), b = ((((c >>> 16) & 0xff) * lb) >> 8);
+        if (r > 255) r = 255; if (g > 255) g = 255; if (b > 255) b = 255;
+        r += ((FOG_R - r) * fogF) >> 8; g += ((FOG_G - g) * fogF) >> 8; b += ((FOG_B - b) * fogF) >> 8;
+        buf32[rowFloor + x] = 0xff000000 | (b << 16) | (g << 8) | r;
+
+        // ceiling pixel (mirrored) — interior-style ceiling cast (pessimistic)
+        c = ceilTex[ti];
+        r = (((c & 0xff) * TINT_R) >> 8); g = ((((c >>> 8) & 0xff) * TINT_G) >> 8); b = ((((c >>> 16) & 0xff) * TINT_B) >> 8);
+        r += ((FOG_R - r) * fogF) >> 8; g += ((FOG_G - g) * fogF) >> 8; b += ((FOG_B - b) * fogF) >> 8;
+        buf32[rowCeil + x] = 0xff000000 | (b << 16) | (g << 8) | r;
+        fx += stepX; fy += stepY;
+      }
+    }
+
+    // ---- walls: DDA per column, textured, per-pixel shade ----
+    for (let x = 0; x < rw; x++) {
+      const cameraX = 2 * x / rw - 1;
+      const rayX = dirX + planeX * cameraX;
+      const rayY = dirY + planeY * cameraX;
+      let mapX = px | 0, mapY = py | 0;
+      const dDX = rayX === 0 ? 1e30 : Math.abs(1 / rayX);
+      const dDY = rayY === 0 ? 1e30 : Math.abs(1 / rayY);
+      let stepX, stepY, sideDistX, sideDistY;
+      if (rayX < 0) { stepX = -1; sideDistX = (px - mapX) * dDX; } else { stepX = 1; sideDistX = (mapX + 1 - px) * dDX; }
+      if (rayY < 0) { stepY = -1; sideDistY = (py - mapY) * dDY; } else { stepY = 1; sideDistY = (mapY + 1 - py) * dDY; }
+      let side = 0, tile = 0, guard = 0;
+      while (guard++ < 64) {
+        if (sideDistX < sideDistY) { sideDistX += dDX; mapX += stepX; side = 0; }
+        else { sideDistY += dDY; mapY += stepY; side = 1; }
+        tile = map[mapY * MAP_W + mapX];
+        if (tile > 0) break;
+      }
+      let dist = side === 0 ? sideDistX - dDX : sideDistY - dDY;
+      if (dist < 0.01) dist = 0.01;
+      zbuf[x] = dist;
+
+      const lineH = (rh / dist) | 0;
+      let dStart = (horizon - (lineH >> 1)) | 0; if (dStart < 0) dStart = 0;
+      let dEnd = (horizon + (lineH >> 1)) | 0; if (dEnd >= rh) dEnd = rh - 1;
+
+      let wallX = side === 0 ? py + dist * rayY : px + dist * rayX;
+      wallX -= wallX | 0;
+      let texX = (wallX * TEX) | 0;
+      if ((side === 0 && rayX > 0) || (side === 1 && rayY < 0)) texX = TEX - texX - 1;
+
+      const tex = tile === 2 ? wallTexB : wallTexA;
+      const texStep = TEX / lineH;
+      let texPos = (dStart - horizon + (lineH >> 1)) * texStep;
+
+      // column shade: side shading + fog + tint (ints 0..256)
+      const sideMul = side === 1 ? 179 : 256;                    // 0.7 ≈ current 30% darken
+      let fogF = (dist * 0.08 * 256) | 0; if (fogF > 179) fogF = 179;
+      const lr = (TINT_R * sideMul) >> 8, lg = (TINT_G * sideMul) >> 8, lb = (TINT_B * sideMul) >> 8;
+
+      for (let y = dStart; y <= dEnd; y++) {
+        const c = tex[((texPos | 0) & (TEX - 1)) * TEX + texX];
+        texPos += texStep;
+        let r = (((c & 0xff) * lr) >> 8), g = ((((c >>> 8) & 0xff) * lg) >> 8), b = ((((c >>> 16) & 0xff) * lb) >> 8);
+        r += ((FOG_R - r) * fogF) >> 8; g += ((FOG_G - g) * fogF) >> 8; b += ((FOG_B - b) * fogF) >> 8;
+        buf32[y * rw + x] = 0xff000000 | (b << 16) | (g << 8) | r;
+      }
+    }
+
+    // ---- billboards: depth-tested, alpha-tested, per-pixel ----
+    const invDet = 1 / (planeX * dirY - dirX * planeY);
+    const order = sprites.map(s => {
+      const rx = s.x - px, ry = s.y - py;
+      return { s, d: rx * rx + ry * ry };
+    }).sort((a, b) => b.d - a.d);
+    for (const { s } of order) {
+      const rx = s.x - px, ry = s.y - py;
+      const trX = invDet * (dirY * rx - dirX * ry);
+      const trY = invDet * (-planeY * rx + planeX * ry);
+      if (trY <= 0.05) continue;
+      const screenX = ((rw / 2) * (1 + trX / trY)) | 0;
+      const size = Math.abs((rh / trY) | 0) * 0.6 | 0;
+      if (size < 2) continue;
+      let sx0 = screenX - (size >> 1), sx1 = screenX + (size >> 1);
+      let sy0 = horizon - (size >> 1), sy1 = horizon + (size >> 1);
+      if (sx0 < 0) sx0 = 0; if (sx1 >= rw) sx1 = rw - 1;
+      if (sy0 < 0) sy0 = 0; if (sy1 >= rh) sy1 = rh - 1;
+      let fogF = (trY * 0.08 * 256) | 0; if (fogF > 179) fogF = 179;
+      for (let x = sx0; x <= sx1; x++) {
+        if (trY >= zbuf[x]) continue;
+        const texX = (((x - (screenX - (size >> 1))) * TEX / size) | 0) & (TEX - 1);
+        for (let y = sy0; y <= sy1; y++) {
+          const texY = (((y - (horizon - (size >> 1))) * TEX / size) | 0) & (TEX - 1);
+          const c = spriteTex[texY * TEX + texX];
+          if ((c >>> 24) === 0) continue;                        // alpha test
+          let r = (((c & 0xff) * TINT_R) >> 8), g = ((((c >>> 8) & 0xff) * TINT_G) >> 8), b = ((((c >>> 16) & 0xff) * TINT_B) >> 8);
+          r += ((FOG_R - r) * fogF) >> 8; g += ((FOG_G - g) * fogF) >> 8; b += ((FOG_B - b) * fogF) >> 8;
+          buf32[y * rw + x] = 0xff000000 | (b << 16) | (g << 8) | r;
+        }
+      }
+    }
+
+    // ---- present (always via offscreen: putImageData direct to the
+    // displayed accelerated canvas is a known slow path) ----
+    const tJs1 = performance.now();
+    offCtx.putImageData(imageData, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0, 0, rw, rh, 0, 0, W, H);
+    const tJs2 = performance.now();
+    return { js: tJs1 - tJs0, present: tJs2 - tJs1 };
+  }
+  return render;
+}
+
+// ================================================================
+// Pipeline C: current-style Canvas2D immediate mode
+// (mirrors firstPersonRenderer.ts: gradient ceiling, pattern floor,
+//  1px drawImage wall strips + side-shade/fog fillRects, drawImage sprites)
+// ================================================================
+function makeCurrentStyleRenderer() {
+  const zbuf = new Float32Array(W);
+  function render(cam) {
+    const tJs0 = performance.now();
+    const { px, py, dirX, dirY, planeX, planeY } = cam;
+    // ceiling gradient (as in renderer when no ceiling texture)
+    const grad = ctx.createLinearGradient(0, 0, 0, H / 2);
+    grad.addColorStop(0, "#0c0c1e"); grad.addColorStop(1, "#1a1a2e");
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H / 2);
+    // floor pattern (recreated per frame, as in current code)
+    const pat = ctx.createPattern(floorImg, "repeat");
+    ctx.fillStyle = pat; ctx.fillRect(0, H / 2, W, H / 2);
+
+    for (let x = 0; x < W; x++) {
+      const cameraX = 2 * x / W - 1;
+      const rayX = dirX + planeX * cameraX;
+      const rayY = dirY + planeY * cameraX;
+      let mapX = px | 0, mapY = py | 0;
+      const dDX = rayX === 0 ? 1e30 : Math.abs(1 / rayX);
+      const dDY = rayY === 0 ? 1e30 : Math.abs(1 / rayY);
+      let stepX, stepY, sideDistX, sideDistY;
+      if (rayX < 0) { stepX = -1; sideDistX = (px - mapX) * dDX; } else { stepX = 1; sideDistX = (mapX + 1 - px) * dDX; }
+      if (rayY < 0) { stepY = -1; sideDistY = (py - mapY) * dDY; } else { stepY = 1; sideDistY = (mapY + 1 - py) * dDY; }
+      let side = 0, tile = 0, guard = 0;
+      while (guard++ < 64) {
+        if (sideDistX < sideDistY) { sideDistX += dDX; mapX += stepX; side = 0; }
+        else { sideDistY += dDY; mapY += stepY; side = 1; }
+        tile = map[mapY * MAP_W + mapX];
+        if (tile > 0) break;
+      }
+      let dist = side === 0 ? sideDistX - dDX : sideDistY - dDY;
+      if (dist < 0.01) dist = 0.01;
+      zbuf[x] = dist;
+      const lineH = (H / dist) | 0;
+      const dStart = Math.max(0, (H / 2 - lineH / 2) | 0);
+      const dEnd = Math.min(H - 1, (H / 2 + lineH / 2) | 0);
+      const stripH = dEnd - dStart;
+      let wallX = side === 0 ? py + dist * rayY : px + dist * rayX;
+      wallX -= wallX | 0;
+      const texX = Math.min((wallX * TEX) | 0, TEX - 1);
+      ctx.drawImage(tile === 2 ? wallImgB : wallImgA, texX, 0, 1, TEX, x, dStart, 1, stripH);
+      if (side === 1) { ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(x, dStart, 1, stripH); }
+      const fog = Math.min(0.7, dist * 0.08);
+      if (fog > 0.05) { ctx.fillStyle = `rgba(5,5,16,${fog})`; ctx.fillRect(x, dStart, 1, stripH); }
+    }
+
+    // sprites via drawImage (no per-column clip — slightly cheaper than real renderer)
+    const invDet = 1 / (planeX * dirY - dirX * planeY);
+    const order = sprites.map(s => {
+      const rx = s.x - px, ry = s.y - py;
+      return { s, d: rx * rx + ry * ry };
+    }).sort((a, b) => b.d - a.d);
+    for (const { s } of order) {
+      const rx = s.x - px, ry = s.y - py;
+      const trX = invDet * (dirY * rx - dirX * ry);
+      const trY = invDet * (-planeY * rx + planeX * ry);
+      if (trY <= 0.05) continue;
+      const screenX = (W / 2) * (1 + trX / trY);
+      const size = Math.abs(H / trY) * 0.6;
+      if (size < 2) continue;
+      ctx.drawImage(spriteImg, screenX - size / 2, H / 2 - size / 2, size, size);
+    }
+    return { js: performance.now() - tJs0, present: 0 };
+  }
+  return render;
+}
+
+// ================================================================
+// Harness
+// ================================================================
+// Chunked synchronous execution (NOT rAF): background tabs throttle rAF to
+// ~0, so we burn ~800ms of CPU per setTimeout wake-up. Metric is CPU ms per
+// frame, which is what matters for the 60fps budget.
+const MODES = [
+  { name: "C current-style Canvas2D (480x714)", make: makeCurrentStyleRenderer },
+  { name: "A pixel framebuffer full-res (480x714)", make: () => makePixelRenderer(480, 714) },
+  { name: "B pixel framebuffer half-res (240x357 → 2x)", make: () => makePixelRenderer(240, 357) },
+];
+const WARMUP = 40, MEASURE = 300;
+const results = [];
+let modeIdx = 0, frame = 0, samples = [], jsSamples = [], presentSamples = [];
+let renderFn = MODES[0].make();
+console.log("BENCH_START chunked");
+document.title = "BENCH 0/3";
+
+function runOneFrame() {
+  camT++;
+  const cam = cameraAt(camT);
+  const r = renderFn(cam);
+  frame++;
+  if (frame > WARMUP) {
+    samples.push(r.js + r.present);
+    jsSamples.push(r.js);
+    presentSamples.push(r.present);
+  }
+}
+
+function med(arr) { const s = [...arr].sort((a, b) => a - b); return s[(s.length * 0.5) | 0]; }
+
+function finishMode() {
+  samples.sort((a, b) => a - b);
+  const avg = samples.reduce((s, v) => s + v, 0) / samples.length;
+  const res = {
+    mode: MODES[modeIdx].name,
+    vis: document.visibilityState,
+    avgMs: +avg.toFixed(2),
+    p50Ms: +samples[(samples.length * 0.5) | 0].toFixed(2),
+    p95Ms: +samples[(samples.length * 0.95) | 0].toFixed(2),
+    maxMs: +samples[samples.length - 1].toFixed(2),
+    p50JsMs: +med(jsSamples).toFixed(2),
+    p50PresentMs: +med(presentSamples).toFixed(2),
+    headroomAt60fps: ((16.67 - avg) / 16.67 * 100).toFixed(0) + "%",
+  };
+  results.push(res);
+  console.log("BENCH_PART " + JSON.stringify(res));
+  resultsEl.textContent = JSON.stringify(results, null, 2);
+  modeIdx++; frame = 0; samples = []; jsSamples = []; presentSamples = [];
+  if (modeIdx >= MODES.length) {
+    console.log("BENCH_RESULT " + JSON.stringify(results));
+    resultsEl.textContent = "DONE\n" + JSON.stringify(results, null, 2);
+    document.title = "BENCH_DONE";
+    // Hidden-tab numbers are unreliable (bg process priority / E-core
+    // scheduling). Re-run automatically once the tab actually becomes visible.
+    if (document.visibilityState !== "visible") {
+      document.title = "BENCH_DONE_HIDDEN (click me to re-run)";
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") location.reload();
+      }, { once: true });
+    }
+    return true;
+  }
+  renderFn = MODES[modeIdx].make();
+  document.title = `BENCH ${modeIdx}/3`;
+  return false;
+}
+
+function pump() {
+  const chunkStart = performance.now();
+  while (performance.now() - chunkStart < 800) {
+    runOneFrame();
+    if (frame >= WARMUP + MEASURE) {
+      if (finishMode()) return;
+    }
+  }
+  setTimeout(pump, 0);
+}
+setTimeout(pump, 50);
+</script>
+</body>
+</html>
