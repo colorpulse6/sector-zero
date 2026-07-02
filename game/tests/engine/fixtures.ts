@@ -43,6 +43,11 @@ export function tinyScene(overrides: Partial<RenderScene> = {}): RenderScene {
     art: { skyTexId: -1, wallTexId: 0, floorTexId: -1, ceilingTexId: -1 },
     billboards: [], noDepthBillboards: [],
     baseLight: null, pointLights: [],
+    // Zero-sized placeholder: renderScene() always rebuilds this via
+    // buildLightGrid(..., out) before the first pixel is drawn, and the `out`
+    // reuse check (w/h match) safely reallocates when the placeholder's 0x0
+    // doesn't match the scene's map dimensions — same pattern as emptyScene().
+    lightGrid: { r: new Int16Array(0), g: new Int16Array(0), b: new Int16Array(0), w: 0, h: 0 },
     tint: { rMul: 256, gMul: 256, bMul: 256 },
     doorTiles: null,
     ...overrides,

@@ -810,6 +810,10 @@ export interface BoardingMap {
   /** Optional set of tile coords flagged as landing-pad / foundation, for minimap distinction. */
   landingPadTiles?: ReadonlySet<string>;
   foundationTiles?: ReadonlySet<string>;
+  /** Optional per-tile baseline light level, 0–255. Same dims as `tiles`.
+   *  null/omitted tiles (map too small, or the field itself absent) read as 255
+   *  (full bright) in the light grid. */
+  lightMap?: number[][];
 }
 
 export interface BoardingState {
@@ -937,6 +941,9 @@ export interface FPEnvironmentArt {
     saturationMul: number;
     lightnessMul: number;
   };
+  /** Optional colored point lights (tile-unit position, hex color, power).
+   *  Falloff is inverse-square in tile units — see fpRender/lighting.ts. */
+  pointLights?: { x: number; y: number; color: string; power: number }[];
 }
 
 export interface FPProp {

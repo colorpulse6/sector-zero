@@ -72,6 +72,7 @@ function writeLandingPad(tiles: BoardingTileType[][]): void {
 interface BuildingWriteResult {
   scaffoldingProp: { x: number; y: number } | null;  // center of constructing footprint
   foundationCells: Array<{ x: number; y: number }>;
+  doorTile: { x: number; y: number } | null;          // operational building's door tile (night lighting)
 }
 
 function writeBuildingAt(
@@ -81,7 +82,7 @@ function writeBuildingAt(
   slot: Slot,
 ): BuildingWriteResult {
   const fp = BUILDING_FOOTPRINTS[building.type];
-  if (!fp) return { scaffoldingProp: null, foundationCells: [] };
+  if (!fp) return { scaffoldingProp: null, foundationCells: [], doorTile: null };
 
   const { w, h, doorSide } = fp;
   const x0 = slot.anchorX;
@@ -98,12 +99,13 @@ function writeBuildingAt(
     return {
       scaffoldingProp: { x: x0 + w / 2, y: y0 + h / 2 },
       foundationCells: cells,
+      doorTile: null,
     };
   }
 
   // Destroyed → rubble (no walls). Out of scope for Phase 2 visuals.
   if (building.status === "destroyed") {
-    return { scaffoldingProp: null, foundationCells: [] };
+    return { scaffoldingProp: null, foundationCells: [], doorTile: null };
   }
 
   // operational / damaged / offline → write walls with per-building texture
@@ -128,7 +130,12 @@ function writeBuildingAt(
   tiles[doorY][doorX] = "door";
   wallTextureMap[doorY][doorX] = null;  // doors don't carry a wall texture
 
-  return { scaffoldingProp: null, foundationCells: [] };
+  // Night porch light only for buildings the player can actually enter — a
+  // lit door is a "you can go in" signal, so damaged/offline buildings (whose
+  // doors are locked, see onDoorInteract below) stay dark.
+  const doorTile = building.status === "operational" ? { x: doorX, y: doorY } : null;
+
+  return { scaffoldingProp: null, foundationCells: [], doorTile };
 }
 
 // ─── Hook resolvers ────────────────────────────────────────────────────
@@ -177,6 +184,7 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
 
   const slotMap = assignSlots(colony);
   const scaffoldingProps: Array<{ x: number; y: number }> = [];
+  const operationalDoorTiles: Array<{ x: number; y: number }> = [];
   const foundationTiles = new Set<string>();
 
   for (const [bid, sid] of slotMap) {
@@ -184,9 +192,24 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
     if (!building) continue;
     const result = writeBuildingAt(tiles, wallTextureMap, building, OUTPOST_TEMPLATE.slots[sid]);
     if (result.scaffoldingProp) scaffoldingProps.push(result.scaffoldingProp);
+    if (result.doorTile) operationalDoorTiles.push(result.doorTile);
     for (const cell of result.foundationCells) {
       foundationTiles.add(`${cell.x},${cell.y}`);
       floorTextureMap[cell.y][cell.x] = SPRITES.COLONY_FOUNDATION;
+    }
+  }
+
+  // Night lighting (hour 20:00–06:00, a slightly wider window than the tint's
+  // own "night" phase so doors read as lit through dusk/evening/dawn too):
+  // warm porch light at each enterable building's door, cool light at each
+  // active construction site's scaffolding.
+  const nightLights: Array<{ x: number; y: number; color: string; power: number }> = [];
+  if (gameClock.hour >= 20 || gameClock.hour < 6) {
+    for (const d of operationalDoorTiles) {
+      nightLights.push({ x: d.x + 0.5, y: d.y + 0.5, color: "#ffb066", power: 2 });
+    }
+    for (const p of scaffoldingProps) {
+      nightLights.push({ x: p.x, y: p.y, color: "#9fd0ff", power: 1.5 });
     }
   }
 
@@ -253,6 +276,7 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
       wallSprite: SPRITES.EXPLORE_OUTPOST_WALL_EXTERIOR,
       floorSprite: SPRITES.EXPLORE_OUTPOST_GROUND,
       environmentTint: tintForHour(gameClock.hour),
+      pointLights: nightLights,
     },
     props: scaffoldingProps.map((p, i) => ({
       id: i + 1,

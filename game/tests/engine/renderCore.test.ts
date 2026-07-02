@@ -144,6 +144,62 @@ test("golden: environment tint identity vs non-identity differ (golden 7)", () =
   assert.equal(h, "b59e0669");
 });
 
+test("golden: point light brightens nearby geometry more than distant geometry (falloff, golden 6)", () => {
+  const reg = registry();
+  const base = new Framebuffer(W, H);
+  renderScene(base, tinyScene(), reg);
+
+  const lit = new Framebuffer(W, H);
+  // Mild white light near wall tile (7,4) — color/power tuned so both probe
+  // tiles stay UNclamped (headroom to the 320 cap is only 64 above the
+  // neutral 256 base; a strong light saturates every nearby tile alike and
+  // hides the falloff shape, as golden 6a below intentionally does instead).
+  const litScene = tinyScene({ pointLights: [{ x: 6.5, y: 4.5, r: 180, g: 180, b: 180, power: 0.6 }] });
+  renderScene(lit, litScene, reg);
+  const h = hashFrame(lit.px);
+  assert.notEqual(h, hashFrame(base.px), "point light must change the rendered frame");
+  if (process.env.UPDATE_GOLDENS) console.log("GOLDEN point-light:", h);
+  assert.equal(h, "c28586db");
+
+  // col 48 hits wall tile (7,4), 1 tile-unit from the light (dist²=1).
+  // col 85 hits wall tile (7,6), farther from the light (dist²=5). Both
+  // columns are side=0 (identical side-shade) hitting the same default wall
+  // texture at the same fog band, so the per-pixel delta isolates the
+  // light's falloff cleanly (verified against the actual DDA hit tiles).
+  const sum = (px: number) => (px & 0xff) + ((px >>> 8) & 0xff) + ((px >>> 16) & 0xff);
+  const row = H >> 1;
+  const nearIdx = row * W + 48, farIdx = row * W + 85;
+  const nearDelta = sum(lit.px[nearIdx]) - sum(base.px[nearIdx]);
+  const farDelta = sum(lit.px[farIdx]) - sum(base.px[farIdx]);
+  assert.ok(nearDelta > 0, "near tile must brighten");
+  assert.ok(farDelta > 0, "far tile still gains some light (not fully attenuated)");
+  assert.ok(nearDelta > farDelta, "nearer tile must brighten more than the farther tile");
+});
+
+test("golden: point light billboard shading — sampled at the anchor tile (golden 6a)", () => {
+  const reg = registry();
+  reg.registerRaw("bb-opaque", quadTexture(RED, GREEN, BLUE, GREY), 4, 4);  // id 3
+  // Billboard sitting in open floor tile (4,4) (no depth-test occluder in its way
+  // from the default camera at (2.5,4.5) dir(1,0)); strong light right on top of
+  // it saturates the grid, so the billboard must render brighter than with an
+  // identical billboard but no light — proving billboards now sample the grid
+  // (Task-1 parity drew billboards at fixed identity tint, ignoring lights).
+  const bb = { x: 4.5, y: 4.5, texId: 3, scale: 1, alpha256: 256, widthFactor: 1, vAnchor: "center" as const };
+
+  const unlit = new Framebuffer(W, H);
+  renderScene(unlit, tinyScene({ billboards: [bb] }), reg);
+
+  const lit = new Framebuffer(W, H);
+  const litScene = tinyScene({
+    billboards: [bb],
+    pointLights: [{ x: 4.5, y: 4.5, r: 255, g: 255, b: 255, power: 3 }],
+  });
+  renderScene(lit, litScene, reg);
+
+  assert.notEqual(hashFrame(lit.px), hashFrame(unlit.px),
+    "a point light at the billboard's own tile must change its rendered pixels");
+});
+
 test("golden: floor casting resolves per-tile overrides at the correct map cell (golden 3)", () => {
   // Flat (single-color) floor textures for this probe. The quadrant-patterned
   // textures used elsewhere in this file vary by texel (tx,ty) *within* a

@@ -15,3 +15,46 @@ export function hslShiftToRgbMul(t: { hueShift: number; saturationMul: number; l
 }
 
 export const IDENTITY_TINT: RgbMul = { rMul: 256, gMul: 256, bMul: 256 };
+
+/** Per-tile RGB light multipliers, 0–320 fixed point (256 = neutral). */
+export interface LightGrid { r: Int16Array; g: Int16Array; b: Int16Array; w: number; h: number }
+
+/** Point-light input shape — structurally identical to RenderScene["pointLights"]
+ *  (kept inline rather than imported to avoid a lighting.ts ↔ sceneInput.ts
+ *  module cycle; TypeScript's structural typing makes the two interchangeable). */
+export interface LightGridPointLight { x: number; y: number; r: number; g: number; b: number; power: number }
+
+/**
+ * Recomputed once per frame, sized to map dimensions. Combines a per-tile
+ * baseLight map (0–255, null = uniform 255) with the environment tint and any
+ * point lights (inverse-square falloff in tile units, no sqrt). Reuse the
+ * previous grid via `out` when dimensions match — callers own the persisted
+ * instance (SceneBuilder, via the RenderScene it reuses across frames) so this
+ * stays allocation-free at steady state.
+ */
+export function buildLightGrid(
+  w: number, h: number,
+  baseLight: Uint8Array | null,
+  lights: LightGridPointLight[],
+  tint: RgbMul,
+  out?: LightGrid,
+): LightGrid {
+  const g = out && out.w === w && out.h === h ? out
+    : { r: new Int16Array(w * h), g: new Int16Array(w * h), b: new Int16Array(w * h), w, h };
+  for (let i = 0; i < w * h; i++) {
+    const base = baseLight ? baseLight[i] : 255;                 // 0–255
+    // Math.round((base/255) * tintMul) — NOT (base*tintMul)>>8, which yields 255
+    // for the neutral case and fails the identity test / dims every golden.
+    let r = Math.round((base / 255) * tint.rMul);
+    let gg = Math.round((base / 255) * tint.gMul);
+    let b = Math.round((base / 255) * tint.bMul);
+    const cx = (i % w) + 0.5, cy = ((i / w) | 0) + 0.5;
+    for (const L of lights) {
+      const dx = cx - L.x, dy = cy - L.y;
+      const f = L.power / (1 + dx * dx + dy * dy);               // no sqrt
+      r += L.r * f; gg += L.g * f; b += L.b * f;
+    }
+    g.r[i] = r > 320 ? 320 : r; g.g[i] = gg > 320 ? 320 : gg; g.b[i] = b > 320 ? 320 : b;
+  }
+  return g;
+}

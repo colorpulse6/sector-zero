@@ -100,6 +100,49 @@ test("generateExteriorState: constructing building writes foundation floor sprit
   assert.equal(state.map.floorTextureMap?.[2]?.[2], SPRITES.COLONY_FOUNDATION);
 });
 
+test("generateExteriorState: night hours emit a warm door light for each operational building", () => {
+  const nightClock: GameClock = { day: 0, hour: 22, minute: 0, realtimeMsPerGameMinute: 1000, season: "standard" };
+  const colony = makeTestColony({
+    layoutSeed: 0,
+    buildings: [
+      { id: "b1", type: "solar_array", tier: 1, status: "operational", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null },
+    ],
+  });
+  const state = generateExteriorState(colony, nightClock);
+  const lights = state.environmentArt?.pointLights ?? [];
+  assert.ok(lights.length >= 1, "night colony must emit at least one point light");
+  assert.ok(lights.some(l => l.color === "#ffb066" && l.power === 2),
+    "operational building gets a warm power-2 door light");
+});
+
+test("generateExteriorState: day hours emit no point lights", () => {
+  const colony = makeTestColony({
+    layoutSeed: 0,
+    buildings: [
+      { id: "b1", type: "solar_array", tier: 1, status: "operational", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null },
+    ],
+  });
+  const state = generateExteriorState(colony, clock);   // module-level `clock` is hour 12
+  assert.equal((state.environmentArt?.pointLights ?? []).length, 0, "daytime colony emits no point lights");
+});
+
+test("generateExteriorState: night scaffolding gets a cool light; non-operational buildings get no door light", () => {
+  const nightClock: GameClock = { day: 0, hour: 2, minute: 0, realtimeMsPerGameMinute: 1000, season: "standard" };
+  const colony = makeTestColony({
+    layoutSeed: 0,
+    buildings: [
+      { id: "b1", type: "solar_array", tier: 1, status: "constructing", buildProgressCycles: 1, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null },
+      { id: "b2", type: "farm", tier: 1, status: "offline", buildProgressCycles: 0, hp: 100, maxHp: 100, interiorTemplateId: null, assignedNpcIds: [], districtId: null },
+    ],
+  });
+  const state = generateExteriorState(colony, nightClock);
+  const lights = state.environmentArt?.pointLights ?? [];
+  assert.ok(lights.some(l => l.color === "#9fd0ff" && l.power === 1.5),
+    "constructing building's scaffolding gets a cool power-1.5 light");
+  assert.equal(lights.filter(l => l.color === "#ffb066").length, 0,
+    "no warm door light: the only two buildings are constructing/offline, neither operational");
+});
+
 // Helper
 function countWallTilesInRegion(tiles: string[][], x: number, y: number, w: number, h: number): number {
   let count = 0;

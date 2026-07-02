@@ -160,21 +160,6 @@ function isOccluded(screenX: number, dist: number): boolean {
   return dist >= fb.zbuf[col];
 }
 
-// Ported from the classic scene loop's door-highlight block: when a
-// center-screen column's wall hit was reached through a door tile, wash the
-// frame with the same faint green glow.
-function drawDoorGlowOverlay(ctx: CanvasRenderingContext2D): void {
-  const fb = currentFrame();
-  for (let cx = CANVAS_WIDTH / 2 - 2; cx <= CANVAS_WIDTH / 2 + 2; cx++) {
-    const col = (cx * fb.w / CANVAS_WIDTH) | 0;
-    if (col >= 0 && col < fb.w && fb.colDoor[col]) {
-      ctx.fillStyle = "rgba(68, 204, 102, 0.05)";
-      ctx.fillRect(0, 0, CANVAS_WIDTH, GAME_AREA_HEIGHT);
-      break;
-    }
-  }
-}
-
 // Extracted from the classic drawEnemyBillboards: the HP bar above damaged,
 // aggro'd, alive enemies. Sprite drawing itself lives in the pixel pipeline.
 function drawEnemyHpBars(ctx: CanvasRenderingContext2D, fp: FirstPersonState): void {
@@ -443,10 +428,9 @@ export function drawFirstPerson(
   ctx.clip();
 
   // ── 3D scene (per-pixel pipeline: sky/ceiling, floor, walls, billboards) ──
+  // Door highlight is now an emissive light in the scene (sceneInput.ts),
+  // superseding the classic screen-wash overlay that used to run here.
   drawFirstPersonPixel(ctx, fp);
-
-  // ── Door highlight ──
-  drawDoorGlowOverlay(ctx);
 
   // ── Projected entity overlays ──
   drawPropLabels(ctx, fp);

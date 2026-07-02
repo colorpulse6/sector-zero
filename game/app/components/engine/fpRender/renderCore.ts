@@ -1,5 +1,6 @@
 import { Framebuffer } from "./framebuffer";
 import { TextureRegistry } from "./textures";
+import { buildLightGrid } from "./lighting";
 import type { RenderScene, BillboardInput } from "./sceneInput";
 
 const FOG_R = 5, FOG_G = 5, FOG_B = 16;          // classic rgba(5,5,16,…)
@@ -18,6 +19,12 @@ const FLOOR_TOP = 0xff2a1a1a, FLOOR_BOT = 0xff150a0a;
 const DARKEN_R = 10, DARKEN_G = 8, DARKEN_B = 12, DARKEN_F = 72;
 
 export function renderScene(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void {
+  // Light grid first (Section B/C pipeline order): reused instance lives on
+  // the RenderScene itself, which SceneBuilder persists across frames — this
+  // keeps renderScene a pure function of (fb, s, reg) with no module globals
+  // for lighting state (the billboard sort scratch below is the one existing
+  // exception, kept as-is from Task 1).
+  s.lightGrid = buildLightGrid(s.map.width, s.map.height, s.baseLight, s.pointLights, s.tint, s.lightGrid);
   drawEnvironment(fb, s, reg);   // gradient/sky base + perspective floor/ceiling cast
   drawWalls(fb, s, reg);
   drawBillboards(fb, s, reg, s.billboards, true);
@@ -66,8 +73,12 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
   // once here so the pixel loop tests a single reference.
   const castCeil = s.art.skyTexId < 0 && s.art.ceilingTexId >= 0 ? reg.get(s.art.ceilingTexId) : null;
   // Loop invariants hoisted out of the pixel loop (matches drawWalls' style).
+  // rMul/gMul/bMul double as the out-of-map-bounds lighting fallback below:
+  // with no baseLight and no point lights the grid equals the plain tint at
+  // every in-bounds cell too (see lighting.ts), so this fallback is exact.
   const { rMul, gMul, bMul } = s.tint;
   const { width: mw, height: mh, floorTexture } = s.map;
+  const grid = s.lightGrid;
   for (let y = half + 1; y < h; y++) {
     const rowDist = (h * 0.5) / (y - h * 0.5);
     const stepX = rowDist * (rd1x - rd0x) / w;
@@ -79,18 +90,25 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
     for (let x = 0; x < w; x++) {
       const cellX = fx | 0, cellY = fy | 0;
       let ftex = floorDefault;
+      let lr = rMul, lg = gMul, lb = bMul;
       if (cellX >= 0 && cellX < mw && cellY >= 0 && cellY < mh) {
-        const ov = floorTexture[cellY * mw + cellX];
+        const gi = cellY * mw + cellX;
+        const ov = floorTexture[gi];
         if (ov >= 0) ftex = reg.get(ov);
+        lr = grid.r[gi]; lg = grid.g[gi]; lb = grid.b[gi];
       }
       if (ftex) {
         // Texel reads masked like walls/billboards: `|0` truncates toward
         // zero, so fx in (-1,0) yields a NEGATIVE fraction -> negative index
-        // -> undefined texel (silent black). Unreachable from current maps'
-        // camera positions, but masking is free and kills the latent smear.
+        // -> undefined texel (silent black). These reads DO occur every frame
+        // — measured: walls draw over the resulting black pixels at typical
+        // camera positions, but the OOB slow path (negative-index property
+        // lookup + V8 deopt) still runs and costs ~20%/frame before masking,
+        // plus transient GC garbage from the deopt. Masking is free and kills
+        // both the visible smear and the cost.
         const tx = (((fx - cellX) * ftex.w) | 0) & ftex.wMask;
         const ty = (((fy - cellY) * ftex.h) | 0) & ftex.hMask;
-        const c = shade(ftex.texels[ty * ftex.w + tx], rMul, gMul, bMul, fogF);
+        const c = shade(ftex.texels[ty * ftex.w + tx], lr, lg, lb, fogF);
         // Classic floor-darken overlay rgba(10,8,12,0.28), applied AFTER
         // shade() — same fold Task 1's tileFill used for textured floors.
         // Ceiling never darkens (FLOOR only, matches the classic renderer).
@@ -99,7 +117,7 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
       if (castCeil) {
         const tx = (((fx - cellX) * castCeil.w) | 0) & castCeil.wMask;
         const ty = (((fy - cellY) * castCeil.h) | 0) & castCeil.hMask;
-        px[rowC + x] = shade(castCeil.texels[ty * castCeil.w + tx], rMul, gMul, bMul, fogF);
+        px[rowC + x] = shade(castCeil.texels[ty * castCeil.w + tx], lr, lg, lb, fogF);
       }
       fx += stepX; fy += stepY;
     }
@@ -120,9 +138,10 @@ function darkenFloor(c: number): number {
 // Inline DDA raycast per column — based on the classic Wolfenstein 3D / lodev
 // raycasting tutorial (attribution carried over from the deleted raycaster.ts).
 function drawWalls(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void {
-  const { w, h, px, zbuf, colDoor, colTop, colBot } = fb;
+  const { w, h, px, zbuf } = fb;
   const { width: mw, solid, wallTexture } = s.map;
   const defaultTex = reg.get(s.art.wallTexId);
+  const grid = s.lightGrid;
   const half = h >> 1;
 
   for (let x = 0; x < w; x++) {
@@ -148,20 +167,11 @@ function drawWalls(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void 
     let dist = side === 0 ? sideDistX - dDX : sideDistY - dDY;
     if (dist < 0.01) dist = 0.01;
     zbuf[x] = hit ? dist : 1e30;
-    // Door glow metadata: doors are WALKABLE (never DDA hits), so the classic
-    // glow (firstPersonRenderer.ts:813-826) checks the tile the ray stepped
-    // THROUGH in front of the hit wall — record that stepped-back tile:
-    if (s.doorTiles && hit) {
-      const backX = side === 0 ? mapX - stepX : mapX;
-      const backY = side === 1 ? mapY - stepY : mapY;
-      colDoor[x] = s.doorTiles[backY * mw + backX] ?? 0;
-    } else colDoor[x] = 0;
-    if (!hit) { colTop[x] = half; colBot[x] = half; continue; }
+    if (!hit) continue;
 
     const lineH = (h / dist) | 0;
     let dStart = half - (lineH >> 1); if (dStart < 0) dStart = 0;
     let dEnd = half + (lineH >> 1); if (dEnd > h - 1) dEnd = h - 1;
-    colTop[x] = dStart; colBot[x] = dEnd;
 
     let wallX = side === 0 ? s.camY + dist * rayY : s.camX + dist * rayX;
     wallX -= wallX | 0;
@@ -177,7 +187,11 @@ function drawWalls(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void 
     let texPos = (dStart - half + (lineH >> 1)) * texStep;
     let fogF = (dist * FOG_SCALE * 256) | 0; if (fogF > FOG_MAX) fogF = FOG_MAX;
     const sideMul = side === 1 ? SIDE_MUL : 256;
-    const lr = (s.tint.rMul * sideMul) >> 8, lg = (s.tint.gMul * sideMul) >> 8, lb = (s.tint.bMul * sideMul) >> 8;
+    // Grid sampled at the hit tile, folded with the existing side-shade —
+    // when the grid is neutral (no baseLight/lights) this is byte-identical
+    // to the old `s.tint.*Mul * sideMul` math (grid[i] === tint.*Mul then).
+    const gi = mapY * mw + mapX;
+    const lr = (grid.r[gi] * sideMul) >> 8, lg = (grid.g[gi] * sideMul) >> 8, lb = (grid.b[gi] * sideMul) >> 8;
 
     for (let y = dStart; y <= dEnd; y++) {
       const c = tex.texels[(((texPos | 0) & tex.hMask) * tex.w) + texX];
@@ -219,6 +233,8 @@ function drawBillboards(fb: Framebuffer, s: RenderScene, reg: TextureRegistry,
   }
 
   const { w, h, px, zbuf } = fb;
+  const { width: mw, height: mh } = s.map;
+  const grid = s.lightGrid;
   const invDet = 1 / (s.planeX * s.dirY - s.dirX * s.planeY);
   const half = h >> 1;
   for (let bi = 0; bi < n; bi++) {
@@ -243,6 +259,16 @@ function drawBillboards(fb: Framebuffer, s: RenderScene, reg: TextureRegistry,
     const cy0 = Math.max(0, sy0), cy1 = Math.min(h - 1, sy1);
     let fogF = (trY * FOG_SCALE * 256) | 0; if (fogF > FOG_MAX) fogF = FOG_MAX;
     const a = b.alpha256;
+    // Billboards join the lighting model (Task 3, spec-recorded intentional
+    // change — today's classic renderer draws sprites full-bright regardless
+    // of day/night or point lights; this pipeline lights them like the
+    // environment). Sampled once per billboard at its anchor tile, clamped
+    // into map bounds as a defensive fallback for off-map billboard data.
+    let btx = b.x | 0, bty = b.y | 0;
+    if (btx < 0) btx = 0; else if (btx >= mw) btx = mw - 1;
+    if (bty < 0) bty = 0; else if (bty >= mh) bty = mh - 1;
+    const bgi = bty * mw + btx;
+    const br = grid.r[bgi], bg = grid.g[bgi], bb = grid.b[bgi];
     for (let x = cx0; x <= cx1; x++) {
       if (depthTest && trY >= zbuf[x]) continue;
       const texX = (((x - sx0) * tex.w / bw) | 0) & tex.wMask;
@@ -250,10 +276,7 @@ function drawBillboards(fb: Framebuffer, s: RenderScene, reg: TextureRegistry,
         const texY = (((y - sy0) * tex.h / size) | 0) & tex.hMask;
         const c = tex.texels[texY * tex.w + texX];
         if (c >>> 24 === 0) continue;                       // alpha test
-        // Task 1 parity: billboards draw with IDENTITY tint (classic applyTint
-        // never wrapped sprites). Billboards join the lighting model in Task 3
-        // (spec-recorded change) — until then, only fog applies here.
-        const shaded = shade(c, 256, 256, 256, fogF);
+        const shaded = shade(c, br, bg, bb, fogF);
         px[y * w + x] = a >= 256 ? shaded : blend(px[y * w + x], shaded, a);
       }
     }

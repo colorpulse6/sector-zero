@@ -1,7 +1,7 @@
-import type { FirstPersonState, BoardingMap } from "../types";
+import type { FirstPersonState, BoardingMap, FPEnvironmentArt } from "../types";
 import { SPRITES } from "../sprites";
 import { TextureRegistry } from "./textures";
-import { hslShiftToRgbMul, IDENTITY_TINT, type RgbMul } from "./lighting";
+import { hslShiftToRgbMul, IDENTITY_TINT, type RgbMul, type LightGrid } from "./lighting";
 
 export interface BillboardInput {
   x: number; y: number;
@@ -30,10 +30,11 @@ export interface RenderScene {
   art: { skyTexId: number; wallTexId: number; floorTexId: number; ceilingTexId: number };
   billboards: BillboardInput[];
   noDepthBillboards: BillboardInput[];
-  baseLight: Uint8Array | null;             // Task 3
+  baseLight: Uint8Array | null;             // per-tile 0–255, from map.lightMap
   pointLights: { x: number; y: number; r: number; g: number; b: number; power: number }[];
+  lightGrid: LightGrid;                     // reused per-tile RGB multiplier grid
   tint: RgbMul;
-  doorTiles: Uint8Array | null;             // 1 = door tile (column glow metadata)
+  doorTiles: Uint8Array | null;             // 1 = door tile (facing-door emissive light)
 }
 
 // Moved verbatim from firstPersonRenderer.ts (deleted there).
@@ -48,6 +49,15 @@ export const NPC_SPRITE_MAP: Record<string, string> = {
 export class SceneBuilder {
   private scene: RenderScene | null = null;
   private lastMap: BoardingMap | null = null;
+  // Point-light reuse: reparse hex colors only when the source array's
+  // identity changes (mirrors the map-identity invalidation key above).
+  // `s.pointLights` holds the parsed static lights in [0, staticLightCount),
+  // followed each frame by the reused door-emissive-light object when facing
+  // a door — trimmed back to staticLightCount first so the array never grows.
+  private lastPointLightsInput: FPEnvironmentArt["pointLights"] | undefined = undefined;
+  private staticLightCount = 0;
+  private readonly doorLight = { x: 0, y: 0, r: 255, g: 255, b: 255, power: 0.8 };
+  private readonly faceScratch = { x: 0, y: 0 };   // reused out-param for facingTile()
 
   /** Last built scene — overlays (HP bars, tags, labels) project through it. */
   get lastBuilt(): RenderScene | null { return this.scene; }
@@ -70,6 +80,35 @@ export class SceneBuilder {
     s.art.floorTexId = reg.idFor(art?.floorSprite, "tile");
     s.art.ceilingTexId = reg.idFor(art?.ceilingSprite, "tile");
     s.tint = art?.environmentTint ? hslShiftToRgbMul(art.environmentTint) : IDENTITY_TINT;
+
+    const inputLights = art?.pointLights;
+    if (inputLights !== this.lastPointLightsInput) {
+      this.lastPointLightsInput = inputLights;
+      s.pointLights.length = 0;
+      for (const L of inputLights ?? []) {
+        const [r, g, b] = hexToRgb(L.color);
+        s.pointLights.push({ x: L.x, y: L.y, r, g, b, power: L.power });
+      }
+      this.staticLightCount = s.pointLights.length;
+    } else {
+      s.pointLights.length = this.staticLightCount;   // drop last frame's door light, if any
+    }
+    // Door emissive glow: small white light at the facing tile's center when
+    // that tile is a door — ported trigger from the deleted classic overlay
+    // (drawDoorGlowOverlay), now expressed as a light instead of a screen wash.
+    // Facing uses the same dominant-axis rule as the engine's colony-interact
+    // block (firstPersonEngine.ts) — duplicated here on purpose: this module
+    // must not import the engine (render core stays engine-free).
+    if (s.doorTiles) {
+      facingTile(s.camX, s.camY, s.dirX, s.dirY, this.faceScratch);   // writes into faceScratch — no per-frame allocation
+      const fx = this.faceScratch.x, fy = this.faceScratch.y;
+      if (fx >= 0 && fx < s.map.width && fy >= 0 && fy < s.map.height
+        && s.doorTiles[fy * s.map.width + fx]) {
+        this.doorLight.x = fx + 0.5;
+        this.doorLight.y = fy + 0.5;
+        s.pointLights.push(this.doorLight);
+      }
+    }
 
     s.billboards.length = 0;
     s.noDepthBillboards.length = 0;
@@ -96,10 +135,26 @@ export class SceneBuilder {
     // render over everything, satisfying the spec's through-wall exception).
     // noDepthBillboards stays as the generic no-z-test mechanism (golden 8b
     // exercises it via fixtures); nothing populates it yet.
-    // Task 3 fills these; identity until then:
-    s.baseLight = null; s.pointLights.length = 0;
     return s;
   }
+}
+
+/** Mirrors the dominant-axis facing rule in firstPersonEngine.ts's colony
+ *  interact block (`Math.abs(fp.dirX) >= Math.abs(fp.dirY) ? ...`). Duplicated
+ *  intentionally — sceneInput must stay engine-import-free. Writes into `out`
+ *  (caller-owned scratch) rather than returning a fresh object, since this
+ *  runs unconditionally every frame from build() and must stay allocation-free
+ *  at steady state (unlike the engine's copy, gated behind an interact press). */
+function facingTile(camX: number, camY: number, dirX: number, dirY: number, out: { x: number; y: number }): void {
+  const dominant = Math.abs(dirX) >= Math.abs(dirY);
+  out.x = Math.floor(camX) + (dominant ? Math.sign(dirX) : 0);
+  out.y = Math.floor(camY) + (dominant ? 0 : Math.sign(dirY));
+}
+
+/** "#RRGGBB" → [r,g,b] 0–255. Point-light colors only; no shorthand/alpha. */
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
 function rebuildMapArrays(s: RenderScene, map: BoardingMap, reg: TextureRegistry): void {
@@ -109,6 +164,7 @@ function rebuildMapArrays(s: RenderScene, map: BoardingMap, reg: TextureRegistry
   s.map.wallTexture = new Int16Array(width * height).fill(-1);
   s.map.floorTexture = new Int16Array(width * height).fill(-1);
   s.doorTiles = new Uint8Array(width * height);
+  s.baseLight = map.lightMap ? new Uint8Array(width * height) : null;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const t = map.tiles[y][x];
@@ -119,6 +175,7 @@ function rebuildMapArrays(s: RenderScene, map: BoardingMap, reg: TextureRegistry
       if (override) s.map.wallTexture[i] = reg.idFor(override, "tile");
       const floorOverride = map.floorTextureMap?.[y]?.[x];
       if (floorOverride) s.map.floorTexture[i] = reg.idFor(floorOverride, "tile");
+      if (s.baseLight) s.baseLight[i] = map.lightMap?.[y]?.[x] ?? 255;
     }
   }
 }
@@ -135,6 +192,7 @@ function emptyScene(): RenderScene {
     art: { skyTexId: -1, wallTexId: -1, floorTexId: -1, ceilingTexId: -1 },
     billboards: [], noDepthBillboards: [],
     baseLight: null, pointLights: [],
+    lightGrid: { r: new Int16Array(0), g: new Int16Array(0), b: new Int16Array(0), w: 0, h: 0 },
     tint: IDENTITY_TINT,
     doorTiles: null,
   };

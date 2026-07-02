@@ -16,6 +16,6 @@ export function drawFirstPersonPixel(ctx: CanvasRenderingContext2D, fp: FirstPer
   presentFramebuffer(fb, ctx, CANVAS_WIDTH, GAME_AREA_HEIGHT);
 }
 
-export function currentFrame(): Framebuffer { return fb; }        // overlays read zbuf/colDoor
+export function currentFrame(): Framebuffer { return fb; }        // overlays read zbuf (occlusion)
 export function currentScene() { return builder.lastBuilt; }      // overlays project via
 export { projectBillboard };
