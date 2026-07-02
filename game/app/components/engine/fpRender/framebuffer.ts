@@ -39,6 +39,10 @@ export function presentFramebuffer(
     presentCache.set(fb, entry);
   }
   entry.offCtx.putImageData(entry.imageData, 0, 0);
+  // Scope the nearest-neighbor flag to this blit — leaking false into the ctx
+  // would turn later overlay draws (e.g. the upscaled gun sprite) blocky.
+  const prevSmoothing = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(entry.off, 0, 0, fb.w, fb.h, 0, 0, targetW, targetH);
+  ctx.imageSmoothingEnabled = prevSmoothing;
 }

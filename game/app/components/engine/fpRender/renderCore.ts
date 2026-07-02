@@ -57,6 +57,8 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
   }
 }
 
+// Inline DDA raycast per column — based on the classic Wolfenstein 3D / lodev
+// raycasting tutorial (attribution carried over from the deleted raycaster.ts).
 function drawWalls(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void {
   const { w, h, px, zbuf, colDoor, colTop, colBot } = fb;
   const { width: mw, solid, wallTexture } = s.map;

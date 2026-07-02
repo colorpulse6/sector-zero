@@ -23,7 +23,7 @@ export interface RenderScene {
   dirX: number; dirY: number; planeX: number; planeY: number;
   map: {
     width: number; height: number;
-    solid: Uint8Array;          // 1 = wall|empty (raycaster.isWall semantics)
+    solid: Uint8Array;          // 1 = wall|empty (classic isWall semantics)
     wallTexture: Int16Array;    // texture id per tile, -1 = art.wallTexId
     floorTexture: Int16Array;   // Task 2; -1 = art.floorTexId
   };
