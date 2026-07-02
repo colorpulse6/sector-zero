@@ -797,9 +797,12 @@ for (let y = half + 1; y < h; y++) {
     }
     if (ftex) {
       const tx = ((fx - cellX) * ftex.w) | 0, ty = ((fy - cellY) * ftex.h) | 0;
+      // REMEMBER: fold the classic floor-darken here too — lerp toward packed
+      // (10,8,12) by 72/256 AFTER shade(), exactly as Step 1.8's tileFill does.
+      // Dropping it brightens floors between commits 1→2 (no golden pins it).
       px[rowF + x] = shade(ftex.texels[ty * ftex.w + tx], s.tint.rMul, s.tint.gMul, s.tint.bMul, fogF);
     } // else keep the gradient already painted for this row (paint gradient first)
-    if (ceilTex) {
+    if (ceilTex && s.art.skyTexId < 0) {   // sky takes precedence (Task-1 semantics)
       const tx = ((fx - cellX) * ceilTex.w) | 0, ty = ((fy - cellY) * ceilTex.h) | 0;
       px[rowC + x] = shade(ceilTex.texels[ty * ceilTex.w + tx], s.tint.rMul, s.tint.gMul, s.tint.bMul, fogF);
     }
@@ -859,7 +862,7 @@ test("neutral grid is 256 (hour-12 identity)", () => {
   const g = buildLightGrid(2, 2, null, [], { rMul: 256, gMul: 256, bMul: 256 });
   assert.equal(g.r[0], 256); assert.equal(g.g[0], 256); assert.equal(g.b[0], 256);
 });
-test("baseLight scales and tint multiplies", () => { /* baseLight 128 → half; night tint composes */ });
+test("baseLight scales and tint multiplies", () => { /* baseLight 128 → Math.round((128/255)*256) = 129 (NOT 128 — don't "fix" the impl to match a wrong literal); night tint composes */ });
 ```
 
 - [ ] **Step 3.2: Implement `LightGrid`**
