@@ -15,8 +15,11 @@ const BILLBOARD_MAX = 256;
 // sprites.ts's loadSprite() only populates its cache in the onload handler —
 // an onerror (404, etc.) never enters the cache, so getSprite() returns null
 // forever for that path and is indistinguishable here from "still loading".
-// Stop retrying after this many frames (~10s at 60fps) so a single bad path
-// can't force a per-frame scan for the rest of the session.
+// After this many frames (~10s at 60fps), refresh() decimates the entry's
+// polling to every 60th frame: bounded cost for a permanently-bad path,
+// while a legitimately slow load (a first-visit connection pushing
+// preloadAll's tail images past the window) is still recovered by a later
+// poll instead of being dropped for the session.
 const RETRY_LIMIT_FRAMES = 600;
 
 /** Class fallback colors — keep visual continuity with the classic
@@ -57,28 +60,30 @@ export class TextureRegistry {
   /** Called once per frame (cheap): decode any images that finished loading.
    *  Compacts `pending` IN PLACE instead of `Array.prototype.filter` (which
    *  allocates a fresh array on every call regardless of whether anything was
-   *  removed) — with nothing to resolve or retire this is a no-alloc scan.
-   *  Entries that never resolve (see RETRY_LIMIT_FRAMES above) are dropped
-   *  after the cap so one bad path can't force a per-frame scan forever. */
+   *  removed) — with nothing to resolve this is a no-alloc scan. Entries that
+   *  outlast RETRY_LIMIT_FRAMES are never dropped, only polled at 1/60 rate —
+   *  see the constant's comment for the recovery rationale. */
   refresh(): void {
     if (this.pending.length === 0) return;
     let write = 0;
-    let shrunk = false;
     for (let read = 0; read < this.pending.length; read++) {
       const entry = this.pending[read];
+      entry.framesWaited++;
+      // Decimated polling past the cap: skip the lookup on 59 of every 60
+      // frames so a path that will never resolve costs one Map probe per
+      // second instead of sixty, yet still decodes if it eventually lands.
+      if (entry.framesWaited >= RETRY_LIMIT_FRAMES && entry.framesWaited % 60 !== 0) {
+        this.pending[write++] = entry;
+        continue;
+      }
       const img = getSprite(entry.path);
       if (img) {
         this.textures[entry.id] = decode(img, entry.path, entry.kind);
-        shrunk = true;
         continue;                                  // resolved — drop from pending
-      }
-      if (++entry.framesWaited >= RETRY_LIMIT_FRAMES) {
-        shrunk = true;
-        continue;                                  // gave up — drop; fallback texture stands
       }
       this.pending[write++] = entry;                // still pending — keep
     }
-    if (shrunk) this.pending.length = write;
+    this.pending.length = write;                    // no-op when nothing resolved
   }
 
   private fallbackTexture(kind: TexKind): Texture {

@@ -4,6 +4,7 @@ import { Framebuffer } from "../../app/components/engine/fpRender/framebuffer";
 import { TextureRegistry } from "../../app/components/engine/fpRender/textures";
 import { renderScene } from "../../app/components/engine/fpRender/renderCore";
 import { SceneBuilder, NPC_SPRITE_MAP } from "../../app/components/engine/fpRender/sceneInput";
+import { hslShiftToRgbMul, IDENTITY_TINT } from "../../app/components/engine/fpRender/lighting";
 import { SPRITES } from "../../app/components/engine/sprites";
 import type {
   BoardingMap,
@@ -451,9 +452,55 @@ test("SceneBuilder: door emissive appended when facing a door, trimmed when not;
   assert.equal(s.pointLights.length, 0, "trimmed: no door light while not facing a door (static count 0 preserved)");
 
   const sharedLights = [{ x: 3.5, y: 2.5, color: "#ffaa44", power: 1.2 }];
-  builder.build({ ...fp, environmentArt: { pointLights: sharedLights } }, reg);
+  builder.build({ ...fp, environmentArt: { pointLights: sharedLights } }, reg);   // fp faces the door again
   const staticLight = s.pointLights[0];
+  // Channel order pinned exactly — an R/B swap inside hexToRgb must fail here.
+  assert.deepEqual({ r: staticLight.r, g: staticLight.g, b: staticLight.b }, { r: 255, g: 170, b: 68 },
+    "#ffaa44 parses to r 0xff, g 0xaa, b 0x44");
   builder.build({ ...fp, environmentArt: { pointLights: sharedLights } }, reg);   // same array reference
+  assert.equal(s.pointLights.length, 2, "static prefix (1) + door emissive re-appended after the trim");
   assert.equal(s.pointLights[0], staticLight,
     "static light object identity is preserved (not reparsed) when the source array is unchanged");
+  const rebuiltDoor = s.pointLights[1];
+  assert.deepEqual({ x: rebuiltDoor.x, y: rebuiltDoor.y, power: rebuiltDoor.power }, { x: 2.5, y: 1.5, power: 0.8 },
+    "door emissive stays LAST — the trim must not be skipped when the static count is nonzero");
+});
+
+test("SceneBuilder caches the tint conversion by environmentTint object identity", () => {
+  const reg = new TextureRegistry();
+  const builder = new SceneBuilder();
+  const fp = makeFp(makeMap());
+
+  const duskTint = { hueShift: 20, saturationMul: 1.05, lightnessMul: 0.85 };
+  const s = builder.build({ ...fp, environmentArt: { environmentTint: duskTint } }, reg);
+  assert.deepEqual(s.tint, hslShiftToRgbMul(duskTint), "converted multipliers match the pure conversion");
+  const cached = s.tint;
+
+  builder.build({ ...fp, environmentArt: { environmentTint: duskTint } }, reg);   // SAME tint object
+  assert.equal(s.tint, cached, "same tint object identity → cache hit (same RgbMul reference, no reconvert)");
+
+  const nightTint = { hueShift: -20, saturationMul: 0.7, lightnessMul: 0.55 };
+  builder.build({ ...fp, environmentArt: { environmentTint: nightTint } }, reg);  // NEW object, new values
+  assert.notDeepEqual(s.tint, hslShiftToRgbMul(duskTint), "new tint object → recomputed, not served stale");
+  assert.deepEqual(s.tint, hslShiftToRgbMul(nightTint));
+
+  builder.build(fp, reg);                              // environmentArt removed entirely
+  assert.equal(s.tint, IDENTITY_TINT, "tint removed → identity constant");
+});
+
+test("SceneBuilder clamps out-of-range lightMap values when flattening baseLight", () => {
+  const reg = new TextureRegistry();
+  const builder = new SceneBuilder();
+  const map = makeMap();
+  map.lightMap = [
+    [255, 255, 255, 255],
+    [255, 256, -5, 255],
+    [255, 140, 255, 255],
+    [255, 255, 255, 255],
+  ];
+  const s = builder.build(makeFp(map), reg);
+  assert.ok(s.baseLight, "authored lightMap → baseLight flattened");
+  assert.equal(s.baseLight![1 * 4 + 1], 255, "256 clamps to 255 (raw Uint8Array write would wrap it to 0 = full dark)");
+  assert.equal(s.baseLight![1 * 4 + 2], 0, "negative clamps to 0");
+  assert.equal(s.baseLight![2 * 4 + 1], 140, "in-range value passes through untouched");
 });

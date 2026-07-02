@@ -56,7 +56,7 @@ export class SceneBuilder {
   // a door — trimmed back to staticLightCount first so the array never grows.
   private lastPointLightsInput: FPEnvironmentArt["pointLights"] | undefined = undefined;
   private staticLightCount = 0;
-  private readonly doorLight = { x: 0, y: 0, r: 255, g: 255, b: 255, power: 0.8 };
+  private readonly doorLight: LightGridPointLight = { x: 0, y: 0, r: 255, g: 255, b: 255, power: 0.8 };
   private readonly faceScratch = { x: 0, y: 0 };   // reused out-param for facingTile()
   // Tint reuse: recompute the RGB multiplier only when the source tint
   // object's identity changes (mirrors the map/point-light invalidation keys
