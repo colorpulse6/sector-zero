@@ -12,6 +12,12 @@ export interface Texture {
 const TILE_SIZE = 128;
 const SKY_W = 512, SKY_H = 256;
 const BILLBOARD_MAX = 256;
+// sprites.ts's loadSprite() only populates its cache in the onload handler —
+// an onerror (404, etc.) never enters the cache, so getSprite() returns null
+// forever for that path and is indistinguishable here from "still loading".
+// Stop retrying after this many frames (~10s at 60fps) so a single bad path
+// can't force a per-frame scan for the rest of the session.
+const RETRY_LIMIT_FRAMES = 600;
 
 /** Class fallback colors — keep visual continuity with the classic
  *  WALL_COLORS record while an image loads / if it 404s. */
@@ -24,7 +30,7 @@ const FALLBACK: Record<TexKind, number> = {
 export class TextureRegistry {
   private byPath = new Map<string, number>();
   private textures: Texture[] = [];
-  private pending: { id: number; path: string; kind: TexKind }[] = [];
+  private pending: { id: number; path: string; kind: TexKind; framesWaited: number }[] = [];
 
   /** Node tests: register texels directly. Dimensions must be powers of two. */
   registerRaw(path: string, texels: Uint32Array, w: number, h: number): number {
@@ -42,21 +48,37 @@ export class TextureRegistry {
     const id = this.textures.length;
     this.byPath.set(path, id);
     this.textures.push(this.fallbackTexture(kind));
-    this.pending.push({ id, path, kind });
+    this.pending.push({ id, path, kind, framesWaited: 0 });
     return id;
   }
 
   get(id: number): Texture { return this.textures[id]; }
 
-  /** Called once per frame (cheap): decode any images that finished loading. */
+  /** Called once per frame (cheap): decode any images that finished loading.
+   *  Compacts `pending` IN PLACE instead of `Array.prototype.filter` (which
+   *  allocates a fresh array on every call regardless of whether anything was
+   *  removed) — with nothing to resolve or retire this is a no-alloc scan.
+   *  Entries that never resolve (see RETRY_LIMIT_FRAMES above) are dropped
+   *  after the cap so one bad path can't force a per-frame scan forever. */
   refresh(): void {
     if (this.pending.length === 0) return;
-    this.pending = this.pending.filter(({ id, path, kind }) => {
-      const img = getSprite(path);
-      if (!img) return true;                       // still loading — keep pending
-      this.textures[id] = decode(img, path, kind);
-      return false;
-    });
+    let write = 0;
+    let shrunk = false;
+    for (let read = 0; read < this.pending.length; read++) {
+      const entry = this.pending[read];
+      const img = getSprite(entry.path);
+      if (img) {
+        this.textures[entry.id] = decode(img, entry.path, entry.kind);
+        shrunk = true;
+        continue;                                  // resolved — drop from pending
+      }
+      if (++entry.framesWaited >= RETRY_LIMIT_FRAMES) {
+        shrunk = true;
+        continue;                                  // gave up — drop; fallback texture stands
+      }
+      this.pending[write++] = entry;                // still pending — keep
+    }
+    if (shrunk) this.pending.length = write;
   }
 
   private fallbackTexture(kind: TexKind): Texture {

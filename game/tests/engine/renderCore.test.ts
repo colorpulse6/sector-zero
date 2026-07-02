@@ -132,6 +132,35 @@ test("golden: zero-alpha texels leave the environment visible (golden 8c)", () =
   assert.equal(h, "1ac0f55a");
 });
 
+test("golden: overlapping billboards composite near-over-far; translucent near blends over the far texel (golden 9)", () => {
+  const reg = registry();
+  reg.registerRaw("bb-far-red", quadTexture(RED, RED, RED, RED), 4, 4);            // id 3, opaque texel
+  reg.registerRaw("bb-near-green", quadTexture(GREEN, GREEN, GREEN, GREEN), 4, 4); // id 4, opaque texel, translucent billboard
+
+  // far: depth 4 (world x=6.5), near: depth 2 (world x=4.5) — both open floor,
+  // clear of the (5,3) pillar (golden 6's comment confirms this camera's
+  // center-column ray reaches x=7 without hitting it). Screen rects: far ->
+  // x[41,61] y[61,81]; near -> x[27,68] y[50,91] — near fully contains far, so
+  // every far pixel sits in the overlap region.
+  const far = { x: 6.5, y: 4.7, texId: 3, scale: 1, alpha256: 256, widthFactor: 1, vAnchor: "center" as const };
+  const near = { x: 4.5, y: 4.5, texId: 4, scale: 1, alpha256: 128, widthFactor: 1, vAnchor: "center" as const };
+
+  const farOnly = new Framebuffer(W, H);
+  renderScene(farOnly, tinyScene({ billboards: [far] }), reg);
+  const both = new Framebuffer(W, H);
+  renderScene(both, tinyScene({ billboards: [far, near] }), reg);  // order irrelevant — core sorts far→near
+
+  const probe = (H >> 1) * W + 51;   // center of far's rect
+  const farR = farOnly.px[probe] & 0xff, farG = (farOnly.px[probe] >>> 8) & 0xff;
+  const bothR = both.px[probe] & 0xff, bothG = (both.px[probe] >>> 8) & 0xff;
+  assert.ok(bothG > farG, "near's green contributes in the overlap region (blend() ran, wasn't skipped)");
+  assert.ok(bothR > 0 && bothR < farR, "far's red is diluted, not fully replaced (a real blend, not an opaque overwrite)");
+
+  const h = hashFrame(both.px);
+  if (process.env.UPDATE_GOLDENS) console.log("GOLDEN overlap:", h);
+  assert.equal(h, "f9c6da67");
+});
+
 test("golden: environment tint identity vs non-identity differ (golden 7)", () => {
   const reg = registry();
   const identity = new Framebuffer(W, H);
@@ -405,4 +434,26 @@ test("SceneBuilder flattens billboards with the ported classic rules", () => {
   assert.equal(stranger.texId, reg.idFor(SPRITES.NPC_SURVIVOR, "billboard"), "unknown NPC falls back to survivor");
   assert.equal(voss.widthFactor, 0.4, "NPC portrait ratio");
   assert.equal(voss.vAnchor, "npc");
+});
+
+test("SceneBuilder: door emissive appended when facing a door, trimmed when not; static lights are reference-stable across rebuilds", () => {
+  const reg = new TextureRegistry();
+  const builder = new SceneBuilder();
+  const map = makeMap();
+  const fp = makeFp(map);                              // dirX:1,dirY:0 → facing tile (2,1), the door
+
+  const s = builder.build(fp, reg);
+  assert.equal(s.pointLights.length, 1, "facing a door appends its emissive light");
+  const doorLight = s.pointLights[s.pointLights.length - 1];
+  assert.deepEqual({ x: doorLight.x, y: doorLight.y, power: doorLight.power }, { x: 2.5, y: 1.5, power: 0.8 });
+
+  builder.build({ ...fp, dirX: -1, dirY: 0 }, reg);     // facing tile (0,1) → wall, not the door
+  assert.equal(s.pointLights.length, 0, "trimmed: no door light while not facing a door (static count 0 preserved)");
+
+  const sharedLights = [{ x: 3.5, y: 2.5, color: "#ffaa44", power: 1.2 }];
+  builder.build({ ...fp, environmentArt: { pointLights: sharedLights } }, reg);
+  const staticLight = s.pointLights[0];
+  builder.build({ ...fp, environmentArt: { pointLights: sharedLights } }, reg);   // same array reference
+  assert.equal(s.pointLights[0], staticLight,
+    "static light object identity is preserved (not reparsed) when the source array is unchanged");
 });

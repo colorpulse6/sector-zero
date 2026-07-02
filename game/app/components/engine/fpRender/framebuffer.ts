@@ -1,8 +1,4 @@
-/** Pixel + depth target for the FP scene. DOM-free except presentFramebuffer.
- *  Door-glow column metadata (colDoor/colTop/colBot) lived here through Task
- *  2; Task 3 supersedes the screen-wash door glow with an emissive light in
- *  the lighting grid (see sceneInput.ts) and removes the now-readerless
- *  fields — colTop/colBot never had a reader even before that. */
+/** Pixel + depth target for the FP scene. DOM-free except presentFramebuffer. */
 export class Framebuffer {
   readonly w: number;
   readonly h: number;

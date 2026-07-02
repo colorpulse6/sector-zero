@@ -19,9 +19,11 @@ export const IDENTITY_TINT: RgbMul = { rMul: 256, gMul: 256, bMul: 256 };
 /** Per-tile RGB light multipliers, 0–320 fixed point (256 = neutral). */
 export interface LightGrid { r: Int16Array; g: Int16Array; b: Int16Array; w: number; h: number }
 
-/** Point-light input shape — structurally identical to RenderScene["pointLights"]
- *  (kept inline rather than imported to avoid a lighting.ts ↔ sceneInput.ts
- *  module cycle; TypeScript's structural typing makes the two interchangeable). */
+/** Parsed point-light shape (RGB already split out of the authored hex color).
+ *  Canonical owner of this shape — sceneInput.ts imports it for RenderScene
+ *  rather than redeclaring it inline (sceneInput already imports from this
+ *  module for RgbMul/LightGrid, so importing one more type adds no new edge
+ *  and cannot create a cycle: lighting.ts never imports from sceneInput.ts). */
 export interface LightGridPointLight { x: number; y: number; r: number; g: number; b: number; power: number }
 
 /**

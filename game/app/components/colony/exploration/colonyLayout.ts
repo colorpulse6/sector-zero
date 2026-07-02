@@ -200,7 +200,8 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
   }
 
   // Night lighting (hour 20:00–06:00, a slightly wider window than the tint's
-  // own "night" phase so doors read as lit through dusk/evening/dawn too):
+  // own "night" phase so doors read as lit through evening/dawn too — dusk
+  // (17:00–20:00) ends right as this window starts, so it's not included):
   // warm porch light at each enterable building's door, cool light at each
   // active construction site's scaffolding.
   const nightLights: Array<{ x: number; y: number; color: string; power: number }> = [];

@@ -1,7 +1,7 @@
 import type { FirstPersonState, BoardingMap, FPEnvironmentArt } from "../types";
 import { SPRITES } from "../sprites";
 import { TextureRegistry } from "./textures";
-import { hslShiftToRgbMul, IDENTITY_TINT, type RgbMul, type LightGrid } from "./lighting";
+import { hslShiftToRgbMul, IDENTITY_TINT, type RgbMul, type LightGrid, type LightGridPointLight } from "./lighting";
 
 export interface BillboardInput {
   x: number; y: number;
@@ -31,7 +31,7 @@ export interface RenderScene {
   billboards: BillboardInput[];
   noDepthBillboards: BillboardInput[];
   baseLight: Uint8Array | null;             // per-tile 0–255, from map.lightMap
-  pointLights: { x: number; y: number; r: number; g: number; b: number; power: number }[];
+  pointLights: LightGridPointLight[];
   lightGrid: LightGrid;                     // reused per-tile RGB multiplier grid
   tint: RgbMul;
   doorTiles: Uint8Array | null;             // 1 = door tile (facing-door emissive light)
@@ -58,6 +58,13 @@ export class SceneBuilder {
   private staticLightCount = 0;
   private readonly doorLight = { x: 0, y: 0, r: 255, g: 255, b: 255, power: 0.8 };
   private readonly faceScratch = { x: 0, y: 0 };   // reused out-param for facingTile()
+  // Tint reuse: recompute the RGB multiplier only when the source tint
+  // object's identity changes (mirrors the map/point-light invalidation keys
+  // above) — colonyLayout hands the same environmentTint object across every
+  // frame of a scene layer (rebuilt only on scene transitions, not per
+  // frame), so this keeps the common case allocation-free.
+  private lastTintInput: FPEnvironmentArt["environmentTint"] | undefined = undefined;
+  private cachedTint: RgbMul = IDENTITY_TINT;
 
   /** Last built scene — overlays (HP bars, tags, labels) project through it. */
   get lastBuilt(): RenderScene | null { return this.scene; }
@@ -79,7 +86,12 @@ export class SceneBuilder {
     s.art.wallTexId = reg.idFor(art?.wallSprite ?? SPRITES.BOARDING_TILES, "tile");
     s.art.floorTexId = reg.idFor(art?.floorSprite, "tile");
     s.art.ceilingTexId = reg.idFor(art?.ceilingSprite, "tile");
-    s.tint = art?.environmentTint ? hslShiftToRgbMul(art.environmentTint) : IDENTITY_TINT;
+    const inputTint = art?.environmentTint;
+    if (inputTint !== this.lastTintInput) {
+      this.lastTintInput = inputTint;
+      this.cachedTint = inputTint ? hslShiftToRgbMul(inputTint) : IDENTITY_TINT;
+    }
+    s.tint = this.cachedTint;
 
     const inputLights = art?.pointLights;
     if (inputLights !== this.lastPointLightsInput) {
@@ -175,7 +187,14 @@ function rebuildMapArrays(s: RenderScene, map: BoardingMap, reg: TextureRegistry
       if (override) s.map.wallTexture[i] = reg.idFor(override, "tile");
       const floorOverride = map.floorTextureMap?.[y]?.[x];
       if (floorOverride) s.map.floorTexture[i] = reg.idFor(floorOverride, "tile");
-      if (s.baseLight) s.baseLight[i] = map.lightMap?.[y]?.[x] ?? 255;
+      // Clamp into [0,255]: an out-of-range authored value (e.g. 256) would
+      // otherwise wrap via Uint8Array's ToUint8 truncation (256 -> 0, i.e.
+      // full dark instead of full bright) — clamp before the typed-array
+      // write so bad data degrades to "clipped bright/dark", not inverted.
+      if (s.baseLight) {
+        const raw = map.lightMap?.[y]?.[x] ?? 255;
+        s.baseLight[i] = raw < 0 ? 0 : raw > 255 ? 255 : raw;
+      }
     }
   }
 }

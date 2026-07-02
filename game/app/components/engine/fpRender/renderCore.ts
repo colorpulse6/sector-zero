@@ -21,9 +21,10 @@ const DARKEN_R = 10, DARKEN_G = 8, DARKEN_B = 12, DARKEN_F = 72;
 export function renderScene(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void {
   // Light grid first (Section B/C pipeline order): reused instance lives on
   // the RenderScene itself, which SceneBuilder persists across frames — this
-  // keeps renderScene a pure function of (fb, s, reg) with no module globals
-  // for lighting state (the billboard sort scratch below is the one existing
-  // exception, kept as-is from Task 1).
+  // keeps renderScene free of hidden module state (it writes its arguments
+  // directly — fb's pixels/zbuf and s.lightGrid — rather than stashing
+  // lighting state at module scope; the billboard sort scratch below is the
+  // one existing module-level exception, kept as-is from Task 1).
   s.lightGrid = buildLightGrid(s.map.width, s.map.height, s.baseLight, s.pointLights, s.tint, s.lightGrid);
   drawEnvironment(fb, s, reg);   // gradient/sky base + perspective floor/ceiling cast
   drawWalls(fb, s, reg);
