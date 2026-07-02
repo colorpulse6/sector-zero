@@ -6,11 +6,13 @@ import { renderScene } from "../../app/components/engine/fpRender/renderCore";
 import { SceneBuilder, NPC_SPRITE_MAP } from "../../app/components/engine/fpRender/sceneInput";
 import { hslShiftToRgbMul, IDENTITY_TINT } from "../../app/components/engine/fpRender/lighting";
 import { SPRITES } from "../../app/components/engine/sprites";
-import type {
-  BoardingMap,
-  BoardingTileType,
-  FirstPersonState,
-  FPEnemy,
+import {
+  CANVAS_WIDTH,
+  GAME_AREA_HEIGHT,
+  type BoardingMap,
+  type BoardingTileType,
+  type FirstPersonState,
+  type FPEnemy,
 } from "../../app/components/engine/types";
 import { hashFrame, quadTexture, tinyScene, RED, GREEN, BLUE, GREY } from "./fixtures";
 
@@ -305,6 +307,26 @@ test("golden: sky panorama sample with the default fixture camera (deterministic
   const h = hashFrame(fb.px);
   if (process.env.UPDATE_GOLDENS) console.log("GOLDEN sky:", h);
   assert.equal(h, "baea1930");
+});
+
+test("golden: half-resolution framebuffer (240x357 — exact half of the real canvas, golden 10)", () => {
+  // 357 = GAME_AREA_HEIGHT/2 is odd. Every other test in this file renders at
+  // W=96,H=142 (both even) — this is the first to exercise an odd height, so
+  // it's the real proof that the `h >> 1` horizon math (gradientFill's base
+  // layer, drawWalls'/drawBillboards' clamped dStart/dEnd) tolerates a
+  // truncated half, not just an assumption carried over from full-res.
+  const fb = new Framebuffer(CANVAS_WIDTH / 2, GAME_AREA_HEIGHT / 2);
+  const reg = registry();
+  const scene = tinyScene();
+  renderScene(fb, scene, reg);
+  for (let i = 0; i < fb.px.length; i++) {
+    assert.equal(fb.px[i] >>> 24, 0xff, `pixel ${i} not opaque`);
+  }
+  const h1 = hashFrame(fb.px);
+  renderScene(fb, scene, reg);
+  assert.equal(hashFrame(fb.px), h1, "same scene twice must be identical");
+  if (process.env.UPDATE_GOLDENS) console.log("GOLDEN half-res:", h1);
+  assert.equal(h1, "53ed8cf8");
 });
 
 function mulberry32(seed: number): () => number {

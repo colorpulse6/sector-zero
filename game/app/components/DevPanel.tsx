@@ -5,6 +5,7 @@ import { type GameState, GameScreen } from "./engine/types";
 import { ALL_LEVELS, WORLD_NAMES } from "./engine/levels";
 import { PLANET_DEFS } from "./engine/planets";
 import { COLONY_FIXTURES } from "./colony/dev/seedColony";
+import { setResolutionMode, getPerfStats } from "./engine/fpRender";
 
 interface DevPanelProps {
   gameState: GameState | null;
@@ -16,6 +17,7 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
   const fpsRef = useRef(0);
   const frameTimesRef = useRef<number[]>([]);
   const [fps, setFps] = useState(0);
+  const [fpPerf, setFpPerf] = useState<{ p50: number; p95: number; res: string }>({ p50: 0, p95: 0, res: "full" });
 
   // FPS counter
   useEffect(() => {
@@ -41,6 +43,15 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
       clearInterval(interval);
     };
   }, []);
+
+  // FP RENDER perf readout — polled only while the panel is open (Task 5).
+  useEffect(() => {
+    if (!open) return;
+    const tick = () => setFpPerf(getPerfStats());
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [open]);
 
   // Backtick toggle
   useEffect(() => {
@@ -215,6 +226,37 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
               {fx.label.replace("SEED ", "")}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* FP Render — Task 5 adaptive internal resolution perf readout */}
+      <div className="space-y-1">
+        <div className="text-cyan-500 border-b border-cyan-900 pb-1">FP RENDER</div>
+        <div className="text-cyan-600">
+          p50 {fpPerf.p50.toFixed(1)}ms / p95 {fpPerf.p95.toFixed(1)}ms — <span className="text-cyan-400">{fpPerf.res.toUpperCase()}</span>
+        </div>
+        <div className="grid grid-cols-3 gap-1">
+          <button
+            onClick={() => setResolutionMode("full")}
+            className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
+            title="Force full internal resolution (480x714)"
+          >
+            FULL
+          </button>
+          <button
+            onClick={() => setResolutionMode("half")}
+            className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
+            title="Force half internal resolution (240x357)"
+          >
+            HALF
+          </button>
+          <button
+            onClick={() => setResolutionMode("auto")}
+            className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
+            title="Adaptive — downgrades once if p95 exceeds budget, then stays"
+          >
+            AUTO
+          </button>
         </div>
       </div>
 
