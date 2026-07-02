@@ -102,7 +102,12 @@ export function tinyScene(overrides: Partial<RenderScene> = {}): RenderScene {
   return {
     camX: 2.5, camY: 4.5, dirX: 1, dirY: 0, planeX: 0, planeY: 0.66,
     map: { width: w, height: h, solid, wallTexture, floorTexture },
-    art: { skyTexId: -1, wallTexId: 0, floorTexId: 2, ceilingTexId: -1 },
+    // floorTexId: -1 → GRADIENT floor. Deliberate: Task 2 replaces textured
+    // floors (screen-space fill → perspective cast) which would change any
+    // Task-1 golden that contains one. Gradient floors render identically
+    // across Tasks 1→2 (paint-gradient-first rule), so Task-1 goldens survive.
+    // Textured floors appear only in Task-2+ floor-specific goldens.
+    art: { skyTexId: -1, wallTexId: 0, floorTexId: -1, ceilingTexId: -1 },
     billboards: [], noDepthBillboards: [],
     baseLight: null, pointLights: [],
     tint: { rMul: 256, gMul: 256, bMul: 256 },
@@ -211,6 +216,8 @@ export function presentFramebuffer(
 - [ ] **Step 1.5: Implement `textures.ts`**
 
 Responsibilities: stable integer ids per sprite path; normalized decode from the already-cached `HTMLImageElement`s in `sprites.ts`; fallback texels until an image loads; re-decode once when it does; the `BOARDING_TILES` 3-frame atlas slices its middle third at decode time; `registerRaw` for node tests.
+
+**Deliberate deviation from spec Section A:** the spec says `preloadAll()` feeds the registry; this design pulls lazily via `refresh()` + `getSprite` instead — equivalent behavior (registry is populated as images land), fewer touchpoints, and `sprites.ts` needs no modification in this task. Don't "fix" it back.
 
 ```typescript
 import { getSprite, SPRITES } from "../sprites";
@@ -584,6 +591,9 @@ function drawWalls(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void 
     const texOverride = wallTexture[mapY * mw + mapX];
     const tex = texOverride >= 0 ? reg.get(texOverride) : defaultTex;
     let texX = (wallX * tex.w) | 0;
+    // Standard mirror-fix (lodev): classic renderer OMITS this, so two wall
+    // faces render mirrored today. Keeping the fix is an intended deviation —
+    // expect those faces to un-mirror in the playtest; don't chase it as a bug.
     if ((side === 0 && rayX > 0) || (side === 1 && rayY < 0)) texX = tex.w - texX - 1;
 
     const texStep = tex.h / lineH;
@@ -612,7 +622,7 @@ function drawBillboards(fb: Framebuffer, s: RenderScene, reg: TextureRegistry,
     const rx = b.x - s.camX, ry = b.y - s.camY;
     const trX = invDet * (s.dirY * rx - s.dirX * ry);
     const trY = invDet * (-s.planeY * rx + s.planeX * ry);
-    if (trY <= 0.05) continue;
+    if (trY <= 0.1) continue;                  // classic near-plane cull (parity)
     if (b.texId < 0) continue;                 // guard: unresolved sprite
     const screenX = ((w / 2) * (1 + trX / trY)) | 0;
     let size = ((Math.abs(h / trY) * BILLBOARD_SCALE * b.scale) | 0);
@@ -671,7 +681,7 @@ export function projectBillboard(s: RenderScene, wx: number, wy: number, fbW: nu
   const invDet = 1 / (s.planeX * s.dirY - s.dirX * s.planeY);
   const rx = wx - s.camX, ry = wy - s.camY;
   const trY = invDet * (-s.planeY * rx + s.planeX * ry);
-  if (trY <= 0.05) return null;
+  if (trY <= 0.1) return null;                 // match the billboard cull plane
   const trX = invDet * (s.dirY * rx - s.dirX * ry);
   return { screenX: (fbW / 2) * (1 + trX / trY), size: Math.abs(fbH / trY) * BILLBOARD_SCALE, dist: trY };
 }
@@ -715,12 +725,12 @@ drawDoorGlowOverlay(ctx);   // reads currentFrame().colDoor/colTop/colBot — po
                             // classic glow colors/alpha verbatim from lines 813-826
 ```
 
-Then: **delete** `drawEnemyBillboards`, `drawPropBillboards`, `drawNPCBillboards` (sprite drawing now in core) — but first extract from them: (a) the enemy HP-bar drawing, NPC name/type tag drawing, **and prop `label` text drawing** (`firstPersonRenderer.ts:381-387` — Ashfall props like "CAMP RIG" depend on it) into new overlay functions `drawEnemyHpBars(ctx)` / `drawNPCTags(ctx)` / `drawPropLabels(ctx)` that iterate entities, call `projectBillboard(...)`, skip if `null` or `dist >= currentFrame().zbuf[screenX|0]` (occluded), and draw the same rects/text at the projected screen position; (b) the enemy frame-selection conditional and `NPC_SPRITE_MAP` (moved to `sceneInput.ts` in Step 1.7). Also delete `createDepthBuffer`, `WALL_COLORS` (fallbacks now live in the registry), the module color constants that moved into `renderCore.ts`, and the `applyTint`/`ctx.filter` calls around scene passes (billboards keep identity tint in this commit anyway; full lighting comes in Task 3 — **note:** classic applied the HSL filter to walls/floor/ceiling, and the new pipeline applies the converted RGB tint there, so colony day/night keeps working through this commit).
+Then: **delete** `drawEnemyBillboards`, `drawPropBillboards`, `drawNPCBillboards` (sprite drawing now in core) — but first extract from them: (a) the enemy HP-bar drawing, NPC name/type tag drawing, **and prop `label` text drawing** (`firstPersonRenderer.ts:381-387` — Ashfall props like "CAMP RIG" depend on it) into new overlay functions `drawEnemyHpBars(ctx)` / `drawNPCTags(ctx)` / `drawPropLabels(ctx)` that iterate entities, call `projectBillboard(...)`, and draw the same rects/text at the projected screen position. **Overlay projection convention (matters once Task 5 adds half-res):** always project at canvas dimensions — `projectBillboard(scene, x, y, CANVAS_WIDTH, GAME_AREA_HEIGHT)` — and scale the z-buffer index by the framebuffer ratio: `occluded = dist >= currentFrame().zbuf[(screenX * currentFrame().w / CANVAS_WIDTH) | 0]`. Projecting at fb dims would draw tags in the top-left quadrant at half-res; indexing zbuf at canvas coords would read past 240 → `undefined` → tags draw through walls; (b) the enemy frame-selection conditional and `NPC_SPRITE_MAP` (moved to `sceneInput.ts` in Step 1.7). Also delete `createDepthBuffer`, `WALL_COLORS` (fallbacks now live in the registry), the module color constants that moved into `renderCore.ts`, and the `applyTint`/`ctx.filter` calls around scene passes (billboards keep identity tint in this commit anyway; full lighting comes in Task 3 — **note:** classic applied the HSL filter to walls/floor/ceiling, and the new pipeline applies the converted RGB tint there, so colony day/night keeps working through this commit).
 `drawObjectiveBillboard`, `drawGunHUD`, `drawMiniMap`, `drawCrosshair`, `drawCompass`, `drawDialogBox`, dashboard call: **unchanged**.
 
 - [ ] **Step 1.11: Record goldens, add remaining Task-1 tests**
 
-Run `UPDATE_GOLDENS=1 yarn engine:test`, paste printed hashes over the `REPLACE_ME_*` placeholders. Add to `renderCore.test.ts`: per-tile wall override changes the hash (golden 2); **fog monotonicity** — probe one wall column near vs one far, assert the far column's mid-strip pixel is closer to packed fog `(5,5,16)` per channel (golden 5, spec-required); billboard occluded by nearer wall leaves wall pixels intact vs no-depth billboard overwrites them (golden 8, two hashes); tint identity vs non-identity hashes differ (golden 7); randomized-camera property test (100 random open-cell cameras → no exception, all pixels opaque).
+Run `UPDATE_GOLDENS=1 yarn engine:test`, paste printed hashes over the `REPLACE_ME_*` placeholders. Add to `renderCore.test.ts`: per-tile wall override changes the hash (golden 2); **fog monotonicity** — probe one wall column near vs one far, assert the far column's mid-strip pixel is closer to packed fog `(5,5,16)` per channel (golden 5, spec-required); billboard occluded by nearer wall leaves wall pixels intact vs no-depth billboard overwrites them (golden 8, two hashes); **alpha-hole transparency** — a billboard texture with zero-alpha corners (like the registry billboard fallback shape) leaves the environment visible through the holes (golden 8c; the opaque fixtures never exercise the alpha test otherwise); tint identity vs non-identity hashes differ (golden 7); randomized-camera property test (100 random open-cell cameras → no exception, all pixels opaque); **SceneBuilder reuse** — `build()` twice with the same map returns the same `RenderScene` instance and the same typed-array instances (`assert.equal` on references), and a new map object triggers rebuilt arrays.
 
 - [ ] **Step 1.12: Verify everything**
 
@@ -756,7 +766,7 @@ Golden-frame + property tests under yarn engine:test; CI step added."
 
 - [ ] **Step 2.1: Write failing golden — floor tile boundaries**
 
-Scene: floor texture id 2 default, `floorTexture[4*8+3] = 1` (one overridden tile in front of the camera). Assert: hash changes when the override is present vs absent, and the boundary column where tile 3→4 crosses mid-screen matches the map (probe: sample two pixels straddling the boundary row/col and assert they differ). Also golden 4: `ceilingTexId >= 0` with `skyTexId = -1` produces a perspective-cast ceiling hash distinct from the Task-1 screen-space fill (record new hash).
+Scene: `tinyScene({ art: { ...defaults, floorTexId: 2 } })` plus `floorTexture[4*8+3] = 1` (one overridden tile in front of the camera). Assert: hash changes when the override is present vs absent, and the boundary column where tile 3→4 crosses mid-screen matches the map (probe: sample two pixels straddling the boundary row/col and assert they differ). Also golden 4: `ceilingTexId >= 0` with `skyTexId = -1` produces a perspective-cast ceiling hash (record new hash). **Task-1 goldens are untouched by this task** — they all use gradient floors (`floorTexId: -1`, identical pixels before/after casting); if any Task-1 hash changes here, that's a real regression, not an expected re-record.
 
 Run: `yarn engine:test` → new tests FAIL (env fills are still screen-space).
 
@@ -868,7 +878,11 @@ export function buildLightGrid(
     : { r: new Int16Array(w * h), g: new Int16Array(w * h), b: new Int16Array(w * h), w, h };
   for (let i = 0; i < w * h; i++) {
     const base = baseLight ? baseLight[i] : 255;                 // 0–255
-    let r = (base * tint.rMul) >> 8, gg = (base * tint.gMul) >> 8, b = (base * tint.bMul) >> 8;
+    // Math.round((base/255) * tintMul) — NOT (base*tintMul)>>8, which yields 255
+    // for the neutral case and fails the identity test / dims every golden.
+    let r = Math.round((base / 255) * tint.rMul);
+    let gg = Math.round((base / 255) * tint.gMul);
+    let b = Math.round((base / 255) * tint.bMul);
     const cx = (i % w) + 0.5, cy = ((i / w) | 0) + 0.5;
     for (const L of lights) {
       const dx = cx - L.x, dy = cy - L.y;
@@ -947,7 +961,7 @@ export function drawFirstPersonPixel(ctx: CanvasRenderingContext2D, fp: FirstPer
 }
 ```
 
-Init: read `localStorage.getItem(RES_KEY)` (`"half"` → start locked half) — **lazily on the first `drawFirstPersonPixel` call, NOT at module scope**: this module is in Next's prerender graph and `localStorage`/`document` at import time breaks `yarn build`. (Same reason `presentFramebuffer` creates its canvas lazily.) Half-res framebuffer note: 357 is odd — the framebuffer is 240×357 and presents to 480×714 (2× exact). All `h >> 1` horizon math already handles odd heights.
+Overlays keep working at half-res because Step 1.10's projection convention projects at canvas dims and scales the zbuf index by `fb.w / CANVAS_WIDTH` — verify that convention survived when touching this file. Init: read `localStorage.getItem(RES_KEY)` (`"half"` → start locked half) — **lazily on the first `drawFirstPersonPixel` call, NOT at module scope**: this module is in Next's prerender graph and `localStorage`/`document` at import time breaks `yarn build`. (Same reason `presentFramebuffer` creates its canvas lazily.) Half-res framebuffer note: 357 is odd — the framebuffer is 240×357 and presents to 480×714 (2× exact). All `h >> 1` horizon math already handles odd heights.
 
 - [ ] **Step 5.3: DevPanel** — new section `FP RENDER`: live text `p50/p95 ms + FULL|HALF`, refreshed on the panel's existing tick; three buttons calling `setResolutionMode`. Match the COLONY SEEDS section's styling/markup exactly.
 
@@ -959,7 +973,7 @@ Init: read `localStorage.getItem(RES_KEY)` (`"half"` → start locked half) — 
 
 **Files:**
 - Modify: `game/app/components/Game.tsx` (rAF loop computes `dtMs`, passes to `updateGame`)
-- Modify: `game/app/components/engine/gameEngine.ts` (`updateGame(gs, keys, dtMs)` → forwards to the three engines)
+- Modify: `game/app/components/engine/gameEngine.ts` (real signature is `updateGame(state, keys, touchX, touchY)` — append `dtMs = 16.67` as the fifth param; forwards to the three engines)
 - Modify: `game/app/components/engine/firstPersonEngine.ts`, `groundEngine.ts`, `boardingEngine.ts`
 - Tests: extend each engine's existing self-test pattern (`__runFirstPersonSelfTests`)
 
