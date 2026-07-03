@@ -53,6 +53,21 @@ let frameCount = 0;
 
 const AUTO_DOWNGRADE_P95_MS = 12;
 
+/** Resolve a persisted `szFpResolution` string into this session's starting
+ *  (resMode, locked). Pure — no localStorage/DOM — so the persistence contract
+ *  is unit-testable (tests/engine/resolutionMode.test.ts).
+ *   - "half"/"full": an EXPLICIT DevPanel choice, sticky — start locked there.
+ *   - "auto" (incl. the value an automatic downgrade now writes) and any
+ *     unrecognized/first-visit value: start under AUTO at FULL and re-probe.
+ *     This is what stops a public player who trips one downgrade from being
+ *     locked to half-res forever — every session starts fresh and only
+ *     re-drops if the machine is still genuinely over budget. */
+export function resolvePersistedMode(saved: string | null): { resMode: ResMode; locked: FpResolution } {
+  if (saved === "half") return { resMode: "half", locked: "half" };
+  if (saved === "full") return { resMode: "full", locked: "full" };
+  return { resMode: "auto", locked: "full" };
+}
+
 /** First-touch init: reads the persisted resolution mode from localStorage.
  *  MUST run lazily — called from the draw path and from setResolutionMode,
  *  never at module scope. This module sits in Next's prerender graph (it's
@@ -69,9 +84,7 @@ function ensureInit(): void {
   } catch {
     return;   // private-browsing / disabled storage — fall back to defaults
   }
-  if (saved === "half") { resMode = "half"; locked = "half"; }
-  else if (saved === "full") { resMode = "full"; locked = "full"; }
-  else if (saved === "auto") { resMode = "auto"; }   // locked stays "full" — fresh window this session
+  ({ resMode, locked } = resolvePersistedMode(saved));
 }
 
 function persist(mode: ResMode): void {
@@ -103,8 +116,13 @@ function maybeDowngrade(): void {
   // count to the ring size internally, so passing frameCount (which climbs
   // past FRAME_WINDOW once the ring wraps) reads exactly the full window.
   if (windowExceedsBudget(frameMs, frameCount, AUTO_DOWNGRADE_P95_MS)) {
-    locked = "half";
-    persist("half");   // deliberate: downgrade persists as forced-half so the next session skips re-probing
+    locked = "half";     // this session: drop to half and stay (no mid-session up-switch — anti-oscillation)
+    // Persist "auto", NOT "half": the public build has no player-facing reset
+    // (the DevPanel override is dev-only), so persisting "half" would lock a
+    // player to half-res forever after a single transient spike. Persisting
+    // "auto" lets next session start full and re-probe — spikes self-heal, and
+    // a consistently-slow machine simply re-drops after ~2s.
+    persist("auto");
   }
 }
 
