@@ -2,6 +2,7 @@ import { Framebuffer, presentFramebuffer } from "./framebuffer";
 import { TextureRegistry } from "./textures";
 import { SceneBuilder } from "./sceneInput";
 import { renderScene, projectBillboard } from "./renderCore";
+import { windowPercentiles, windowExceedsBudget } from "./perfWindow";
 import type { FirstPersonState } from "../types";
 import { CANVAS_WIDTH, GAME_AREA_HEIGHT } from "../types";
 
@@ -95,25 +96,13 @@ export function setResolutionMode(mode: ResMode): void {
   persist(mode);
 }
 
-/** p95 > budget, computed without allocating: for a fixed 120-sample window,
- *  counting how many samples exceed the budget is equivalent to sorting for
- *  the exact 95th-percentile value (p95 > T  <=>  more than 5% of samples
- *  are > T) — a single linear scan over the already-preallocated ring
- *  buffer. The exact p50/p95 values (for humans) are computed separately in
- *  getPerfStats, which only runs at DevPanel-refresh cadence and is allowed
- *  to allocate; this function runs every frame and must not. */
-function windowP95ExceedsBudget(): boolean {
-  let over = 0;
-  for (let i = 0; i < FRAME_WINDOW; i++) {
-    if (frameMs[i] > AUTO_DOWNGRADE_P95_MS) over++;
-  }
-  return over > FRAME_WINDOW * 0.05;
-}
-
 function maybeDowngrade(): void {
   if (resMode !== "auto" || locked === "half") return;
   if (frameCount < FRAME_WINDOW) return;
-  if (windowP95ExceedsBudget()) {
+  // windowExceedsBudget scans without allocating (per-frame path). It clamps
+  // count to the ring size internally, so passing frameCount (which climbs
+  // past FRAME_WINDOW once the ring wraps) reads exactly the full window.
+  if (windowExceedsBudget(frameMs, frameCount, AUTO_DOWNGRADE_P95_MS)) {
     locked = "half";
     persist("half");   // deliberate: downgrade persists as forced-half so the next session skips re-probing
   }
@@ -124,19 +113,13 @@ function pickFramebuffer(): Framebuffer {
   return activeFb;
 }
 
-/** DevPanel-facing perf readout. Allocates (Array.from + sort) — fine here,
- *  this only runs on the panel's own refresh interval, not per frame. */
+/** DevPanel-facing perf readout. windowPercentiles allocates (Array.from +
+ *  sort) — fine here, this only runs on the panel's own refresh interval, not
+ *  per frame. */
 export function getPerfStats(): FpPerfStats {
   ensureInit();   // panel may poll before the first FP frame ever draws
-  const n = Math.min(frameCount, FRAME_WINDOW);
-  if (n === 0) return { p50: 0, p95: 0, res: locked, mode: resMode };
-  const sorted = Array.from(frameMs.subarray(0, n)).sort((a, b) => a - b);
-  return {
-    p50: sorted[Math.floor(0.5 * (n - 1))],
-    p95: sorted[Math.floor(0.95 * (n - 1))],
-    res: locked,
-    mode: resMode,
-  };
+  const { p50, p95 } = windowPercentiles(frameMs, frameCount);
+  return { p50, p95, res: locked, mode: resMode };
 }
 
 export function drawFirstPersonPixel(ctx: CanvasRenderingContext2D, fp: FirstPersonState): void {

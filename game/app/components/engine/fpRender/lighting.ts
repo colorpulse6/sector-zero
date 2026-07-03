@@ -1,4 +1,4 @@
-export interface RgbMul { rMul: number; gMul: number; bMul: number } // 0–256 fixed point
+export interface RgbMul { rMul: number; gMul: number; bMul: number } // 0–320 fixed point (256 = neutral; hslShiftToRgbMul clamps to 320, sharing the light grid's over-bright headroom)
 
 /** Convert the existing dayNightTint HSL shift into RGB multipliers.
  *  hueShift > 0 warms (R up, B down); saturationMul pulls channels toward
