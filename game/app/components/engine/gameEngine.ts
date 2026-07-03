@@ -432,7 +432,8 @@ export function updateGame(
   state: GameState,
   keys: Keys,
   touchX: number | null,
-  touchY: number | null
+  touchY: number | null,
+  dtMs: number = 16.67
 ): GameState {
   // Briefing screen: countdown + animate background
   if (state.screen === GameScreen.BRIEFING) {
@@ -467,7 +468,7 @@ export function updateGame(
   // ── Ground-run mode dispatch ──
   if (state.currentMode === "ground-run") {
     const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
-    updateGroundEngine(s, keys);
+    updateGroundEngine(s, keys, dtMs);
     s.particles = updateParticles(s.particles);
     s.explosions = updateSpriteExplosions(s.explosions);
     s.floatingLabels = updateFloatingLabels(s.floatingLabels);
@@ -479,7 +480,7 @@ export function updateGame(
   // ── Ship boarding mode dispatch ──
   if (state.currentMode === "boarding") {
     const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
-    updateBoardingEngine(s, keys);
+    updateBoardingEngine(s, keys, dtMs);
     s.particles = updateParticles(s.particles);
     s.explosions = updateSpriteExplosions(s.explosions);
     s.floatingLabels = updateFloatingLabels(s.floatingLabels);
@@ -490,7 +491,7 @@ export function updateGame(
   // ── First-person raycaster mode dispatch ──
   if (state.currentMode === "first-person") {
     const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
-    updateFirstPerson(s, keys);
+    updateFirstPerson(s, keys, dtMs);
     if (s.screenShake > 0) s.screenShake *= 0.9;
     return s;
   }
@@ -498,7 +499,7 @@ export function updateGame(
   // ── Colony exploration (first-person raycaster + colonyContext) dispatch ──
   if (state.currentMode === "colony-exploration") {
     const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
-    updateFirstPerson(s, keys);
+    updateFirstPerson(s, keys, dtMs);
     if (s.screenShake > 0) s.screenShake *= 0.9;
     return s;
   }

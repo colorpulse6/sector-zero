@@ -86,32 +86,36 @@ function moveWithCollision(
 
 // ─── Main Update ────────────────────────────────────────────────────
 
-export function updateFirstPerson(gs: GameState, keys: Keys): void {
+export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.67): void {
   const fp = gs.firstPersonState;
   if (!fp || gs.levelCompleteTimer > 0) return;
+
+  // Frame-rate-independence factor: 1.0 at 60fps (dtMs = 16.67), capped at 3
+  // so a long stall can't teleport the player through walls in a single step.
+  const dtF = Math.min(dtMs / 16.67, 3);
 
   let { posX, posY, dirX, dirY, planeX, planeY } = fp;
 
   // ── Rotation ──
   if (keys.left) {
-    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, ROT_SPEED));
+    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, ROT_SPEED * dtF));
   }
   if (keys.right) {
-    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, -ROT_SPEED));
+    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, -ROT_SPEED * dtF));
   }
 
   // ── Movement ──
   if (keys.up) {
-    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, dirX * MOVE_SPEED, dirY * MOVE_SPEED));
+    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, dirX * MOVE_SPEED * dtF, dirY * MOVE_SPEED * dtF));
   }
   if (keys.down) {
-    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, -dirX * MOVE_SPEED, -dirY * MOVE_SPEED));
+    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, -dirX * MOVE_SPEED * dtF, -dirY * MOVE_SPEED * dtF));
   }
   if (keys.strafeLeft) {
-    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, dirY * MOVE_SPEED, -dirX * MOVE_SPEED));
+    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, dirY * MOVE_SPEED * dtF, -dirX * MOVE_SPEED * dtF));
   }
   if (keys.strafeRight) {
-    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, -dirY * MOVE_SPEED, dirX * MOVE_SPEED));
+    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, -dirY * MOVE_SPEED * dtF, dirX * MOVE_SPEED * dtF));
   }
 
   fp.posX = posX;
@@ -145,18 +149,18 @@ export function updateFirstPerson(gs: GameState, keys: Keys): void {
         }
       }
     }
-    if (fp.gunCooldown > 0) fp.gunCooldown--;
+    if (fp.gunCooldown > 0) fp.gunCooldown = Math.max(0, fp.gunCooldown - dtF);
     gs.player.bankDir = 0;
     return; // Don't process movement/combat while in dialog
   }
 
   // ─── Colony exploration hook + anti-bounce gate (Phase 2) ───
   if (fp.colonyContext) {
-    fp.colonyInteractCooldownFrames = Math.max(0, (fp.colonyInteractCooldownFrames ?? 0) - 1);
+    fp.colonyInteractCooldownFrames = Math.max(0, (fp.colonyInteractCooldownFrames ?? 0) - dtF);
     if (!keys.shoot) fp.colonyInteractArmed = true;
     const canFire =
       (fp.colonyInteractArmed ?? true) &&
-      (fp.colonyInteractCooldownFrames ?? 0) === 0 &&
+      (fp.colonyInteractCooldownFrames ?? 0) <= 0 &&
       keys.shoot;
     if (canFire) {
       const standingOn = { x: Math.floor(fp.posX), y: Math.floor(fp.posY) };
@@ -209,8 +213,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys): void {
   }
 
   // ── Shooting ──
-  if (fp.gunCooldown > 0) fp.gunCooldown--;
-  if (fp.gunFireTimer > 0) fp.gunFireTimer--;
+  if (fp.gunCooldown > 0) fp.gunCooldown = Math.max(0, fp.gunCooldown - dtF);
+  if (fp.gunFireTimer > 0) fp.gunFireTimer = Math.max(0, fp.gunFireTimer - dtF);
 
   if (keys.shoot && fp.gunCooldown <= 0) {
     fp.gunFireTimer = GUN_FLASH_DURATION;
@@ -284,7 +288,12 @@ export function updateFirstPerson(gs: GameState, keys: Keys): void {
   // ── Enemy AI ──
   for (const enemy of fp.enemies) {
     if (enemy.deathTimer > 0) {
-      enemy.deathTimer--;
+      // deathTimer uses -1 as the "remove me" sentinel; -1 means "already dead"
+      // and 0 means "alive" (see the `!== 0` alive-check above). Decrement by
+      // dtF ONLY — never floor at 0 — so the countdown lands on <=0 and the
+      // transition below sets exactly -1. Flooring at 0 would park a dying
+      // enemy at the "alive" value and it would never be removed.
+      enemy.deathTimer -= dtF;
       if (enemy.deathTimer <= 0) enemy.deathTimer = -1; // Mark for removal
       continue;
     }
@@ -307,7 +316,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys): void {
       case "grunt":
       case "charger": {
         // Move toward player
-        const speed = enemy.type === "charger" ? enemy.speed * 1.5 : enemy.speed;
+        const speed = (enemy.type === "charger" ? enemy.speed * 1.5 : enemy.speed) * dtF;
         const len = dist || 1;
         const mvx = (dx / len) * speed;
         const mvy = (dy / len) * speed;
@@ -350,7 +359,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys): void {
         // Stationary — shoots at player (TODO: implement projectiles in FP)
         // For now: hitscan damage at interval
         if (enemy.fireTimer > 0) {
-          enemy.fireTimer--;
+          enemy.fireTimer = Math.max(0, enemy.fireTimer - dtF);
         } else if (dist < SENTRY_FIRE_RANGE && hasLOS(fp.map, enemy.x, enemy.y, posX, posY)) {
           if (gs.player.invincibleTimer <= 0) {
             gs.player.hp -= 1;
@@ -477,6 +486,86 @@ export function __runFirstPersonSelfTests(): void {
   });
   console.assert(objectiveState.objectiveCollected, "Objective pickup should collect when player is within range");
   console.assert(objectiveState.goalReached, "Objective pickup should mark the mission complete");
+
+  // ── Frame-rate independence (Task 6) ──
+  const noKeys: Keys = {
+    left: false, right: false, up: false, down: false,
+    strafeLeft: false, strafeRight: false,
+    shoot: false, bomb: false, jump: false,
+  };
+  const openMap: BoardingMap = {
+    width: 5,
+    height: 5,
+    tileSize: 32,
+    tiles: [
+      ["wall", "wall", "wall", "wall", "wall"],
+      ["wall", "floor", "floor", "floor", "wall"],
+      ["wall", "floor", "floor", "floor", "wall"],
+      ["wall", "floor", "floor", "floor", "wall"],
+      ["wall", "wall", "wall", "wall", "wall"],
+    ],
+  };
+  // Minimal combat FP GameState facing +X in open space.
+  const makeFpGame = (fpOverrides: Record<string, unknown> = {}) => {
+    const fpState = {
+      map: openMap,
+      posX: 2.5, posY: 2.5,
+      dirX: 1, dirY: 0, planeX: 0, planeY: 0.66,
+      moveSpeed: MOVE_SPEED, rotSpeed: ROT_SPEED,
+      goalReached: false,
+      enemies: [] as FPEnemy[],
+      gunFireTimer: 0, gunCooldown: 0,
+      npcs: [], dialogState: null,
+      ...fpOverrides,
+    };
+    const game = {
+      firstPersonState: fpState,
+      levelCompleteTimer: 0,
+      player: { invincibleTimer: 0, bankDir: 0, hp: 10, maxHp: 10 },
+      lives: 3, deaths: 0, score: 0, xp: 0, kills: 0,
+      screenShake: 0,
+      equippedWeaponType: "kinetic",
+      allocatedSkills: [],
+      floatingLabels: [],
+      audioEvents: [],
+    } as unknown as GameState;
+    return { game, fpState };
+  };
+
+  // 1) Two half-steps (dtMs = 16.67/2) travel the same distance as one full step.
+  const HALF_MS = 16.67 / 2;
+  const full = makeFpGame();
+  updateFirstPerson(full.game, { ...noKeys, up: true }, 16.67);
+  const distFull = full.fpState.posX - 2.5;
+  const halved = makeFpGame();
+  updateFirstPerson(halved.game, { ...noKeys, up: true }, HALF_MS);
+  updateFirstPerson(halved.game, { ...noKeys, up: true }, HALF_MS);
+  const distHalf = halved.fpState.posX - 2.5;
+  console.assert(Math.abs(distFull - distHalf) < 1e-9, "dt: two half-steps must equal one full step");
+
+  // 2) A huge dtMs clamps to 3 frames' worth of movement (not 12).
+  const clamped = makeFpGame();
+  updateFirstPerson(clamped.game, { ...noKeys, up: true }, 200);
+  const distClamped = clamped.fpState.posX - 2.5;
+  console.assert(Math.abs(distClamped - MOVE_SPEED * 3) < 1e-9, "dt: dtMs=200 must clamp to 3 frames of movement");
+
+  // 3) A cooldown that overshoots 0 under dtF=3 still fires (the `<= 0` window).
+  const cooldownGame = makeFpGame({ gunCooldown: 2 });
+  updateFirstPerson(cooldownGame.game, { ...noKeys, shoot: true }, 200);
+  console.assert(cooldownGame.fpState.gunFireTimer === GUN_FLASH_DURATION, "dt: cooldown must fire at the <=0 window under dtF=3");
+
+  // 4) A dying enemy still reaches the -1 sentinel and is removed under dtF=3.
+  const dyingEnemy = {
+    id: 1, x: 3.5, y: 2.5, hp: 0, maxHp: 3, speed: 0.015,
+    type: "grunt", aggroRange: 6, isAggro: false, deathTimer: 30,
+    fireTimer: 0, classId: "swarm",
+  } as unknown as FPEnemy;
+  const dying = makeFpGame({ enemies: [dyingEnemy] });
+  let dtGuard = 0;
+  while (dying.fpState.enemies.length > 0 && dtGuard++ < 40) {
+    updateFirstPerson(dying.game, noKeys, 200);
+  }
+  console.assert(dying.fpState.enemies.length === 0, "dt: dying enemy must reach -1 and be removed under dtF=3");
 }
 
 if (typeof process !== "undefined" && process.env?.NODE_ENV === "development") {

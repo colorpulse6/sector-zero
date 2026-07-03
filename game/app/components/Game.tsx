@@ -111,6 +111,8 @@ export default function Game() {
   const audioRef = useRef<AudioEngine | null>(null);
   const introFrameRef = useRef(0);
   const endingFrameRef = useRef(0);
+  // Wall-clock timestamp of the previous simulated frame, for delta-time scaling.
+  const lastFrameTsRef = useRef(0);
 
   const ensureAudio = useCallback(() => {
     if (!audioRef.current) {
@@ -1273,6 +1275,14 @@ export default function Game() {
     if (!ctx) return;
 
     const gameLoop = () => {
+      // Delta time since the previous frame (ms), clamped so a long stall (tab
+      // backgrounded, GC pause) can't produce a huge movement step. 16.67ms = 60fps
+      // → dtF = 1.0, so a steady 60fps player sees identical behavior to before.
+      const now = performance.now();
+      const last = lastFrameTsRef.current;
+      const dtMs = last === 0 ? 16.67 : Math.min(now - last, 50);
+      lastFrameTsRef.current = now;
+
       // Feed mouse position into turret crosshair + mouse-click as shoot
       if (gameState?.currentMode === "turret" && gameState.turretState) {
         const m = mouseRef.current;
@@ -1292,7 +1302,8 @@ export default function Game() {
         gameState,
         effectiveKeys,
         touchPosRef.current?.x ?? null,
-        touchPosRef.current?.y ?? null
+        touchPosRef.current?.y ?? null,
+        dtMs
       );
 
       // Play audio events
