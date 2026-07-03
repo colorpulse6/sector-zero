@@ -128,6 +128,10 @@ export function updateBoardingEngine(gs: GameState, keys: Keys, dtMs: number = 1
   if (p.fireTimer > 0) p.fireTimer = Math.max(0, p.fireTimer - dtF);
 
   // ── Update bullets ──
+  // Bullet velocity is deliberately NOT scaled by dtF: scaling a fast bullet by
+  // dtF=3 would step it clean over an enemy/player hitbox in one frame (entity
+  // tunneling → missed hits). The proper fix is sub-stepping the integration at
+  // <= hitbox size; until then, leave it unscaled.
   bs.bullets = bs.bullets
     .map((b) => ({ ...b, x: b.x + b.vx, y: b.y + b.vy }))
     .filter((b) => {
@@ -318,7 +322,10 @@ export function updateBoardingEngine(gs: GameState, keys: Keys, dtMs: number = 1
   bs.enemies = bs.enemies.filter((e) => !deadEnemies.has(e.id));
 
   // ── Invincibility ──
-  if (p.invincibleTimer > 0) p.invincibleTimer--;
+  // Scaled by dtF so i-frames are wall-clock-consistent — and so the dash's
+  // i-frames (seeded from DASH_DURATION) stay coterminous with the now-scaled
+  // dashTimer at every frame rate.
+  if (p.invincibleTimer > 0) p.invincibleTimer = Math.max(0, p.invincibleTimer - dtF);
 
   // ── Camera ──
   const targetCX = p.x + PLAYER_W / 2 - CANVAS_WIDTH / 2;

@@ -34,17 +34,33 @@ export function collidesWithSolid(
   return false;
 }
 
-/** Apply gravity and resolve vertical collision. Platforms only block from above. */
+/** Apply gravity and resolve vertical collision. Platforms only block from above.
+ *
+ *  Semi-implicit (symplectic) Euler with delta-time scaling: accelerate by
+ *  GRAVITY*dtF, then integrate position by newVY*dtF. MAX_FALL_SPEED is a
+ *  terminal-velocity cap in px per 16.67ms and is deliberately NOT scaled by
+ *  dtF (it bounds velocity, not the per-frame step). At dtF=1 this is
+ *  bit-identical to the original (GRAVITY*1, newVY*1), so 60fps behavior,
+ *  golden frames, and colony tests are all unchanged.
+ *
+ *  KNOWN EDGE (accepted): at the dtF=3 clamp (<=20fps) the fall step reaches
+ *  MAX_FALL_SPEED*3 = 36px, larger than the 32px tile, so a fast fall can skip a
+ *  one-tile-thick one-way platform. Multi-tile solid floors still catch via the
+ *  destination-row snap below. We accept this — <=20fps is already degraded and
+ *  it self-corrects on the next surface. Do NOT add a vertical position clamp:
+ *  that would reintroduce a frame-rate dependence in the fall, which is worse.
+ */
 export function applyGravity(
   map: TileMap,
   x: number,
   y: number,
   vy: number,
   width: number,
-  height: number
+  height: number,
+  dtF: number = 1
 ): { y: number; vy: number; onGround: boolean } {
-  let newVY = Math.min(vy + GRAVITY, MAX_FALL_SPEED);
-  let newY = y + newVY;
+  let newVY = Math.min(vy + GRAVITY * dtF, MAX_FALL_SPEED);
+  let newY = y + newVY * dtF;
   let onGround = false;
 
   if (newVY > 0) {

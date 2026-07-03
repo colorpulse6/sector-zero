@@ -76,7 +76,7 @@ function updatePlayerMovement(
   }
 
   // Gravity & vertical
-  const { y, vy, onGround } = applyGravity(map, p.x, p.y, ground.playerVY, PLAYER_W, PLAYER_H);
+  const { y, vy, onGround } = applyGravity(map, p.x, p.y, ground.playerVY, PLAYER_W, PLAYER_H, dtF);
   p.y = y;
   ground.playerVY = vy;
   ground.playerOnGround = onGround;
@@ -178,7 +178,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState, dtF: number): void {
       // ── Patrol: walks back and forth, reverses on wall or edge ──────
       case "patrol": {
         // Apply gravity
-        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height);
+        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height, dtF);
         enemy.y = grav.y;
         enemy.vy = grav.vy;
         enemy.onGround = grav.onGround;
@@ -203,7 +203,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState, dtF: number): void {
       // ── Turret: stationary, shoots at player ─────────────────────
       case "turret": {
         // Gravity to stay grounded
-        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height);
+        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height, dtF);
         enemy.y = grav.y;
         enemy.vy = grav.vy;
         enemy.onGround = grav.onGround;
@@ -248,7 +248,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState, dtF: number): void {
 
       // ── Jumper: moves toward player, jumps when player is above ──
       case "jumper": {
-        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height);
+        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height, dtF);
         enemy.y = grav.y;
         enemy.vy = grav.vy;
         enemy.onGround = grav.onGround;
@@ -309,6 +309,10 @@ function updateBullets(ground: GroundState): void {
   const mapPixelHeight = map.height * map.tileSize;
 
   ground.groundBullets = ground.groundBullets.filter((b) => {
+    // Bullet velocity is deliberately NOT scaled by dtF. Scaling a ~10px/frame
+    // bullet by dtF=3 would step it 30px/frame — clean over a 24px enemy hitbox,
+    // causing missed hits (entity tunneling). The "no half measures" fix is to
+    // sub-step this integration at <= hitbox size; until then, leave it unscaled.
     b.x += b.vx;
     b.y += b.vy;
     // Remove if out of map bounds or hits a solid tile
@@ -450,8 +454,8 @@ function handlePlayerDeath(gs: GameState, ground: GroundState): void {
 
 // ─── Invincibility timer ──────────────────────────────────────────────
 
-function tickInvincibility(gs: GameState): void {
-  if (gs.player.invincibleTimer > 0) gs.player.invincibleTimer--;
+function tickInvincibility(gs: GameState, dtF: number): void {
+  if (gs.player.invincibleTimer > 0) gs.player.invincibleTimer = Math.max(0, gs.player.invincibleTimer - dtF);
 }
 
 // ─── Goal detection ───────────────────────────────────────────────────
@@ -491,6 +495,6 @@ export function updateGroundEngine(
   updateBullets(ground);
   resolveBulletEnemyCollisions(gs, ground);
   resolvePlayerHits(gs, ground);
-  tickInvincibility(gs);
+  tickInvincibility(gs, dtF);
   checkGoal(gs, ground);
 }

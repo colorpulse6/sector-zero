@@ -390,7 +390,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   fp.enemies = fp.enemies.filter((e) => e.deathTimer !== -1);
 
   // ── Invincibility ──
-  if (gs.player.invincibleTimer > 0) gs.player.invincibleTimer--;
+  if (gs.player.invincibleTimer > 0) gs.player.invincibleTimer = Math.max(0, gs.player.invincibleTimer - dtF);
 
   // ── Objective pickup ──
   if (fp.objectivePickup && !fp.objectiveCollected) {
