@@ -51,9 +51,12 @@ function keysToFacing(keys: Keys, current: FacingDirection): FacingDirection {
 
 // ─── Main Update ────────────────────────────────────────────────────
 
-export function updateBoardingEngine(gs: GameState, keys: Keys): void {
+export function updateBoardingEngine(gs: GameState, keys: Keys, dtMs: number = 16.67): void {
   const bs = gs.boardingState;
   if (!bs || gs.levelCompleteTimer > 0) return;
+
+  // Frame-rate-independence factor: 1.0 at 60fps (dtMs = 16.67), capped at 3.
+  const dtF = Math.min(dtMs / 16.67, 3);
 
   const p = gs.player;
   const map = bs.map;
@@ -83,8 +86,8 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
   // Normalize diagonal
   const mag = Math.sqrt(vx * vx + vy * vy) || 1;
   const speed = bs.dashTimer > 0 ? DASH_SPEED : PLAYER_SPEED;
-  vx = (vx / mag) * speed;
-  vy = (vy / mag) * speed;
+  vx = (vx / mag) * speed * dtF;
+  vy = (vy / mag) * speed * dtF;
 
   const resolved = resolveMovement(map, p.x, p.y, vx, vy, PLAYER_W, PLAYER_H);
   p.x = resolved.x;
@@ -96,8 +99,10 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
     bs.dashCooldown = DASH_COOLDOWN;
     p.invincibleTimer = DASH_DURATION; // i-frames during dash
   }
-  if (bs.dashTimer > 0) bs.dashTimer--;
-  if (bs.dashCooldown > 0) bs.dashCooldown--;
+  // dashTimer gates DASH_SPEED, so it MUST scale with dtF too — otherwise the
+  // dash would cover a frame-rate-dependent distance (same #frames × scaled speed).
+  if (bs.dashTimer > 0) bs.dashTimer = Math.max(0, bs.dashTimer - dtF);
+  if (bs.dashCooldown > 0) bs.dashCooldown = Math.max(0, bs.dashCooldown - dtF);
 
   // ── Shooting ──
   if (keys.shoot && p.fireTimer <= 0) {
@@ -120,9 +125,13 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
     p.fireTimer = FIRE_RATE;
     gs.audioEvents.push(AudioEvent.PLAYER_SHOOT);
   }
-  if (p.fireTimer > 0) p.fireTimer--;
+  if (p.fireTimer > 0) p.fireTimer = Math.max(0, p.fireTimer - dtF);
 
   // ── Update bullets ──
+  // Bullet velocity is deliberately NOT scaled by dtF: scaling a fast bullet by
+  // dtF=3 would step it clean over an enemy/player hitbox in one frame (entity
+  // tunneling → missed hits). The proper fix is sub-stepping the integration at
+  // <= hitbox size; until then, leave it unscaled.
   bs.bullets = bs.bullets
     .map((b) => ({ ...b, x: b.x + b.vx, y: b.y + b.vy }))
     .filter((b) => {
@@ -157,7 +166,7 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
     }
 
     if (!e.isAggro) {
-      if (e.fireTimer > 0) e.fireTimer--;
+      if (e.fireTimer > 0) e.fireTimer = Math.max(0, e.fireTimer - dtF);
       continue;
     }
 
@@ -172,8 +181,8 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
       case "grunt": {
         // Walk toward player
         const len = dist || 1;
-        const mvx = (dx / len) * GRUNT_CHASE_SPEED;
-        const mvy = (dy / len) * GRUNT_CHASE_SPEED;
+        const mvx = (dx / len) * GRUNT_CHASE_SPEED * dtF;
+        const mvy = (dy / len) * GRUNT_CHASE_SPEED * dtF;
         const res = resolveMovement(map, e.x, e.y, mvx, mvy, e.width, e.height);
         e.x = res.x;
         e.y = res.y;
@@ -183,8 +192,8 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
       case "charger": {
         // Rush toward player faster
         const len = dist || 1;
-        const mvx = (dx / len) * CHARGER_CHASE_SPEED;
-        const mvy = (dy / len) * CHARGER_CHASE_SPEED;
+        const mvx = (dx / len) * CHARGER_CHASE_SPEED * dtF;
+        const mvy = (dy / len) * CHARGER_CHASE_SPEED * dtF;
         const res = resolveMovement(map, e.x, e.y, mvx, mvy, e.width, e.height);
         e.x = res.x;
         e.y = res.y;
@@ -194,7 +203,7 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
       case "sentry": {
         // Stationary — shoots at player
         if (e.fireTimer > 0) {
-          e.fireTimer--;
+          e.fireTimer = Math.max(0, e.fireTimer - dtF);
         } else if (dist < CANVAS_WIDTH && hasLineOfSight(map, ecx, ecy, pcx, pcy)) {
           const len = dist || 1;
           bs.bullets.push({
@@ -216,7 +225,7 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
       }
     }
 
-    if (e.fireTimer > 0) e.fireTimer--;
+    if (e.fireTimer > 0) e.fireTimer = Math.max(0, e.fireTimer - dtF);
   }
 
   // ── Bullet-enemy collisions ──
@@ -313,7 +322,10 @@ export function updateBoardingEngine(gs: GameState, keys: Keys): void {
   bs.enemies = bs.enemies.filter((e) => !deadEnemies.has(e.id));
 
   // ── Invincibility ──
-  if (p.invincibleTimer > 0) p.invincibleTimer--;
+  // Scaled by dtF so i-frames are wall-clock-consistent — and so the dash's
+  // i-frames (seeded from DASH_DURATION) stay coterminous with the now-scaled
+  // dashTimer at every frame rate.
+  if (p.invincibleTimer > 0) p.invincibleTimer = Math.max(0, p.invincibleTimer - dtF);
 
   // ── Camera ──
   const targetCX = p.x + PLAYER_W / 2 - CANVAS_WIDTH / 2;

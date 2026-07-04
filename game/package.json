@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "colony:test": "tsx --test tests/colony/*.test.ts"
+    "colony:test": "tsx --test tests/colony/*.test.ts",
+    "engine:test": "tsx --test tests/engine/*.test.ts"
   },
   "dependencies": {
     "next": "15.3.1",

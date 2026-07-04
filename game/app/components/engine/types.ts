@@ -6,6 +6,7 @@ import type {
   Bounty,
   GameClock,
 } from "../colony/shared/colonyTypes";
+import type { ColonyContext } from "../colony/exploration/colonyContext";
 
 // ─── Canvas ──────────────────────────────────────────────────────────
 export const CANVAS_WIDTH = 480;
@@ -684,7 +685,7 @@ export type SpecialMissionId = "kepler-black-box";
 export type StoryItemId = "kepler-black-box";
 
 // ─── Multi-Phase Levels ─────────────────────────────────────────────
-export type GameMode = "shooter" | "ground-run" | "boarding" | "first-person" | "turret" | "base-defense" | "mech-duel";
+export type GameMode = "shooter" | "ground-run" | "boarding" | "first-person" | "turret" | "base-defense" | "mech-duel" | "colony-exploration";
 
 export interface PhaseConfig {
   mode: GameMode;
@@ -799,6 +800,20 @@ export interface BoardingMap {
   height: number;
   tileSize: number;
   tiles: BoardingTileType[][];
+  /** Optional per-tile wall texture override (sprite path). Same dims as `tiles`.
+   *  Used by the colony exterior to render per-building wall textures. */
+  wallTextureMap?: (string | null)[][];
+  /** Optional per-tile floor texture override (sprite path). Same dims as `tiles`.
+   *  Used by the colony exterior/interior to render textured floors (landing pad,
+   *  foundations, per-building interiors) via the perspective floor cast. */
+  floorTextureMap?: (string | null)[][];
+  /** Optional set of tile coords flagged as landing-pad / foundation, for minimap distinction. */
+  landingPadTiles?: ReadonlySet<string>;
+  foundationTiles?: ReadonlySet<string>;
+  /** Optional per-tile baseline light level, 0–255. Same dims as `tiles`.
+   *  null/omitted tiles (map too small, or the field itself absent) read as 255
+   *  (full bright) in the light grid. */
+  lightMap?: number[][];
 }
 
 export interface BoardingState {
@@ -919,6 +934,16 @@ export interface FPEnvironmentArt {
   wallSprite?: string;
   floorSprite?: string;
   ceilingSprite?: string;
+  /** Optional HSL shift applied by firstPersonRenderer during environment sprite draw.
+   *  Used by colony exploration for day/night tint; safe to omit for other modes. */
+  environmentTint?: {
+    hueShift: number;
+    saturationMul: number;
+    lightnessMul: number;
+  };
+  /** Optional colored point lights (tile-unit position, hex color, power).
+   *  Falloff is inverse-square in tile units — see fpRender/lighting.ts. */
+  pointLights?: { x: number; y: number; color: string; power: number }[];
 }
 
 export interface FPProp {
@@ -956,6 +981,13 @@ export interface FirstPersonState {
   environmentArt?: FPEnvironmentArt;
   props?: FPProp[];
   missionLabel?: string;
+  // Colony exploration extensions (Phase 2 of colony system)
+  // When colonyContext is defined, the engine enters colony-exploration mode
+  // with anti-bounce gating for door/pad interaction.
+  colonyContext?: ColonyContext;
+  colonyTransitionRequest?: unknown;  // DoorInteractResult | LandingPadResult — typed as unknown to avoid circular import
+  colonyInteractArmed?: boolean;      // true iff keys.shoot has been released since last hook fire
+  colonyInteractCooldownFrames?: number;  // decrements each frame; >0 blocks hooks
 }
 
 // ─── Pilot Leveling ─────────────────────────────────────────────────

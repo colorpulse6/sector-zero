@@ -30,7 +30,7 @@ jobs:
         run: cd game && npx tsc --noEmit -p tsconfig.json
 
   game-tests:
-    name: Game · Colony tests
+    name: Game · Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +48,13 @@ jobs:
             cd game && yarn colony:test
           else
             echo "No colony tests directory — skipping."
+          fi
+      - name: Engine tests (runs only if tests/engine/ exists)
+        run: |
+          if [ -d game/tests/engine ]; then
+            cd game && yarn engine:test
+          else
+            echo "No engine tests directory — skipping."
           fi
 
   game-build:

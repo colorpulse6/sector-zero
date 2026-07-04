@@ -2602,3 +2602,128 @@ After Phase 2 completes: decision point.
 - Phase 3 plan — Hub interiors (Marketplace, Cantina, Town Hall) with named NPC placeholders
 - Alternative: Phase 5a — NPC scheduling system (consequences + factions + dialog)
 - Or: breadth pass — more colony types beyond Tier 1 Outpost
+
+## Completion Log
+
+**Completed:** 2026-04-21
+**Branch:** colony/phase-2
+**Tag:** colony-phase-2-complete
+
+**Commits in order:**
+- `4c27d25` — T1: GameMode + FirstPersonState plumbing
+- `cccac16` — T1.5: asset prompt templates (parallel workstream)
+- `9212661` — T2: outpost template + building tile registry
+- `9fa40ab` — T3: exterior layout generator + reducer-order invariant
+- `895a0b0` — T4: scene stack + exploration public API
+- `c6a4254` — T5: interior templates + generator + full transition flow
+- `aa8fd82` — T6: engine hook points + anti-bounce gate + day/night tint
+- `b6dd349` — T7: Game.tsx wiring + descend button + exit menu
+- `<this sha>` — T7: completion log
+
+**Acceptance criteria met:**
+- yarn colony:test: 100 tests passing (63 prior baseline + 37 new across T2-T6)
+- yarn build: clean Next.js static export
+- npx tsc --noEmit: exit 0
+- firstPersonEngine.ts diff: 30 lines, all inside one `if (fp.colonyContext)` guard — audit passed
+- Color-tint fallback renders cleanly when Phase 2 sprites are not yet generated
+- No regressions in Ashfall Camp or existing campaign flows (verified by test)
+
+**Manual playtest status:** NOT YET VERIFIED. User should:
+1. Run `cd game && yarn dev`, navigate to cockpit → COLONIES → DESCEND TO COLONY
+2. Verify spawn on landing pad facing north
+3. Verify building footprints render around plaza
+4. Press Z facing an operational door → interior loads
+5. Press Z on exit door → back outside facing south
+6. Verify held-Z does not ping-pong (anti-bounce gate)
+7. Walk onto landing pad, press Z → exit menu appears
+8. Take Off → back to cockpit
+9. Verify Ashfall Forward Camp + existing campaign missions still work
+
+**Asset pipeline status:**
+- 11 asset prompts drafted in `docs/assets/prompts/colony-phase-2/`
+- Images NOT yet generated — placeholder tints in game
+- Separate follow-up PR will register sprites in `sprites.ts` once images land
+
+**Deferred to later phases:**
+- NPCs in colonies (Phase 3/5a)
+- Hub interiors (Phase 3)
+- Biome-aware sprite selection (Phase 4+)
+- POI / region graph (Phase 4)
+- Day/night gameplay effects (Phase 5a)
+- Tier promotion (Phase 6)
+
+**Next:** Phase 2 PR → merge → decision point on what's next (Phase 3 hub interiors, Phase 5a NPCs, or another direction).
+
+---
+
+## Post-completion follow-ups (2026-04-21 → 2026-05-01)
+
+After the original 8 tasks landed, additional work happened on `colony/phase-2` while PR #5 was open. PR #5 is **still open** — CI green, awaiting playtest confirmation and merge decision.
+
+**Commits added:**
+
+- `d8834ac` — `feat(dev): colony seed fixtures + disable turbopack for dev server`
+  - New `game/app/components/colony/dev/seedColony.ts` with 3 fixtures: DAY (hour 12), NIGHT (hour 22), DAWN (hour 6, 2 ops + 2 constructing buildings)
+  - DevPanel `COLONY SEEDS` section bypasses the resource grind for playtesting Phase 2
+  - Idempotent: reseeding a fixture clears the prior colony (`fx_<id>` namespace)
+  - Goes through real `colonyReducer` events (`Events.founded` → `buildingCommissioned` → `buildingCompleted`) so invariants hold
+  - Drops `--turbopack` from `next dev` due to a Next 15.3.1 regression: `Module not found: Can't resolve '@vercel/turbopack-next/internal/font/google/font'` blocking dev server. `next build` (used by CI) is unaffected.
+
+- `321a723` — `fix(colony): use SPRITES constants for environmentArt + dawn fixture`
+  - Bug 1: `colonyLayout.ts` hardcoded sprite paths like `/sector-zero/sprites/explore/outpost-sky.png`. Wrong filename (real sprites are `scrapyard-outpost-*`) AND `getSprite()` already auto-prepends `NEXT_PUBLIC_BASE_PATH`, so the hardcoded prefix was wrong in dev (404) and double-prefixed in prod. All sprites failed to load → fallback gradients made day/night tint barely visible.
+  - Bug 2: BUILD fixture at hour 8 fell in the "Day" range (7–17) of `tintForHour`, identical to DAY. Moved to hour 6 (Dawn bucket) and renamed the button to **DAWN**.
+  - Now uses `SPRITES.EXPLORE_OUTPOST_*` constants throughout. Interior also uses dedicated `EXPLORE_OUTPOST_WALL_INTERIOR` + `EXPLORE_OUTPOST_FLOOR_METAL`.
+
+- `c942371` — `feat(colony): wire up Phase 2 assets — per-building walls, scaffolding, interior props`
+  - All 11 Phase 2 PNGs generated and dropped at `game/public/sprites/{walls,environment,props,interiors}/`
+  - **Per-building exterior walls:** `BoardingMap` gained optional `wallTextureMap?: (string|null)[][]`. `colonyLayout.ts` populates it from `BUILDING_FOOTPRINTS.wallSpriteId` (which now points to `SPRITES.*` path constants instead of opaque IDs like `"COLONY_WALL_SOLAR"`). `firstPersonRenderer.ts` wall loop checks per-tile override; falls back to `environmentArt.wallSprite` for outer-frame walls. Doors clear the override (so they don't render as walls).
+  - **Scaffolding billboard:** constructing buildings now emit a `COLONY_SCAFFOLDING` billboard at footprint center. Walkable-through (no walls written until completion).
+  - **Foundation + landing-pad metadata:** `BoardingMap` gained `landingPadTiles?: ReadonlySet<string>` and `foundationTiles?: ReadonlySet<string>` (string keys `"x,y"`). Minimap renders pad cells cyan and foundation cells amber.
+  - **Interior props:** templates now use `SPRITES.INTERIOR_*` paths directly, so the renderer's `getSprite(prop.sprite)` actually finds them.
+
+**Files added/modified since completion:**
+- Added: `game/app/components/colony/dev/seedColony.ts` (~110 lines)
+- Added: 11 PNGs in `game/public/sprites/{walls,environment,props,interiors}/`
+- Modified: `game/app/components/DevPanel.tsx` (+18 lines — COLONY SEEDS section)
+- Modified: `game/app/components/Game.tsx` (+35 lines — `seed-colony:<id>` action handler)
+- Modified: `game/app/components/colony/exploration/buildingTiles.ts` (path constants)
+- Modified: `game/app/components/colony/exploration/colonyLayout.ts` (wallTextureMap, foundationTiles, landingPadTiles, scaffolding props, SPRITES constants)
+- Modified: `game/app/components/engine/firstPersonRenderer.ts` (per-tile wall texture in wall loop, minimap colors for pad/foundation)
+- Modified: `game/app/components/engine/sprites.ts` (+11 SPRITES entries)
+- Modified: `game/app/components/engine/types.ts` (+3 optional fields on `BoardingMap`)
+- Modified: `game/package.json` (drop `--turbopack`)
+
+**Verification:** 100/100 tests passing. `yarn build` clean. CI on PR #5 green across Game·TypeScript, Game·Colony tests, Game·Next build, Site·Next build, GitGuardian.
+
+### Known issues at session close (2026-05-01)
+
+1. **Dev-mode lag.** Without `--turbopack`, `next dev` is slow (webpack overhead + HMR + sourcemaps + StrictMode double-render). Movement is frame-rate-tied (`MOVE_SPEED = 0.06` per frame in `firstPersonEngine.ts:10`), so at ~10fps you can barely move. Production-build playtest path:
+   ```bash
+   cd game && yarn build && npx serve@latest out
+   ```
+   (`yarn start` doesn't work with `output: 'export'` — the build is pure static HTML.)
+
+2. **Frame-rate-independent movement is a worthwhile follow-up.** Multiply movement deltas by elapsed-ms-since-last-frame so all modes feel consistent on slower devices in production. Touches `firstPersonEngine.ts`, `groundEngine.ts`, `boardingEngine.ts`. ~1 hour of work.
+
+3. **Pad / foundation 3D textures deferred.** The renderer fills the floor with a single `createPattern` call. Per-tile floor textures need *floor casting* (per-pixel-row sampling — for each screen Y below horizon, compute world-space tile and UV). ~100-line addition. Currently visible only on the minimap.
+
+### Open follow-up tasks for next session
+
+In priority order:
+
+1. **Merge PR #5** once user confirms playtest in the production build path. https://github.com/colorpulse6/sector-zero/pull/5
+2. **Phase 2 polish (recommended)** — bring it home before piling on:
+   - Frame-rate-independent movement (cross-mode benefit, ~1hr)
+   - Floor casting for pad/foundation 3D textures (~100 lines)
+   - Plaza decor props (a few SPRITES.EXPLORE_OUTPOST_PROP_* billboards in the plaza)
+   - Daytime clock progression while in colony (hour ticks while you walk)
+3. **Phase 5a — NPCs in the exterior.** Background colonists wandering plaza + a named NPC at the landing pad. Reuses Ashfall's existing NPC + dialog system. Brings the place alive cheaply (~3–5 days).
+4. **Phase 3 — Hub interiors with vendors.** Tier-3 buildings (Marketplace, Town Hall), multi-room interiors, vendor NPCs, real dialog trees. Needs its own brainstorm → spec → plan cycle (~1–2 weeks).
+5. **Pre-existing pending follow-up:** "tick cycle on final boss ENDING path" (Phase 10 concern, low priority).
+
+### Restart instructions for the next session
+
+1. Branch is `colony/phase-2`, **not** main. Don't accidentally run `git checkout main` and lose context — PR #5 hasn't merged yet.
+2. Read this section + the original Completion Log above for full context.
+3. Production-build playtest: `cd game && yarn build && npx serve@latest out`. Open http://localhost:3000 (or the port `serve` prints), backtick to open DevPanel, click DAY/NIGHT/DAWN under COLONY SEEDS.
+4. Ask user: "Did the playtest land? Ready to merge PR #5? What direction next — Phase 2 polish, Phase 5a NPCs, or Phase 3 hubs?"

@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { type GameState, GameScreen } from "./engine/types";
 import { ALL_LEVELS, WORLD_NAMES } from "./engine/levels";
 import { PLANET_DEFS } from "./engine/planets";
+import { COLONY_FIXTURES } from "./colony/dev/seedColony";
+import { setResolutionMode, getPerfStats, type FpPerfStats, type ResMode } from "./engine/fpRender";
+
+const RES_MODE_TITLES: Record<ResMode, string> = {
+  full: "Force full internal resolution (480x714)",
+  half: "Force half internal resolution (240x357)",
+  auto: "Adaptive — downgrades once if p95 exceeds budget, then stays",
+};
 
 interface DevPanelProps {
   gameState: GameState | null;
@@ -15,6 +23,14 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
   const fpsRef = useRef(0);
   const frameTimesRef = useRef<number[]>([]);
   const [fps, setFps] = useState(0);
+  const [fpPerf, setFpPerf] = useState<FpPerfStats>({ p50: 0, p95: 0, res: "full", mode: "auto" });
+
+  // Apply a resolution mode + refresh the readout immediately — waiting for
+  // the next 500ms poll makes the label lag the click.
+  const applyRes = (m: ResMode) => {
+    setResolutionMode(m);
+    setFpPerf(getPerfStats());
+  };
 
   // FPS counter
   useEffect(() => {
@@ -40,6 +56,15 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
       clearInterval(interval);
     };
   }, []);
+
+  // FP RENDER perf readout — polled only while the panel is open (Task 5).
+  useEffect(() => {
+    if (!open) return;
+    const tick = () => setFpPerf(getPerfStats());
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [open]);
 
   // Backtick toggle
   useEffect(() => {
@@ -197,6 +222,47 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
           >
             ASHFALL CAMP
           </button>
+        </div>
+      </div>
+
+      {/* Colony Seeds — Phase 2 FPS descent, bypasses resource grind */}
+      <div className="space-y-1">
+        <div className="text-cyan-500 border-b border-cyan-900 pb-1">COLONY SEEDS</div>
+        <div className="grid grid-cols-3 gap-1">
+          {COLONY_FIXTURES.map(fx => (
+            <button
+              key={fx.id}
+              onClick={() => onAction(`seed-colony:${fx.id}`)}
+              className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
+              title={`Seed + descend into ${fx.label.toLowerCase()} colony`}
+            >
+              {fx.label.replace("SEED ", "")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* FP Render — Task 5 adaptive internal resolution perf readout */}
+      <div className="space-y-1">
+        <div className="text-cyan-500 border-b border-cyan-900 pb-1">FP RENDER</div>
+        <div className="text-cyan-600">
+          p50 {fpPerf.p50.toFixed(1)}ms / p95 {fpPerf.p95.toFixed(1)}ms — <span className="text-cyan-400">{fpPerf.res.toUpperCase()}</span>
+        </div>
+        <div className="grid grid-cols-3 gap-1">
+          {(["full", "half", "auto"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => applyRes(m)}
+              className={`px-1 py-1.5 border transition-colors text-center ${
+                fpPerf.mode === m
+                  ? "border-cyan-400 bg-cyan-400/20 text-cyan-300"
+                  : "border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300"
+              }`}
+              title={RES_MODE_TITLES[m]}
+            >
+              {m.toUpperCase()}
+            </button>
+          ))}
         </div>
       </div>
 

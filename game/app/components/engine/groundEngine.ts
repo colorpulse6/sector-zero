@@ -46,7 +46,8 @@ function rectsOverlap(
 function updatePlayerMovement(
   gs: GameState,
   ground: GroundState,
-  keys: Keys
+  keys: Keys,
+  dtF: number
 ): void {
   const p = gs.player;
   const map = ground.tileMap;
@@ -54,11 +55,11 @@ function updatePlayerMovement(
   // Horizontal
   let vx = 0;
   if (keys.left) {
-    vx = -PLAYER_MOVE_SPEED;
+    vx = -PLAYER_MOVE_SPEED * dtF;
     ground.playerFacingRight = false;
     gs.player.bankDir = -1; // Signal to renderer: moving left
   } else if (keys.right) {
-    vx = PLAYER_MOVE_SPEED;
+    vx = PLAYER_MOVE_SPEED * dtF;
     ground.playerFacingRight = true;
     gs.player.bankDir = 1; // Signal to renderer: moving right
   } else {
@@ -75,7 +76,7 @@ function updatePlayerMovement(
   }
 
   // Gravity & vertical
-  const { y, vy, onGround } = applyGravity(map, p.x, p.y, ground.playerVY, PLAYER_W, PLAYER_H);
+  const { y, vy, onGround } = applyGravity(map, p.x, p.y, ground.playerVY, PLAYER_W, PLAYER_H, dtF);
   p.y = y;
   ground.playerVY = vy;
   ground.playerOnGround = onGround;
@@ -90,10 +91,10 @@ function updatePlayerMovement(
 
 // ─── Player shooting ──────────────────────────────────────────────────
 
-function updatePlayerShooting(gs: GameState, ground: GroundState, keys: Keys): void {
+function updatePlayerShooting(gs: GameState, ground: GroundState, keys: Keys, dtF: number): void {
   const p = gs.player;
   if (p.fireTimer > 0) {
-    p.fireTimer--;
+    p.fireTimer = Math.max(0, p.fireTimer - dtF);
     return;
   }
   if (!keys.shoot) return;
@@ -168,7 +169,7 @@ function hasGroundAhead(ground: GroundState, enemy: GroundEntity): boolean {
 
 // ─── Enemy AI update ──────────────────────────────────────────────────
 
-function updateEnemyAI(gs: GameState, ground: GroundState): void {
+function updateEnemyAI(gs: GameState, ground: GroundState, dtF: number): void {
   const map = ground.tileMap;
   const p = gs.player;
 
@@ -177,15 +178,16 @@ function updateEnemyAI(gs: GameState, ground: GroundState): void {
       // ── Patrol: walks back and forth, reverses on wall or edge ──────
       case "patrol": {
         // Apply gravity
-        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height);
+        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height, dtF);
         enemy.y = grav.y;
         enemy.vy = grav.vy;
         enemy.onGround = grav.onGround;
 
         const speed = enemy.facingRight ? 1 : -1;
+        const step = speed * dtF;
 
         // Check wall ahead or no ground ahead → reverse
-        const wallAhead = resolveHorizontal(map, enemy.x, enemy.y, speed, enemy.width, enemy.height) === enemy.x;
+        const wallAhead = resolveHorizontal(map, enemy.x, enemy.y, step, enemy.width, enemy.height) === enemy.x;
         const edgeAhead = !hasGroundAhead(ground, enemy);
 
         if (wallAhead || edgeAhead) {
@@ -193,7 +195,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState): void {
           enemy.vx = enemy.facingRight ? 1 : -1;
         } else {
           enemy.vx = speed;
-          enemy.x = resolveHorizontal(map, enemy.x, enemy.y, speed, enemy.width, enemy.height);
+          enemy.x = resolveHorizontal(map, enemy.x, enemy.y, step, enemy.width, enemy.height);
         }
         break;
       }
@@ -201,7 +203,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState): void {
       // ── Turret: stationary, shoots at player ─────────────────────
       case "turret": {
         // Gravity to stay grounded
-        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height);
+        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height, dtF);
         enemy.y = grav.y;
         enemy.vy = grav.vy;
         enemy.onGround = grav.onGround;
@@ -214,7 +216,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState): void {
         const distToPlayer = Math.abs((enemy.x + enemy.width / 2) - (p.x + PLAYER_W / 2));
 
         if (enemy.fireTimer > 0) {
-          enemy.fireTimer--;
+          enemy.fireTimer = Math.max(0, enemy.fireTimer - dtF);
         } else if (distToPlayer < CANVAS_WIDTH + 50) {
           // Fire toward player (only when on/near screen)
           const cx = enemy.x + enemy.width / 2;
@@ -246,7 +248,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState): void {
 
       // ── Jumper: moves toward player, jumps when player is above ──
       case "jumper": {
-        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height);
+        const grav = applyGravity(map, enemy.x, enemy.y, enemy.vy, enemy.width, enemy.height, dtF);
         enemy.y = grav.y;
         enemy.vy = grav.vy;
         enemy.onGround = grav.onGround;
@@ -254,7 +256,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState): void {
         const dirToPlayer = p.x + PLAYER_W / 2 > enemy.x + enemy.width / 2 ? 1 : -1;
         enemy.facingRight = dirToPlayer > 0;
 
-        const newX = resolveHorizontal(map, enemy.x, enemy.y, dirToPlayer * 2, enemy.width, enemy.height);
+        const newX = resolveHorizontal(map, enemy.x, enemy.y, dirToPlayer * 2 * dtF, enemy.width, enemy.height);
         enemy.x = newX;
         enemy.vx = dirToPlayer * 2;
 
@@ -269,7 +271,7 @@ function updateEnemyAI(gs: GameState, ground: GroundState): void {
         }
 
         if (enemy.fireTimer > 0) {
-          enemy.fireTimer--;
+          enemy.fireTimer = Math.max(0, enemy.fireTimer - dtF);
         }
         break;
       }
@@ -281,12 +283,14 @@ function updateEnemyAI(gs: GameState, ground: GroundState): void {
         enemy.facingRight = dirToPlayer > 0;
 
         // Drift toward player horizontally
-        enemy.x += dirToPlayer * FLYER_MOVE_SPEED;
+        enemy.x += dirToPlayer * FLYER_MOVE_SPEED * dtF;
 
-        // Sine-wave vertical bobbing (use fireTimer as frame counter)
-        enemy.fireTimer += 1;
+        // Sine-wave vertical bobbing (use fireTimer as frame counter). Scale the
+        // accumulator by dtF so bob frequency is frame-rate independent, and scale
+        // the position integration by dtF so bob amplitude stays constant too.
+        enemy.fireTimer += dtF;
         enemy.vy = Math.cos(enemy.fireTimer * FLYER_BOB_SPEED) * FLYER_BOB_AMP * 0.05;
-        enemy.y += enemy.vy;
+        enemy.y += enemy.vy * dtF;
 
         // Clamp to stay in game area
         enemy.y = Math.max(32, Math.min(enemy.y, GAME_AREA_HEIGHT - 64));
@@ -305,6 +309,10 @@ function updateBullets(ground: GroundState): void {
   const mapPixelHeight = map.height * map.tileSize;
 
   ground.groundBullets = ground.groundBullets.filter((b) => {
+    // Bullet velocity is deliberately NOT scaled by dtF. Scaling a ~10px/frame
+    // bullet by dtF=3 would step it 30px/frame — clean over a 24px enemy hitbox,
+    // causing missed hits (entity tunneling). The "no half measures" fix is to
+    // sub-step this integration at <= hitbox size; until then, leave it unscaled.
     b.x += b.vx;
     b.y += b.vy;
     // Remove if out of map bounds or hits a solid tile
@@ -446,8 +454,8 @@ function handlePlayerDeath(gs: GameState, ground: GroundState): void {
 
 // ─── Invincibility timer ──────────────────────────────────────────────
 
-function tickInvincibility(gs: GameState): void {
-  if (gs.player.invincibleTimer > 0) gs.player.invincibleTimer--;
+function tickInvincibility(gs: GameState, dtF: number): void {
+  if (gs.player.invincibleTimer > 0) gs.player.invincibleTimer = Math.max(0, gs.player.invincibleTimer - dtF);
 }
 
 // ─── Goal detection ───────────────────────────────────────────────────
@@ -469,7 +477,8 @@ function checkGoal(gs: GameState, ground: GroundState): void {
 
 export function updateGroundEngine(
   gs: GameState,
-  keys: Keys
+  keys: Keys,
+  dtMs: number = 16.67
 ): void {
   const ground = gs.groundState;
   if (!ground) return;
@@ -477,12 +486,15 @@ export function updateGroundEngine(
   // Skip updates if level is completing
   if (gs.levelCompleteTimer > 0) return;
 
-  updatePlayerMovement(gs, ground, keys);
-  updatePlayerShooting(gs, ground, keys);
-  updateEnemyAI(gs, ground);
+  // Frame-rate-independence factor: 1.0 at 60fps (dtMs = 16.67), capped at 3.
+  const dtF = Math.min(dtMs / 16.67, 3);
+
+  updatePlayerMovement(gs, ground, keys, dtF);
+  updatePlayerShooting(gs, ground, keys, dtF);
+  updateEnemyAI(gs, ground, dtF);
   updateBullets(ground);
   resolveBulletEnemyCollisions(gs, ground);
   resolvePlayerHits(gs, ground);
-  tickInvincibility(gs);
+  tickInvincibility(gs, dtF);
   checkGoal(gs, ground);
 }

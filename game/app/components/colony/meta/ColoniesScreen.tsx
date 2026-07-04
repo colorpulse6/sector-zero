@@ -14,9 +14,10 @@ export interface ColoniesScreenProps {
   save: SaveData;
   onDispatch: (event: ColonyEvent) => void;
   onExit: () => void;
+  onDescend?: (colonyId: string) => void;
 }
 
-export function ColoniesScreen({ save, onDispatch, onExit }: ColoniesScreenProps) {
+export function ColoniesScreen({ save, onDispatch, onExit, onDescend }: ColoniesScreenProps) {
   // Escape key to exit
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -62,7 +63,7 @@ export function ColoniesScreen({ save, onDispatch, onExit }: ColoniesScreenProps
       {save.colonies.length === 0 ? (
         <ColonyEmptyState onFound={handleFound} />
       ) : (
-        <PopulatedView save={save} onDispatch={onDispatch} onExit={onExit} />
+        <PopulatedView save={save} onDispatch={onDispatch} onExit={onExit} onDescend={onDescend} />
       )}
     </div>
   );
@@ -72,10 +73,12 @@ function PopulatedView({
   save,
   onDispatch,
   onExit,
+  onDescend,
 }: {
   save: SaveData;
   onDispatch: (event: ColonyEvent) => void;
   onExit: () => void;
+  onDescend?: (colonyId: string) => void;
 }) {
   const colony = save.colonies[0];
   return (
@@ -84,6 +87,7 @@ function PopulatedView({
         colony={colony}
         missionsSinceStart={save.missionsSinceStart}
         onBack={onExit}
+        onDescend={onDescend ? () => onDescend(colony.id) : undefined}
       />
       <ColonyResourcePanel colony={colony} />
       <ColonyMetrics colony={colony} />
