@@ -116,6 +116,8 @@ game/app/components/Game.tsx  # pass the real dtMs (already computed) to stepCol
 
 ### `ColonyNpc` (internal, orchestrator-only)
 
+Throughout, `Tile` is a coordinate alias, distinct from the map's tile-*kind* strings (`"floor"`/`"wall"`): `type Tile = { x: number; y: number }` (defined once in the npc folder).
+
 ```typescript
 // colony/exploration/npc/colonyNpcs.ts
 type NpcKind = "governor" | "quartermaster" | "colonist";
@@ -154,7 +156,7 @@ Reuses the five day/night buckets already defined by `dayNightTint.tintForHour` 
 export function scheduleTargetTile(npc: ColonyNpc, hour: number, plazaTiles: Tile[]): Tile;
 ```
 
-Named NPCs (governor, quartermaster) hold a fixed `postTile` through dawn/day/dusk so the player can reliably find them during active hours, but still commute home at night/evening so the colony visibly empties and refills. Which plaza tile a colonist targets at dusk is chosen deterministically from its id + seed (spreads them across the plaza, avoids clumping).
+Named NPCs (governor, quartermaster) hold a fixed `postTile` through dawn/day/dusk so the player can reliably find them during active hours, but still commute home at night/evening so the colony visibly empties and refills. Which plaza tile a colonist targets at dusk is chosen deterministically from its id + seed (spreads them across the plaza, avoids clumping). `plazaTiles` are derived deterministically from the fixed `OUTPOST_TEMPLATE` plaza region (`outpostTemplate.ts`); the orchestrator can recompute them from the template each step (cheap, stateless) or stash them beside the sidecar at generation — either is deterministic. Recompute-from-template is simplest and preferred.
 
 ---
 
