@@ -90,6 +90,26 @@ test("generateColonyNpcs: governor + quartermaster always present, correct kinds
   assert.notEqual(govFp.sprite, qmFp.sprite, "governor and quartermaster read as distinct sprites");
 });
 
+// ─── Buy-enable is quartermaster-only (§I — makes the in-game shop actually buy) ──
+
+test("generateColonyNpcs: only the quartermaster's fpNpc has canBuy === true", () => {
+  const colony = fullColony();
+  const map = generateExteriorState(colony, CLOCK).map;
+  const { sidecar, fpNpcs } = generateColonyNpcs(colony, CLOCK, map);
+  const byId = new Map(fpNpcs.map((n) => [n.id, n]));
+
+  for (const npc of sidecar) {
+    const fp = byId.get(npc.id)!;
+    if (npc.kind === "quartermaster") {
+      assert.equal(fp.canBuy, true, "quartermaster fpNpc is buy-enabled");
+    } else {
+      assert.notEqual(fp.canBuy, true, `${npc.kind} fpNpc is NOT buy-enabled`);
+    }
+  }
+  // Exactly one buy-enabled NPC in the whole set.
+  assert.equal(fpNpcs.filter((n) => n.canBuy === true).length, 1, "exactly one canBuy NPC");
+});
+
 // ─── Colonist count from population, capped at 10 ────────────────────────────
 
 test("generateColonyNpcs: colonists cap at 10 even for huge population", () => {

@@ -1321,7 +1321,7 @@ export default function Game() {
           setExitMenuOpen(true);
           if (fp) fp.colonyTransitionRequest = undefined;
         } else {
-          const nextStack = stepColonyExploration(sceneStack, saveData, 16);
+          const nextStack = stepColonyExploration(sceneStack, saveData, dtMs);
           if (nextStack !== sceneStack) {
             setSceneStack(nextStack);
             // When stack layer changes (interior enter/exit), propagate the new

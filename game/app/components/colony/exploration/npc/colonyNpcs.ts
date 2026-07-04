@@ -150,6 +150,7 @@ export function generateColonyNpcs(
     dialog: FPDialogLine[];
     shopItems?: FPShopItem[];
     fpType: FPNPC["type"];
+    canBuy?: boolean;   // §I: enables the REAL FP purchase flow — quartermaster only
   }): void => {
     const millSeed = Math.floor(rng() * 0x7fffffff);
     const npc: ColonyNpc = {
@@ -167,6 +168,7 @@ export function generateColonyNpcs(
       path: [],
       pathComputed: false,
       millSeed,
+      millCounter: 0,
     };
     npc.targetTile = scheduleTargetTile(npc, gameClock.hour, plazaTiles);
     // Colonists spawn home and walk to their target (a later stepping task);
@@ -186,6 +188,7 @@ export function generateColonyNpcs(
       color: spec.color,
       interacted: false,
       sprite: spec.sprite,
+      canBuy: spec.canBuy,
     });
   };
 
@@ -218,6 +221,7 @@ export function generateColonyNpcs(
     dialog: [{ speaker: "Quartermaster", text: "Supplies for the road, if you've got the credits." }],
     shopItems: buildQuartermasterShop(colony),
     fpType: "merchant",
+    canBuy: true,   // the ONLY NPC with a real (buy-enabled) shop — see §I
   });
 
   // ─── Colonists — count from population, capped; home/work deterministic ────

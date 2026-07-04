@@ -5,6 +5,8 @@ import { OUTPOST_TEMPLATE } from "./outpostTemplate";
 import { BUILDING_FOOTPRINTS } from "./buildingTiles";
 import { type SceneStack, type SceneLayer, pushInterior, popToExterior, isInInterior } from "./sceneStack";
 import type { ColonyContext, DoorInteractResult, LandingPadResult } from "./colonyContext";
+import { generateColonyNpcs } from "./npc/colonyNpcs";
+import { stepColonyNpcs } from "./npc/npcStep";
 
 export type { SceneStack, SceneLayer } from "./sceneStack";
 export type { ColonyContext, DoorInteractResult, LandingPadResult } from "./colonyContext";
@@ -19,11 +21,16 @@ export function enterColonyExploration(save: SaveData, colonyId: ColonyId): Ente
   const colony = save.colonies.find(c => c.id === colonyId);
   if (!colony) throw new Error(`[colony/exploration] colony ${colonyId} not found`);
   const firstPersonState = generateExteriorState(colony, save.gameClock);
+  // Phase 5a: populate the exterior with NPCs. generateExteriorState is unchanged;
+  // NPC generation happens here and the movement sidecar rides on the exterior layer.
+  const { fpNpcs, sidecar } = generateColonyNpcs(colony, save.gameClock, firstPersonState.map);
+  firstPersonState.npcs = fpNpcs;
   const exteriorLayer: SceneLayer = {
     kind: "exterior",
     buildingId: null,
     state: firstPersonState,
     returnToTile: null,
+    npcSidecar: sidecar,
   };
   return {
     mode: "colony-exploration" as GameMode,
@@ -45,8 +52,22 @@ export function enterColonyExploration(save: SaveData, colonyId: ColonyId): Ente
 export function stepColonyExploration(
   stack: SceneStack,
   save: SaveData,
-  _deltaMs: number,
+  deltaMs: number,
 ): SceneStack {
+  // Phase 5a: advance NPCs BEFORE the no-transition early return, or they never
+  // move on the common frame. Exterior-only — the sidecar lives on the exterior
+  // layer, so on interior frames (current.kind === "interior") this no-ops. The
+  // sidecar survives interior push/pop (preserved as `parent`) and resumes on pop.
+  if (stack.current.kind === "exterior" && stack.current.npcSidecar) {
+    stepColonyNpcs(
+      stack.current.npcSidecar,
+      stack.current.state.npcs,
+      stack.current.state.map,
+      deltaMs,
+      !!stack.current.state.dialogState?.active,
+    );
+  }
+
   const request = stack.current.state.colonyTransitionRequest as
     | DoorInteractResult
     | LandingPadResult

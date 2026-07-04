@@ -1,5 +1,6 @@
 import type { ColonyId, BuildingInstanceId, ColonyBuilding } from "../shared/colonyTypes";
 import type { FirstPersonState } from "../../engine/types";
+import type { ColonyNpc } from "./npc/types";
 
 export interface SceneLayer {
   kind: "exterior" | "interior";
@@ -8,6 +9,10 @@ export interface SceneLayer {
   /** Tile coord on the parent (exterior) map where this interior was entered.
    *  Used on popToExterior to re-position the player outside the door. */
   returnToTile: { x: number; y: number } | null;
+  /** Phase 5a: the orchestrator-owned NPC movement sidecar. Lives on the EXTERIOR
+   *  layer only (interiors have no NPCs). Preserved as `parent` across interior
+   *  push/pop, so it survives and resumes on pop. Stepped by stepColonyNpcs. */
+  npcSidecar?: ColonyNpc[];
 }
 
 export interface SceneStack {
