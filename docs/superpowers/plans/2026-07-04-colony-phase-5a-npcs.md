@@ -439,3 +439,34 @@ Per NPC: if `dialogActive` return early (no movement). If `!pathComputed`, `path
 - Each task ends green. Tasks 4–5 (engine enablers) MUST land before Task 6 (first NPC placement), or colony NPCs are un-talkable / the shop can't buy.
 - Determinism is pinned for generation + A* only (not runtime positions, which depend on elapsed frames) — see spec Section F.
 - If a golden/engine test in the graphics suite changes, STOP — this feature must not touch rendering (use superpowers:systematic-debugging).
+
+---
+
+## Completion Log (2026-07-04)
+
+**Status: implementation complete + fully reviewed. Awaiting user prod-build playtest, then PR to `main`.**
+
+Branch `colony/phase-5a` (off `main`, which contains the merged FP graphics work). 7 code commits:
+
+| Commit | Task | What |
+|---|---|---|
+| `d1b45b4` | 1 | Deterministic grid A* pathfinder (fixed tie-break; 7 tests) |
+| `df9650a` | 3 | Governor/quartermaster/colonist dialog + shop builders (real ConsumableIds) |
+| `ededd78` | 4 | Engine H1 (colony-mode NPC interaction, canFire-gated + disarm-on-open) + H2 (additive `FPNPC.sprite`) |
+| `5d5838e` | 2 | NPC schedule (entry-hour snapshot) + deterministic generation (walkable door/approach targets, reuses `assignSlots`) |
+| `75d9b80` | 5 | FP shop purchase flow (Section I) — consumables-only, quartermaster-only via `canBuy`/`shopCanBuy`; per-conversation `shopSeen` gate (avoids Ashfall soft-lock); Game.tsx drain via `purchaseConsumable` |
+| `b312092` | 6 | NPC stepping (spawn→A*→idle-mill, in-place `FPNPC.x/y`) + orchestrator wiring; Game.tsx real dtMs |
+| `ae542ea` | 7 | Polish — spread named-NPC homes, comment + Ashfall shop-hint cleanup |
+
+**Verification:** `yarn colony:test` 159/159, `yarn engine:test` 64/64 (12 render goldens unchanged), `npx tsc --noEmit` clean, `yarn build` clean. Engine stays colony-agnostic; no new `SaveData`/`ColonyState` fields; the one save-write during exploration is the shop purchase (via audited `purchaseConsumable` in Game.tsx).
+
+**Review process:** each task got spec-compliance + code-quality review (pure-logic tasks combined), plus a whole-branch cross-cutting review — all green. The spec itself was hardened by 3 Claude rounds + **2 Codex second-opinions** (which caught: FP shop was display-only, gameClock frozen during a visit, footprint tiles are walls, upgrades bypass purchase rules, Ashfall shop has invalid data, interacted blocks reopen, FPNPC identity must be preserved).
+
+**Playtest watch-list (user's prod-build pass — `cd game && yarn build && npx serve out`, DevPanel COLONY SEEDS):**
+- Night/evening descent: NPC clumping on habitat door tiles (single-habitat Tier-1 still shares — accepted; note if it reads badly).
+- Quartermaster-on-pad: face QM → talk; finish shop on the pad with interact held → must NOT pop the take-off menu (disarm path).
+- Buy flow: credits down + consumable granted in save; unaffordable → "PURCHASE UNAVAILABLE" flash; shop reopens on fresh talk. (FP shop doesn't show the wallet — verify acceptable.)
+- Ashfall regression in-game: dialog + display-only shop still browse/close (now re-shoppable on a 2nd talk — intended).
+- Feel: NPC walk speed (0.03 tiles/frame ≈ 1.8/s); governor at plaza center vs. player spawn; no wall-clip during mill; dusk plaza gathering spreads.
+
+**Deferred (documented, not blocking):** live exploration clock (time passing during a visit); shop upgrades/materials; interior NPCs; quests; NPC persistence; the door-geometry formula now duplicated a 4th time (extract a shared `doorTileFor(fp, slot)` helper — touches colonyLayout/index, out of Phase 5a scope); post-playtest feel-tuning (walk speed, counts, dialog copy, clump density).
