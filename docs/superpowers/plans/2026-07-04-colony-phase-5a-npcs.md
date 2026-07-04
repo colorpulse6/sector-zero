@@ -6,7 +6,7 @@
 
 **Architecture:** All NPC logic (generation, schedule, A*, per-frame stepping, dialog/shop builders) lives in a new `game/app/components/colony/exploration/npc/` folder driven by the orchestrator (`stepColonyExploration`). The engine stays colony-*agnostic*: it gets contained, audited edits only where reuse hits a real gap — H1 (colony-mode NPC interaction), H2 (additive `FPNPC.sprite`), and Section I (a real FP shop purchase flow, quartermaster-only). NPCs are ephemeral (regenerated deterministically each descent; nothing new persists). The one intentional `SaveData` write during exploration is a shop purchase, applied by `Game.tsx` via the existing `purchaseConsumable` helper.
 
-**Tech Stack:** TypeScript, `tsx --test` (node:test). No new deps. Tests extend `yarn colony:test` (`tests/colony/**`) and `yarn engine:test` (`tests/engine/**`).
+**Tech Stack:** TypeScript, `tsx --test` (node:test). No new deps. Tests go in `game/tests/colony/*.test.ts` (run by `yarn colony:test`) and `game/tests/engine/*.test.ts` (run by `yarn engine:test`). **Both scripts glob one level only (`tests/<dir>/*.test.ts`) — new test files MUST be flat in those dirs, NOT in a subfolder, or they are silently skipped.** (Source files still live under `colony/exploration/npc/`; only the test files are flat.)
 
 **Spec:** `docs/superpowers/specs/2026-07-04-colony-phase-5a-npcs-design.md` — READ IT FIRST. It records every decision and the review history (3 Claude + 2 Codex passes). The load-bearing details below trace to specific spec sections.
 
@@ -51,7 +51,7 @@ REUSED unchanged: `engine/consumables.ts::purchaseConsumable`.
 **Files:**
 - Create: `game/app/components/colony/exploration/npc/types.ts`
 - Create: `game/app/components/colony/exploration/npc/npcPathfind.ts`
-- Test: `game/tests/colony/npc/npcPathfind.test.ts`
+- Test: `game/tests/colony/npcPathfind.test.ts`
 
 - [ ] **Step 1.1: `types.ts` — the coordinate alias + kinds**
 
@@ -66,9 +66,11 @@ export interface ColonyNpc {
   kind: NpcKind;
   name: string;
   sprite: string;                 // a SPRITES.NPC_* path; copied to FPNPC.sprite
-  posX: number; posY: number;     // continuous tile coords
+  posX: number; posY: number;     // continuous tile coords (spawn = homeTile center)
   homeTile: Tile;
-  targetTile: Tile;               // fixed for the visit (entry-hour snapshot)
+  workTile: Tile;                 // placed operational building's door/approach tile (home fallback)
+  postTile: Tile | null;          // named NPCs' active-hours station; null for colonists
+  targetTile: Tile;               // RESOLVED entry-hour target (scheduleTargetTile); fixed for the visit
   happinessTier: "content" | "strained" | "grim";
   path: Tile[];                   // remaining waypoints to targetTile ([] once arrived)
   pathComputed: boolean;          // A* run once on first step
@@ -80,12 +82,12 @@ export interface GeneratedNpcs { fpNpcs: FPNPC[]; sidecar: ColonyNpc[]; }
 
 - [ ] **Step 1.2: Write failing A* test**
 
-`game/tests/colony/npc/npcPathfind.test.ts`:
+`game/tests/colony/npcPathfind.test.ts`:
 ```typescript
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findPath } from "../../../app/components/colony/exploration/npc/npcPathfind";
-import type { BoardingMap } from "../../../app/components/engine/types";
+import { findPath } from "../../app/components/colony/exploration/npc/npcPathfind";
+import type { BoardingMap } from "../../app/components/engine/types";
 
 // 5x5: perimeter wall, open interior, one interior wall pillar at (2,2).
 function tinyMap(): BoardingMap {
@@ -123,7 +125,7 @@ test("findPath handles start === goal", () => {
 });
 ```
 
-- [ ] **Step 1.3: Run — expect FAIL** (`cd game && npx tsx --test tests/colony/npc/npcPathfind.test.ts` → module not found).
+- [ ] **Step 1.3: Run — expect FAIL** (`cd game && npx tsx --test tests/colony/npcPathfind.test.ts` → module not found).
 
 - [ ] **Step 1.4: Implement `npcPathfind.ts`**
 
@@ -205,7 +207,7 @@ export function findPath(map: BoardingMap, start: Tile, goal: Tile): Tile[] {
 - Create: `game/app/components/colony/exploration/npc/npcSchedule.ts`
 - Create: `game/app/components/colony/exploration/npc/colonyNpcs.ts`
 - Modify: `game/app/components/colony/exploration/dayNightTint.ts` (export `bucketForHour`)
-- Test: `game/tests/colony/npc/npcSchedule.test.ts`, `game/tests/colony/npc/colonyNpcs.test.ts`
+- Test: `game/tests/colony/npcSchedule.test.ts`, `game/tests/colony/colonyNpcs.test.ts`
 
 - [ ] **Step 2.1: Extract `bucketForHour` in `dayNightTint.ts`**
 
@@ -233,10 +235,10 @@ export function scheduleTargetTile(npc: ColonyNpc, hour: number, plazaTiles: Til
 ```typescript
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generateColonyNpcs } from "../../../app/components/colony/exploration/npc/colonyNpcs";
-import { generateExteriorState } from "../../../app/components/colony/exploration/colonyLayout";
-import { findPath } from "../../../app/components/colony/exploration/npc/npcPathfind";
-import { makeTestColony } from "../fixtures";
+import { generateColonyNpcs } from "../../app/components/colony/exploration/npc/colonyNpcs";
+import { generateExteriorState } from "../../app/components/colony/exploration/colonyLayout";
+import { findPath } from "../../app/components/colony/exploration/npc/npcPathfind";
+import { makeTestColony } from "./fixtures";
 
 const clock = { day: 0, hour: 12, minute: 0, realtimeMsPerGameMinute: 1000, season: "standard" as const };
 
@@ -295,7 +297,7 @@ test("zero population still yields governor + quartermaster", () => {
 
 **Files:**
 - Create: `game/app/components/colony/exploration/npc/npcDialog.ts`
-- Test: `game/tests/colony/npc/npcDialog.test.ts`
+- Test: `game/tests/colony/npcDialog.test.ts`
 
 - [ ] **Step 3.1: Failing test** — governor dialog reflects live `ColonyState` (a line contains `population.total`; names a non-operational building; mentions a threat when `activeThreats` non-empty); `buildQuartermasterShop` returns `FPShopItem[]` with real `ConsumableId` `itemId`s and `type: "consumable"`; `buildColonistBark` returns 1–2 lines varying by happiness tier.
 
@@ -335,8 +337,8 @@ Spec Section H1/H2. This lands the enabler with NO colony NPCs placed yet — pu
   - Non-colony (`colonyContext` undefined) NPC-open still works identically (extract the helper — no Ashfall regression).
 
 - [ ] **Step 4.2: Implement H1** in `updateFirstPerson`:
-  1. Extract the current NPC-open block (`firstPersonEngine.ts:191-213`) into `tryOpenNpcDialog(gs, fp, keys, posX, posY, dirX, dirY): boolean` — **move `gs.audioEvents.push(...)` and `gs.player.bankDir = 0` into the helper** so the old call site is behavior-identical. The old site (non-colony) calls the helper.
-  2. Inside `if (fp.colonyContext)` (line 162), compute the existing `canFire` once (already at 165-168). When `canFire`, call `tryOpenNpcDialog(...)` **before** the pad/door resolution; if it returns true, set `fp.colonyInteractArmed = false` and `return`. Else fall through to the existing pad/door logic (which consumes the same `canFire`) unchanged.
+  1. Extract the current NPC-open block's **body** (`firstPersonEngine.ts:191-213`: the proximity/facing loop that finds a faced NPC and opens `fp.dialogState`, plus the `gs.audioEvents.push(...)` and `gs.player.bankDir = 0`) into `tryOpenNpcDialog(gs, fp, keys, posX, posY, dirX, dirY): boolean`. **Important:** leave the OUTER gate `if (fp.npcs && keys.shoot && fp.gunCooldown <= 0)` (line 192) at the **non-colony call site** — the helper itself does NOT re-check `gunCooldown` (in colony mode `gunCooldown` is only decremented inside the dialog block, so re-checking it in the helper would wrongly double-gate). So: non-colony site = `if (gunCooldown gate) tryOpenNpcDialog(...)`; helper = proximity/facing/open only.
+  2. Inside `if (fp.colonyContext)` (line 162), compute the existing `canFire` once (already at 165-168). When `canFire`, call `tryOpenNpcDialog(...)` **before** the pad/door resolution (the colony gate replaces the gunCooldown gate here); if it returns true, set `fp.colonyInteractArmed = false` and `return`. Else fall through to the existing pad/door logic (which consumes the same `canFire`) unchanged.
   Audit: net-new logic ~8-12 lines; the moved block is a verbatim relocation.
 
 - [ ] **Step 4.3: Implement H2:** add `sprite?: string` to `FPNPC` (types.ts:896); in `sceneInput.ts:143` change NPC sprite resolution to `n.sprite ?? NPC_SPRITE_MAP[n.name] ?? SPRITES.NPC_SURVIVOR`. Add a test: `n.sprite` wins; name-mapped NPC with no sprite still resolves.
@@ -387,7 +389,7 @@ shopPurchaseRequest?: { kind: "consumable"; itemId: ConsumableId };
 - Modify: `game/app/components/colony/exploration/sceneStack.ts` (`SceneLayer.npcSidecar?`)
 - Modify: `game/app/components/colony/exploration/index.ts` (enter + step wiring)
 - Modify: `game/app/components/Game.tsx` (real `dtMs`)
-- Test: `game/tests/colony/npc/npcStep.test.ts`
+- Test: `game/tests/colony/npcStep.test.ts`
 
 - [ ] **Step 6.1: `SceneLayer.npcSidecar?: ColonyNpc[]`** (additive; `sceneStack.test.ts` stays green).
 
