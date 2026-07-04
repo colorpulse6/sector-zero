@@ -19,7 +19,7 @@ This is the "colony is alive" beat. It adds content *inside* the Phase 2 frame w
 
 ## Design philosophy (inherited)
 
-- **Reuse before invent.** The FP engine already renders `fp.npcs` as billboards and runs a proximity + facing + interact → dialog flow (proven on Ashfall). Phase 5a reuses it. Contained, diff-audited engine edits are required where reuse hits real gaps: Section H (the Phase-2 colony-interact hook early-returns *before* the NPC-dialog code, so colony NPCs would be un-talkable; and sprites resolve by name, needing an additive `FPNPC.sprite`) and Section I (the existing FP shop is display-only, so the quartermaster's *working* shop needs a real selection + purchase-request flow — economy reused via `purchaseConsumable`/`purchaseUpgrade`).
+- **Reuse before invent.** The FP engine already renders `fp.npcs` as billboards and runs a proximity + facing + interact → dialog flow (proven on Ashfall). Phase 5a reuses it. Contained, diff-audited engine edits are required where reuse hits real gaps: Section H (the Phase-2 colony-interact hook early-returns *before* the NPC-dialog code, so colony NPCs would be un-talkable; and sprites resolve by name, needing an additive `FPNPC.sprite`) and Section I (the existing FP shop is display-only, so the quartermaster's *working* shop needs a real selection + purchase-request flow — economy reused via `purchaseConsumable`).
 - **Layered architecture honored.** The engine stays colony-*agnostic*: the NPC-interaction edit reuses the engine's own generic `fp.npcs` dialog-open logic (extracted to a helper), invoked from inside the existing `if (fp.colonyContext)` guard — it does not teach the engine about colonies, buildings, or schedules. NPC generation, scheduling, pathfinding, and per-frame movement all live in a new `colony/exploration/npc/` folder, driven by the orchestrator (`stepColonyExploration`).
 - **Deterministic generation.** Same `colony` + `layoutSeed` + `gameClock` → identical NPC set at identical schedule positions. A schedule is a pure function of the hour; nothing new persists. NPCs are ephemeral like the building layout.
 - **Incremental, patient, documented.** Contained scope: no quests, no persistence, no interior NPCs, no waking of the deferred domain-`Npc` registry / dialog-tree / mood scaffolding.
@@ -33,7 +33,7 @@ This is the "colony is alive" beat. It adds content *inside* the Phase 2 frame w
 - New folder `game/app/components/colony/exploration/npc/` (5 files, see File Layout)
 - **Wandering background colonists** with day/night schedules, moving via deterministic grid A*
 - **Governor** named NPC — dialog built from live `ColonyState` (population, tier, happiness, operational/total buildings, active threats)
-- **Quartermaster** named NPC — working shop selling **consumables** (and optionally ship upgrades) against the player wallet; materials are NOT sold (no reusable material-grant helper exists — see Section I)
+- **Quartermaster** named NPC — working shop selling **consumables** against the player wallet (upgrades + materials excluded — see Section I); buy-enabled only for the quartermaster, so Ashfall's shop is unaffected
 - **Colonist barks** — 1–2 short contextual lines reflecting colony happiness
 - Deterministic generation from `ColonyState` (`population`, `buildings`, `layoutSeed`) — zero net-new `ColonyState`/`SaveData` fields
 - Schedule tie-in to the existing five day/night buckets (reused from `dayNightTint`)
@@ -44,7 +44,7 @@ This is the "colony is alive" beat. It adds content *inside* the Phase 2 frame w
 ### In scope — corrections from the Codex/self review (2026-07-04)
 
 Two review findings changed the feature shape (user-decided):
-- **Real shop purchase flow** (Section I): the existing FP shop is display-only (renders items, no buy). The quartermaster gets a genuine purchase flow — selection input, a purchase-request channel, `Game.tsx` applying `purchaseConsumable` (and optionally `purchaseUpgrade`) to `SaveData`, reopenable shop, player frozen while shopping. **Consumables only** (plus ship upgrades if wanted); materials are excluded because no reusable material-purchase helper exists and Phase 5a adds no new economy code. This is a general FP-shop capability the quartermaster drives; it touches `SaveData` (credits/consumables) via the existing purchase helpers.
+- **Real shop purchase flow** (Section I): the existing FP shop is display-only (renders items, no buy). The quartermaster gets a genuine purchase flow — selection input, a typed purchase-request channel, `Game.tsx` applying `purchaseConsumable` to `SaveData`, reopenable shop, player frozen while shopping. **Consumables only** — upgrades are deferred (`purchaseUpgrade` bypasses the real `canPurchase`/max-level/XP/material gates), and materials have no reusable grant helper. Buy is **quartermaster-only** (explicit `shopCanBuy` flag); Ashfall's shop stays display-only. It touches `SaveData` (credits/consumables) via the existing purchase helper.
 - **Entry-hour schedule snapshot** (not a live clock): the game clock is frozen during a colony visit (`gameClock` is read once at descent and never advanced), so schedules resolve **once from the entry hour**. Colonists path to their entry-hour target and settle into a gentle local idle-mill; different descent times show different arrangements. A live exploration-clock (time passing during a visit) is explicitly deferred.
 
 ### Out of scope (deferred)
@@ -99,20 +99,21 @@ game/app/components/engine/          # Section H (interaction/sprite) + Section 
 │                        #   guard, canFire-gated, before door/pad, NPC priority + disarm.
 │                        #   I: shop selection (up/down → selectedIndex), buy → shopPurchaseRequest,
 │                        #   freeze movement while dialogState.active. Diff-audited.
-├── types.ts             # FPNPC += `sprite?` (additive); FPDialogState += `selectedIndex`;
-│                        #   FirstPersonState += `shopPurchaseRequest?` (all additive optional)
+├── types.ts             # FPNPC += `sprite?`; FPDialogState += `selectedIndex`, `shopCanBuy?`,
+│                        #   `shopNavCooldown?`; FirstPersonState += `shopPurchaseRequest?:
+│                        #   { kind: "consumable"; itemId: ConsumableId }` (all additive optional)
 ├── fpRender/sceneInput.ts   # NPC sprite resolution: `n.sprite ?? NPC_SPRITE_MAP[n.name] ?? …`
 └── firstPersonRenderer.ts   # shop draw: highlight the selected row (drawDialogBox shop block)
 
 game/app/components/engine/          # REUSED (not modified) by the shop drain:
-#   consumables.ts::purchaseConsumable, save.ts::purchaseUpgrade — economy core, unchanged
+#   consumables.ts::purchaseConsumable — economy core, unchanged
 
 game/app/components/Game.tsx  # (a) pass real dtMs to stepColonyExploration (was 16);
-                              # (b) drain fp.shopPurchaseRequest each frame → purchaseConsumable/
-                              #     purchaseUpgrade → apply new SaveData (credits/inventory) or flash
+                              # (b) drain fp.shopPurchaseRequest each frame → purchaseConsumable
+                              #     → apply new SaveData (credits/consumable) via setSaveData/saveSave, or flash
 ```
 
-**No new `SaveData` fields, no `ColonyState`-shape change.** `FPShopItem` used as-is; the additive optional fields are `FPNPC.sprite?`, `FPDialogState.selectedIndex`, `FirstPersonState.shopPurchaseRequest?`. A purchase writes `SaveData` only through the existing audited `purchaseConsumable`/`purchaseUpgrade` helpers, applied by `Game.tsx`.
+**No new `SaveData` fields, no `ColonyState`-shape change.** `FPShopItem` used as-is; the additive optional fields are `FPNPC.sprite?`, `FPDialogState.selectedIndex`, `FirstPersonState.shopPurchaseRequest?`. A purchase writes `SaveData` only through the existing audited `purchaseConsumable` helpers, applied by `Game.tsx`.
 
 ### Boundary rules
 
@@ -216,7 +217,7 @@ export function generateColonyNpcs(
 ): { fpNpcs: FPNPC[]; sidecar: ColonyNpc[] };
 ```
 
-Builds each `ColonyNpc` (identity, home/work, sprite, initial position = its entry-hour schedule target) and its paired `FPNPC` projection (dialog/shop/sprite via `npcDialog.ts`). `map` supplies walkable tiles. Deterministic (seeded RNG from `layoutSeed`):
+Builds each `ColonyNpc` (identity, home/work, sprite) and its paired `FPNPC` projection (dialog/shop/sprite via `npcDialog.ts`). **Spawn model (resolves the round-2 Codex spawn-vs-path contradiction):** a colonist spawns at its **home tile** and A*-paths to its **entry-hour target** (Section C), then idle-mills there — so A* is genuinely used (the descent commute) and the colony visibly stirs as you arrive, settling into the entry-hour arrangement. Named NPCs spawn at (or adjacent to) their `postTile` (short/no path). `map` supplies walkable tiles. Deterministic (seeded RNG from `layoutSeed`):
 
 **Walkable-target rule (load-bearing — Codex finding):** building footprints are solid `"wall"` tiles with a single carved `"door"` (`writeBuildingAt`); the footprint interior is unreachable from the exterior. So home/work targets are **never footprint tiles** — a building's target is its **door tile** or an adjacent walkable **approach tile** (the open floor cell just outside the door). Only **placed** buildings count (slots 0–5; a 7th+ building isn't rendered). Every generated home/work/plaza/post tile MUST be walkable and A*-reachable from spawn — asserted in tests.
 
@@ -243,7 +244,7 @@ Example line text: *"Population's holding at 14. Tier one, and we'd climb to two
 
 ### Quartermaster — working shop
 
-`buildQuartermasterShop(colony)` returns `FPShopItem[]` whose `itemId`s reference real **`ConsumableId`** catalog entries (`type: "consumable"`; optionally a `type: "upgrade"` row); the NPC is `type: "merchant"` so the engine's existing "end of dialog → open shop" path fires. Inventory derives from colony tier (a small deterministic set). Unlike Ashfall's **display-only** shop, the quartermaster's shop is a **real purchase flow** (Section I): you select an item and buy it, credits deducted and the item granted via the existing `purchaseConsumable` (or `purchaseUpgrade`) helper, against the **player wallet** (`save.credits`). **No `type: "material"` items** — there is no reusable material-grant helper and Phase 5a adds no economy code. No colony-treasury coupling in Phase 5a.
+`buildQuartermasterShop(colony)` returns `FPShopItem[]` whose `itemId`s are real **`ConsumableId`** catalog entries (`type: "consumable"` only); the NPC is `type: "merchant"` so the engine's "end of dialog → open shop" path fires, and the quartermaster's shop is opened with `shopCanBuy` (Section I). Inventory is a small deterministic set of generally-available consumables by tier. Unlike Ashfall's **display-only** shop, this is a **real purchase flow**: select → buy → `purchaseConsumable` deducts credits and grants against the **player wallet** (`save.credits`). No upgrades, no materials, no colony-treasury coupling in Phase 5a.
 
 ### Colonists — barks
 
@@ -281,20 +282,24 @@ The plan must verify (tests below): colony NPC dialog opens; door/pad still work
 
 ---
 
-## Section I — FP shop purchase flow (new; general FP-shop capability)
+## Section I — FP shop purchase flow (new; **consumables only**, quartermaster-only)
 
-The existing FP shop is **display-only** (Codex finding, verified): `drawDialogBox` renders `shopItems` with costs, and the interact key merely *closes* the shop — there is no selection, no credit deduction, no item grant. The quartermaster needs a real purchase flow. This is a general FP-shop capability (Ashfall merchants would become functional too, given real `itemId`s); its economy core is **reuse**.
+The existing FP shop is **display-only** (Codex finding, verified): `drawDialogBox` renders `shopItems` with costs, and interact merely *closes* it — no selection, no deduction, no grant. The quartermaster needs a real purchase flow. Scoped tightly per the round-2 Codex review:
+
+- **Consumables only** (no upgrades, no materials). `purchaseUpgrade` skips the real upgrade rules (`getUpgradeCost`/`canPurchase` max-level/XP/material checks that the cockpit path enforces), so wiring the shop straight to it would let you buy upgrades that bypass those gates — deferred. Materials have no reusable grant helper. So the quartermaster sells **`ConsumableId`** items via `purchaseConsumable` only.
+- **Buy-enable is explicit and quartermaster-only.** Ashfall's existing merchant has invalid/`material` shop rows (`ashfallForwardCamp.ts` — e.g. a non-catalog `itemId`) that were harmless while the shop was display-only; making buy "general" would break them. So buying is gated by an explicit flag (`FPDialogState.shopCanBuy`, set true only when the quartermaster opens its shop) — **Ashfall's shop stays browse-only, unchanged**, and is regression-tested.
 
 ### What's reuse vs new
 
-- **Reuse (economy):** `purchaseConsumable(save, id)` (`engine/consumables.ts:6`) checks `save.credits >= cost` (cost from the consumable def), deducts, grants, returns a new `SaveData` or `null`. `purchaseUpgrade(save, upgradeId, cost)` (`engine/save.ts:234`) is the optional upgrade path — note it takes an explicit **`cost`** arg. The wallet is `save.credits`. No new economy code. *(Materials have no such helper → not sold.)*
-- **New (FP-shop UI + channel):** item **selection** in the shop-open state, a **purchase-request signal**, and `Game.tsx` **applying** the purchase to `SaveData`.
+- **Reuse (economy):** `purchaseConsumable(save, id)` (`engine/consumables.ts:6`) validates unlock + `credits >= cost` + max-carry, deducts, grants, returns a new `SaveData` or `null`. Wallet = `save.credits`. No new economy code.
+- **New (FP-shop UI + channel):** selection in the shop-open state, a typed purchase-request signal, and `Game.tsx` applying the purchase.
 
 ### Design
 
-1. **Selection + input** (`firstPersonEngine.ts` dialog/shop block + `firstPersonRenderer.ts` shop draw): while `dialogState.shopOpen`, add a `selectedIndex` on `FPDialogState`; `up`/`down` move it (edge-triggered via the existing debounce), the renderer highlights the row **and its updated on-screen hint** (the current `firstPersonRenderer.ts:332` "[Z] Close Shop" prompt becomes e.g. "[Z] BUY   [B] LEAVE"). The interact key **buys the selected item**; a distinct key (`bomb`/`Esc`, matching the exit-menu convention) closes the shop. This changes shop-open key semantics — audited; Ashfall's shop is unaffected unless its items get real `itemId`s.
-2. **Purchase-request channel** (no `SaveData` mutation in the engine): the engine cannot mutate `SaveData` (it steps `GameState`). On buy, it sets a one-shot `fp.shopPurchaseRequest = { itemId, kind: "consumable" | "upgrade", cost }` — `cost` is copied from the selected `FPShopItem` so the drain can call `purchaseUpgrade(save, itemId, cost)` without re-deriving it (consumables ignore it; cost is internal to `purchaseConsumable`). Mirrors the Phase-2 `colonyTransitionRequest` pattern. `Game.tsx` drains it each frame: calls the matching helper; if it returns a new save, applies it (credits down, item granted) and clears; if `null` (can't afford), sets a brief "insufficient credits" flash and clears. The shop **stays open** for more purchases (the quartermaster's `interacted` gate is not used to lock the shop).
-3. **Player frozen while shopping** (small engine fix, Codex-adjacent): today movement runs *before* the dialog-active early-return, so the player can walk while a dialog/shop is open. For a usable shop the player must hold still — gate the rotation/movement block on `!fp.dialogState?.active` (or move the dialog-active return above it). This also fixes the "walk off mid-dialog" oddity for all FP NPCs; Ashfall-regression-tested.
+1. **Selection + input** (`firstPersonEngine.ts` shop block + `firstPersonRenderer.ts` shop draw): while `dialogState.shopOpen && shopCanBuy`, add `selectedIndex` on `FPDialogState`; `up`/`down` move it, debounced via a small cooldown field (FP `Keys` are held-booleans with no edge state — reuse the `gunCooldown`-style debounce the dialog already uses, or add a `shopNavCooldown`). The item list includes a trailing **"LEAVE" row**; interact **buys** a real item or **closes** on LEAVE (so a single interact key covers both — no second key, and crucially **not `Esc`**, which already triggers pause in `Game.tsx`). The renderer highlights `selectedIndex` and updates the hint (`firstPersonRenderer.ts:332` "[Z] Close Shop" → "[Z] BUY / ↑↓ SELECT"). Ashfall shops (no `shopCanBuy`) keep the old close-on-interact behavior.
+2. **Typed purchase-request channel** (no `SaveData` mutation in the engine): on buy, the engine sets a one-shot discriminated `fp.shopPurchaseRequest: { kind: "consumable"; itemId: ConsumableId }` (engine emits **nothing** for a row that isn't a valid consumable). Mirrors the Phase-2 `colonyTransitionRequest` seam. `Game.tsx` drains it each frame: calls `purchaseConsumable(save, itemId)`; if it returns a new save, applies it (credits down, consumable granted) via `setSaveData`/`saveSave` and clears; if `null`, sets a brief **generic "purchase unavailable"** flash (null can mean locked, unaffordable, or max-carry — not only "insufficient credits") and clears. The shop **stays open** for more purchases — `interacted` is **not** used to gate shop-open (the engine currently opens a merchant shop only when `!interacted` then sets it; Phase 5a removes `interacted` as that gate so the quartermaster reopens).
+3. **Player frozen while shopping** (small engine fix): today rotation/movement (`firstPersonEngine.ts:99–130`) runs *before* the dialog-active early-return (`:158`), so the player can walk while shopping. Gate the movement block on `!fp.dialogState?.active` (or hoist the dialog-active return above movement). Also fixes "walk off mid-dialog" for all FP NPCs; Ashfall-regression-tested.
+4. **Inventory** (`buildQuartermasterShop(colony)`): a small deterministic set of **generally-available** `ConsumableId`s (so unlock-gating rarely bites); the builder has no `SaveData`, so it doesn't filter by unlock/affordability — the generic-unavailable flash covers the rest.
 
 ### Boundaries
 
@@ -315,7 +320,7 @@ Pure-logic, deterministic, under the existing `tsx --test` (extends `yarn colony
 4. **`npcDialog.test.ts`** — governor dialog reflects given `ColonyState` (population number, named down building, threat present); quartermaster shop inventory (real `itemId`s) by tier; colonist bark tier selection.
 5. **Stepping** (`npcStep` test) — an NPC advances toward and reaches its target over N steps; on arrival idle-mills within its clamp and never on a solid tile; movement pauses when `dialogActive`; **`stepColonyNpcs` mutates the same `FPNPC` objects (identity preserved) and does NOT reset `interacted`** (Codex identity trap).
 6. **Engine interaction (H1)** (extend the FP engine tests) — with `fp.colonyContext` set and an NPC in range + faced, pressing interact opens `dialogState` (regression guard for the early-return bug); NPC-open is gated by the colony `canFire` (not `gunCooldown`); with no NPC targeted, door/pad still fires and the anti-bounce gate holds; **close-frame bounce guard** — after a colony NPC dialog opens (which disarms), closing it with interact still held does NOT fire door/pad that frame (quartermaster-on-pad, colonist-at-door); `tryOpenNpcDialog` behaves identically at the non-colony site (audio + `bankDir` preserved). H2: `n.sprite` wins over the name map; a name-mapped NPC with no `sprite` still resolves via the map (Ashfall unaffected).
-7. **Shop purchase (Section I)** — `up`/`down` moves `selectedIndex` (edge-triggered); buy on an affordable item sets `shopPurchaseRequest`; `Game.tsx` drain applies `purchaseConsumable`/`purchaseUpgrade` → credits down + item granted (assert against a fixture save); unaffordable → `null` → no mutation + flash; shop stays open (reopenable); player movement is frozen while `dialogState.active` (regression: Ashfall dialog unaffected).
+7. **Shop purchase (Section I)** — `up`/`down` moves `selectedIndex` (debounced); interact on a consumable row sets `shopPurchaseRequest { kind:"consumable", itemId }`, on the **LEAVE row** closes the shop; `Game.tsx` drain applies `purchaseConsumable` → credits down + consumable granted (assert vs a fixture save); `null` (unaffordable/locked/max-carry) → no mutation + generic "unavailable" flash; shop stays open + reopenable (no `interacted` gate). **Ashfall regression**: its shop (no `shopCanBuy`) still just browses/closes — no accidental purchase, its invalid rows never fire a request. Player movement frozen while `dialogState.active` (Ashfall dialog unaffected).
 
 **Total new: ~30–38 tests.** Manual playtest (prod build): descend at different hours → colonists arranged by the entry hour, milling (plaza busy at dusk, quiet at night); talk to the governor (live stats match the meta screen); **buy a consumable from the quartermaster and confirm credits/inventory update in the save**; verify Ashfall NPC dialog still works (H1/H2/I regression); confirm no wall-clipping.
 
@@ -327,7 +332,7 @@ Pure-logic, deterministic, under the existing `tsx --test` (extends `yarn colony
 2. **Schedule + NPC model** (`npcSchedule.ts`, `ColonyNpc`, `colonyNpcs.ts` generation + tests) — pure generation, no rendering; walkable door/approach targets, placed-buildings-only, `population.total` count. Extract a shared `bucketForHour(hour)` (`dayNightTint.ts`) so the schedule and tint share one source.
 3. **Dialog/shop builders** (`npcDialog.ts` + tests) — governor live-dialog, quartermaster shop items (real `itemId`s), colonist barks.
 4. **Engine edits H1/H2** (`firstPersonEngine.ts` `tryOpenNpcDialog` extraction + `canFire`-gated colony-hook call; `types.ts` `FPNPC.sprite?`; `sceneInput.ts` resolution) + tests — pure enabler, no colony NPCs placed yet; Ashfall regression-tested. Small, isolated, diff-audited.
-5. **FP shop purchase flow (Section I)** (`firstPersonEngine.ts` selection + `shopPurchaseRequest`; `firstPersonRenderer.ts` selection highlight; `types.ts` `FPDialogState.selectedIndex` + `FirstPersonState.shopPurchaseRequest?`; `Game.tsx` purchase drain via `purchaseConsumable`/`purchaseUpgrade`; player-freeze-during-dialog) + tests — general FP-shop capability; economy reused. Ashfall regression-tested. Independently shippable.
+5. **FP shop purchase flow (Section I)** (`firstPersonEngine.ts` selection + `shopPurchaseRequest`; `firstPersonRenderer.ts` selection highlight; `types.ts` `FPDialogState.selectedIndex` + `FirstPersonState.shopPurchaseRequest?`; `Game.tsx` purchase drain via `purchaseConsumable`; player-freeze-during-dialog) + tests — general FP-shop capability; economy reused. Ashfall regression-tested. Independently shippable.
 6. **Stepping + orchestrator integration** (`npcStep.ts` — in-place `FPNPC.x/y` mutation + idle-mill; in `enterColonyExploration` call `generateColonyNpcs`, assign `state.npcs = fpNpcs`, store `sidecar` on the exterior `SceneLayer`; `stepColonyNpcs` into `stepColonyExploration` before its early return, exterior-only; `Game.tsx` real `dtMs`) — first commit where NPCs appear and move. `generateExteriorState` not modified.
 7. **Playtest + polish** — tuning (walk speed, counts, mill radius, plaza spread, shop inventory, dialog copy); manual checklist; completion log.
 
@@ -343,7 +348,7 @@ Each phase ships green (`yarn colony:test`, `yarn engine:test`, `npx tsc --noEmi
 - [ ] Ashfall NPC dialog/shop unaffected (H1/H2/I regression)
 - [ ] Deterministic **generation + pathfinding**: same colony + seed + entry hour → identical NPC set, tiles, A* paths (test-verified); every target walkable + reachable
 - [ ] No wall-clipping; movement smooth and frame-rate-independent; `FPNPC` identity preserved during stepping (`interacted` not reset)
-- [ ] No new `SaveData`/`ColonyState` fields; engine diff limited to H1 + H2 + Section I (all additive/audited); a purchase writes save only via existing `purchaseConsumable`/`purchaseUpgrade`; `generateExteriorState` return unchanged (existing colony tests stay green)
+- [ ] No new `SaveData`/`ColonyState` fields; engine diff limited to H1 + H2 + Section I (all additive/audited); a purchase writes save only via existing `purchaseConsumable`; `generateExteriorState` return unchanged (existing colony tests stay green)
 - [ ] Interiors unaffected (still `npcs: []`)
 
 ### Risk callouts
@@ -355,7 +360,7 @@ Each phase ships green (`yarn colony:test`, `yarn engine:test`, `npx tsc --noEmi
 | NPC clips into a building | A* routes only walkable tiles; idle-mill clamped to target neighborhood; playtest |
 | Perf from moving billboards | Cap 10 colonists + 2 named; path computed once per visit (fixed target); billboards measured cheap |
 | Stepping resets `interacted`/dialog | `stepColonyNpcs` mutates `FPNPC.x/y` in place on persistent objects; never rebuilds the array; identity test |
-| Shop lets you buy what you can't afford / double-spend | `purchaseConsumable`/`purchaseUpgrade` already guard `credits >= cost` and return null; drain applies atomically per frame; test affordable + unaffordable |
+| Shop lets you buy what you can't afford / double-spend | `purchaseConsumable` already guard `credits >= cost` and return null; drain applies atomically per frame; test affordable + unaffordable |
 | Save write during exploration (was "never" in Phase 2) | The single intentional write is a purchase, via audited helpers applied in `Game.tsx` — not the engine, not the orchestrator |
 | Sparse colony looks broken | Degradation: governor+quartermaster always present; plaza fallback for home/work |
 | Scope creep into quests/persistence/live-clock | Explicit deferred list; `ColonyState`/save-shape untouched; live exploration clock deferred |
