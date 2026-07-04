@@ -4,10 +4,11 @@ import {
   updateFirstPerson,
   __runFirstPersonSelfTests,
 } from "../../app/components/engine/firstPersonEngine";
-import type { BoardingMap, Keys } from "../../app/components/engine/types";
+import type { BoardingMap, Keys, SaveData } from "../../app/components/engine/types";
 import { AudioEvent } from "../../app/components/engine/types";
 import { NPC_SPRITE_MAP, resolveNpcSprite } from "../../app/components/engine/fpRender/sceneInput";
 import { SPRITES } from "../../app/components/engine/sprites";
+import { applyShopPurchase } from "../../app/components/engine/consumables";
 
 // ─── Fixtures ────────────────────────────────────────────────────────
 // Task 6: frame-rate-independent movement. These tests pin the delta-time
@@ -331,4 +332,175 @@ test("H2: NPC sprite resolution prefers an explicit sprite, else name map, else 
     resolveNpcSprite({ name: "Nobody In The Map" }),
     SPRITES.NPC_SURVIVOR,
     "unmapped, spriteless NPC falls back to survivor");
+});
+
+// ─── Phase 5a §I — FP shop purchase flow (consumables, quartermaster-only) ────
+// The quartermaster's shop is a REAL purchase flow (select → buy) gated by an
+// explicit shopCanBuy flag; Ashfall's shop (no canBuy → shopCanBuy falsy) stays
+// display-only. These pin: selection nav (debounced), a typed buy request on a
+// consumable row, LEAVE-closes, the Ashfall regression (never buys, old close,
+// no soft-lock), reopenability, the movement-freeze, and the drain helper.
+
+interface ShopItemLike {
+  id: string; name: string; description: string; cost: number; type: string; itemId?: string;
+}
+interface ShopDialogLike {
+  active: boolean; npcId: number; lines: { speaker: string; text: string }[]; currentLine: number;
+  shopOpen: boolean; shopCanBuy?: boolean; selectedIndex?: number; shopSeen?: boolean;
+  shopNavCooldown?: number; shopItems?: ShopItemLike[]; shopFlashFrames?: number;
+}
+interface ShopFp {
+  dialogState: ShopDialogLike | null;
+  shopPurchaseRequest?: { kind: string; itemId: string };
+  posX: number; posY: number; gunCooldown: number;
+}
+const shopFp = (g: { fp: unknown }) => g.fp as ShopFp;
+
+function item(over: Partial<ShopItemLike> = {}): ShopItemLike {
+  return { id: "hull", name: "Hull Repair Kit", description: "Restore 1 HP", cost: 300, type: "consumable", itemId: "hull-repair", ...over };
+}
+// A fresh, already-open BUYABLE shop (quartermaster). Override fields as needed.
+function shopDialog(over: Partial<ShopDialogLike> = {}): ShopDialogLike {
+  return {
+    active: true, npcId: 1, lines: [{ speaker: "Quartermaster", text: "Supplies." }], currentLine: 0,
+    shopOpen: true, shopCanBuy: true, selectedIndex: 0, shopItems: [item()],
+    ...over,
+  };
+}
+
+test("shop(I): up/down move selectedIndex, debounced by shopNavCooldown", () => {
+  const g = makeFpGame({
+    dialogState: shopDialog({ shopItems: [item({ id: "a" }), item({ id: "b", itemId: "cryo-charge" })] }),
+    npcs: [makeNpc({ id: 1, type: "merchant", canBuy: true })],
+    gunCooldown: 0,
+  });
+  // items 0,1 then a trailing LEAVE row at index 2.
+  updateFirstPerson(g.game, keys({ down: true }), 16.67);
+  assert.equal(shopFp(g).dialogState!.selectedIndex, 1, "first down moves selection to item 1");
+
+  updateFirstPerson(g.game, keys({ down: true }), 16.67);
+  assert.equal(shopFp(g).dialogState!.selectedIndex, 1, "an immediate second down is debounced (no move)");
+
+  for (let i = 0; i < 10; i++) updateFirstPerson(g.game, keys(), 16.67); // let shopNavCooldown expire
+  updateFirstPerson(g.game, keys({ down: true }), 16.67);
+  assert.equal(shopFp(g).dialogState!.selectedIndex, 2, "after cooldown, down reaches the LEAVE row (index 2)");
+
+  for (let i = 0; i < 10; i++) updateFirstPerson(g.game, keys(), 16.67);
+  updateFirstPerson(g.game, keys({ down: true }), 16.67);
+  assert.equal(shopFp(g).dialogState!.selectedIndex, 2, "selection clamps at the LEAVE row (no overflow)");
+
+  for (let i = 0; i < 10; i++) updateFirstPerson(g.game, keys(), 16.67);
+  updateFirstPerson(g.game, keys({ up: true }), 16.67);
+  assert.equal(shopFp(g).dialogState!.selectedIndex, 1, "up moves the selection back");
+});
+
+test("shop(I): interact on a consumable row emits a typed purchase request; shop stays open", () => {
+  const g = makeFpGame({
+    dialogState: shopDialog({ selectedIndex: 0, shopItems: [item({ itemId: "hull-repair" })] }),
+    npcs: [makeNpc({ id: 1, type: "merchant", canBuy: true })],
+    gunCooldown: 0,
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  const req = shopFp(g).shopPurchaseRequest;
+  assert.ok(req, "a purchase request is emitted");
+  assert.equal(req!.kind, "consumable", "request is a consumable buy");
+  assert.equal(req!.itemId, "hull-repair", "request carries the selected row's itemId");
+  assert.ok(shopFp(g).dialogState, "the shop stays open after a buy (not closed)");
+});
+
+test("shop(I): interact on the LEAVE row closes the dialog and emits no request", () => {
+  const g = makeFpGame({
+    dialogState: shopDialog({ selectedIndex: 1, shopItems: [item()] }), // leaveIndex = 1
+    npcs: [makeNpc({ id: 1, type: "merchant", canBuy: true })],
+    gunCooldown: 0,
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.equal(shopFp(g).dialogState, null, "LEAVE row closes the dialog");
+  assert.equal(shopFp(g).shopPurchaseRequest, undefined, "LEAVE emits no purchase request");
+});
+
+test("shop(I) regression: a display-only shop (no shopCanBuy) never buys; interact closes the shop", () => {
+  const g = makeFpGame({
+    // shopCanBuy omitted → display-only. Use an INVALID itemId like Ashfall's real data.
+    dialogState: shopDialog({ shopCanBuy: undefined, shopItems: [item({ itemId: "hull-repair-kit" })] }),
+    npcs: [makeNpc({ id: 1, type: "merchant" })], // no canBuy
+    gunCooldown: 0,
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.equal(shopFp(g).shopPurchaseRequest, undefined, "display-only shop never emits a purchase request");
+  assert.equal(shopFp(g).dialogState!.shopOpen, false, "interact closes the display-only shop (old behavior)");
+});
+
+test("shop(I): a merchant's shop opens at end-of-dialog regardless of npc.interacted (reopenable)", () => {
+  const g = makeFpGame({
+    // fresh dialog: shopOpen false, shopSeen unset. Merchant already interacted before.
+    dialogState: { active: true, npcId: 1, lines: [{ speaker: "Q", text: "only line" }], currentLine: 0, shopOpen: false },
+    npcs: [makeNpc({ id: 1, type: "merchant", canBuy: true, interacted: true, shopItems: [item()] })],
+    gunCooldown: 0,
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  const ds = shopFp(g).dialogState!;
+  assert.equal(ds.shopOpen, true, "shop opens despite npc.interacted=true (no interacted gate)");
+  assert.equal(ds.shopCanBuy, true, "a canBuy merchant → shopCanBuy enabled");
+  assert.equal(ds.selectedIndex, 0, "selection initialized to the first row");
+});
+
+test("shop(I) regression: a display-only merchant closes in two steps — no soft-lock", () => {
+  const npc = makeNpc({ id: 1, type: "merchant", shopItems: [item({ itemId: "hull-repair-kit" })] }); // no canBuy
+  const g = makeFpGame({
+    dialogState: { active: true, npcId: 1, lines: [{ speaker: "R", text: "only" }], currentLine: 0, shopOpen: false },
+    npcs: [npc], gunCooldown: 0,
+  });
+  // 1) end-of-dialog interact → opens the display-only shop
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.equal(shopFp(g).dialogState!.shopOpen, true, "step 1: shop opens");
+  assert.notEqual(shopFp(g).dialogState!.shopCanBuy, true, "opened shop is display-only");
+  for (let i = 0; i < 16; i++) updateFirstPerson(g.game, keys(), 16.67); // release + gunCooldown
+  // 2) interact → closes the shop, dialog persists
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.equal(shopFp(g).dialogState!.shopOpen, false, "step 2: shop closes, dialog persists");
+  for (let i = 0; i < 16; i++) updateFirstPerson(g.game, keys(), 16.67);
+  // 3) interact → closes the dialog (shopSeen gate stops an infinite reopen)
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.equal(shopFp(g).dialogState, null, "step 3: dialog closes — no soft-lock");
+});
+
+test("shop(I): player movement is frozen while a dialog is active", () => {
+  const g = makeFpGame({
+    dialogState: { active: true, npcId: 1, lines: [{ speaker: "x", text: "y" }], currentLine: 0, shopOpen: false },
+    npcs: [makeNpc({ id: 1 })],
+  });
+  const x0 = shopFp(g).posX, y0 = shopFp(g).posY;
+  updateFirstPerson(g.game, keys({ up: true }), 16.67);
+  assert.equal(shopFp(g).posX, x0, "posX unchanged while dialog active (up held)");
+  assert.equal(shopFp(g).posY, y0, "posY unchanged while dialog active (up held)");
+});
+
+test("shop(I): the purchase-unavailable flash counts down each frame and clamps at 0", () => {
+  const g = makeFpGame({
+    dialogState: shopDialog({ shopFlashFrames: 3 }),
+    npcs: [makeNpc({ id: 1, type: "merchant", canBuy: true })],
+    gunCooldown: 0,
+  });
+  updateFirstPerson(g.game, keys(), 16.67); // dtF = 1
+  assert.equal(shopFp(g).dialogState!.shopFlashFrames, 2, "flash decrements one frame's worth (3 → 2)");
+  updateFirstPerson(g.game, keys(), 16.67);
+  updateFirstPerson(g.game, keys(), 16.67);
+  assert.equal(shopFp(g).dialogState!.shopFlashFrames, 0, "flash reaches 0");
+  updateFirstPerson(g.game, keys(), 16.67);
+  assert.equal(shopFp(g).dialogState!.shopFlashFrames, 0, "flash stays clamped at 0 (never negative)");
+});
+
+test("shop(I) drain: applyShopPurchase deducts credits and grants an affordable consumable", () => {
+  const save = { credits: 500, completedPlanets: ["verdania"], consumableInventory: {} } as unknown as SaveData;
+  const next = applyShopPurchase(save, { kind: "consumable", itemId: "hull-repair" });
+  assert.ok(next, "affordable purchase returns a new save");
+  assert.equal(next!.credits, 200, "credits deducted by the 300 cost");
+  assert.equal(next!.consumableInventory["hull-repair"], 1, "the consumable is granted");
+});
+
+test("shop(I) drain: applyShopPurchase returns null when unaffordable (→ generic flash, no mutation)", () => {
+  const save = { credits: 50, completedPlanets: ["verdania"], consumableInventory: {} } as unknown as SaveData;
+  const next = applyShopPurchase(save, { kind: "consumable", itemId: "hull-repair" });
+  assert.equal(next, null, "unaffordable purchase returns null");
 });

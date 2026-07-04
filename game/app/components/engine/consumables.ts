@@ -1,4 +1,4 @@
-import type { ConsumableId, SaveData } from "./types";
+import type { ConsumableId, SaveData, FPShopPurchaseRequest } from "./types";
 import { CONSUMABLE_DEFS, isConsumableUnlocked, getConsumableDef } from "./planets";
 
 // ─── Consumable Inventory Management ────────────────────────────────
@@ -23,6 +23,22 @@ export function purchaseConsumable(
       [consumableId]: currentCount + 1,
     },
   };
+}
+
+/**
+ * Phase 5a §I: apply a drained FP-shop purchase request to a save. Pure — returns
+ * a new SaveData on success (credits deducted, item granted) or `null` on any
+ * failure (locked / unaffordable / max-carry). Keeps the Game.tsx drain a thin
+ * one-liner and makes the buy-application unit-testable. Consumables only for now.
+ */
+export function applyShopPurchase(
+  save: SaveData,
+  request: FPShopPurchaseRequest
+): SaveData | null {
+  if (request.kind === "consumable") {
+    return purchaseConsumable(save, request.itemId);
+  }
+  return null;
 }
 
 export function equipConsumable(

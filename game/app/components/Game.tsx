@@ -45,6 +45,7 @@ import {
   getCockpitTouchHotspot,
   COCKPIT_HOTSPOTS,
 } from "./engine/cockpit";
+import { applyShopPurchase } from "./engine/consumables";
 import { checkQuestCompletion, type QuestCheckData } from "./engine/sideQuests";
 import { recordKill } from "./engine/bestiary";
 import { allocateNode } from "./engine/skillTree";
@@ -1328,6 +1329,28 @@ export default function Game() {
             if (nextStack.current.state !== newState.firstPersonState) {
               newState.firstPersonState = nextStack.current.state;
             }
+          }
+        }
+      }
+
+      // ── FP shop purchase drain (Phase 5a §I) ──
+      // The quartermaster's shop emits a one-shot purchase request; apply it to
+      // the player wallet via the audited purchaseConsumable helper (consumables
+      // only). This is the one intentional SaveData write during colony
+      // exploration. On failure (locked / unaffordable / max-carry → null) show a
+      // brief generic flash. The request is cleared either way. Only a canBuy
+      // merchant ever sets this, so Ashfall's display-only shop never reaches here.
+      {
+        const fpBuy = newState.firstPersonState;
+        const buyReq = fpBuy?.shopPurchaseRequest;
+        if (fpBuy && buyReq) {
+          fpBuy.shopPurchaseRequest = undefined;
+          const nextSave = applyShopPurchase(saveData, buyReq);
+          if (nextSave) {
+            saveSave(nextSave);
+            setSaveData(nextSave);
+          } else if (fpBuy.dialogState) {
+            fpBuy.dialogState.shopFlashFrames = 90;
           }
         }
       }

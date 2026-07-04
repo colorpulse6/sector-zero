@@ -902,10 +902,26 @@ export interface FPNPC {
   dialog: FPDialogLine[];
   shopItems?: FPShopItem[];  // Only for merchants
   color: string;       // Fallback color for billboard
-  interacted: boolean; // Has player talked to this NPC this session?
+  interacted: boolean; // Currently UNUSED behaviorally — the shop open/close gate
+                       //   moved to per-session FPDialogState.shopSeen (Phase 5a §I).
+                       //   Retained (still set at construction) for a future
+                       //   "already met" affordance; do NOT wire behavior to it
+                       //   without re-checking shopSeen.
   sprite?: string;     // Optional explicit billboard sprite (Phase 5a colony NPCs
                        //   set distinct SPRITES.NPC_* assets). Additive — Ashfall
                        //   NPCs omit it and resolve via NPC_SPRITE_MAP[name].
+  canBuy?: boolean;    // Phase 5a §I: enables a REAL purchase flow in this NPC's
+                       //   shop (set true only for the quartermaster). Additive —
+                       //   Ashfall/other merchants omit it → display-only shop.
+}
+
+// Phase 5a §I: a one-shot, typed buy signal the FP engine emits when the player
+// confirms a shop row. Drained by Game.tsx, which applies it to SaveData via the
+// audited purchase helpers. Consumables only in Phase 5a (discriminated on `kind`
+// so materials/upgrades can be added later without widening the channel type).
+export interface FPShopPurchaseRequest {
+  kind: "consumable";
+  itemId: ConsumableId;
 }
 
 export interface FPDialogState {
@@ -915,6 +931,15 @@ export interface FPDialogState {
   currentLine: number;
   shopOpen: boolean;
   shopItems?: FPShopItem[];
+  // ── Phase 5a §I shop-purchase fields (all additive optional) ──
+  selectedIndex?: number;   // Highlighted shop row: 0..shopItems.length (last = LEAVE)
+  shopCanBuy?: boolean;     // true ONLY when a canBuy merchant (quartermaster) opens its shop
+  shopNavCooldown?: number; // Debounce (frames) for up/down shop navigation
+  shopSeen?: boolean;       // Per-session gate: shop has opened once this dialog. Replaces
+                            //   the old per-NPC `!interacted` open-gate so a merchant's shop
+                            //   REOPENS on the next talk (fresh dialog) while still closing
+                            //   cleanly within a session (no display-only soft-lock).
+  shopFlashFrames?: number; // Countdown for the generic "purchase unavailable" flash
 }
 
 export interface FPEnemy {
@@ -991,6 +1016,8 @@ export interface FirstPersonState {
   colonyTransitionRequest?: unknown;  // DoorInteractResult | LandingPadResult — typed as unknown to avoid circular import
   colonyInteractArmed?: boolean;      // true iff keys.shoot has been released since last hook fire
   colonyInteractCooldownFrames?: number;  // decrements each frame; >0 blocks hooks
+  // Phase 5a §I: one-shot buy signal set by the shop, drained + applied by Game.tsx.
+  shopPurchaseRequest?: FPShopPurchaseRequest;
 }
 
 // ─── Pilot Leveling ─────────────────────────────────────────────────
