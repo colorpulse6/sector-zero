@@ -97,11 +97,15 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   let { posX, posY, dirX, dirY, planeX, planeY } = fp;
 
   // ── Rotation ──
+  // Left turns toward the player's left (-ROT_SPEED), right toward the right
+  // (+ROT_SPEED) — matching rotateView's self-test convention ("Left turn →
+  // negative Y" when facing +X) and strafe-left. These signs were previously
+  // swapped, inverting turn controls in every FP mode.
   if (keys.left) {
-    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, ROT_SPEED * dtF));
+    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, -ROT_SPEED * dtF));
   }
   if (keys.right) {
-    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, -ROT_SPEED * dtF));
+    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, ROT_SPEED * dtF));
   }
 
   // ── Movement ──

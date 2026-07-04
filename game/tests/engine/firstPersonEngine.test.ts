@@ -127,6 +127,37 @@ test("dt: a dying enemy reaches the -1 sentinel and is removed under dtF=3", () 
   assert.ok(guard <= 12, `should remove within ~10 frames at dtF=3, took ${guard}`);
 });
 
+// ─── Input → rotation direction ──────────────────────────────────────
+// Regression guard for the long-standing inverted-turn bug: the self-test
+// verifies rotateView() in isolation, but nothing exercised the
+// keys.left/right → sign mapping in updateFirstPerson, where the signs were
+// swapped. Facing +X (east), the player's LEFT is -Y (north) — confirmed by
+// strafe-left moving -Y and by rotateView's own "Left turn → negative Y" test.
+
+test("input: pressing left turns toward the player's left (dirY < 0 facing +X)", () => {
+  const g = makeFpGame(); // dir=(1,0), facing +X
+  updateFirstPerson(g.game, keys({ left: true }), 16.67);
+  assert.ok(g.fp.dirY < 0,
+    `left turn must rotate toward -Y (player's left); got dirY=${g.fp.dirY}`);
+});
+
+test("input: pressing right turns toward the player's right (dirY > 0 facing +X)", () => {
+  const g = makeFpGame();
+  updateFirstPerson(g.game, keys({ right: true }), 16.67);
+  assert.ok(g.fp.dirY > 0,
+    `right turn must rotate toward +Y (player's right); got dirY=${g.fp.dirY}`);
+});
+
+test("input: left and right turns are opposite and symmetric", () => {
+  const l = makeFpGame();
+  const r = makeFpGame();
+  updateFirstPerson(l.game, keys({ left: true }), 16.67);
+  updateFirstPerson(r.game, keys({ right: true }), 16.67);
+  // Mirror images across the facing axis: same forward component, opposite lateral.
+  assert.ok(Math.abs(l.fp.dirX - r.fp.dirX) < 1e-12, "forward components should match");
+  assert.ok(Math.abs(l.fp.dirY + r.fp.dirY) < 1e-12, "lateral components should be opposite");
+});
+
 test("FP engine self-test suite passes (console.assert guard)", () => {
   // __runFirstPersonSelfTests uses console.assert (non-throwing). Patch it to
   // collect failures so the whole self-test function — including the Task 6
