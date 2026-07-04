@@ -903,6 +903,9 @@ export interface FPNPC {
   shopItems?: FPShopItem[];  // Only for merchants
   color: string;       // Fallback color for billboard
   interacted: boolean; // Has player talked to this NPC this session?
+  sprite?: string;     // Optional explicit billboard sprite (Phase 5a colony NPCs
+                       //   set distinct SPRITES.NPC_* assets). Additive — Ashfall
+                       //   NPCs omit it and resolve via NPC_SPRITE_MAP[name].
 }
 
 export interface FPDialogState {

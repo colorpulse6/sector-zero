@@ -84,6 +84,45 @@ function moveWithCollision(
   return { posX: nextX, posY: nextY };
 }
 
+// ─── NPC dialog open (shared: non-colony site + colony hook) ───
+// Extracted from the non-colony NPC-interaction block so the colony hook can
+// reuse the engine's own dialog-open logic (Phase 5a §H1). Finds an NPC within
+// 2.0 tiles that the player faces (dot > 0) and opens its dialog; returns true
+// iff a dialog opened. Reads position/facing straight off `fp` — both call
+// sites run after fp.posX/posY/dirX/dirY are synced from the frame's locals, so
+// a dialog can never open from coords that disagree with fp. The CALLER owns the
+// shoot / gunCooldown / canFire gating; this helper does only proximity + facing
+// + open plus the audio and bankDir side-effects.
+function tryOpenNpcDialog(gs: GameState, fp: FirstPersonState): boolean {
+  if (!fp.npcs) return false;
+  const { posX, posY, dirX, dirY } = fp;
+  const NPC_INTERACT_RANGE = 2.0;
+  for (const npc of fp.npcs) {
+    const dx = npc.x - posX;
+    const dy = npc.y - posY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < NPC_INTERACT_RANGE) {
+      // Check if roughly facing the NPC
+      const dot = dx * dirX + dy * dirY;
+      if (dot > 0) { // NPC is in front of us
+        fp.dialogState = {
+          active: true,
+          npcId: npc.id,
+          lines: npc.dialog,
+          currentLine: 0,
+          shopOpen: false,
+          shopItems: npc.shopItems,
+        };
+        fp.gunCooldown = 15;
+        gs.audioEvents.push(AudioEvent.DIALOG_ADVANCE);
+        gs.player.bankDir = 0;
+        return true; // Dialog opened
+      }
+    }
+  }
+  return false;
+}
+
 // ─── Main Update ────────────────────────────────────────────────────
 
 export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.67): void {
@@ -167,6 +206,14 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       (fp.colonyInteractCooldownFrames ?? 0) <= 0 &&
       keys.shoot;
     if (canFire) {
+      // NPC targeting takes priority: if an NPC is in range and faced, open its
+      // dialog and DISARM (§H1). Disarming forces a shoot-key release before any
+      // door/pad can fire, closing the close-frame bounce (a dialog closing with
+      // the interact key still held would otherwise trigger door/pad that frame).
+      if (tryOpenNpcDialog(gs, fp)) {
+        fp.colonyInteractArmed = false;
+        return;
+      }
       const standingOn = { x: Math.floor(fp.posX), y: Math.floor(fp.posY) };
       const step = Math.abs(fp.dirX) >= Math.abs(fp.dirY)
         ? { x: Math.sign(fp.dirX), y: 0 }
@@ -189,31 +236,11 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   // ─── End colony hook block ───
 
   // ── NPC Interaction (press shoot near NPC) ──
+  // Same outer gate as before (npcs present, shoot held, gunCooldown ready); the
+  // proximity/facing/open body now lives in tryOpenNpcDialog (§H1). Opening a
+  // dialog returns, skipping the shot this frame — behavior-identical.
   if (fp.npcs && keys.shoot && fp.gunCooldown <= 0) {
-    const NPC_INTERACT_RANGE = 2.0;
-    for (const npc of fp.npcs) {
-      const dx = npc.x - posX;
-      const dy = npc.y - posY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < NPC_INTERACT_RANGE) {
-        // Check if roughly facing the NPC
-        const dot = dx * dirX + dy * dirY;
-        if (dot > 0) { // NPC is in front of us
-          fp.dialogState = {
-            active: true,
-            npcId: npc.id,
-            lines: npc.dialog,
-            currentLine: 0,
-            shopOpen: false,
-            shopItems: npc.shopItems,
-          };
-          fp.gunCooldown = 15;
-          gs.audioEvents.push(AudioEvent.DIALOG_ADVANCE);
-          gs.player.bankDir = 0;
-          return; // Skip shooting this frame
-        }
-      }
-    }
+    if (tryOpenNpcDialog(gs, fp)) return;
   }
 
   // ── Shooting ──

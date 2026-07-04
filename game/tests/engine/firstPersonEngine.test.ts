@@ -5,6 +5,9 @@ import {
   __runFirstPersonSelfTests,
 } from "../../app/components/engine/firstPersonEngine";
 import type { BoardingMap, Keys } from "../../app/components/engine/types";
+import { AudioEvent } from "../../app/components/engine/types";
+import { NPC_SPRITE_MAP, resolveNpcSprite } from "../../app/components/engine/fpRender/sceneInput";
+import { SPRITES } from "../../app/components/engine/sprites";
 
 // ─── Fixtures ────────────────────────────────────────────────────────
 // Task 6: frame-rate-independent movement. These tests pin the delta-time
@@ -173,4 +176,159 @@ test("FP engine self-test suite passes (console.assert guard)", () => {
     console.assert = original;
   }
   assert.equal(failures.length, 0, `self-test failures: ${failures.join(" | ")}`);
+});
+
+// ─── Phase 5a §H1 — colony-mode NPC interaction ──────────────────────
+// The colony-exploration hook early-returns before the generic NPC-dialog
+// block, so before this task colony NPCs rendered but could never be talked to.
+// These pin: colony NPCs are talkable; the colony `canFire` gate (armed +
+// cooldown), NOT gunCooldown, controls it; opening disarms (close-frame
+// anti-bounce); the door/pad path still resolves when no NPC is targeted; and
+// the extracted helper behaves identically at the non-colony (Ashfall) site.
+
+interface DialogShape { active: boolean; npcId: number; shopOpen: boolean }
+interface TestFp {
+  dialogState: DialogShape | null;
+  colonyInteractArmed?: boolean;
+  gunCooldown: number;
+}
+interface TestGame {
+  player: { bankDir: number };
+  audioEvents: AudioEvent[];
+}
+const fpOf = (g: { fp: unknown }) => g.fp as TestFp;
+const gameOf = (g: { game: unknown }) => g.game as unknown as TestGame;
+
+function makeNpc(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1, x: 3.5, y: 2.5, name: "Test NPC", type: "lore",
+    dialog: [{ speaker: "Test", text: "Hello there." }],
+    color: "#ffffff", interacted: false,
+    ...overrides,
+  };
+}
+
+type PadResult = { kind: "show_exit_menu" } | { kind: "not_on_pad" };
+type DoorResult = { kind: "no_door" } | { kind: "enter_interior"; buildingId: string };
+
+// Minimal ColonyContext stub — the hook only calls these two methods. Counters
+// let a test assert the door/pad path still runs when no NPC is targeted.
+function makeColonyContext(over: { pad?: () => PadResult; door?: () => DoorResult } = {}) {
+  const calls = { pad: 0, door: 0 };
+  const ctx = {
+    colonyId: "test-colony",
+    mode: "exterior",
+    interiorBuildingId: null,
+    onLandingPadInteract: (): PadResult => {
+      calls.pad++;
+      return over.pad ? over.pad() : { kind: "not_on_pad" };
+    },
+    onDoorInteract: (): DoorResult => {
+      calls.door++;
+      return over.door ? over.door() : { kind: "no_door" };
+    },
+  };
+  return { ctx, calls };
+}
+
+test("colony: NPC in range + faced + armed + shoot opens dialog (early-return regression)", () => {
+  const { ctx } = makeColonyContext();
+  const g = makeFpGame({
+    npcs: [makeNpc({ id: 7 })],
+    colonyContext: ctx,
+    colonyInteractArmed: true,
+    colonyInteractCooldownFrames: 0,
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  const ds = fpOf(g).dialogState;
+  assert.ok(ds, "colony NPC dialog must open (the hook no longer early-returns past it)");
+  assert.equal(ds!.npcId, 7, "dialog is bound to the faced NPC");
+});
+
+test("colony: NPC interaction is gated by colonyInteractArmed, not gunCooldown", () => {
+  const { ctx } = makeColonyContext();
+  const g = makeFpGame({
+    npcs: [makeNpc({ id: 7 })],
+    colonyContext: ctx,
+    colonyInteractArmed: false,      // disarmed → canFire is false
+    colonyInteractCooldownFrames: 0,
+    gunCooldown: 0,                  // gunCooldown ready: if IT were the gate, the dialog would open
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.equal(fpOf(g).dialogState, null,
+    "disarmed colony interact must not open a dialog even with gunCooldown ready");
+});
+
+test("colony: opening an NPC dialog disarms colonyInteractArmed (close-frame anti-bounce)", () => {
+  const { ctx } = makeColonyContext();
+  const g = makeFpGame({
+    npcs: [makeNpc({ id: 7 })],
+    colonyContext: ctx,
+    colonyInteractArmed: true,
+    colonyInteractCooldownFrames: 0,
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.ok(fpOf(g).dialogState, "sanity: dialog opened");
+  assert.equal(fpOf(g).colonyInteractArmed, false,
+    "opening must disarm so a held interact key can't bounce into door/pad on the close frame");
+});
+
+test("colony: with no NPC targeted, the door/pad resolution still runs", () => {
+  const { ctx, calls } = makeColonyContext();
+  const g = makeFpGame({
+    npcs: [],                        // nothing to target
+    colonyContext: ctx,
+    colonyInteractArmed: true,
+    colonyInteractCooldownFrames: 0,
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.equal(fpOf(g).dialogState, null, "no NPC → no dialog");
+  assert.equal(calls.pad, 1, "landing-pad resolution still invoked");
+  assert.equal(calls.door, 1, "door resolution still invoked (pad returned not_on_pad)");
+});
+
+test("colony: an out-of-range NPC falls through to door/pad (helper returns false)", () => {
+  const { ctx, calls } = makeColonyContext();
+  const g = makeFpGame({
+    npcs: [makeNpc({ id: 7, x: 4.5, y: 2.5 })],   // dist 2.0 from (2.5,2.5) → NOT < 2.0
+    colonyContext: ctx,
+    colonyInteractArmed: true,
+    colonyInteractCooldownFrames: 0,
+  });
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.equal(fpOf(g).dialogState, null, "out-of-range NPC must not open a dialog");
+  assert.equal(calls.door, 1, "door/pad resolution runs even with a (too-far) NPC present");
+});
+
+test("non-colony (Ashfall): NPC in range + faced + shoot + gunCooldown ready opens dialog (helper parity)", () => {
+  const g = makeFpGame({
+    npcs: [makeNpc({ id: 3 })],
+    gunCooldown: 0,
+    // no colonyContext → the extracted helper runs at the original Ashfall site
+  });
+  gameOf(g).player.bankDir = 5;      // pre-set to prove the helper clears it
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  const ds = fpOf(g).dialogState;
+  assert.ok(ds, "non-colony dialog opens via the extracted helper");
+  assert.equal(ds!.npcId, 3);
+  assert.equal(fpOf(g).gunCooldown, 15, "helper sets the 15-frame debounce");
+  assert.ok(gameOf(g).audioEvents.includes(AudioEvent.DIALOG_ADVANCE), "DIALOG_ADVANCE audio pushed");
+  assert.equal(gameOf(g).player.bankDir, 0, "bankDir cleared by the helper");
+});
+
+// ─── Phase 5a §H2 — additive FPNPC.sprite resolution ─────────────────
+
+test("H2: NPC sprite resolution prefers an explicit sprite, else name map, else survivor", () => {
+  assert.equal(
+    resolveNpcSprite({ name: "Commander Voss", sprite: "/sprites/colony/governor.png" }),
+    "/sprites/colony/governor.png",
+    "explicit sprite wins over the name map");
+  assert.equal(
+    resolveNpcSprite({ name: "Commander Voss" }),
+    NPC_SPRITE_MAP["Commander Voss"],
+    "name-mapped NPC with no sprite resolves via the map (Ashfall path preserved)");
+  assert.equal(
+    resolveNpcSprite({ name: "Nobody In The Map" }),
+    SPRITES.NPC_SURVIVOR,
+    "unmapped, spriteless NPC falls back to survivor");
 });

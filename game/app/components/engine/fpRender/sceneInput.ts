@@ -46,6 +46,15 @@ export const NPC_SPRITE_MAP: Record<string, string> = {
   "Scavenger": SPRITES.NPC_SCAVENGER,
 };
 
+/** NPC billboard sprite resolution (Phase 5a §H2): an explicit `sprite` wins
+ *  (colony NPCs set distinct SPRITES.NPC_* assets), otherwise the name map
+ *  (Ashfall's named NPCs), otherwise the survivor fallback. Additive — Ashfall
+ *  NPCs omit `sprite` and resolve exactly as before. Exported for a focused
+ *  unit test of the resolution order. */
+export function resolveNpcSprite(n: { sprite?: string; name: string }): string {
+  return n.sprite ?? NPC_SPRITE_MAP[n.name] ?? SPRITES.NPC_SURVIVOR;
+}
+
 export class SceneBuilder {
   private scene: RenderScene | null = null;
   private lastMap: BoardingMap | null = null;
@@ -140,7 +149,7 @@ export class SceneBuilder {
       s.billboards.push({ x: e.x, y: e.y, texId: reg.idFor(sprite, "billboard"), scale: 1, alpha256: alpha, widthFactor: 1, vAnchor: "center" });
     }
     for (const n of fp.npcs) {
-      s.billboards.push({ x: n.x, y: n.y, texId: reg.idFor(NPC_SPRITE_MAP[n.name] ?? SPRITES.NPC_SURVIVOR, "billboard"), scale: 1, alpha256: 256, widthFactor: 0.4, vAnchor: "npc" });
+      s.billboards.push({ x: n.x, y: n.y, texId: reg.idFor(resolveNpcSprite(n), "billboard"), scale: 1, alpha256: 256, widthFactor: 0.4, vAnchor: "npc" });
     }
     // Objective marker: NOT pushed here. It stays the classic overlay
     // (drawObjectiveBillboard — glow + label are vector draws that already
