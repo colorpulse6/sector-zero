@@ -13,7 +13,7 @@
 
 After Phase 2, the colony is a physical place you can walk — but empty. Phase 5a makes it **inhabited**. Descend and the plaza has people: colonists commuting between homes and workplaces as the day/night clock turns, a governor you can ask about the colony's state (and get a live answer), and a quartermaster who'll sell you supplies. The place stops feeling like a diorama and starts feeling lived-in.
 
-This is the "colony is alive" beat. It adds content *inside* the Phase 2 frame without touching the engine, the save format, or the colony data model.
+This is the "colony is alive" beat. It adds content *inside* the Phase 2 frame with two small, contained engine edits (Section H) and no change to the save format or the colony data model.
 
 ---
 
@@ -58,11 +58,11 @@ This is the "colony is alive" beat. It adds content *inside* the Phase 2 frame w
 
 ```
 game/app/components/colony/exploration/npc/
-├── colonyNpcs.ts       # generateColonyNpcs(colony, gameClock) → ColonyNpc[]
+├── colonyNpcs.ts       # generateColonyNpcs(colony, gameClock, map) → { fpNpcs: FPNPC[], sidecar: ColonyNpc[] }
 ├── npcSchedule.ts      # hour → day/night bucket → per-NPC target tile
 ├── npcPathfind.ts      # deterministic grid A* over walkable tiles
-├── npcStep.ts          # per-frame path-follow + re-path; ColonyNpc[] → FPNPC[] sync
-├── npcDialog.ts        # governor / quartermaster / colonist dialog + shop builders
+├── npcStep.ts          # per-frame path-follow + re-path; syncs ColonyNpc pos → FPNPC.x/y
+├── npcDialog.ts        # governor / quartermaster / colonist dialog + shop builders (used by colonyNpcs)
 └── index.ts            # public API: generateColonyNpcs, stepColonyNpcs
 
 game/tests/colony/npc/
@@ -76,11 +76,16 @@ game/tests/colony/npc/
 
 ```
 game/app/components/colony/exploration/
-├── colonyLayout.ts     # generateExteriorState: build fp.npcs (FPNPC[]) from generateColonyNpcs
-│                       #   (currently sets npcs: []); return the ColonyNpc sidecar to the caller
-└── index.ts            # enterColonyExploration: store the ColonyNpc sidecar on the exterior
-│                       #   SceneLayer. stepColonyExploration: call stepColonyNpcs BEFORE the
-│                       #   no-transition early return, then sync FPNPC.x/y
+├── index.ts            # enterColonyExploration: after generateExteriorState, call
+│                       #   generateColonyNpcs(colony, clock, state.map), assign state.npcs =
+│                       #   fpNpcs, store sidecar on the exterior SceneLayer. stepColonyExploration:
+│                       #   call stepColonyNpcs BEFORE the no-transition early return, then sync
+│                       #   FPNPC.x/y. (generateExteriorState signature/return UNCHANGED — it keeps
+│                       #   returning FirstPersonState; the ~15 existing tests that deref .posX/.map
+│                       #   stay green. NPC wiring lives entirely in enterColonyExploration.)
+├── sceneStack.ts       # SceneLayer gains an optional `npcSidecar?: ColonyNpc[]` field (additive)
+└── dayNightTint.ts     # extract shared `bucketForHour(hour)` (or a new small shared module) so
+│                       #   the schedule and the tint derive the five buckets from one source
 
 game/app/components/engine/          # the two contained edits (Section H) + additive field
 ├── firstPersonEngine.ts # extract tryOpenNpcDialog() helper; call it inside the
@@ -100,7 +105,7 @@ game/app/components/Game.tsx  # pass the real dtMs (already computed) to stepCol
 ### Boundary rules
 
 1. **Orchestrator owns NPCs; engine consumes.** `generateColonyNpcs` builds the NPC set at descent; `stepColonyNpcs` advances them each frame and writes `FPNPC[]` onto the active exterior `FirstPersonState.npcs`. The engine renders/interacts with `fp.npcs` exactly as it does for Ashfall.
-2. **The `ColonyNpc` sidecar.** The engine's `FPNPC` has no movement/schedule state. The orchestrator keeps a parallel `ColonyNpc[]` (position, path, schedule, home/work) alongside the scene; each frame it steps them and syncs `x/y` into the render `fp.npcs`. `generateColonyNpcs` returns both the `FPNPC[]` (for `generateExteriorState` to place on the state) and the `ColonyNpc[]` sidecar; `enterColonyExploration` (`index.ts`, which constructs the `SceneLayer`) stores the sidecar on the **exterior `SceneLayer`** — not on `FirstPersonState`. The exterior layer is preserved as `parent` across interior push/pop, so the sidecar survives and resumes on pop.
+2. **The `ColonyNpc` sidecar.** The engine's `FPNPC` has no movement/schedule state. The orchestrator keeps a parallel `ColonyNpc[]` (position, path, schedule, home/work) alongside the scene; each frame it steps them and syncs `x/y` into the render `fp.npcs`. **`generateColonyNpcs(colony, gameClock, map)` returns `{ fpNpcs: FPNPC[]; sidecar: ColonyNpc[] }`** — `fpNpcs[i]` and `sidecar[i]` share an `id` and are built together (the `FPNPC` is the render/interaction projection of the `ColonyNpc`, with `dialog`/`shopItems`/`sprite` from `npcDialog.ts`). **`generateExteriorState`'s signature and `FirstPersonState` return are unchanged** (no test breakage). `enterColonyExploration` (`index.ts`, which constructs the `SceneLayer`) calls `generateColonyNpcs` after building the exterior state, assigns `state.npcs = fpNpcs`, and stores `sidecar` on the **exterior `SceneLayer`** (new optional `npcSidecar?` field) — not on `FirstPersonState`. The exterior layer is preserved as `parent` across interior push/pop, so the sidecar survives and resumes on pop.
 3. **Interior scenes have no NPCs** (Phase 5a). Entering a building swaps to an interior state with `npcs: []` (unchanged). The exterior sidecar is retained on the parent layer and resumes on pop.
 4. **`stepColonyNpcs` runs before the orchestrator's early return.** `stepColonyExploration` returns early on the common no-scene-transition frame; NPC stepping must be inserted *before* that guard or NPCs never advance.
 5. **Determinism.** All generation and pathfinding are pure functions of `(colony, layoutSeed, gameClock)` — no `Date.now()`, no `Math.random()` (seeded RNG derived from `layoutSeed`).
@@ -185,17 +190,19 @@ export function stepColonyNpcs(
 
 Each frame, per NPC: (1) resolve current `scheduleTargetTile`; if it differs from `pathTargetTile`, re-path (A*) and store; (2) advance `posX/posY` toward the next waypoint at a walk speed (`NPC_WALK_SPEED × dtF`, `dtF` = the same `min(dtMs/16.67, 3)` clamp as the movement system), snapping waypoints as reached; (3) idle when at target. **If `dialogActive`, skip all movement** (the whole plaza holds still while you talk — simplest, and avoids an NPC walking off mid-conversation); `dialogActive` is read from `fp.dialogState?.active`. NPCs don't collide with each other (billboards overlap gracefully) but never enter solid tiles (A* only routes over walkable tiles; the step never overshoots into a wall).
 
-The caller (`stepColonyExploration`) then syncs each `FPNPC.x/y` from its `ColonyNpc`, so the engine renders updated positions. **`dtMs` plumbing:** `stepColonyExploration` is currently called from `Game.tsx` with a hardcoded `16`; Phase 5a changes that call to pass the real per-frame `dtMs` (already computed one line above for the engine tick) so NPC movement is genuinely frame-rate-independent. One-line change; no other `Game.tsx` edit.
+**Exterior-only:** `stepColonyNpcs` runs only when the current scene is the exterior (the sidecar lives on the exterior layer); on an interior frame there is no sidecar and the step no-ops. The caller (`stepColonyExploration`) then syncs each `FPNPC.x/y` from its `ColonyNpc`, so the engine renders updated positions. **`dtMs` plumbing:** `stepColonyExploration` is currently called from `Game.tsx` with a hardcoded `16`; Phase 5a changes that call to pass the real per-frame `dtMs` (already computed one line above for the engine tick) so NPC movement is genuinely frame-rate-independent. One-line change; no other `Game.tsx` edit.
 
 ---
 
 ## Section D — Generation from ColonyState (`colonyNpcs.ts`)
 
 ```typescript
-export function generateColonyNpcs(colony: ColonyState, gameClock: GameClock): ColonyNpc[];
+export function generateColonyNpcs(
+  colony: ColonyState, gameClock: GameClock, map: BoardingMap,
+): { fpNpcs: FPNPC[]; sidecar: ColonyNpc[] };
 ```
 
-Deterministic (seeded RNG from `layoutSeed`):
+Builds each `ColonyNpc` (identity, home/work, sprite, initial position from its current schedule target) and its paired `FPNPC` projection (dialog/shop/sprite via `npcDialog.ts`, `x/y` from the `ColonyNpc`). `map` supplies walkable tiles for home/work/plaza assignment. Deterministic (seeded RNG from `layoutSeed`):
 
 1. **Governor** — always spawned. `postTile` = plaza center. Name derived from colony (e.g., `"Overseer <colony.name>"` or a seeded name). Home = a Habitat tile if present, else plaza.
 2. **Quartermaster** — always spawned. `postTile` = a landing-pad-adjacent tile (a stall by the pad). Home = a Habitat tile if present, else plaza.
@@ -237,12 +244,14 @@ The reuse of the engine's NPC/dialog/shop flow requires two small edits to engin
 **Why:** `updateFirstPerson` handles NPC dialog-open in a block that runs only when `fp.colonyContext` is *absent*. On the colony exterior `colonyContext` is always set, so the colony hook runs and hits `return;` **before** the NPC block — colony NPCs render but can never be talked to.
 
 **Fix (reuse, not new logic):**
-1. Extract the existing NPC-open logic (find an NPC within 2.0 tiles that the player faces, `dot > 0`; on interact with the debounce, set `fp.dialogState`) into a helper `tryOpenNpcDialog(fp, keys, posX, posY, dirX, dirY): boolean` (returns whether a dialog opened). The existing non-colony call site calls the helper — behavior identical, pure refactor.
-2. Inside the `if (fp.colonyContext)` guard, **before** the door/pad resolution, call `tryOpenNpcDialog(...)`. If it opens a dialog, skip door/pad this frame (NPC targeting takes priority when an NPC is in range and faced) and return through the normal path. Otherwise fall through to the existing door/pad anti-bounce logic unchanged.
+1. Extract the existing NPC-open logic (lines ~191–217: find an NPC within 2.0 tiles that the player faces, `dot > 0`; on interact with the debounce, set `fp.dialogState`) into a helper `tryOpenNpcDialog(gs, fp, keys, posX, posY, dirX, dirY): boolean` (returns whether a dialog opened). **The helper takes `gs`** because the extracted block also pushes an audio event (`gs.audioEvents.push(...)`) and clears `gs.player.bankDir` — both must move into the helper so the non-colony call site stays behavior-identical (pure refactor).
+2. Inside the `if (fp.colonyContext)` guard, **before** the door/pad resolution, call `tryOpenNpcDialog(...)`. If it opens a dialog: **also set `fp.colonyInteractArmed = false`** (see below), skip door/pad this frame (NPC targeting takes priority when an NPC is in range and faced), and return through the normal path. Otherwise fall through to the existing door/pad anti-bounce logic unchanged.
 
-**Interaction with the anti-bounce gate:** NPC dialog-open causes no scene transition, so it does not touch `colonyInteractArmed`/`colonyInteractCooldownFrames`. The dialog-advance debounce (existing `gunCooldown` check) prevents the same held press from blowing through lines. Door/pad transitions retain their edge-trigger + cooldown gate exactly. The plan must verify (tests below) that: colony NPC dialog opens; door/pad still work when no NPC is targeted; the anti-bounce gate still holds; and an NPC standing on/near a door is reachable for talk without accidentally triggering enter.
+**Interaction with the anti-bounce gate — the close-frame bounce (load-bearing):** while a dialog is open the colony guard is never reached (the dialog block returns early), so `colonyInteractArmed` stays frozen `true`. If NPC-open did *not* disarm it, then the frame the dialog **closes** with the interact key still held, the guard runs, `canFire` (armed && cooldown==0 && shoot) is immediately true, and door/pad resolves that frame — e.g. finishing the quartermaster shop *while standing on the landing pad* pops the exit-to-cockpit menu, or finishing a colonist's dialog *at a building door* enters the building. **Mitigation:** disarming (`colonyInteractArmed = false`) on NPC-open forces a key release before any door/pad fire, closing the bounce — the same disarm-on-transition discipline Phase 2 already uses. Dialog-advance is unaffected (it runs in its own pre-guard block with the existing `gunCooldown` debounce). Door/pad transitions otherwise retain their edge-trigger + cooldown gate exactly.
 
-**Audit gate:** the `firstPersonEngine.ts` diff is the helper extraction + the one call inside the colony guard — target ≤25 lines net, all reuse, zero change to non-colony behavior (the extracted helper is called identically from the old site).
+The plan must verify (tests below): colony NPC dialog opens; door/pad still work when no NPC is targeted; the anti-bounce gate still holds; **the close frame with held interact does NOT trigger door/pad** (quartermaster-on-pad and colonist-at-door cases); and an NPC near a door is reachable for talk without accidentally entering.
+
+**Audit gate:** the `firstPersonEngine.ts` change is the helper extraction (a ~26-line verbatim move) + one call inside the colony guard + the disarm line — **net-new logic ~8–12 lines**, all reuse, zero change to non-colony behavior (the extracted helper is called identically from the old site). Note for the auditor: a raw `git diff --stat` will show ~50 lines because the moved block counts as delete+add; read it as "moved block + one new guarded call + one disarm line."
 
 ### H2 — `FPNPC.sprite?` additive field (`types.ts` + `fpRender/sceneInput.ts`)
 
@@ -265,7 +274,7 @@ Pure-logic, deterministic, under the existing `tsx --test` (extends `yarn colony
 3. **`colonyNpcs.test.ts`** — same `(colony, clock)` → identical NPC set (determinism); colonist count scales with population and respects `CAP=10`; governor + quartermaster always present; degradation (no habitat / no operational building / zero population).
 4. **`npcDialog.test.ts`** — governor dialog reflects given `ColonyState` (population number, named down building, threat present); quartermaster shop inventory rules by tier; colonist bark tier selection.
 5. **Stepping** (in `colonyNpcs.test.ts` or a small `npcStep` test) — an NPC advances toward and reaches its target over N steps; movement pauses when `dialogActive`; never lands on a solid tile.
-6. **Engine interaction (H1)** (extend the FP engine tests) — with `fp.colonyContext` set and an NPC in range + faced, pressing interact opens `dialogState` (regression guard for the early-return bug); with no NPC targeted, door/pad interaction still fires and the anti-bounce gate still holds; the extracted `tryOpenNpcDialog` behaves identically at the non-colony call site (no regression to Ashfall). H2 sprite resolution: `n.sprite` wins over the name map; a name-mapped NPC with no `sprite` still resolves via the map (Ashfall unaffected).
+6. **Engine interaction (H1)** (extend the FP engine tests) — with `fp.colonyContext` set and an NPC in range + faced, pressing interact opens `dialogState` (regression guard for the early-return bug); with no NPC targeted, door/pad interaction still fires and the anti-bounce gate still holds; **close-frame bounce guard** — after a colony NPC dialog opens (which disarms), closing it with interact still held does NOT fire door/pad that frame (covers quartermaster-on-pad and colonist-at-door); the extracted `tryOpenNpcDialog` behaves identically at the non-colony call site (audio event + `bankDir` clear preserved — no regression to Ashfall). H2 sprite resolution: `n.sprite` wins over the name map; a name-mapped NPC with no `sprite` still resolves via the map (Ashfall unaffected).
 
 **Total new: ~24–30 tests.** Manual playtest (prod build): descend at different `gameClock` hours → colonists commute home↔work, gather in the plaza at dusk; talk to the governor (live stats match the meta screen), buy from the quartermaster; verify Ashfall NPC dialog/shop still works (H1/H2 regression); confirm no wall-clipping and smooth movement.
 
@@ -277,7 +286,7 @@ Pure-logic, deterministic, under the existing `tsx --test` (extends `yarn colony
 2. **Schedule + NPC model** (`npcSchedule.ts`, `ColonyNpc`, `colonyNpcs.ts` generation + tests) — pure generation, no rendering. Extract a shared `bucketForHour(hour)` (the schedule and `dayNightTint` currently re-derive the same five boundaries independently — one helper prevents drift).
 3. **Dialog/shop builders** (`npcDialog.ts` + tests) — governor live-dialog, quartermaster shop, colonist barks.
 4. **Engine edits H1/H2** (`firstPersonEngine.ts` `tryOpenNpcDialog` extraction + colony-hook call; `types.ts` `FPNPC.sprite?`; `sceneInput.ts` resolution) + tests — pure enabler, no colony NPCs placed yet; Ashfall regression-tested. Small, isolated, diff-audited commit.
-5. **Stepping + orchestrator integration** (`npcStep.ts`; wire `generateColonyNpcs` into `generateExteriorState`; sidecar onto the exterior `SceneLayer` in `enterColonyExploration`; `stepColonyNpcs` into `stepColonyExploration` before its early return; `Game.tsx` real `dtMs`) — the first commit where NPCs appear and move in-game.
+5. **Stepping + orchestrator integration** (`npcStep.ts`; in `enterColonyExploration` call `generateColonyNpcs`, assign `state.npcs = fpNpcs`, store `sidecar` on the exterior `SceneLayer`; `stepColonyNpcs` into `stepColonyExploration` before its early return, exterior-only; `Game.tsx` real `dtMs`) — the first commit where NPCs appear and move in-game. `generateExteriorState` is not modified.
 6. **Playtest + polish** — tuning (walk speed, counts, plaza spread, dialog copy); manual checklist; completion log.
 
 Each phase ships green (`yarn colony:test`, `yarn engine:test`, `npx tsc --noEmit`, `yarn build`) and, from phase 5 on, is playable. Phase 4 (engine edits) lands before phase 5 so the interaction path exists when NPCs are first placed.
@@ -292,7 +301,7 @@ Each phase ships green (`yarn colony:test`, `yarn engine:test`, `npx tsc --noEmi
 - [ ] Ashfall NPC dialog/shop unaffected (H1/H2 regression)
 - [ ] Deterministic: same colony + seed + hour → identical NPCs/positions (test-verified)
 - [ ] No wall-clipping; movement smooth and frame-rate-independent
-- [ ] `SaveData` and `ColonyState` shape unchanged; engine diff limited to H1 (≤25 lines, reuse) + H2 additive field (diff-audited)
+- [ ] `SaveData` and `ColonyState` shape unchanged; engine diff limited to H1 (helper move + ~8–12 net-new lines, reuse) + H2 additive `FPNPC.sprite?` + one-line sceneInput resolution (diff-audited); `generateExteriorState` return unchanged (existing colony tests stay green)
 - [ ] Interiors unaffected (still `npcs: []`)
 
 ### Risk callouts
@@ -305,7 +314,8 @@ Each phase ships green (`yarn colony:test`, `yarn engine:test`, `npx tsc --noEmi
 | NPC walks off mid-dialog | All movement pauses while `dialogState.active` |
 | Sparse colony looks broken | Degradation: governor+quartermaster always present; plaza fallback for home/work |
 | Scope creep into quests/persistence | Explicit deferred list; data model + `SaveData` untouched |
-| H1 edit breaks Phase-2 door/pad or anti-bounce | `tryOpenNpcDialog` is a pure extraction called identically at the old site; colony-hook call is additive before door/pad; dedicated tests for door/pad + anti-bounce + NPC-priority; ≤25-line audited diff |
+| H1 edit breaks Phase-2 door/pad or anti-bounce | `tryOpenNpcDialog` is a pure extraction called identically at the old site (audio + `bankDir` side-effects lifted with it); colony-hook call is additive before door/pad; dedicated tests for door/pad + anti-bounce + NPC-priority; audited diff (~8–12 net-new lines) |
+| **Close-frame bounce** (dialog closes with interact held → door/pad fires) | NPC-open disarms `colonyInteractArmed`, forcing a key release before any door/pad fire; explicit close-frame tests for quartermaster-on-pad + colonist-at-door |
 | Engine gains colony-awareness | H1 reuses the engine's generic `fp.npcs` dialog logic inside the existing `colonyContext` guard — no colony/building/schedule concepts enter the engine; all NPC generation/movement stays in `colony/exploration/npc/`; diff audit |
 | NPC near a door: talk vs enter ambiguity | NPC-in-range-and-faced takes priority over door enter that frame; tested |
 
