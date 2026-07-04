@@ -1,0 +1,22 @@
+import type { FPNPC } from "../../../engine/types";
+
+export type Tile = { x: number; y: number };            // coord, NOT a tile-kind string
+export type NpcKind = "governor" | "quartermaster" | "colonist";
+
+export interface ColonyNpc {
+  id: number;
+  kind: NpcKind;
+  name: string;
+  sprite: string;                 // a SPRITES.NPC_* path; copied to FPNPC.sprite
+  posX: number; posY: number;     // continuous tile coords (spawn = homeTile center)
+  homeTile: Tile;
+  workTile: Tile;                 // placed operational building's door/approach tile (home fallback)
+  postTile: Tile | null;          // named NPCs' active-hours station; null for colonists
+  targetTile: Tile;               // RESOLVED entry-hour target (scheduleTargetTile); fixed for the visit
+  happinessTier: "content" | "strained" | "grim";
+  path: Tile[];                   // remaining waypoints to targetTile ([] once arrived)
+  pathComputed: boolean;          // A* run once on first step
+  millSeed: number;               // deterministic idle-mill offset key
+}
+
+export interface GeneratedNpcs { fpNpcs: FPNPC[]; sidecar: ColonyNpc[]; }
