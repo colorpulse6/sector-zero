@@ -90,6 +90,38 @@ test("generateColonyNpcs: governor + quartermaster always present, correct kinds
   assert.notEqual(govFp.sprite, qmFp.sprite, "governor and quartermaster read as distinct sprites");
 });
 
+// ─── Named-NPC homes spread across habitat approaches (Fix: no night stacking) ──
+
+test("generateColonyNpcs: governor and quartermaster get different home tiles when ≥2 habitat approaches exist", () => {
+  const colony = fullColony({
+    population: pop(40),
+    buildings: [
+      building("hab1", "habitat_module", "operational"),
+      building("hab2", "habitat_module", "operational"),
+      building("farm1", "farm", "operational"),
+    ],
+  });
+  const map = generateExteriorState(colony, CLOCK).map;
+  const { sidecar } = generateColonyNpcs(colony, CLOCK, map);
+  const gov = sidecar.find((n) => n.kind === "governor")!;
+  const qm = sidecar.find((n) => n.kind === "quartermaster")!;
+  assert.ok(gov && qm, "governor and quartermaster present");
+  assert.notDeepEqual(
+    gov.homeTile,
+    qm.homeTile,
+    "governor and quartermaster get distinct home tiles when ≥2 habitat approaches exist",
+  );
+});
+
+test("generateColonyNpcs: governor and quartermaster share the lone approach tile when only 1 habitat exists (accepted limitation)", () => {
+  const colony = fullColony(); // single habitat_module → one approach tile
+  const map = generateExteriorState(colony, CLOCK).map;
+  const { sidecar } = generateColonyNpcs(colony, CLOCK, map);
+  const gov = sidecar.find((n) => n.kind === "governor")!;
+  const qm = sidecar.find((n) => n.kind === "quartermaster")!;
+  assert.deepEqual(gov.homeTile, qm.homeTile, "single approach tile is still shared — no distinct tile to give");
+});
+
 // ─── Buy-enable is quartermaster-only (§I — makes the in-game shop actually buy) ──
 
 test("generateColonyNpcs: only the quartermaster's fpNpc has canBuy === true", () => {

@@ -18,9 +18,9 @@
 // FPNPC identity rule (LOAD-BEARING — Codex finding): this MUST mutate
 // fpNpcs[i].x/y in place on the SAME objects generation created. It must NEVER
 // rebuild the fpNpcs array or replace an element — an open dialog binds to
-// dialogState.npcId and merchant state (interacted / shopSeen) lives on the
-// FPNPC; replacing objects mid-conversation would orphan the dialog and reset
-// per-NPC state.
+// dialogState.npcId, and the engine reads each NPC's live x/y straight off
+// that same object every frame; replacing objects mid-conversation would
+// orphan the dialog and desync its rendered position.
 
 import type { BoardingMap, FPNPC } from "../../../engine/types";
 import type { ColonyNpc } from "./types";

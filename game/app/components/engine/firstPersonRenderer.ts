@@ -335,12 +335,17 @@ function drawDialogBox(
 
     ctx.fillStyle = "#667788";
     ctx.font = "9px monospace";
-    ctx.textAlign = "right";
-    const headerHint = canBuy
-      ? (selectedIndex === leaveIndex ? "[Z] LEAVE" : "[Z] BUY  ↑↓ SELECT")
-      : "[Z] Close Shop";
-    ctx.fillText(headerHint, boxX + boxW - 12, boxY + 12);
-    ctx.textAlign = "left";
+    if (canBuy) {
+      ctx.textAlign = "right";
+      const headerHint = selectedIndex === leaveIndex ? "[Z] LEAVE" : "[Z] BUY  ↑↓ SELECT";
+      ctx.fillText(headerHint, boxX + boxW - 12, boxY + 12);
+      ctx.textAlign = "left";
+    } else {
+      // Display-only shop (Ashfall) — unchanged from pre-Phase-5a rendering:
+      // left-aligned (textAlign is still "left" from the header above), drawn
+      // inset from the right edge rather than flush against it.
+      ctx.fillText("[Z] Close Shop", boxX + boxW - 110, boxY + 12);
+    }
 
     for (let i = 0; i < ds.shopItems.length; i++) {
       const item = ds.shopItems[i];

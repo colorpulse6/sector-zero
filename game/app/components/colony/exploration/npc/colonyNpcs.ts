@@ -132,7 +132,12 @@ export function generateColonyNpcs(
     if (b.type === "habitat_module" && PLACED_STATUSES.has(b.status)) habitatApproaches.push(ap);
     if (b.status === "operational") operationalApproaches.push(ap);
   }
-  const namedHome: Tile = habitatApproaches.length > 0 ? habitatApproaches[0] : plazaCenter;
+  // Round-robin the named NPCs' homes across the habitat approach pool so the
+  // governor and quartermaster don't spawn stacked on the same tile at night
+  // when ≥2 approaches exist. With exactly one (typical Tier-1, single
+  // Habitat) they still share it — accepted limitation, not worth chasing.
+  const namedHomeFor = (i: number): Tile =>
+    habitatApproaches.length > 0 ? habitatApproaches[i % habitatApproaches.length] : plazaCenter;
 
   const tier = happinessTierFor(colony.happiness);
   const sidecar: ColonyNpc[] = [];
@@ -201,7 +206,7 @@ export function generateColonyNpcs(
     name: `Overseer ${colony.name}`,
     sprite: SPRITES.NPC_VOSS,
     color: GOVERNOR_COLOR,
-    homeTile: namedHome,
+    homeTile: namedHomeFor(0),
     workTile: plazaCenter,
     postTile: plazaCenter,
     dialog: buildGovernorDialog(colony),
@@ -215,7 +220,7 @@ export function generateColonyNpcs(
     name: "Quartermaster",
     sprite: SPRITES.NPC_KAEL,
     color: QUARTERMASTER_COLOR,
-    homeTile: namedHome,
+    homeTile: namedHomeFor(1),
     workTile: padStall,
     postTile: padStall,
     dialog: [{ speaker: "Quartermaster", text: "Supplies for the road, if you've got the credits." }],
