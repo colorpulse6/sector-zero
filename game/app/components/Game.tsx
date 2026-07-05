@@ -73,9 +73,12 @@ import type { ColonyEvent, SceneStack } from "./colony";
 import { ColoniesScreen } from "./colony/meta";
 import { applyColonyFixture, findFixture } from "./colony/dev/seedColony";
 import DevPanel from "./DevPanel";
+import { createGradePass } from "./engine/postFx";
 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // WebGL overlay canvas that presents the graded frame over the 2D game canvas.
+  const glCanvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [showStartScreen, setShowStartScreen] = useState(true);
   const [showIntro, setShowIntro] = useState(false);
@@ -109,6 +112,9 @@ export default function Game() {
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
   const mouseRef = useRef<{ x: number; y: number; down: boolean }>({ x: 0.5, y: 0.5, down: false });
   const animationFrameRef = useRef<number | null>(null);
+  // Dedicated rAF handle for the grade-pass present loop. MUST stay separate from
+  // animationFrameRef, which is shared/clobbered across the game/intro/ending loops.
+  const presentRafRef = useRef<number | null>(null);
   const audioRef = useRef<AudioEngine | null>(null);
   const introFrameRef = useRef(0);
   const endingFrameRef = useRef(0);
@@ -1444,84 +1450,140 @@ export default function Game() {
     preloadAll();
   }, []);
 
+  // Mount the WebGL color-grade pass over the game canvas (Layer A of the visual
+  // overhaul). It presents the 2D canvas through an identity shader today; real
+  // grading lands later. It runs on its OWN requestAnimationFrame loop stored in
+  // presentRafRef — deliberately NOT animationFrameRef, which several other rAF
+  // loops in this component share and reset. createGradePass yields a pass that is
+  // disabled by default (present() no-ops until enabled), so we enable it here.
+  // Cleanup cancels the loop and releases the GL resources. Runs once on mount —
+  // the refs are attached before effects fire.
+  useEffect(() => {
+    const glCanvas = glCanvasRef.current;
+    if (!glCanvas) return;
+
+    const pass = createGradePass(glCanvas);
+    pass.setEnabled(true);
+
+    const present = () => {
+      const source = canvasRef.current;
+      if (source) pass.present(source, {});
+      presentRafRef.current = requestAnimationFrame(present);
+    };
+    presentRafRef.current = requestAnimationFrame(present);
+
+    return () => {
+      if (presentRafRef.current !== null) {
+        cancelAnimationFrame(presentRafRef.current);
+        presentRafRef.current = null;
+      }
+      pass.dispose();
+    };
+  }, []);
+
   return (
     <div className="relative w-full h-screen flex items-center justify-center bg-black">
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        className="border border-white/10"
-        style={{
-          maxHeight: "100vh",
-          maxWidth: "100vw",
-          objectFit: "contain",
-          cursor: gameState?.currentMode === "turret" ? "none" : "default",
-        }}
-        onMouseMove={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const scaleX = CANVAS_WIDTH / rect.width;
-          const scaleY = CANVAS_HEIGHT / rect.height;
-          mouseRef.current.x = (e.clientX - rect.left) * scaleX / CANVAS_WIDTH;
-          mouseRef.current.y = (e.clientY - rect.top) * scaleY / CANVAS_HEIGHT;
-        }}
-        onMouseDown={(e) => {
-          if (e.button === 0) mouseRef.current.down = true;
-        }}
-        onMouseUp={(e) => {
-          if (e.button === 0) mouseRef.current.down = false;
-        }}
-        onMouseLeave={() => {
-          mouseRef.current.down = false;
-        }}
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const scaleX = CANVAS_WIDTH / rect.width;
-          const scaleY = CANVAS_HEIGHT / rect.height;
-          const cx = (e.clientX - rect.left) * scaleX;
-          const cy = (e.clientY - rect.top) * scaleY;
+      {/* Grade-pass mount: this position:relative wrapper shrink-wraps the 2D
+          canvas (it keeps its own maxHeight/maxWidth/objectFit sizing), giving the
+          absolutely-positioned WebGL overlay below a definite box to fill. */}
+      <div style={{ position: "relative", display: "inline-flex", lineHeight: 0 }}>
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          className="border border-white/10"
+          style={{
+            maxHeight: "100vh",
+            maxWidth: "100vw",
+            objectFit: "contain",
+            cursor: gameState?.currentMode === "turret" ? "none" : "default",
+          }}
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const scaleX = CANVAS_WIDTH / rect.width;
+            const scaleY = CANVAS_HEIGHT / rect.height;
+            mouseRef.current.x = (e.clientX - rect.left) * scaleX / CANVAS_WIDTH;
+            mouseRef.current.y = (e.clientY - rect.top) * scaleY / CANVAS_HEIGHT;
+          }}
+          onMouseDown={(e) => {
+            if (e.button === 0) mouseRef.current.down = true;
+          }}
+          onMouseUp={(e) => {
+            if (e.button === 0) mouseRef.current.down = false;
+          }}
+          onMouseLeave={() => {
+            mouseRef.current.down = false;
+          }}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const scaleX = CANVAS_WIDTH / rect.width;
+            const scaleY = CANVAS_HEIGHT / rect.height;
+            const cx = (e.clientX - rect.left) * scaleX;
+            const cy = (e.clientY - rect.top) * scaleY;
 
-          // Cockpit hub — click on hotspots
-          if (showCockpit && cockpitState.screen === "hub") {
-            for (let i = 0; i < COCKPIT_HOTSPOTS.length; i++) {
-              const h = COCKPIT_HOTSPOTS[i];
-              if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
-                setCockpitState((prev) => ({
-                  ...prev,
-                  screen: h.id,
-                  selectedHotspot: i,
-                }));
-                break;
-              }
-            }
-          }
-
-          // Cockpit sub-screens — click near top-left to go back
-          if (showCockpit && cockpitState.screen !== "hub") {
-            if (cx < 60 && cy < 50) {
-              setCockpitState((prev) => ({ ...prev, screen: "hub" }));
-            }
-          }
-
-          // Star map — click on world nodes to select
-          if (showMap && starMapState) {
-            const worldNodes = getWorldNodes(saveData);
-            for (const node of worldNodes) {
-              if (!node.unlocked) continue;
-              const dx = cx - node.x;
-              const dy = cy - node.y;
-              if (dx * dx + dy * dy < 30 * 30) {
-                if (starMapState.selectedWorld === node.world && !starMapState.expanded) {
-                  // Double-click to expand
-                  setStarMapState((prev) => prev ? { ...prev, expanded: true, selectedLevel: 1 } : prev);
-                } else {
-                  setStarMapState((prev) => prev ? { ...prev, selectedWorld: node.world, expanded: false } : prev);
+            // Cockpit hub — click on hotspots
+            if (showCockpit && cockpitState.screen === "hub") {
+              for (let i = 0; i < COCKPIT_HOTSPOTS.length; i++) {
+                const h = COCKPIT_HOTSPOTS[i];
+                if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
+                  setCockpitState((prev) => ({
+                    ...prev,
+                    screen: h.id,
+                    selectedHotspot: i,
+                  }));
+                  break;
                 }
-                break;
               }
             }
-          }
-        }}
-      />
+
+            // Cockpit sub-screens — click near top-left to go back
+            if (showCockpit && cockpitState.screen !== "hub") {
+              if (cx < 60 && cy < 50) {
+                setCockpitState((prev) => ({ ...prev, screen: "hub" }));
+              }
+            }
+
+            // Star map — click on world nodes to select
+            if (showMap && starMapState) {
+              const worldNodes = getWorldNodes(saveData);
+              for (const node of worldNodes) {
+                if (!node.unlocked) continue;
+                const dx = cx - node.x;
+                const dy = cy - node.y;
+                if (dx * dx + dy * dy < 30 * 30) {
+                  if (starMapState.selectedWorld === node.world && !starMapState.expanded) {
+                    // Double-click to expand
+                    setStarMapState((prev) => prev ? { ...prev, expanded: true, selectedLevel: 1 } : prev);
+                  } else {
+                    setStarMapState((prev) => prev ? { ...prev, selectedWorld: node.world, expanded: false } : prev);
+                  }
+                  break;
+                }
+              }
+            }
+          }}
+        />
+        {/* WebGL color-grade overlay — a sibling of the 2D canvas, painted on its
+            own rAF loop (presentRafRef). Fixed 480x854 backing store (no
+            devicePixelRatio scaling — the 2D game canvas uses none, so matching it
+            keeps the two layers pixel-aligned). pointerEvents:none so every
+            mouse/touch still reaches the 2D canvas beneath; inset:0 + 100%/100%
+            makes it track that canvas box exactly. The DOM UI overlays are
+            later-in-source siblings of this wrapper, so they still paint above the
+            overlay and stay ungraded. */}
+        <canvas
+          ref={glCanvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
 
       {/* Start Screen */}
       {showStartScreen && (
