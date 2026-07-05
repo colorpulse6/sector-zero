@@ -1859,8 +1859,11 @@ export default function Game() {
         </button>
       )}
 
-      {/* Dev Panel — development only */}
-      {process.env.NODE_ENV === "development" && (
+      {/* Dev Panel — dev mode, or a prod build explicitly opted in via
+          NEXT_PUBLIC_DEVTOOLS=1 (for smooth prod-build playtesting). The CI
+          deploy build never sets that flag, so production stays clean. */}
+      {(process.env.NODE_ENV === "development" ||
+        process.env.NEXT_PUBLIC_DEVTOOLS === "1") && (
         <DevPanel gameState={gameState} onAction={handleDevAction} />
       )}
 
