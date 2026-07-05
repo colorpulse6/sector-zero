@@ -15,17 +15,11 @@
  *  machines without WebGL. */
 
 import { VERT_SRC, FRAG_IDENTITY_SRC } from "./shaders";
+import type { GradeParams } from "./presets";
 
-/** Opaque per-frame grading parameters. The identity pass ignores these
- *  entirely; a later task adds real controls (e.g. exposure, contrast, tint,
- *  vignette) as optional fields and the fragment shader consumes them. Kept as
- *  a named interface (not a bare `{}`, which would accept any non-null value)
- *  so those fields slot in without touching call sites or loosening the type. */
-export interface GradeParams {
-  /** Reserved placeholder — no grading controls exist yet. Present so the type
-   *  is a non-empty interface today; real optional fields replace it later. */
-  readonly reserved?: never;
-}
+// GradeParams is owned by ./presets (the authoritative uniform shape). Re-export
+// it so index.ts keeps importing the whole surface from this module.
+export type { GradeParams };
 
 /** Runtime handle over the compiled program + GPU resources. */
 export interface GradeGL {

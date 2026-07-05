@@ -74,6 +74,7 @@ import { ColoniesScreen } from "./colony/meta";
 import { applyColonyFixture, findFixture } from "./colony/dev/seedColony";
 import DevPanel from "./DevPanel";
 import { createGradePass } from "./engine/postFx";
+import { selectPreset } from "./engine/postFx/presets";
 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -120,6 +121,10 @@ export default function Game() {
   const endingFrameRef = useRef(0);
   // Wall-clock timestamp of the previous simulated frame, for delta-time scaling.
   const lastFrameTsRef = useRef(0);
+  // Live mirror of gameState for the grade-pass present loop, whose raw rAF can't
+  // read React state. Updated every game-loop tick (see below); the present loop
+  // reads .currentMode to pick a grade preset. Starts null until the first tick.
+  const gameStateRef = useRef(gameState);
 
   const ensureAudio = useCallback(() => {
     if (!audioRef.current) {
@@ -1361,6 +1366,10 @@ export default function Game() {
         }
       }
 
+      // Mirror the fully-computed state so the grade-pass present rAF (which can't
+      // read React state) can select a preset by currentMode. Set after all
+      // newState mutations above, alongside the React commit.
+      gameStateRef.current = newState;
       setGameState(newState);
       drawGame(ctx, newState);
 
@@ -1467,7 +1476,10 @@ export default function Game() {
 
     const present = () => {
       const source = canvasRef.current;
-      if (source) pass.present(source, {});
+      // gameStateRef is null before the first game-loop tick (start screen etc.);
+      // selectPreset falls back to DEFAULT for an empty/unknown mode, so the whole
+      // app — menus included — gets the same grade until a mode is active.
+      if (source) pass.present(source, selectPreset(gameStateRef.current?.currentMode ?? ""));
       presentRafRef.current = requestAnimationFrame(present);
     };
     presentRafRef.current = requestAnimationFrame(present);
