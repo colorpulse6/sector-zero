@@ -14,7 +14,7 @@
  *  be created or the program can't be built, so callers can no-op safely on
  *  machines without WebGL. */
 
-import { VERT_SRC, FRAG_IDENTITY_SRC } from "./shaders";
+import { VERT_SRC, FRAG_GRADE_SRC } from "./shaders";
 import type { GradeParams } from "./presets";
 
 // GradeParams is owned by ./presets (the authoritative uniform shape). Re-export
@@ -24,7 +24,8 @@ export type { GradeParams };
 /** Runtime handle over the compiled program + GPU resources. */
 export interface GradeGL {
   /** Upload `source` into the sampler and draw the fullscreen triangle onto the
-   *  GL canvas. `params` is accepted for forward-compat and ignored by identity. */
+   *  GL canvas, applying the DOOM grade with `params` (plus an internal time
+   *  uniform for the animated grain). */
   uploadAndDraw(source: HTMLCanvasElement, params: GradeParams): void;
   /** Delete every GL object this handle owns. Idempotent. */
   dispose(): void;
@@ -47,13 +48,13 @@ function compileShader(
   return shader;
 }
 
-/** Compile + link the identity program; returns null (after cleanup) on any
+/** Compile + link the grade program; returns null (after cleanup) on any
  *  failure. Shaders are deleted post-link — the linked program keeps its own
  *  copies, so the flagged-for-delete shaders are freed once detached. */
 function buildProgram(gl: WebGLRenderingContext): WebGLProgram | null {
   const vert = compileShader(gl, gl.VERTEX_SHADER, VERT_SRC);
   if (!vert) return null;
-  const frag = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_IDENTITY_SRC);
+  const frag = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_GRADE_SRC);
   if (!frag) {
     gl.deleteShader(vert);
     return null;
@@ -115,6 +116,18 @@ export function createGradeGL(glCanvas: HTMLCanvasElement): GradeGL | null {
   const aPos = gl.getAttribLocation(program, "aPos");
   const uSrc = gl.getUniformLocation(program, "uSrc");
 
+  // Grade uniform locations, cached once. Every one is consumed by FRAG_GRADE_SRC,
+  // so none should come back null on a successful link; setting a null location is
+  // a WebGL no-op regardless, so uploadAndDraw stays fail-soft either way.
+  const uBlackPoint = gl.getUniformLocation(program, "uBlackPoint");
+  const uContrast = gl.getUniformLocation(program, "uContrast");
+  const uShadowTint = gl.getUniformLocation(program, "uShadowTint");
+  const uHighlightTint = gl.getUniformLocation(program, "uHighlightTint");
+  const uTintStrength = gl.getUniformLocation(program, "uTintStrength");
+  const uVignette = gl.getUniformLocation(program, "uVignette");
+  const uGrain = gl.getUniformLocation(program, "uGrain");
+  const uTime = gl.getUniformLocation(program, "uTime");
+
   // Source texture — re-uploaded from the game canvas each frame. CLAMP + LINEAR
   // is standard for a same-size present; the min filter is LINEAR (no mipmaps)
   // because we never generate mips for a per-frame-replaced texture.
@@ -132,7 +145,7 @@ export function createGradeGL(glCanvas: HTMLCanvasElement): GradeGL | null {
 
   let disposed = false;
 
-  function uploadAndDraw(source: HTMLCanvasElement, _params: GradeParams): void {
+  function uploadAndDraw(source: HTMLCanvasElement, params: GradeParams): void {
     if (disposed) return;
     gl.useProgram(program);
 
@@ -143,6 +156,21 @@ export function createGradeGL(glCanvas: HTMLCanvasElement): GradeGL | null {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
     if (uSrc) gl.uniform1i(uSrc, 0);
+
+    // Push the grade params into the program. Null locations no-op, so this is
+    // safe even if a driver optimized a uniform out. uTime is a 2π-wrapped
+    // seconds phase read at draw time (runtime-only — performance.now() is fine
+    // here, never at module scope) that animates the grain each frame; the wrap
+    // keeps the value small so the grain hash stays precise on all hardware.
+    const uTimeValue = (performance.now() * 0.001) % (Math.PI * 2.0);
+    gl.uniform1f(uBlackPoint, params.blackPoint);
+    gl.uniform1f(uContrast, params.contrast);
+    gl.uniform3f(uShadowTint, params.shadowTint[0], params.shadowTint[1], params.shadowTint[2]);
+    gl.uniform3f(uHighlightTint, params.highlightTint[0], params.highlightTint[1], params.highlightTint[2]);
+    gl.uniform1f(uTintStrength, params.tintStrength);
+    gl.uniform1f(uVignette, params.vignetteStrength);
+    gl.uniform1f(uGrain, params.grainStrength);
+    gl.uniform1f(uTime, uTimeValue);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.enableVertexAttribArray(aPos);

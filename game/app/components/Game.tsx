@@ -1460,11 +1460,12 @@ export default function Game() {
   }, []);
 
   // Mount the WebGL color-grade pass over the game canvas (Layer A of the visual
-  // overhaul). It presents the 2D canvas through an identity shader today; real
-  // grading lands later. It runs on its OWN requestAnimationFrame loop stored in
-  // presentRafRef — deliberately NOT animationFrameRef, which several other rAF
-  // loops in this component share and reset. createGradePass yields a pass that is
-  // disabled by default (present() no-ops until enabled), so we enable it here.
+  // overhaul). It presents the 2D canvas through the DOOM color grade, selecting
+  // a preset per frame by the live gameStateRef.currentMode. It runs on its OWN
+  // requestAnimationFrame loop stored in presentRafRef — deliberately NOT
+  // animationFrameRef, which several other rAF loops in this component share and
+  // reset. createGradePass yields a pass that is disabled by default (present()
+  // no-ops until enabled), so we enable it here.
   // Cleanup cancels the loop and releases the GL resources. Runs once on mount —
   // the refs are attached before effects fire.
   useEffect(() => {
