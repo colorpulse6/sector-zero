@@ -981,6 +981,30 @@ export default function Game() {
     };
   }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen]);
 
+  // Held-input reset on focus loss. keyup/mouseup are delivered to whatever
+  // surface has focus, so Alt-Tab / tab-switch / DevPanel clicks while holding a
+  // key would otherwise leave keysRef stuck true (ship slides + auto-fires until
+  // the key is pressed again). Mount-once: only refs are touched.
+  useEffect(() => {
+    const clearHeldInput = () => {
+      const k = keysRef.current;
+      k.left = k.right = k.up = k.down = false;
+      k.strafeLeft = k.strafeRight = false;
+      k.shoot = k.bomb = k.jump = false;
+      mouseRef.current.down = false;
+      touchPosRef.current = null;
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) clearHeldInput();
+    };
+    window.addEventListener("blur", clearHeldInput);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", clearHeldInput);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
   // Touch input
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1539,11 +1563,20 @@ export default function Game() {
               for (let i = 0; i < COCKPIT_HOTSPOTS.length; i++) {
                 const h = COCKPIT_HOTSPOTS[i];
                 if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
-                  setCockpitState((prev) => ({
-                    ...prev,
-                    screen: h.id,
-                    selectedHotspot: i,
-                  }));
+                  // "starmap" is not a cockpit sub-screen (drawCockpit has no
+                  // branch for it — setting it freezes the hub frame): open the
+                  // star map overlay instead, mirroring the touch path above.
+                  if (h.id === "starmap") {
+                    setShowCockpit(false);
+                    setShowMap(true);
+                    resetStarMapKeys();
+                  } else {
+                    setCockpitState((prev) => ({
+                      ...prev,
+                      screen: h.id,
+                      selectedHotspot: i,
+                    }));
+                  }
                   break;
                 }
               }
