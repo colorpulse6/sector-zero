@@ -201,10 +201,10 @@ export function updateBoardingEngine(gs: GameState, keys: Keys, dtMs: number = 1
       }
 
       case "sentry": {
-        // Stationary — shoots at player
-        if (e.fireTimer > 0) {
-          e.fireTimer = Math.max(0, e.fireTimer - dtF);
-        } else if (dist < CANVAS_WIDTH && hasLineOfSight(map, ecx, ecy, pcx, pcy)) {
+        // Stationary — shoots at player. Cooldown ticks in the shared
+        // fireTimer decrement after the switch — not here too, or the sentry
+        // cools down at 2× rate and fires twice as often as SENTRY_FIRE_RATE.
+        if (e.fireTimer <= 0 && dist < CANVAS_WIDTH && hasLineOfSight(map, ecx, ecy, pcx, pcy)) {
           const len = dist || 1;
           bs.bullets.push({
             id: nextBulletId(),
@@ -294,27 +294,41 @@ export function updateBoardingEngine(gs: GameState, keys: Keys, dtMs: number = 1
       }
     }
 
-    // Contact damage (grunt/charger touching player)
-    for (const e of bs.enemies) {
-      if (deadEnemies.has(e.id)) continue;
-      if (e.type === "sentry") continue;
-      if (p.invincibleTimer > 0) continue;
-      if (e.x < p.x + PLAYER_W && e.x + e.width > p.x &&
-          e.y < p.y + PLAYER_H && e.y + e.height > p.y) {
-        p.hp -= 1;
-        p.invincibleTimer = 60;
-        gs.screenShake = 4;
-        gs.audioEvents.push(AudioEvent.PLAYER_HIT);
-        if (p.hp <= 0) {
-          gs.lives -= 1;
-          gs.deaths += 1;
-          if (gs.lives <= 0) {
-            gs.screen = GameScreen.GAME_OVER;
-            gs.audioEvents.push(AudioEvent.GAME_OVER);
-          }
+  }
+
+  // Contact damage (grunt/charger touching player). Deliberately OUTSIDE the
+  // bullet loop above: nested inside it, melee damage only ever ran while a
+  // bullet happened to be in flight (empty bs.bullets → outer loop body never
+  // executes), so grunts/chargers dealt zero damage to a non-firing player.
+  for (const e of bs.enemies) {
+    if (deadEnemies.has(e.id)) continue;
+    if (e.type === "sentry") continue;
+    if (p.invincibleTimer > 0) break;
+    if (e.x < p.x + PLAYER_W && e.x + e.width > p.x &&
+        e.y < p.y + PLAYER_H && e.y + e.height > p.y) {
+      p.hp -= 1;
+      p.invincibleTimer = 60;
+      gs.screenShake = 4;
+      gs.audioEvents.push(AudioEvent.PLAYER_HIT);
+      if (p.hp <= 0) {
+        gs.lives -= 1;
+        gs.deaths += 1;
+        if (gs.lives <= 0) {
+          gs.screen = GameScreen.GAME_OVER;
+          gs.audioEvents.push(AudioEvent.GAME_OVER);
+        } else {
+          // Respawn — mirrors the enemy-bullet death path above; without this
+          // the player kept a non-positive hp and every later touch after
+          // i-frames expired drained another life.
+          const { getBoardingSpawn } = require("./boardingLevel");
+          const spawn = getBoardingSpawn(map);
+          p.x = spawn.x;
+          p.y = spawn.y;
+          p.hp = p.maxHp;
+          p.invincibleTimer = 90;
         }
-        break;
       }
+      break;
     }
   }
 
