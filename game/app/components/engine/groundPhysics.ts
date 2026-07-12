@@ -43,12 +43,15 @@ export function collidesWithSolid(
  *  bit-identical to the original (GRAVITY*1, newVY*1), so 60fps behavior,
  *  golden frames, and colony tests are all unchanged.
  *
- *  KNOWN EDGE (accepted): at the dtF=3 clamp (<=20fps) the fall step reaches
- *  MAX_FALL_SPEED*3 = 36px, larger than the 32px tile, so a fast fall can skip a
- *  one-tile-thick one-way platform. Multi-tile solid floors still catch via the
- *  destination-row snap below. We accept this — <=20fps is already degraded and
- *  it self-corrects on the next surface. Do NOT add a vertical position clamp:
- *  that would reintroduce a frame-rate dependence in the fall, which is worse.
+ *  TUNNELING: at the dtF=3 clamp (<=20fps) the fall step reaches
+ *  MAX_FALL_SPEED*3 = 36px, larger than the 32px tile, so a destination-only
+ *  check could skip an entire tile row in one step. The falling branch
+ *  therefore SWEEPS every row the feet crossed this step (old feet row → new
+ *  feet row) and lands on the first solid/platform row found. This is not a
+ *  position clamp (which would reintroduce frame-rate dependence in the fall
+ *  distance) — it just makes the collision test cover the whole travel path,
+ *  so one-tile-thick floors (incl. the world floor with void below — falling
+ *  past it was an unrecoverable soft-lock) catch at any frame rate.
  */
 export function applyGravity(
   map: TileMap,
@@ -64,20 +67,24 @@ export function applyGravity(
   let onGround = false;
 
   if (newVY > 0) {
-    // Falling — check ground collision (solid AND platform block from above)
-    const feetY = newY + height;
+    // Falling — sweep every tile row the feet crossed this step (see TUNNELING
+    // note above); land on the first solid/platform row.
     const left = Math.floor(x / map.tileSize);
     const right = Math.floor((x + width - 1) / map.tileSize);
-    const tileRow = Math.floor(feetY / map.tileSize);
+    const startRow = Math.max(0, Math.floor((y + height) / map.tileSize));
+    const endRow = Math.floor((newY + height) / map.tileSize);
 
-    for (let col = left; col <= right; col++) {
-      if (col < 0 || col >= map.width || tileRow < 0 || tileRow >= map.height) continue;
-      const tile = map.tiles[tileRow][col];
-      if (tile === "solid" || tile === "platform") {
-        newY = tileRow * map.tileSize - height;
-        newVY = 0;
-        onGround = true;
-        break;
+    for (let tileRow = startRow; tileRow <= endRow && !onGround; tileRow++) {
+      if (tileRow >= map.height) break;
+      for (let col = left; col <= right; col++) {
+        if (col < 0 || col >= map.width) continue;
+        const tile = map.tiles[tileRow][col];
+        if (tile === "solid" || tile === "platform") {
+          newY = tileRow * map.tileSize - height;
+          newVY = 0;
+          onGround = true;
+          break;
+        }
       }
     }
   } else if (newVY < 0) {

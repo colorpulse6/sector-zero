@@ -123,6 +123,14 @@ export function stepColonyExploration(
       popped.current.state.posY = stashedReturn.y + 1.5;
       popped.current.state.dirX = 0;
       popped.current.state.dirY = 1;  // south
+      // The camera plane must be reset WITH dir, keeping the same handedness as
+      // the exterior's canonical basis (dir (0,-1) × plane (0.66,0) → det
+      // planeX*dirY - dirX*planeY = -0.66). Leaving the entry-time plane in
+      // place flipped the determinant sign (or sheared the FOV off-cardinal),
+      // horizontally mirroring the whole exterior view for the rest of the
+      // visit — rotateView preserves det sign, so turning never healed it.
+      popped.current.state.planeX = -0.66;
+      popped.current.state.planeY = 0;
     }
     popped.current.state.colonyInteractArmed = false;
     popped.current.state.colonyInteractCooldownFrames = 15;

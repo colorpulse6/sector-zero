@@ -23,13 +23,22 @@ interface WaveDef {
   enemies: Array<{ type: TurretEnemy["type"]; count: number }>;
 }
 
-const WAVES: WaveDef[] = [
+/** Immutable wave templates — NEVER mutated. Each createTurretState deep-clones
+ *  them into ts.waveQueue, which is what spawning decrements. (Decrementing
+ *  these shared defs directly was the old bug: after one full run every count
+ *  was 0, so any replay of turret mode in the same session spawned zero
+ *  enemies and instantly "completed".) */
+const WAVE_DEFS: readonly WaveDef[] = [
   { enemies: [{ type: "drone", count: 4 }] },
   { enemies: [{ type: "fighter", count: 3 }, { type: "drone", count: 2 }] },
   { enemies: [{ type: "fighter", count: 4 }, { type: "drone", count: 3 }] },
   { enemies: [{ type: "bomber", count: 2 }, { type: "fighter", count: 3 }] },
   { enemies: [{ type: "bomber", count: 3 }, { type: "fighter", count: 4 }, { type: "drone", count: 4 }] },
 ];
+
+function cloneWaveDefs(): WaveDef[] {
+  return WAVE_DEFS.map((w) => ({ enemies: w.enemies.map((g) => ({ ...g })) }));
+}
 
 // ─── Enemy Templates ────────────────────────────────────────────────
 
@@ -69,7 +78,8 @@ export function createTurretState(): TurretState {
     shipHp: 10,
     shipMaxHp: 10,
     wave: 0,
-    totalWaves: WAVES.length,
+    totalWaves: WAVE_DEFS.length,
+    waveQueue: cloneWaveDefs(),
     waveTimer: 120, // 2s before first wave
     spawnTimer: 0,
     enemiesRemaining: 0,
@@ -89,11 +99,19 @@ export function updateTurretEngine(gs: GameState, keys: Keys): void {
   const ts = gs.turretState;
   if (!ts || ts.completed || gs.levelCompleteTimer > 0) return;
 
-  // ── Crosshair movement ──
-  if (keys.left) ts.crosshairX -= CROSSHAIR_SPEED;
-  if (keys.right) ts.crosshairX += CROSSHAIR_SPEED;
-  if (keys.up) ts.crosshairY -= CROSSHAIR_SPEED;
-  if (keys.down) ts.crosshairY += CROSSHAIR_SPEED;
+  // ── Crosshair movement (diagonals normalized to unit speed) ──
+  let aimX = 0;
+  let aimY = 0;
+  if (keys.left) aimX -= 1;
+  if (keys.right) aimX += 1;
+  if (keys.up) aimY -= 1;
+  if (keys.down) aimY += 1;
+  if (aimX !== 0 && aimY !== 0) {
+    aimX *= Math.SQRT1_2;
+    aimY *= Math.SQRT1_2;
+  }
+  ts.crosshairX += aimX * CROSSHAIR_SPEED;
+  ts.crosshairY += aimY * CROSSHAIR_SPEED;
   ts.crosshairX = Math.max(0.05, Math.min(0.95, ts.crosshairX));
   ts.crosshairY = Math.max(0.05, Math.min(0.95, ts.crosshairY));
 
@@ -237,8 +255,8 @@ export function updateTurretEngine(gs: GameState, keys: Keys): void {
       if (ts.spawnTimer > 0) {
         ts.spawnTimer--;
       } else {
-        const waveDef = WAVES[ts.wave];
-        // Find next enemy type to spawn
+        const waveDef = ts.waveQueue[ts.wave];
+        // Find next enemy type to spawn (counts are the per-run clone)
         for (const group of waveDef.enemies) {
           if (group.count > 0) {
             ts.enemies.push(createTurretEnemy(group.type));
@@ -253,13 +271,7 @@ export function updateTurretEngine(gs: GameState, keys: Keys): void {
       // Wave cleared — advance
       ts.wave++;
       if (ts.wave < ts.totalWaves) {
-        // Reset wave counts
-        const waveDef = WAVES[ts.wave];
-        ts.enemiesRemaining = waveDef.enemies.reduce((sum, g) => sum + g.count, 0);
-        // Clone counts so we can decrement
-        WAVES[ts.wave] = {
-          enemies: waveDef.enemies.map((g) => ({ ...g })),
-        };
+        ts.enemiesRemaining = ts.waveQueue[ts.wave].enemies.reduce((sum, g) => sum + g.count, 0);
         ts.waveTimer = WAVE_DELAY;
       } else {
         // All waves cleared!
@@ -273,8 +285,6 @@ export function updateTurretEngine(gs: GameState, keys: Keys): void {
 
   // Initialize first wave if needed
   if (ts.wave === 0 && ts.enemiesRemaining === 0 && ts.waveTimer <= 0 && !ts.completed) {
-    const waveDef = WAVES[0];
-    ts.enemiesRemaining = waveDef.enemies.reduce((sum, g) => sum + g.count, 0);
-    WAVES[0] = { enemies: waveDef.enemies.map((g) => ({ ...g })) };
+    ts.enemiesRemaining = ts.waveQueue[0].enemies.reduce((sum, g) => sum + g.count, 0);
   }
 }

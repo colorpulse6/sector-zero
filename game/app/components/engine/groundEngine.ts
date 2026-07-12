@@ -355,8 +355,6 @@ function resolveBulletEnemyCollisions(gs: GameState, ground: GroundState): void 
       const label = createAffinityLabel(enemy.x + enemy.width / 2, enemy.y, affinity);
       if (label) gs.floatingLabels.push(label);
 
-      if (!bullet.piercing) bulletsToRemove.add(bullet.id);
-
       if (enemy.hp <= 0) {
         gs.score += 100;
         gs.kills++;
@@ -370,6 +368,13 @@ function resolveBulletEnemyCollisions(gs: GameState, ground: GroundState): void 
         // Bestiary tracking is handled at SaveData level (outside GameState).
         // PoC placeholder: ground kills are categorized as EnemyType.SCOUT when
         // the caller merges results into SaveData after the level ends.
+      }
+
+      // A non-piercing bullet is spent on its first hit — stop scanning
+      // enemies, or one shot damages every enemy overlapping it this frame.
+      if (!bullet.piercing) {
+        bulletsToRemove.add(bullet.id);
+        break;
       }
     }
   }

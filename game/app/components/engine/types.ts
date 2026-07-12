@@ -865,6 +865,11 @@ export interface TurretState {
   shipMaxHp: number;
   wave: number;
   totalWaves: number;
+  /** Per-run copy of the wave definitions. Spawning decrements these counts,
+   *  so they must live on the state (a fresh clone per createTurretState) —
+   *  decrementing shared module-level defs left every count at 0 after one
+   *  run, making all later turret sessions spawn nothing. */
+  waveQueue: Array<{ enemies: Array<{ type: TurretEnemy["type"]; count: number }> }>;
   waveTimer: number;    // Frames until next wave spawns
   spawnTimer: number;   // Frames until next enemy in current wave
   enemiesRemaining: number; // In current wave

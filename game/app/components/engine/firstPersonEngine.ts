@@ -152,17 +152,25 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, ROT_SPEED * dtF));
     }
 
-    if (keys.up) {
-      ({ posX, posY } = moveWithCollision(fp.map, posX, posY, dirX * MOVE_SPEED * dtF, dirY * MOVE_SPEED * dtF));
-    }
-    if (keys.down) {
-      ({ posX, posY } = moveWithCollision(fp.map, posX, posY, -dirX * MOVE_SPEED * dtF, -dirY * MOVE_SPEED * dtF));
-    }
-    if (keys.strafeLeft) {
-      ({ posX, posY } = moveWithCollision(fp.map, posX, posY, dirY * MOVE_SPEED * dtF, -dirX * MOVE_SPEED * dtF));
-    }
-    if (keys.strafeRight) {
-      ({ posX, posY } = moveWithCollision(fp.map, posX, posY, -dirY * MOVE_SPEED * dtF, dirX * MOVE_SPEED * dtF));
+    // Combine forward/back + strafe into one normalized move so walking a
+    // diagonal (W+D etc.) isn't √2 faster than walking straight. Axis mapping
+    // matches the old per-key calls: forward=(dirX,dirY), strafe-left=(dirY,-dirX).
+    let mForward = 0;
+    let mStrafe = 0;
+    if (keys.up) mForward += 1;
+    if (keys.down) mForward -= 1;
+    if (keys.strafeLeft) mStrafe += 1;
+    if (keys.strafeRight) mStrafe -= 1;
+    if (mForward !== 0 || mStrafe !== 0) {
+      const scale = mForward !== 0 && mStrafe !== 0 ? Math.SQRT1_2 : 1;
+      const step = MOVE_SPEED * dtF * scale;
+      ({ posX, posY } = moveWithCollision(
+        fp.map,
+        posX,
+        posY,
+        (dirX * mForward + dirY * mStrafe) * step,
+        (dirY * mForward - dirX * mStrafe) * step,
+      ));
     }
   }
 

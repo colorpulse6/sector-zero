@@ -99,10 +99,14 @@ function drawCrosshair(ctx: CanvasRenderingContext2D): void {
 }
 
 function drawCompass(ctx: CanvasRenderingContext2D, fp: FirstPersonState): void {
-  // Direction indicator at top center
+  // Direction indicator at top center. atan2 already spans (-π, π] with 0 = +X
+  // = east and -Y = north (dir (0,-1) is "facing north" per colonyLayout), so
+  // the slot index is just angle / 45° wrapped into [0,8). The old formula
+  // added π first, shifting every reading by 4 slots — the compass showed the
+  // exact opposite heading and disagreed with the minimap by 180°.
   const angle = Math.atan2(fp.dirY, fp.dirX);
   const dirs = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
-  const idx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+  const idx = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
 
   ctx.fillStyle = "#44ccff88";
   ctx.font = "bold 12px monospace";
