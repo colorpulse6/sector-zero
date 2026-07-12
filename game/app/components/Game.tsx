@@ -59,6 +59,7 @@ import {
 } from "./engine/ending";
 import { restoreCheckpoint } from "./engine/phases";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./engine/groundLevel";
+import { createTurretState } from "./engine/turretEngine";
 import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
 import { getSpecialMissionDef } from "./engine/specialMissions";
 import {
@@ -112,6 +113,10 @@ export default function Game() {
   });
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
   const mouseRef = useRef<{ x: number; y: number; down: boolean }>({ x: 0.5, y: 0.5, down: false });
+  // Last mouse position already applied to the turret crosshair — lets keyboard
+  // aiming coexist with the mouse (an idle mouse must not stomp arrow-key aim
+  // back to its own position every frame).
+  const lastTurretMouseRef = useRef<{ x: number; y: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   // Dedicated rAF handle for the grade-pass present loop. MUST stay separate from
   // animationFrameRef, which is shared/clobbered across the game/intro/ending loops.
@@ -121,6 +126,9 @@ export default function Game() {
   const endingFrameRef = useRef(0);
   // Wall-clock timestamp of the previous simulated frame, for delta-time scaling.
   const lastFrameTsRef = useRef(0);
+  // Unconsumed wall-clock time (ms) carried between rAF callbacks by the
+  // fixed-timestep game loop — see the accumulator note inside gameLoop.
+  const simAccumulatorRef = useRef(0);
   // Live mirror of gameState for the grade-pass present loop, whose raw rAF can't
   // read React state. Updated every game-loop tick (see below); the present loop
   // reads .currentMode to pick a grade preset. Starts null until the first tick.
@@ -645,15 +653,7 @@ export default function Game() {
           currentMode: "turret",
           currentPhase: 1,
           totalPhases: 2,
-          turretState: {
-            crosshairX: 0.5, crosshairY: 0.5,
-            enemies: [], shipHp: 10, shipMaxHp: 10,
-            wave: 0, totalWaves: 5, waveTimer: 120,
-            spawnTimer: 0, enemiesRemaining: 0,
-            killCount: 0, targetKills: 0,
-            completed: false, fireCooldown: 0,
-            bolts: [],
-          },
+          turretState: createTurretState(),
           briefingTimer: 0,
           devInvincible: gameState?.devInvincible ?? false,
         });
@@ -1311,20 +1311,37 @@ export default function Game() {
     if (!ctx) return;
 
     const gameLoop = () => {
-      // Delta time since the previous frame (ms), clamped so a long stall (tab
-      // backgrounded, GC pause) can't produce a huge movement step. 16.67ms = 60fps
-      // → dtF = 1.0, so a steady 60fps player sees identical behavior to before.
+      // FIXED-TIMESTEP SIMULATION. rAF fires at the display's refresh rate
+      // (120/144Hz on fast screens), but the shooter/turret engines and every
+      // frameCount-driven animation assume one update = 16.67ms. So instead of
+      // stepping once per rAF, wall-clock time accumulates and the sim steps in
+      // fixed 16.67ms ticks: 120Hz → a tick every other callback; a slow frame
+      // → up to 3 catch-up ticks (the 50ms clamp bounds stall recovery, same
+      // budget as the engines' dtF<=3 clamp). At a steady 60fps this is
+      // behavior-identical to the old once-per-rAF step.
+      const STEP_MS = 1000 / 60;
       const now = performance.now();
       const last = lastFrameTsRef.current;
-      const dtMs = last === 0 ? 16.67 : Math.min(now - last, 50);
+      const rawDt = last === 0 ? STEP_MS : Math.min(now - last, 50);
       lastFrameTsRef.current = now;
+      simAccumulatorRef.current += rawDt;
 
-      // Feed mouse position into turret crosshair + mouse-click as shoot
+      // Feed mouse position into turret crosshair — but only when the mouse
+      // actually moved, so keyboard aim (arrow keys) isn't snapped back to an
+      // idle mouse's position every frame.
+      let turretMouseFire = false;
       if (gameState?.currentMode === "turret" && gameState.turretState) {
         const m = mouseRef.current;
-        gameState.turretState.crosshairX = Math.max(0.05, Math.min(0.95, m.x));
-        gameState.turretState.crosshairY = Math.max(0.05, Math.min(0.95, m.y));
-        if (m.down) keysRef.current.shoot = true;
+        const last = lastTurretMouseRef.current;
+        if (!last || last.x !== m.x || last.y !== m.y) {
+          gameState.turretState.crosshairX = Math.max(0.05, Math.min(0.95, m.x));
+          gameState.turretState.crosshairY = Math.max(0.05, Math.min(0.95, m.y));
+          lastTurretMouseRef.current = { x: m.x, y: m.y };
+        }
+        // Held mouse button fires this frame only — never latch keysRef.shoot
+        // (the old latch kept auto-firing after the button was released until
+        // an unrelated Z/Shift keyup happened to clear it).
+        turretMouseFire = m.down;
       }
 
       // In colony-exploration mode, suppress input when exit menu is open (DOM handles it)
@@ -1332,19 +1349,35 @@ export default function Game() {
         ? { left: false, right: false, up: false, down: false,
             strafeLeft: false, strafeRight: false,
             shoot: false, bomb: false, jump: false }
-        : keysRef.current;
+        : turretMouseFire && !keysRef.current.shoot
+          ? { ...keysRef.current, shoot: true }
+          : keysRef.current;
 
-      const newState = updateGame(
-        gameState,
-        effectiveKeys,
-        touchPosRef.current?.x ?? null,
-        touchPosRef.current?.y ?? null,
-        dtMs
-      );
-
-      // Play audio events
-      for (const event of newState.audioEvents) {
-        audioRef.current?.play(event);
+      // Consume whole fixed ticks. Zero ticks (fast display, no tick due yet)
+      // → newState === gameState, setGameState bails on the identical
+      // reference, and this same rAF loop just runs again next callback.
+      let newState = gameState;
+      let simMs = 0; // sim time consumed this callback (feeds the colony step)
+      while (simAccumulatorRef.current >= STEP_MS) {
+        simAccumulatorRef.current -= STEP_MS;
+        simMs += STEP_MS;
+        newState = updateGame(
+          newState,
+          effectiveKeys,
+          touchPosRef.current?.x ?? null,
+          touchPosRef.current?.y ?? null,
+          STEP_MS
+        );
+        // Play audio per tick — catch-up ticks each carry their own events.
+        for (const event of newState.audioEvents) {
+          audioRef.current?.play(event);
+        }
+      }
+      if (newState === gameState) {
+        // No tick this callback: nothing changed, skip the React commit and
+        // redraw entirely.
+        animationFrameRef.current = requestAnimationFrame(gameLoop);
+        return;
       }
 
       // ── Colony exploration orchestrator step ──
@@ -1356,7 +1389,7 @@ export default function Game() {
           setExitMenuOpen(true);
           if (fp) fp.colonyTransitionRequest = undefined;
         } else {
-          const nextStack = stepColonyExploration(sceneStack, saveData, dtMs);
+          const nextStack = stepColonyExploration(sceneStack, saveData, simMs);
           if (nextStack !== sceneStack) {
             setSceneStack(nextStack);
             // When stack layer changes (interior enter/exit), propagate the new
@@ -1557,6 +1590,23 @@ export default function Game() {
             const scaleY = CANVAS_HEIGHT / rect.height;
             const cx = (e.clientX - rect.left) * scaleX;
             const cy = (e.clientY - rect.top) * scaleY;
+
+            // Intro crawl / ending sequence — mirror the touch handlers so a
+            // mouse-only desktop player isn't stuck on keyboard-only flows
+            // (the DESTROY/MERGE boxes are drawn at y 320-420 / 460-560).
+            if (showIntro) {
+              finishIntro();
+              return;
+            }
+            if (endingPhase === "choice") {
+              if (cy >= 320 && cy < 420) confirmChoice("destroy");
+              else if (cy >= 460 && cy < 560) confirmChoice("merge");
+              return;
+            }
+            if (endingPhase === "pre-choice" || endingPhase === "ending" || endingPhase === "credits") {
+              advanceEnding();
+              return;
+            }
 
             // Cockpit hub — click on hotspots
             if (showCockpit && cockpitState.screen === "hub") {
