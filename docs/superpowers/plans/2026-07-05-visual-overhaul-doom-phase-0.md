@@ -1,5 +1,13 @@
 # DOOM Visual Overhaul — Phase 0 (Keystone) Implementation Plan
 
+> **STATUS: COMPLETE (2026-07-12).** All 10 tasks landed on `graphics/doom-overhaul`
+> (Tasks 1–4 on 07-05; Tasks 5–7 `38f1fde`, Task 8 `2418bbb`, Task 9 `3151f84`,
+> Task 10 `e8728ed` on 07-12). Playtested in a prod build: grade + bloom render,
+> HUD legible, A/B + auto-disable verified live (budget corrected 3ms→6ms from
+> measurement), dark-scene presets softened once. Remaining human item from the
+> done-checklist: user feel-tune of the presets. Next: Phase 1 pilot per
+> `docs/assets/2026-07-12-asset-pipeline-free-options.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 >
 > **Revised after plan-review** (fixed: atlas allowlist not denylist; dropped the false "goldens prove atlas safety" claim; stage-sizing collapse; single dedicated present-rAF; DevPanel↔postFx singleton mirror; `scripts/**` tsconfig exclude; line-refs).
