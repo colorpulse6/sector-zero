@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { generateColonyNpcs } from "../../app/components/colony/exploration/npc/colonyNpcs";
 import { findPath } from "../../app/components/colony/exploration/npc/npcPathfind";
 import { generateExteriorState } from "../../app/components/colony/exploration/colonyLayout";
-import type { ColonyBuilding, ColonyState, GameClock, PopulationState } from "../../app/components/colony/shared/colonyTypes";
+import type { ColonyBuilding, ColonyState, FactionStanding, GameClock, PopulationState } from "../../app/components/colony/shared/colonyTypes";
 import type { BoardingMap } from "../../app/components/engine/types";
 import type { Tile } from "../../app/components/colony/exploration/npc/types";
 import { makeTestColony } from "./fixtures";
@@ -140,6 +140,49 @@ test("generateColonyNpcs: only the quartermaster's fpNpc has canBuy === true", (
   }
   // Exactly one buy-enabled NPC in the whole set.
   assert.equal(fpNpcs.filter((n) => n.canBuy === true).length, 1, "exactly one canBuy NPC");
+});
+
+// ─── Faction standing wiring (Phase 5a) ──────────────────────────────────────
+
+// The test colony sits on ashfall, so ashfall_camp is its primary faction.
+function standingsAt(standing: number): FactionStanding[] {
+  return [{ factionId: "ashfall_camp", standing, rank: "neutral", permissions: [] }];
+}
+
+test("generateColonyNpcs: hated standing → quartermaster refuses trade (no shop, no canBuy, refusal line)", () => {
+  const colony = fullColony();
+  const map = generateExteriorState(colony, CLOCK).map;
+  const hated = generateColonyNpcs(colony, CLOCK, map, standingsAt(-50));
+  const neutral = generateColonyNpcs(colony, CLOCK, map);
+  const hatedQm = hated.fpNpcs.find((n) => n.name === "Quartermaster")!;
+  const neutralQm = neutral.fpNpcs.find((n) => n.name === "Quartermaster")!;
+
+  assert.equal(hatedQm.shopItems, undefined, "no shop attaches at hated rank — the shop can never open");
+  assert.notEqual(hatedQm.canBuy, true, "no buy-enable at hated rank");
+  assert.notDeepEqual(hatedQm.dialog, neutralQm.dialog, "hated dialog is the refusal, not the greeting");
+  assert.ok(neutralQm.shopItems && neutralQm.shopItems.length > 0, "neutral quartermaster still trades");
+});
+
+test("generateColonyNpcs: allied standing → quartermaster buy prices drop below neutral", () => {
+  const colony = fullColony();
+  const map = generateExteriorState(colony, CLOCK).map;
+  const allied = generateColonyNpcs(colony, CLOCK, map, standingsAt(90)).fpNpcs.find((n) => n.name === "Quartermaster")!;
+  const neutral = generateColonyNpcs(colony, CLOCK, map).fpNpcs.find((n) => n.name === "Quartermaster")!;
+  assert.equal(allied.shopItems!.length, neutral.shopItems!.length, "same stock, different prices");
+  for (let i = 0; i < neutral.shopItems!.length; i++) {
+    assert.ok(
+      allied.shopItems![i].cost < neutral.shopItems![i].cost,
+      `${neutral.shopItems![i].itemId}: allied cost must undercut neutral`,
+    );
+  }
+});
+
+test("generateColonyNpcs: governor greeting shifts with standing", () => {
+  const colony = fullColony();
+  const map = generateExteriorState(colony, CLOCK).map;
+  const warm = generateColonyNpcs(colony, CLOCK, map, standingsAt(90)).fpNpcs[0];
+  const neutral = generateColonyNpcs(colony, CLOCK, map).fpNpcs[0];
+  assert.notEqual(warm.dialog[0].text, neutral.dialog[0].text, "allied governor greets differently");
 });
 
 // ─── Colonist count from population, capped at 10 ────────────────────────────

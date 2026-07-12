@@ -504,3 +504,17 @@ test("shop(I) drain: applyShopPurchase returns null when unaffordable (→ gener
   const next = applyShopPurchase(save, { kind: "consumable", itemId: "hull-repair" });
   assert.equal(next, null, "unaffordable purchase returns null");
 });
+
+test("shop(I) drain: applyShopPurchase charges the faction-adjusted price (Phase 5a)", () => {
+  const save = { credits: 500, completedPlanets: ["verdania"], consumableInventory: {} } as unknown as SaveData;
+  const next = applyShopPurchase(save, { kind: "consumable", itemId: "hull-repair" }, "allied");
+  assert.ok(next, "allied purchase succeeds");
+  // 300-cost hull-repair at allied (-10%) charges adjustedBuyPrice(300) = 270.
+  assert.equal(next!.credits, 230, "allied buys the 300-cost item for 270");
+});
+
+test("shop(I) drain: hated rank doubles the charge — an otherwise-affordable item becomes unaffordable", () => {
+  const save = { credits: 500, completedPlanets: ["verdania"], consumableInventory: {} } as unknown as SaveData;
+  const next = applyShopPurchase(save, { kind: "consumable", itemId: "hull-repair" }, "hated");
+  assert.equal(next, null, "300-cost item costs 600 at hated → unaffordable with 500 credits");
+});

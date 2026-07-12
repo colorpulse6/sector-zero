@@ -23,7 +23,8 @@ export function enterColonyExploration(save: SaveData, colonyId: ColonyId): Ente
   const firstPersonState = generateExteriorState(colony, save.gameClock);
   // Phase 5a: populate the exterior with NPCs. generateExteriorState is unchanged;
   // NPC generation happens here and the movement sidecar rides on the exterior layer.
-  const { fpNpcs, sidecar } = generateColonyNpcs(colony, save.gameClock, firstPersonState.map);
+  // Standings drive greeting tone + quartermaster prices/refusal.
+  const { fpNpcs, sidecar } = generateColonyNpcs(colony, save.gameClock, firstPersonState.map, save.factionStandings);
   firstPersonState.npcs = fpNpcs;
   const exteriorLayer: SceneLayer = {
     kind: "exterior",

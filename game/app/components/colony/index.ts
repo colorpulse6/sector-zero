@@ -4,7 +4,24 @@
 export { colonyReducer } from "./shared/colonyReducer";
 export { advanceWorldCycle, processCycle } from "./shared/cycleProcessor";
 export { catchUpColony } from "./shared/catchUp";
-export { rankFromStanding, applyStandingDelta } from "./shared/factionLedger";
+export {
+  FACTIONS,
+  PLANET_MISSION_STANDING,
+  rankFromStanding,
+  clampStanding,
+  applyStandingDelta,
+  adjustStanding,
+  standingFor,
+  rankFor,
+  defaultFactionStandings,
+  buyPriceMultiplier,
+  sellPriceMultiplier,
+  adjustedBuyPrice,
+  merchantRefusesTrade,
+  primaryFactionForPlanet,
+  colonyMerchantRank,
+} from "./shared/factionLedger";
+export type { FactionRank, KnownFactionId, FactionDef } from "./shared/factionLedger";
 export { derivePowerGrid, powerCapacityOf, powerDemandOf } from "./shared/powerGrid";
 export {
   assertColonyInvariant,

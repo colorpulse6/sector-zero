@@ -1,23 +1,30 @@
 import type { ConsumableId, SaveData, FPShopPurchaseRequest } from "./types";
 import { CONSUMABLE_DEFS, isConsumableUnlocked, getConsumableDef } from "./planets";
+import { adjustedBuyPrice, type FactionRank } from "../colony/shared/factionLedger";
 
 // ─── Consumable Inventory Management ────────────────────────────────
 
 export function purchaseConsumable(
   save: SaveData,
-  consumableId: ConsumableId
+  consumableId: ConsumableId,
+  buyRank: FactionRank = "neutral"
 ): SaveData | null {
   const def = getConsumableDef(consumableId);
   if (!def) return null;
   if (!isConsumableUnlocked(def, save)) return null;
-  if (save.credits < def.cost) return null;
+
+  // Faction-adjusted price (Phase 5a): identical to the shop's displayed cost
+  // because BOTH sides go through adjustedBuyPrice. Neutral is the identity
+  // (=== def.cost), so the armory and every pre-faction call site are unchanged.
+  const price = adjustedBuyPrice(def.cost, buyRank);
+  if (save.credits < price) return null;
 
   const currentCount = save.consumableInventory[consumableId] ?? 0;
   if (currentCount >= def.maxCarry) return null;
 
   return {
     ...save,
-    credits: save.credits - def.cost,
+    credits: save.credits - price,
     consumableInventory: {
       ...save.consumableInventory,
       [consumableId]: currentCount + 1,
@@ -30,13 +37,16 @@ export function purchaseConsumable(
  * a new SaveData on success (credits deducted, item granted) or `null` on any
  * failure (locked / unaffordable / max-carry). Keeps the Game.tsx drain a thin
  * one-liner and makes the buy-application unit-testable. Consumables only for now.
+ * `buyRank` is the merchant's faction rank (colonyMerchantRank at the drain
+ * site) — the charge matches the rank-adjusted price the shop displayed.
  */
 export function applyShopPurchase(
   save: SaveData,
-  request: FPShopPurchaseRequest
+  request: FPShopPurchaseRequest,
+  buyRank: FactionRank = "neutral"
 ): SaveData | null {
   if (request.kind === "consumable") {
-    return purchaseConsumable(save, request.itemId);
+    return purchaseConsumable(save, request.itemId, buyRank);
   }
   return null;
 }

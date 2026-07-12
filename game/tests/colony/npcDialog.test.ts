@@ -2,9 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildGovernorDialog,
+  buildQuartermasterDialog,
   buildQuartermasterShop,
   buildColonistBark,
 } from "../../app/components/colony/exploration/npc/npcDialog";
+import { adjustedBuyPrice } from "../../app/components/colony/shared/factionLedger";
 import { getConsumableDef } from "../../app/components/engine/planets";
 import { makeTestColony } from "./fixtures";
 
@@ -106,6 +108,50 @@ test("buildGovernorDialog: every line has a non-empty speaker and text", () => {
   }
 });
 
+// ─── Faction-aware greetings (Phase 5a) ─────────────────────────────────────
+
+test("buildGovernorDialog: greeting varies across the three rank bands", () => {
+  const colony = makeTestColony();
+  const cold = buildGovernorDialog(colony, "hostile")[0].text;
+  const neutral = buildGovernorDialog(colony, "neutral")[0].text;
+  const warm = buildGovernorDialog(colony, "allied")[0].text;
+  assert.notEqual(cold, neutral);
+  assert.notEqual(neutral, warm);
+  assert.notEqual(cold, warm);
+});
+
+test("buildGovernorDialog: ranks within a band share a greeting; default rank is neutral", () => {
+  const colony = makeTestColony();
+  assert.equal(buildGovernorDialog(colony, "hostile")[0].text, buildGovernorDialog(colony, "hated")[0].text);
+  assert.equal(buildGovernorDialog(colony, "liked")[0].text, buildGovernorDialog(colony, "allied")[0].text);
+  assert.deepEqual(buildGovernorDialog(colony), buildGovernorDialog(colony, "neutral"));
+});
+
+test("buildGovernorDialog: greeting is prepended — status readout survives at every rank", () => {
+  const colony = makeTestColony({
+    population: { total: 14, capacity: 20, namedCount: 2, growthRate: 0.5, recentDeaths: [] },
+  });
+  for (const rank of ["hostile", "neutral", "allied"] as const) {
+    const joined = buildGovernorDialog(colony, rank).map((l) => l.text).join(" ");
+    assert.ok(joined.includes("14"), `population readout missing at ${rank}: ${joined}`);
+  }
+});
+
+test("buildQuartermasterDialog: refusal at hated/hostile, greeting warmth tracks the band", () => {
+  const cold = buildQuartermasterDialog("hated");
+  assert.equal(cold.length, 1, "refusal is a single curt line");
+  assert.deepEqual(cold, buildQuartermasterDialog("hostile"), "hated and hostile share the refusal");
+  const neutral = buildQuartermasterDialog("neutral");
+  const warm = buildQuartermasterDialog("allied");
+  assert.notEqual(cold[0].text, neutral[0].text);
+  assert.notEqual(neutral[0].text, warm[0].text);
+  assert.deepEqual(buildQuartermasterDialog(), neutral, "default rank is neutral");
+  for (const lines of [cold, neutral, warm]) {
+    assert.equal(lines[0].speaker, "Quartermaster");
+    assert.ok(lines[0].text.length > 0);
+  }
+});
+
 // ─── buildQuartermasterShop ─────────────────────────────────────────────────
 
 test("buildQuartermasterShop: every item is type consumable with a real itemId", () => {
@@ -137,6 +183,25 @@ test("buildQuartermasterShop: deterministic for the same colony", () => {
   const a = buildQuartermasterShop(colony);
   const b = buildQuartermasterShop(colony);
   assert.deepEqual(a, b);
+});
+
+test("buildQuartermasterShop: costs are faction-adjusted via adjustedBuyPrice per rank", () => {
+  const colony = makeTestColony({ tier: 4 });
+  for (const rank of ["allied", "liked", "neutral", "hated"] as const) {
+    const items = buildQuartermasterShop(colony, rank);
+    for (const item of items) {
+      const def = getConsumableDef(item.itemId as never);
+      assert.equal(
+        item.cost,
+        adjustedBuyPrice(def.cost, rank),
+        `${item.itemId} cost at ${rank} must come from adjustedBuyPrice`,
+      );
+    }
+  }
+  // Default rank is neutral — identical to the pre-faction base cost.
+  for (const item of buildQuartermasterShop(colony)) {
+    assert.equal(item.cost, getConsumableDef(item.itemId as never).cost);
+  }
 });
 
 // ─── buildColonistBark ──────────────────────────────────────────────────────

@@ -65,6 +65,7 @@ import { getSpecialMissionDef } from "./engine/specialMissions";
 import {
   advanceWorldCycle,
   colonyReducer,
+  colonyMerchantRank,
   enterColonyExploration,
   stepColonyExploration,
   exitColonyExploration,
@@ -1428,7 +1429,12 @@ export default function Game() {
         const buyReq = fpBuy?.shopPurchaseRequest;
         if (fpBuy && buyReq) {
           fpBuy.shopPurchaseRequest = undefined;
-          const nextSave = applyShopPurchase(saveData, buyReq);
+          // Colony merchants charge faction-adjusted prices (Phase 5a): derive
+          // the buy rank from the explored colony's primary faction — the same
+          // rank the shop's displayed costs were built with, so the charge
+          // always equals the display (adjustedBuyPrice on both sides).
+          const buyRank = colonyMerchantRank(saveData.colonies, saveData.factionStandings, sceneStack?.colonyId);
+          const nextSave = applyShopPurchase(saveData, buyReq, buyRank);
           if (nextSave) {
             saveSave(nextSave);
             setSaveData(nextSave);

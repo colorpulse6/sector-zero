@@ -18,6 +18,7 @@ import type {
   Bounty,
   GameClock,
 } from "../colony/shared/colonyTypes";
+import { defaultFactionStandings } from "../colony/shared/factionLedger";
 import { unlockCodexEntries } from "./codex";
 import { calcPilotLevel, creditBonus, skillPointsAtLevel } from "./pilotLevel";
 import { getNode } from "./skillTree";
@@ -54,7 +55,7 @@ const defaultSave: SaveData = {
   colonies: [],
   planets: [],
   earthShipments: [],
-  factionStandings: [],
+  factionStandings: defaultFactionStandings(),
   bounties: [],
   missionsSinceStart: 0,
   gameClock: {
@@ -98,7 +99,7 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
     colonies: (raw.colonies as ColonyState[]) ?? [],
     planets: (raw.planets as PlanetState[]) ?? [],
     earthShipments: (raw.earthShipments as EarthShipment[]) ?? [],
-    factionStandings: (raw.factionStandings as FactionStanding[]) ?? [],
+    factionStandings: (raw.factionStandings as FactionStanding[]) ?? defaultFactionStandings(),
     bounties: (raw.bounties as Bounty[]) ?? [],
     missionsSinceStart: (raw.missionsSinceStart as number) ?? 0,
     gameClock: (raw.gameClock as GameClock) ?? {

@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { migrateSave } from "../../app/components/engine/save";
+import { defaultFactionStandings } from "../../app/components/colony/shared/factionLedger";
 
 test("migrateSave on empty object produces default colony fields", () => {
   const migrated = migrateSave({});
   assert.deepEqual(migrated.colonies, []);
   assert.deepEqual(migrated.planets, []);
   assert.deepEqual(migrated.earthShipments, []);
-  assert.deepEqual(migrated.factionStandings, []);
+  assert.deepEqual(migrated.factionStandings, defaultFactionStandings());
   assert.deepEqual(migrated.bounties, []);
   assert.equal(migrated.missionsSinceStart, 0);
   assert.equal(migrated.gameClock.hour, 7);

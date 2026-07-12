@@ -1,8 +1,10 @@
 // Deterministic colony NPC generation (Phase 5a, Task 2).
 //
-// Pure function of (colony, gameClock, map) — no Date.now, no Math.random. All
-// procedural choices come from a mulberry32 PRNG seeded off colony.layoutSeed,
-// so the same inputs always produce an identical NPC set at identical tiles.
+// Pure function of (colony, gameClock, map, factionStandings) — no Date.now,
+// no Math.random. All procedural choices come from a mulberry32 PRNG seeded off
+// colony.layoutSeed, so the same inputs always produce an identical NPC set at
+// identical tiles. Standings feed greeting tone, quartermaster prices, and the
+// hated/hostile trade refusal.
 //
 // Builds each ColonyNpc (identity, home/work/post, resolved entry-hour target,
 // spawn position) and its paired FPNPC render/interaction projection (dialog,
@@ -17,12 +19,13 @@
 // approach tile isn't walkable, we fall back to a plaza tile.
 
 import type { FPNPC, FPDialogLine, FPShopItem, BoardingMap } from "../../../engine/types";
-import type { ColonyState, ColonyBuilding, GameClock } from "../../shared/colonyTypes";
+import type { ColonyState, ColonyBuilding, FactionStanding, GameClock } from "../../shared/colonyTypes";
 import { SPRITES } from "../../../engine/sprites";
 import { OUTPOST_TEMPLATE, type Slot } from "../outpostTemplate";
 import { BUILDING_FOOTPRINTS } from "../buildingTiles";
 import { assignSlots } from "../colonyLayout";
-import { buildGovernorDialog, buildQuartermasterShop, buildColonistBark } from "./npcDialog";
+import { merchantRefusesTrade, primaryFactionForPlanet, rankFor } from "../../shared/factionLedger";
+import { buildGovernorDialog, buildQuartermasterDialog, buildQuartermasterShop, buildColonistBark } from "./npcDialog";
 import { scheduleTargetTile } from "./npcSchedule";
 import type { ColonyNpc, Tile, GeneratedNpcs, NpcKind } from "./types";
 
@@ -92,9 +95,16 @@ export function generateColonyNpcs(
   colony: ColonyState,
   gameClock: GameClock,
   map: BoardingMap,
+  factionStandings: readonly FactionStanding[] = [],
 ): GeneratedNpcs {
   const rng = mulberry32(colony.layoutSeed);
   const { plaza, landingPad, spawn } = OUTPOST_TEMPLATE;
+
+  // Faction context (Phase 5a): the colony answers to its planet's primary
+  // faction — greeting tone, quartermaster prices, and the trade refusal all
+  // key off this rank. A missing ledger row reads as neutral.
+  const factionRank = rankFor(factionStandings, primaryFactionForPlanet(colony.planetId));
+  const tradeRefused = merchantRefusesTrade(factionRank);
 
   // Walkable plaza tiles (social space + the universal fallback for any target).
   const plazaTiles: Tile[] = [];
@@ -209,11 +219,14 @@ export function generateColonyNpcs(
     homeTile: namedHomeFor(0),
     workTile: plazaCenter,
     postTile: plazaCenter,
-    dialog: buildGovernorDialog(colony),
+    dialog: buildGovernorDialog(colony, factionRank),
     fpType: "lore",
   });
 
   // ─── Quartermaster (always) — merchant, working shop, stall by the pad ─────
+  // At hated/hostile rank the merchant refuses trade: curt refusal dialog and
+  // NO shopItems/canBuy — the FP engine only opens a shop when shopItems exist,
+  // so the shop simply never opens.
   finalize({
     id: id++,
     kind: "quartermaster",
@@ -223,10 +236,10 @@ export function generateColonyNpcs(
     homeTile: namedHomeFor(1),
     workTile: padStall,
     postTile: padStall,
-    dialog: [{ speaker: "Quartermaster", text: "Supplies for the road, if you've got the credits." }],
-    shopItems: buildQuartermasterShop(colony),
+    dialog: buildQuartermasterDialog(factionRank),
+    shopItems: tradeRefused ? undefined : buildQuartermasterShop(colony, factionRank),
     fpType: "merchant",
-    canBuy: true,   // the ONLY NPC with a real (buy-enabled) shop — see §I
+    canBuy: tradeRefused ? undefined : true,   // the ONLY NPC with a real (buy-enabled) shop — see §I
   });
 
   // ─── Colonists — count from population, capped; home/work deterministic ────

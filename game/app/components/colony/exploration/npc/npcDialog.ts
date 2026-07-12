@@ -1,17 +1,47 @@
-// Governor / Quartermaster / Colonist dialog + shop builders (Phase 2, Task 3).
+// Governor / Quartermaster / Colonist dialog + shop builders (Phase 2, Task 3;
+// faction-aware greetings + pricing in Phase 5a).
 //
 // Pure functions only — no rendering, no engine mutation, no Date.now/Math.random.
-// buildGovernorDialog is a pure function of ColonyState; buildQuartermasterShop
-// is a pure function of colony.tier; buildColonistBark is a pure function of
-// (happinessTier, seed). Output feeds FPNPC construction in a later task (see
-// ../npc/types.ts — ColonyNpc.happinessTier, millSeed).
+// buildGovernorDialog is a pure function of (ColonyState, faction rank);
+// buildQuartermasterShop of (colony.tier, faction rank); buildQuartermasterDialog
+// of the rank alone; buildColonistBark of (happinessTier, seed). Output feeds
+// FPNPC construction (see ../npc/types.ts — ColonyNpc.happinessTier, millSeed).
 
 import type { FPDialogLine, FPShopItem, ConsumableId } from "../../../engine/types";
 import type { ColonyState, ColonyBuilding, BuildingType, Threat } from "../../shared/colonyTypes";
 import { getConsumableDef } from "../../../engine/planets";
+import { adjustedBuyPrice, type FactionRank } from "../../shared/factionLedger";
 
 const GOVERNOR = "Governor";
+const QUARTERMASTER = "Quartermaster";
 const COLONIST = "Colonist";
+
+// ─── Faction-aware greetings (Phase 5a) ─────────────────────────────────────
+
+// The 5-rank ladder collapses to 3 dialog tones — hostile/hated share the cold
+// shoulder, liked/allied share the warm welcome.
+type GreetingTone = "cold" | "neutral" | "warm";
+
+function greetingTone(rank: FactionRank): GreetingTone {
+  if (rank === "hostile" || rank === "hated") return "cold";
+  if (rank === "liked" || rank === "allied") return "warm";
+  return "neutral";
+}
+
+const GOVERNOR_GREETINGS: Record<GreetingTone, string> = {
+  cold: "You have nerve walking in here, pilot. Say your piece and go.",
+  neutral: "Welcome to the colony, pilot. Here's where we stand.",
+  warm: "Always good to see you, pilot — this colony owes you plenty. Here's where we stand.",
+};
+
+// The cold entry doubles as the trade refusal: at hated/hostile rank the
+// quartermaster's shop never opens (see generateColonyNpcs), so this curt
+// line is the whole conversation.
+const QUARTERMASTER_GREETINGS: Record<GreetingTone, string> = {
+  cold: "Shop's closed — to you, anyway. The camp doesn't forget. Move along.",
+  neutral: "Supplies for the road, if you've got the credits.",
+  warm: "For a friend of the camp? Best stock on the shelf. Take your pick.",
+};
 
 // ─── buildGovernorDialog ────────────────────────────────────────────────────
 
@@ -98,16 +128,32 @@ function threatsLine(colony: ColonyState): FPDialogLine | null {
 }
 
 /**
- * A pure status readout in the Governor's voice, composed from live
- * ColonyState: population + growth trend, tier + operational-vs-total
- * buildings (naming any damaged/offline/destroyed one), a happiness
- * descriptor, and any active threats.
+ * A pure status readout in the Governor's voice: a faction-standing greeting
+ * (tone tracks the rank band), then population + growth trend, tier +
+ * operational-vs-total buildings (naming any damaged/offline/destroyed one),
+ * a happiness descriptor, and any active threats.
  */
-export function buildGovernorDialog(colony: ColonyState): FPDialogLine[] {
-  const lines: FPDialogLine[] = [populationLine(colony), buildingsLine(colony), happinessLine(colony)];
+export function buildGovernorDialog(colony: ColonyState, rank: FactionRank = "neutral"): FPDialogLine[] {
+  const lines: FPDialogLine[] = [
+    { speaker: GOVERNOR, text: GOVERNOR_GREETINGS[greetingTone(rank)] },
+    populationLine(colony),
+    buildingsLine(colony),
+    happinessLine(colony),
+  ];
   const threat = threatsLine(colony);
   if (threat) lines.push(threat);
   return lines;
+}
+
+// ─── buildQuartermasterDialog ───────────────────────────────────────────────
+
+/**
+ * The quartermaster's opener by faction rank: a curt refusal at hated/hostile
+ * (the shop never opens — generateColonyNpcs omits shopItems/canBuy there),
+ * otherwise a greeting whose warmth tracks the rank band.
+ */
+export function buildQuartermasterDialog(rank: FactionRank = "neutral"): FPDialogLine[] {
+  return [{ speaker: QUARTERMASTER, text: QUARTERMASTER_GREETINGS[greetingTone(rank)] }];
 }
 
 // ─── buildQuartermasterShop ─────────────────────────────────────────────────
@@ -128,9 +174,11 @@ const STOCK_COUNT_BY_TIER: Record<ColonyState["tier"], number> = { 1: 2, 2: 3, 3
 /**
  * A small, deterministic set of real, early-available consumables sized by
  * colony tier. Every item's `itemId` is round-tripped through
- * `getConsumableDef`, so it always resolves to a real ConsumableId.
+ * `getConsumableDef`, so it always resolves to a real ConsumableId. Displayed
+ * costs are faction-adjusted through `adjustedBuyPrice` — the same helper the
+ * charge path (purchaseConsumable) uses, so display and charge never disagree.
  */
-export function buildQuartermasterShop(colony: ColonyState): FPShopItem[] {
+export function buildQuartermasterShop(colony: ColonyState, rank: FactionRank = "neutral"): FPShopItem[] {
   const count = STOCK_COUNT_BY_TIER[colony.tier];
   return QUARTERMASTER_STOCK_ORDER.slice(0, count).map((id): FPShopItem => {
     const def = getConsumableDef(id);
@@ -138,7 +186,7 @@ export function buildQuartermasterShop(colony: ColonyState): FPShopItem[] {
       id: def.id,
       name: def.name,
       description: def.description,
-      cost: def.cost,
+      cost: adjustedBuyPrice(def.cost, rank),
       type: "consumable",
       itemId: def.id,
     };
