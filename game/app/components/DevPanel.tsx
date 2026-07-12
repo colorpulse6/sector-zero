@@ -6,6 +6,7 @@ import { ALL_LEVELS, WORLD_NAMES } from "./engine/levels";
 import { PLANET_DEFS } from "./engine/planets";
 import { COLONY_FIXTURES } from "./colony/dev/seedColony";
 import { setResolutionMode, getPerfStats, type FpPerfStats, type ResMode } from "./engine/fpRender";
+import { getGradeStats, setGradeEnabled, type GradeStats } from "./engine/postFx";
 
 const RES_MODE_TITLES: Record<ResMode, string> = {
   full: "Force full internal resolution (480x714)",
@@ -24,6 +25,14 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
   const frameTimesRef = useRef<number[]>([]);
   const [fps, setFps] = useState(0);
   const [fpPerf, setFpPerf] = useState<FpPerfStats>({ p50: 0, p95: 0, res: "full", mode: "auto" });
+  const [grade, setGrade] = useState<GradeStats>({ p50: 0, p95: 0, enabled: false });
+
+  // Dev-only A/B toggle for the DOOM grade (Task 7) — via the postFx module
+  // singleton; DevPanel holds no instance handle.
+  const toggleGrade = () => {
+    setGradeEnabled(!grade.enabled);
+    setGrade(getGradeStats());
+  };
 
   // Apply a resolution mode + refresh the readout immediately — waiting for
   // the next 500ms poll makes the label lag the click.
@@ -57,10 +66,13 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
     };
   }, []);
 
-  // FP RENDER perf readout — polled only while the panel is open (Task 5).
+  // FP RENDER + POST FX perf readouts — polled only while the panel is open.
   useEffect(() => {
     if (!open) return;
-    const tick = () => setFpPerf(getPerfStats());
+    const tick = () => {
+      setFpPerf(getPerfStats());
+      setGrade(getGradeStats());
+    };
     tick();
     const interval = setInterval(tick, 500);
     return () => clearInterval(interval);
@@ -264,6 +276,28 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* POST FX — Task 7 grade-pass perf readout + dev A/B toggle */}
+      <div className="space-y-1">
+        <div className="text-cyan-500 border-b border-cyan-900 pb-1">POST FX (DOOM GRADE)</div>
+        <div className="text-cyan-600">
+          p50 {grade.p50.toFixed(2)}ms / p95 {grade.p95.toFixed(2)}ms —{" "}
+          <span className={grade.enabled ? "text-cyan-400" : "text-red-400"}>
+            {grade.enabled ? "ON" : "OFF"}
+          </span>
+        </div>
+        <button
+          onClick={toggleGrade}
+          className={`w-full px-1 py-1.5 border transition-colors text-center ${
+            grade.enabled
+              ? "border-cyan-400 bg-cyan-400/20 text-cyan-300"
+              : "border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300"
+          }`}
+          title="A/B the WebGL color grade (auto-disables itself if p95 > 3ms)"
+        >
+          {grade.enabled ? "GRADE ON — CLICK FOR RAW" : "GRADE OFF — CLICK FOR GRADED"}
+        </button>
       </div>
 
       {/* Player Cheats */}

@@ -35,12 +35,63 @@ void main() {
 }
 `;
 
+/** Bright-pass fragment — first stage of the bloom chain, rendered into a
+ *  half-res FBO. Extracts only pixels whose luma exceeds uBloomThreshold (the
+ *  strong emissives: plasma, lava, engine glow, tech screens), scaled by how
+ *  far above threshold they sit, so bloom energy ramps smoothly instead of
+ *  popping at the cutoff.
+ *
+ *  HUD guard: the dashboard occupies the BOTTOM 140 of 854 canvas rows, which
+ *  after the FLIP_Y upload is texture-space v < 140/854 — those rows are
+ *  masked to zero so dashboard text/bars never bloom, per the plan's
+ *  legibility constraint. (In-field text like dialog boxes is not masked; the
+ *  high threshold keeps its glow subtle.) */
+export const FRAG_BRIGHT_SRC = `
+precision mediump float;
+varying vec2 vUv;
+uniform sampler2D uSrc;
+uniform float uBloomThreshold;
+
+const vec3 LUMA = vec3(0.299, 0.587, 0.114);
+const float DASH_CUT_V = 140.0 / 854.0;
+
+void main() {
+  vec3 c = texture2D(uSrc, vUv).rgb;
+  float luma = dot(c, LUMA);
+  float amount = max(luma - uBloomThreshold, 0.0) / max(1.0 - uBloomThreshold, 1e-4);
+  amount *= step(DASH_CUT_V, vUv.y);
+  gl_FragColor = vec4(c * amount, 1.0);
+}
+`;
+
+/** Separable Gaussian blur fragment — run twice over the half-res bloom
+ *  buffer (uDir = (1,0) then (0,1)). 5-tap with linear-sampling offsets
+ *  (equivalent to a 9-tap discrete kernel) — cheap and smooth at half res. */
+export const FRAG_BLUR_SRC = `
+precision mediump float;
+varying vec2 vUv;
+uniform sampler2D uSrc;
+uniform vec2 uTexel;
+uniform vec2 uDir;
+
+void main() {
+  vec2 d = uDir * uTexel;
+  vec3 acc = texture2D(uSrc, vUv).rgb * 0.2270270;
+  acc += (texture2D(uSrc, vUv + d * 1.3846154).rgb
+        + texture2D(uSrc, vUv - d * 1.3846154).rgb) * 0.3162162;
+  acc += (texture2D(uSrc, vUv + d * 3.2307692).rgb
+        + texture2D(uSrc, vUv - d * 3.2307692).rgb) * 0.0702703;
+  gl_FragColor = vec4(acc, 1.0);
+}
+`;
+
 /** DOOM color-grade fragment shader. A single pass runs, in order:
  *    1. tone curve       — crush blacks to uBlackPoint, gentle contrast on 0.5
  *    2. warm split-tone  — lerp toward uShadowTint (shadows) / uHighlightTint
  *                          (highlights) by luma, scaled by uTintStrength
- *    3. vignette         — quadratic edge darkening scaled by uVignette
- *    4. film grain       — fine per-pixel noise, animated by uTime (uGrain amp)
+ *    3. bloom composite  — additive, from the blurred half-res bright-pass
+ *    4. vignette         — quadratic edge darkening scaled by uVignette
+ *    5. film grain       — fine per-pixel noise, animated by uTime (uGrain amp)
  *
  *  Legibility is a hard constraint: the HUD/dashboard and the FP gun + dialog
  *  boxes are drawn INTO the source canvas, so the tone curve pivots on mid-gray
@@ -55,9 +106,14 @@ void main() {
  *  fall back to mediump (grain may band slightly) elsewhere so the shader still
  *  compiles rather than failing the whole pass.
  *
- *  NOT here: additive highlight bloom (a LATER task — a clearly marked seam sits
- *  between split-tone and vignette) and depth haze (intentionally absent — this
- *  is a post-composite grade over a flat 2D canvas with no depth buffer). */
+ *  NOT here: depth haze (intentionally absent — this is a post-composite grade
+ *  over a flat 2D canvas with no depth buffer).
+ *
+ *  Output is forced OPAQUE (alpha 1): the context is premultipliedAlpha:true
+ *  and the graded rgb is derived independently of source alpha, so writing
+ *  src.a would violate the premultiplication contract for any non-opaque
+ *  source pixel (additive-glow artifacts at unfilled edges). The game canvas
+ *  beneath is fully painted every frame, so an opaque present is correct. */
 export const FRAG_GRADE_SRC = `
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -68,6 +124,8 @@ precision mediump float;
 varying vec2 vUv;
 
 uniform sampler2D uSrc;
+uniform sampler2D uBloom;
+uniform float uBloomStrength;
 uniform float uBlackPoint;
 uniform float uContrast;
 uniform vec3  uShadowTint;
@@ -97,24 +155,26 @@ void main() {
   vec3 splitTarget = mix(uShadowTint, uHighlightTint, luma);
   color = mix(color, splitTarget, uTintStrength);
 
-  // ---- BLOOM COMPOSITE SEAM (LATER TASK) --------------------------------------
-  // Additive highlight bloom will composite over \`color\` HERE, after the tint and
-  // before the vignette/grain. Not built yet: no bloom target or uniform exists.
-  // (Do not add depth haze here — flat 2D source, no depth buffer.)
-  // -----------------------------------------------------------------------------
+  // 3) Bloom: additive composite of the blurred half-res bright-pass. Sits
+  //    after the tint (bloom keeps the emissives' own hue) and before the
+  //    vignette so glow dims toward the corners with everything else.
+  //    (Do not add depth haze here — flat 2D source, no depth buffer.)
+  color += texture2D(uBloom, vUv).rgb * uBloomStrength;
 
-  // 3) Vignette: quadratic radial falloff from centre, so darkening concentrates
-  //    in the corners; centre (and thus most gameplay) is untouched.
+  // 4) Vignette: quadratic radial falloff from centre, so darkening concentrates
+  //    in the corners; centre (and thus most gameplay) is untouched. Clamped at
+  //    0 so an aggressive preset can only reach flat black, never a negative
+  //    multiplier (which would sign-flip corner colour).
   vec2 vd = vUv - 0.5;
-  float vig = 1.0 - uVignette * dot(vd, vd) * 2.0;
+  float vig = max(1.0 - uVignette * dot(vd, vd) * 2.0, 0.0);
   color *= vig;
 
-  // 4) Film grain: high-frequency hash of the UV, phase-shifted by uTime so it
+  // 5) Film grain: high-frequency hash of the UV, phase-shifted by uTime so it
   //    re-randomises every frame. The fract() of a large-scaled sin amplifies the
   //    per-frame phase delta into fresh per-pixel noise. uGrain is peak-to-peak.
   float g = fract(sin(dot(vUv, vec2(12.9898, 78.233)) + uTime) * 43758.5453);
   color += (g - 0.5) * uGrain;
 
-  gl_FragColor = vec4(clamp(color, 0.0, 1.0), src.a);
+  gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }
 `;

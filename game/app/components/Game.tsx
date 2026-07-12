@@ -75,7 +75,7 @@ import { ColoniesScreen } from "./colony/meta";
 import { applyColonyFixture, findFixture } from "./colony/dev/seedColony";
 import DevPanel from "./DevPanel";
 import { createGradePass } from "./engine/postFx";
-import { selectPreset } from "./engine/postFx/presets";
+import { selectPreset, type GradeScene } from "./engine/postFx/presets";
 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -121,6 +121,11 @@ export default function Game() {
   // Dedicated rAF handle for the grade-pass present loop. MUST stay separate from
   // animationFrameRef, which is shared/clobbered across the game/intro/ending loops.
   const presentRafRef = useRef<number | null>(null);
+  // Scene key the present rAF reads for grade-preset selection (it can't read
+  // React state). The game loop stamps the live mode each tick; the menu-
+  // detection effect below flips it back to "menu" whenever gameplay isn't
+  // the active surface — gameStateRef alone goes stale on those screens.
+  const presetModeRef = useRef<GradeScene>("menu");
   const audioRef = useRef<AudioEngine | null>(null);
   const introFrameRef = useRef(0);
   const endingFrameRef = useRef(0);
@@ -981,6 +986,16 @@ export default function Game() {
     };
   }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen]);
 
+  // Grade-scene menu detection: whenever gameplay isn't the active surface
+  // (start screen, intro, cockpit, star map, ending) the grade preset eases
+  // back to the menu DEFAULT. PAUSED/GAME_OVER keep the last mode's grade —
+  // the frozen frame beneath their DOM overlays is still that mode's scene.
+  useEffect(() => {
+    const gameplayActive =
+      !!gameState && !showStartScreen && !showCockpit && !showMap && !showIntro && endingPhase === "off";
+    if (!gameplayActive) presetModeRef.current = "menu";
+  }, [gameState, showStartScreen, showCockpit, showMap, showIntro, endingPhase]);
+
   // Held-input reset on focus loss. keyup/mouseup are delivered to whatever
   // surface has focus, so Alt-Tab / tab-switch / DevPanel clicks while holding a
   // key would otherwise leave keysRef stuck true (ship slides + auto-fires until
@@ -1427,6 +1442,7 @@ export default function Game() {
       // read React state) can select a preset by currentMode. Set after all
       // newState mutations above, alongside the React commit.
       gameStateRef.current = newState;
+      presetModeRef.current = newState.currentMode;
       setGameState(newState);
       drawGame(ctx, newState);
 
@@ -1537,7 +1553,7 @@ export default function Game() {
       // gameStateRef is null before the first game-loop tick (start screen etc.);
       // selectPreset falls back to DEFAULT for an empty/unknown mode, so the whole
       // app — menus included — gets the same grade until a mode is active.
-      if (source) pass.present(source, selectPreset(gameStateRef.current?.currentMode ?? ""));
+      if (source) pass.present(source, selectPreset(presetModeRef.current));
       presentRafRef.current = requestAnimationFrame(present);
     };
     presentRafRef.current = requestAnimationFrame(present);
