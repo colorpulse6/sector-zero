@@ -1,3 +1,6 @@
+> **SUPERSEDED (2026-04-20)** by `docs/superpowers/specs/2026-04-20-colony-system-design.md`.
+> Course + current status: `docs/ROADMAP.md`. Kept for history only.
+
 # Sector Zero: Colony Management System Design
 
 **Date:** 2026-04-07

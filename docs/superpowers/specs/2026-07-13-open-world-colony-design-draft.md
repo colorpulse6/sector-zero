@@ -1,6 +1,6 @@
 # Open-World Colony Layer — Design Draft (FOR DISCUSSION)
 
-**Date:** 2026-07-13 · **Status:** DRAFT — brainstorm-level, awaiting user reactions
+**Date:** 2026-07-13 · **Status:** ACCEPTED — the §5 questions were ANSWERED the same day; decisions of record live in `docs/ROADMAP.md` (travel costs a cycle; abstract cargo v1; slow-decay collapse with emergent syndicates — see M4; Ashfall-only vertical slice; deliveries on planet+POI missions only)
 **Prompt:** "Leaving colony bases to explore the planet? Choosing areas for new outposts
 gated by appropriate resources? I'm open to ideas."
 
