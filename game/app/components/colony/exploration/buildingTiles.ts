@@ -55,6 +55,15 @@ export const BUILDING_FOOTPRINTS: Partial<Record<BuildingType, FootprintSpec>> =
     interiorTemplateId: "habitat_stub",
     wallSpriteId: SPRITES.COLONY_WALL_HABITAT,
   },
+  mine: {
+    w: 3, h: 3,
+    doorSide: "south",
+    interiorTemplateId: "mine_stub",
+    // Dedicated mine wall (blasted rock in a bolted steel frame, dim orange
+    // work-lamp strip) — generated 2026-07-13 via the pilot pipeline, 512²
+    // pow2 per the texture registry's mask requirement.
+    wallSpriteId: SPRITES.COLONY_WALL_MINE,
+  },
 };
 
 /**
@@ -119,6 +128,19 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
       { x: 1, y: 4, spriteId: SPRITES.INTERIOR_BUNK, scale: 1.0 },
       { x: 4, y: 4, spriteId: SPRITES.INTERIOR_BUNK, scale: 1.0 },
     ],
+    spawn: { x: 2, y: 5, facing: "north" },
+  },
+  mine_stub: {
+    width: 6, height: 6,
+    tiles: [
+      "######",
+      "#....#",
+      "#.R..#",   // R = extraction rig (reuses the purifier pump sprite — no new PNG)
+      "#....#",
+      "#....#",
+      "##D###",
+    ],
+    propSlots: [{ x: 2, y: 2, spriteId: SPRITES.INTERIOR_PURIFIER_PUMP, scale: 1.2 }],
     spawn: { x: 2, y: 5, facing: "north" },
   },
 };

@@ -1,5 +1,8 @@
 # Sector Zero — Colony System Design
 
+> **STATUS 2026-07-13:** Phases 0/1/2/5a + faction standing + OW-0 economy are BUILT. This spec stays authoritative for systems detail (data model, §F quests, §I UX); the phase ORDERING is superseded by `docs/ROADMAP.md` (M4 absorbs 5b+8+7b-interception into the Decay Arc; Phase 4 became OW-1).
+
+
 **Date:** 2026-04-20
 **Status:** Design approved, ready for implementation planning
 **Supersedes:** `docs/game/colony-system-design.md` (2026-04-07)

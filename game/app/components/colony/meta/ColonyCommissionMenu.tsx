@@ -3,6 +3,7 @@ import type { ColonyState, BuildingType, ColonyResources } from "../shared/colon
 import type { ColonyEvent } from "../shared/colonyEvents";
 import { Events } from "../shared/colonyEvents";
 import { genBuildingId } from "./buildingIdGen";
+import { HABITAT_CAPACITY_PER_MODULE } from "../shared/colonyCatalog";
 import { hudColors, hudFonts, hudSpacing } from "./hudTokens";
 
 export interface ColonyCommissionMenuProps {
@@ -10,7 +11,7 @@ export interface ColonyCommissionMenuProps {
   onDispatch: (event: ColonyEvent) => void;
 }
 
-interface BuildOption {
+export interface BuildOption {
   type: BuildingType;
   label: string;
   icon: string;
@@ -19,14 +20,17 @@ interface BuildOption {
   shortDesc: string;
 }
 
-const PHASE_1_BUILD_OPTIONS: BuildOption[] = [
+/** Exported for testing (OW-0): affordability + option-table sanity tests. */
+export const PHASE_1_BUILD_OPTIONS: BuildOption[] = [
   { type: "solar_array", label: "Solar Array", icon: "☀", cost: { metal: 80 }, cyclesToBuild: 1, shortDesc: "+10 power" },
   { type: "farm", label: "Farm", icon: "🌾", cost: { metal: 100 }, cyclesToBuild: 2, shortDesc: "+15 food, −5 water" },
   { type: "water_purifier", label: "Water Purifier", icon: "💧", cost: { metal: 120 }, cyclesToBuild: 2, shortDesc: "+12 water" },
-  { type: "habitat_module", label: "Habitat Module", icon: "🏠", cost: { metal: 100 }, cyclesToBuild: 1, shortDesc: "Houses 10" },
+  { type: "habitat_module", label: "Habitat Module", icon: "🏠", cost: { metal: 100 }, cyclesToBuild: 1, shortDesc: `Houses ${HABITAT_CAPACITY_PER_MODULE}` },
+  { type: "mine", label: "Mine", icon: "⛏", cost: { metal: 150 }, cyclesToBuild: 2, shortDesc: "+10 metal/cycle" },
 ];
 
-function canAfford(colony: ColonyState, cost: Partial<ColonyResources>): boolean {
+/** Exported for testing (OW-0). */
+export function canAfford(colony: ColonyState, cost: Partial<ColonyResources>): boolean {
   return (cost.food ?? 0) <= colony.resources.food
     && (cost.water ?? 0) <= colony.resources.water
     && (cost.metal ?? 0) <= colony.resources.metal
