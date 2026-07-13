@@ -918,6 +918,17 @@ export interface FPNPC {
   canBuy?: boolean;    // Phase 5a §I: enables a REAL purchase flow in this NPC's
                        //   shop (set true only for the quartermaster). Additive —
                        //   Ashfall/other merchants omit it → display-only shop.
+  // ── Billboard animation (DOOM overhaul) — ALL additive-optional. An NPC with
+  //    none of these renders bit-identically to before (static `sprite` path).
+  walkSprites?: string[]; // SPRITES paths cycled while isMoving (fallback chain
+                          //   walk → idle → static — see resolveNpcSprite).
+  idleSprites?: string[]; // SPRITES paths cycled while standing (idle → static).
+  isMoving?: boolean;     // Set per frame by the colony stepper (npcStep.ts): true
+                          //   only on frames where the NPC actually moved — a path
+                          //   advance or an applied idle-mill shuffle.
+  animClockMs?: number;   // Accumulated step dtMs driving frame selection. Threaded
+                          //   from the game loop like all engine time — NEVER
+                          //   Date.now/performance.now.
 }
 
 // Phase 5a §I: a one-shot, typed buy signal the FP engine emits when the player

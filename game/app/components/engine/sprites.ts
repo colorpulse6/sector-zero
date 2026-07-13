@@ -273,6 +273,9 @@ export const SPRITES = {
   NPC_REYES: "/sprites/boarding/npc-reyes.png",
   NPC_SURVIVOR: "/sprites/boarding/npc-survivor.png",
   NPC_SCAVENGER: "/sprites/boarding/npc-scavenger.png",
+  NPC_QUARTERMASTER: "/sprites/boarding/npc-quartermaster.png",
+  NPC_QUARTERMASTER_WALK_1: "/sprites/boarding/npc-quartermaster-walk-1.png",
+  NPC_QUARTERMASTER_WALK_2: "/sprites/boarding/npc-quartermaster-walk-2.png",
 
   TURRET_CROSSHAIR: "/sprites/turret/crosshair.png",
   TURRET_ENEMY_FIGHTER: "/sprites/turret/enemy-fighter.png",

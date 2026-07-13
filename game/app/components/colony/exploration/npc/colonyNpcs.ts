@@ -166,6 +166,8 @@ export function generateColonyNpcs(
     shopItems?: FPShopItem[];
     fpType: FPNPC["type"];
     canBuy?: boolean;   // §I: enables the REAL FP purchase flow — quartermaster only
+    walkSprites?: string[];  // optional billboard animation frames (DOOM overhaul);
+    idleSprites?: string[];  //   absent → static `sprite`, exactly as before
   }): void => {
     const millSeed = Math.floor(rng() * 0x7fffffff);
     const npc: ColonyNpc = {
@@ -204,6 +206,8 @@ export function generateColonyNpcs(
       interacted: false,
       sprite: spec.sprite,
       canBuy: spec.canBuy,
+      walkSprites: spec.walkSprites,
+      idleSprites: spec.idleSprites,
     });
   };
 
@@ -231,7 +235,11 @@ export function generateColonyNpcs(
     id: id++,
     kind: "quartermaster",
     name: "Quartermaster",
-    sprite: SPRITES.NPC_KAEL,
+    sprite: SPRITES.NPC_QUARTERMASTER,   // own asset — no longer reuses Kael's (spec §5.4)
+    // Reference-locked 2-frame walk cycle (pilot pipeline, 2026-07-13). The
+    // sceneInput frame selector alternates these while isMoving and falls
+    // back to the static sprite when he's standing at the stall.
+    walkSprites: [SPRITES.NPC_QUARTERMASTER_WALK_1, SPRITES.NPC_QUARTERMASTER_WALK_2],
     color: QUARTERMASTER_COLOR,
     homeTile: namedHomeFor(1),
     workTile: padStall,

@@ -70,6 +70,12 @@ export function stepColonyNpcs(
       npc.pathComputed = true;
     }
 
+    // Billboard animation input (DOOM overhaul): true only on frames where the
+    // NPC actually moved — any path advance, or an idle-mill shuffle that was
+    // applied (a mill candidate rejected by the walkable guard holds position
+    // → NOT moving). Synced onto the FPNPC below alongside x/y.
+    let moved = false;
+
     if (npc.path.length > 0) {
       // 2. Advance toward the next waypoint's center.
       const wp = npc.path[0];
@@ -86,6 +92,7 @@ export function stepColonyNpcs(
         npc.posX += (dx / dist) * step;
         npc.posY += (dy / dist) * step;
       }
+      moved = true;
     } else {
       // 3. Idle-mill — deterministic bounded drift around a fixed anchor. The
       //    anchor is captured ONCE, the first frame the path empties, from the
@@ -106,15 +113,22 @@ export function stepColonyNpcs(
       if (isWalkable(map, candX, candY)) {
         npc.posX = candX;
         npc.posY = candY;
+        moved = true;   // idle-mill shuffles count as moving during the shuffle
       }
     }
 
-    // 4. FPNPC identity rule: mutate x/y in place on the persistent object.
-    //    NEVER reassign fpNpcs[i] or rebuild the array.
+    // 4. FPNPC identity rule: mutate x/y (and animation state) in place on the
+    //    persistent object. NEVER reassign fpNpcs[i] or rebuild the array.
+    //    animClockMs accumulates threaded dtMs (never wall time) and drives
+    //    resolveNpcSprite's frame selection; the dialog freeze above returns
+    //    before this, so the clock — and thus the visible frame — pauses with
+    //    the plaza. Inert for NPCs without walk/idle sprites.
     const fp = fpNpcs[i];
     if (fp) {
       fp.x = npc.posX;
       fp.y = npc.posY;
+      fp.isMoving = moved;
+      fp.animClockMs = (fp.animClockMs ?? 0) + dtMs;
     }
   }
 }
