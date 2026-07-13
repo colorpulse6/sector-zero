@@ -106,9 +106,15 @@ function drawHpBar(
   state: GameState
 ): void {
   const { player } = state;
+  // In turret mode damage lands on the dropship (turretState.shipHp), not the
+  // pilot — reading player.hp here showed a full green bar while the ship was
+  // actually dying, contradicting the mode's own DROPSHIP HULL readout.
+  const inTurret = state.currentMode === "turret" && state.turretState;
+  const hp = inTurret ? state.turretState!.shipHp : player.hp;
+  const maxHp = inTurret ? state.turretState!.shipMaxHp : player.maxHp;
   const barX = PAD_X;
   const barW = CANVAS_WIDTH - PAD_X * 2;
-  const hpPct = player.hp / player.maxHp;
+  const hpPct = hp / maxHp;
 
   // Background
   ctx.fillStyle = "#1a1a2a";
@@ -118,7 +124,7 @@ function drawHpBar(
   const hpColor = hpPct > 0.5 ? "#44cc44" : hpPct > 0.25 ? "#ffaa00" : "#ff4444";
 
   // Pulsing at critical HP
-  if (player.hp === 1 && player.maxHp > 1) {
+  if (hp === 1 && maxHp > 1) {
     const pulse = 0.6 + 0.4 * Math.sin(state.frameCount * 0.15);
     ctx.fillStyle = hpColor;
     ctx.globalAlpha = pulse;
@@ -137,10 +143,10 @@ function drawHpBar(
   }
 
   // HP pips (segment markers)
-  if (player.maxHp > 1) {
+  if (maxHp > 1) {
     ctx.fillStyle = "#00000044";
-    for (let i = 1; i < player.maxHp; i++) {
-      const pipX = barX + (barW * i) / player.maxHp;
+    for (let i = 1; i < maxHp; i++) {
+      const pipX = barX + (barW * i) / maxHp;
       ctx.fillRect(pipX - 0.5, HP_BAR_Y, 1, HP_BAR_H);
     }
   }
@@ -175,8 +181,11 @@ function drawStatsRow(
     ctx.fillText(`x${state.combo} COMBO`, CANVAS_WIDTH / 2, ROW1_Y);
   }
 
-  // Wave counter (right)
-  if (state.totalWaves > 0) {
+  // Wave counter (right) — GameState.currentWave/totalWaves only track the
+  // vertical shooter's waves. Other modes carry stale values from the previous
+  // shooter phase (or defaults), so showing it there was meaningless and, in
+  // turret mode, collided with that renderer's own wave counter.
+  if (state.currentMode === "shooter" && state.totalWaves > 0) {
     ctx.fillStyle = "#889999";
     ctx.font = "11px monospace";
     ctx.textAlign = "right";

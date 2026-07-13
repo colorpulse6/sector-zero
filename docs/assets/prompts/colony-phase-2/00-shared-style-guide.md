@@ -4,17 +4,11 @@ Apply this context to every Phase 2 asset prompt.
 
 ## Aesthetic
 
-- Retro-futuristic, pixel-art-adjacent. Think Wolfenstein 3D meets a
-  hand-painted sci-fi illustration.
-- Canvas 2D friendly: limited anti-aliasing, crisp edges, readable at
-  small raycaster draw sizes.
-- Palette tied to the companion site's HUD tokens:
-  - Deep background: `#0a0e17`
-  - Cyan accent: `#00f0ff`
-  - Purple accent: `#7800ff`
-  - Text primary: `#e0e6ed`
-  - Danger: `#ff3366`
-  - Success: `#44ff99`
+**Superseded — see `../doom/00-master-style-guide.md`** (modern DOOM 2016/Eternal
+direction: desaturated worn surfaces, crushed shadows, emissive-only accent colors).
+The pixel-art-adjacent / Wolfenstein 3D direction that used to live here is now the
+opposite of the goal. The HUD hex tokens survive in the master guide's emissive tier;
+readability at small raycaster draw sizes still applies (silhouette-first, §5 there).
 
 ## Biome
 

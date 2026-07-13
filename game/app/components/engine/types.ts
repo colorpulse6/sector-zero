@@ -865,6 +865,11 @@ export interface TurretState {
   shipMaxHp: number;
   wave: number;
   totalWaves: number;
+  /** Per-run copy of the wave definitions. Spawning decrements these counts,
+   *  so they must live on the state (a fresh clone per createTurretState) —
+   *  decrementing shared module-level defs left every count at 0 after one
+   *  run, making all later turret sessions spawn nothing. */
+  waveQueue: Array<{ enemies: Array<{ type: TurretEnemy["type"]; count: number }> }>;
   waveTimer: number;    // Frames until next wave spawns
   spawnTimer: number;   // Frames until next enemy in current wave
   enemiesRemaining: number; // In current wave
@@ -902,7 +907,37 @@ export interface FPNPC {
   dialog: FPDialogLine[];
   shopItems?: FPShopItem[];  // Only for merchants
   color: string;       // Fallback color for billboard
-  interacted: boolean; // Has player talked to this NPC this session?
+  interacted: boolean; // Currently UNUSED behaviorally — the shop open/close gate
+                       //   moved to per-session FPDialogState.shopSeen (Phase 5a §I).
+                       //   Retained (still set at construction) for a future
+                       //   "already met" affordance; do NOT wire behavior to it
+                       //   without re-checking shopSeen.
+  sprite?: string;     // Optional explicit billboard sprite (Phase 5a colony NPCs
+                       //   set distinct SPRITES.NPC_* assets). Additive — Ashfall
+                       //   NPCs omit it and resolve via NPC_SPRITE_MAP[name].
+  canBuy?: boolean;    // Phase 5a §I: enables a REAL purchase flow in this NPC's
+                       //   shop (set true only for the quartermaster). Additive —
+                       //   Ashfall/other merchants omit it → display-only shop.
+  // ── Billboard animation (DOOM overhaul) — ALL additive-optional. An NPC with
+  //    none of these renders bit-identically to before (static `sprite` path).
+  walkSprites?: string[]; // SPRITES paths cycled while isMoving (fallback chain
+                          //   walk → idle → static — see resolveNpcSprite).
+  idleSprites?: string[]; // SPRITES paths cycled while standing (idle → static).
+  isMoving?: boolean;     // Set per frame by the colony stepper (npcStep.ts): true
+                          //   only on frames where the NPC actually moved — a path
+                          //   advance or an applied idle-mill shuffle.
+  animClockMs?: number;   // Accumulated step dtMs driving frame selection. Threaded
+                          //   from the game loop like all engine time — NEVER
+                          //   Date.now/performance.now.
+}
+
+// Phase 5a §I: a one-shot, typed buy signal the FP engine emits when the player
+// confirms a shop row. Drained by Game.tsx, which applies it to SaveData via the
+// audited purchase helpers. Consumables only in Phase 5a (discriminated on `kind`
+// so materials/upgrades can be added later without widening the channel type).
+export interface FPShopPurchaseRequest {
+  kind: "consumable";
+  itemId: ConsumableId;
 }
 
 export interface FPDialogState {
@@ -912,6 +947,15 @@ export interface FPDialogState {
   currentLine: number;
   shopOpen: boolean;
   shopItems?: FPShopItem[];
+  // ── Phase 5a §I shop-purchase fields (all additive optional) ──
+  selectedIndex?: number;   // Highlighted shop row: 0..shopItems.length (last = LEAVE)
+  shopCanBuy?: boolean;     // true ONLY when a canBuy merchant (quartermaster) opens its shop
+  shopNavCooldown?: number; // Debounce (frames) for up/down shop navigation
+  shopSeen?: boolean;       // Per-session gate: shop has opened once this dialog. Replaces
+                            //   the old per-NPC `!interacted` open-gate so a merchant's shop
+                            //   REOPENS on the next talk (fresh dialog) while still closing
+                            //   cleanly within a session (no display-only soft-lock).
+  shopFlashFrames?: number; // Countdown for the generic "purchase unavailable" flash
 }
 
 export interface FPEnemy {
@@ -988,6 +1032,8 @@ export interface FirstPersonState {
   colonyTransitionRequest?: unknown;  // DoorInteractResult | LandingPadResult — typed as unknown to avoid circular import
   colonyInteractArmed?: boolean;      // true iff keys.shoot has been released since last hook fire
   colonyInteractCooldownFrames?: number;  // decrements each frame; >0 blocks hooks
+  // Phase 5a §I: one-shot buy signal set by the shop, drained + applied by Game.tsx.
+  shopPurchaseRequest?: FPShopPurchaseRequest;
 }
 
 // ─── Pilot Leveling ─────────────────────────────────────────────────

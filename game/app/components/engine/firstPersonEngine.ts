@@ -1,4 +1,4 @@
-import type { GameState, Keys, FirstPersonState, BoardingMap, FPEnemy } from "./types";
+import type { GameState, Keys, FirstPersonState, BoardingMap, FPEnemy, ConsumableId } from "./types";
 import { GameScreen, AudioEvent, CANVAS_WIDTH, GAME_AREA_HEIGHT } from "./types";
 import { resolveAffinity } from "./enemyClasses";
 import { AFFINITY_MULTIPLIER } from "./weaponTypes";
@@ -84,6 +84,45 @@ function moveWithCollision(
   return { posX: nextX, posY: nextY };
 }
 
+// ─── NPC dialog open (shared: non-colony site + colony hook) ───
+// Extracted from the non-colony NPC-interaction block so the colony hook can
+// reuse the engine's own dialog-open logic (Phase 5a §H1). Finds an NPC within
+// 2.0 tiles that the player faces (dot > 0) and opens its dialog; returns true
+// iff a dialog opened. Reads position/facing straight off `fp` — both call
+// sites run after fp.posX/posY/dirX/dirY are synced from the frame's locals, so
+// a dialog can never open from coords that disagree with fp. The CALLER owns the
+// shoot / gunCooldown / canFire gating; this helper does only proximity + facing
+// + open plus the audio and bankDir side-effects.
+function tryOpenNpcDialog(gs: GameState, fp: FirstPersonState): boolean {
+  if (!fp.npcs) return false;
+  const { posX, posY, dirX, dirY } = fp;
+  const NPC_INTERACT_RANGE = 2.0;
+  for (const npc of fp.npcs) {
+    const dx = npc.x - posX;
+    const dy = npc.y - posY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < NPC_INTERACT_RANGE) {
+      // Check if roughly facing the NPC
+      const dot = dx * dirX + dy * dirY;
+      if (dot > 0) { // NPC is in front of us
+        fp.dialogState = {
+          active: true,
+          npcId: npc.id,
+          lines: npc.dialog,
+          currentLine: 0,
+          shopOpen: false,
+          shopItems: npc.shopItems,
+        };
+        fp.gunCooldown = 15;
+        gs.audioEvents.push(AudioEvent.DIALOG_ADVANCE);
+        gs.player.bankDir = 0;
+        return true; // Dialog opened
+      }
+    }
+  }
+  return false;
+}
+
 // ─── Main Update ────────────────────────────────────────────────────
 
 export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.67): void {
@@ -96,30 +135,43 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
 
   let { posX, posY, dirX, dirY, planeX, planeY } = fp;
 
-  // ── Rotation ──
-  // Left turns toward the player's left (-ROT_SPEED), right toward the right
-  // (+ROT_SPEED) — matching rotateView's self-test convention ("Left turn →
-  // negative Y" when facing +X) and strafe-left. These signs were previously
-  // swapped, inverting turn controls in every FP mode.
-  if (keys.left) {
-    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, -ROT_SPEED * dtF));
-  }
-  if (keys.right) {
-    ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, ROT_SPEED * dtF));
-  }
+  // ── Rotation + movement (frozen while a dialog/shop is open) ──
+  // Gating on !dialogState.active holds the player still while talking or
+  // shopping (Phase 5a §I) — previously rotation/movement ran before the
+  // dialog-active early-return, so the player could walk off mid-dialog in every
+  // FP mode (Ashfall included). When no dialog is open this is behavior-identical.
+  if (!fp.dialogState?.active) {
+    // Left turns toward the player's left (-ROT_SPEED), right toward the right
+    // (+ROT_SPEED) — matching rotateView's self-test convention ("Left turn →
+    // negative Y" when facing +X) and strafe-left. These signs were previously
+    // swapped, inverting turn controls in every FP mode.
+    if (keys.left) {
+      ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, -ROT_SPEED * dtF));
+    }
+    if (keys.right) {
+      ({ dirX, dirY, planeX, planeY } = rotateView({ dirX, dirY, planeX, planeY }, ROT_SPEED * dtF));
+    }
 
-  // ── Movement ──
-  if (keys.up) {
-    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, dirX * MOVE_SPEED * dtF, dirY * MOVE_SPEED * dtF));
-  }
-  if (keys.down) {
-    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, -dirX * MOVE_SPEED * dtF, -dirY * MOVE_SPEED * dtF));
-  }
-  if (keys.strafeLeft) {
-    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, dirY * MOVE_SPEED * dtF, -dirX * MOVE_SPEED * dtF));
-  }
-  if (keys.strafeRight) {
-    ({ posX, posY } = moveWithCollision(fp.map, posX, posY, -dirY * MOVE_SPEED * dtF, dirX * MOVE_SPEED * dtF));
+    // Combine forward/back + strafe into one normalized move so walking a
+    // diagonal (W+D etc.) isn't √2 faster than walking straight. Axis mapping
+    // matches the old per-key calls: forward=(dirX,dirY), strafe-left=(dirY,-dirX).
+    let mForward = 0;
+    let mStrafe = 0;
+    if (keys.up) mForward += 1;
+    if (keys.down) mForward -= 1;
+    if (keys.strafeLeft) mStrafe += 1;
+    if (keys.strafeRight) mStrafe -= 1;
+    if (mForward !== 0 || mStrafe !== 0) {
+      const scale = mForward !== 0 && mStrafe !== 0 ? Math.SQRT1_2 : 1;
+      const step = MOVE_SPEED * dtF * scale;
+      ({ posX, posY } = moveWithCollision(
+        fp.map,
+        posX,
+        posY,
+        (dirX * mForward + dirY * mStrafe) * step,
+        (dirY * mForward - dirX * mStrafe) * step,
+      ));
+    }
   }
 
   fp.posX = posX;
@@ -131,25 +183,75 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
 
   // ── NPC Dialog System ──
   if (fp.dialogState?.active) {
-    // Dialog is open — shoot key advances dialog
-    if (keys.shoot && fp.gunCooldown <= 0) {
+    const ds = fp.dialogState;
+
+    // Tick down the transient "purchase unavailable" flash and the shop-nav
+    // debounce every frame the dialog is open (§I). Both are harmless no-ops for
+    // plain dialogs / Ashfall's display-only shop.
+    if ((ds.shopFlashFrames ?? 0) > 0) ds.shopFlashFrames = Math.max(0, (ds.shopFlashFrames ?? 0) - dtF);
+    if ((ds.shopNavCooldown ?? 0) > 0) ds.shopNavCooldown = Math.max(0, (ds.shopNavCooldown ?? 0) - dtF);
+
+    if (ds.shopOpen && ds.shopCanBuy && ds.shopItems) {
+      // ── Buyable shop (quartermaster only, §I) ──
+      // Rows 0..n-1 are items; a trailing LEAVE row sits at index n. Up/down move
+      // the selection (debounced via shopNavCooldown); interact buys a real
+      // consumable row or closes on LEAVE. Never Esc (Game.tsx uses Esc for pause).
+      const leaveIndex = ds.shopItems.length;
+      let navigated = false;
+      if ((ds.shopNavCooldown ?? 0) <= 0) {
+        if (keys.up) {
+          ds.selectedIndex = Math.max(0, (ds.selectedIndex ?? 0) - 1);
+          ds.shopNavCooldown = 8;
+          navigated = true;
+        } else if (keys.down) {
+          ds.selectedIndex = Math.min(leaveIndex, (ds.selectedIndex ?? 0) + 1);
+          ds.shopNavCooldown = 8;
+          navigated = true;
+        }
+      }
+      // Nav and buy are mutually exclusive per frame: if the selection moved this
+      // frame, don't also act on it — a held direction landing on LEAVE the same
+      // frame shoot fires must not close the shop instead of buying the prior row.
+      if (!navigated && keys.shoot && fp.gunCooldown <= 0) {
+        fp.gunCooldown = 15; // Debounce
+        const idx = ds.selectedIndex ?? 0;
+        if (idx === leaveIndex) {
+          fp.dialogState = null; // LEAVE row closes the shop
+        } else {
+          const item = ds.shopItems[idx];
+          if (item && item.type === "consumable" && item.itemId) {
+            // One-shot buy signal; Game.tsx drains it → purchaseConsumable. The
+            // shop stays open for more purchases. Emit nothing for a non-consumable
+            // or itemId-less row (defensive — the quartermaster stocks consumables).
+            fp.shopPurchaseRequest = { kind: "consumable", itemId: item.itemId as ConsumableId };
+          }
+        }
+      }
+    } else if (keys.shoot && fp.gunCooldown <= 0) {
+      // ── Dialog advance + display-only shop (Ashfall + any non-buyable merchant) ──
+      // Unchanged observable behavior: shoot advances lines, opens a merchant's
+      // shop at the end, closes an open display-only shop, then closes the dialog.
       fp.gunCooldown = 15; // Debounce
-      const ds = fp.dialogState;
       if (ds.shopOpen) {
-        // Shop is open — shoot closes it
-        ds.shopOpen = false;
+        ds.shopOpen = false; // Display-only shop — shoot closes it (old behavior)
       } else if (ds.currentLine < ds.lines.length - 1) {
         ds.currentLine++;
       } else {
-        // End of dialog — open shop if merchant, otherwise close
+        // End of dialog — open shop if merchant, otherwise close. The open gate is
+        // the per-session `!ds.shopSeen` (NOT the per-NPC `!npc.interacted`), so a
+        // merchant's shop REOPENS on the next talk (fresh dialog → shopSeen unset)
+        // while still closing cleanly within a session — no display-only soft-lock.
+        // `shopCanBuy` is enabled only for a canBuy merchant (the quartermaster);
+        // Ashfall/other merchants stay display-only.
         const npc = fp.npcs.find((n) => n.id === ds.npcId);
-        if (npc?.type === "merchant" && npc.shopItems && !npc.interacted) {
+        if (npc?.type === "merchant" && npc.shopItems && !ds.shopSeen) {
           ds.shopOpen = true;
           ds.shopItems = npc.shopItems;
-          npc.interacted = true;
+          ds.shopCanBuy = npc.canBuy === true;
+          ds.selectedIndex = 0;
+          ds.shopSeen = true;
         } else {
           fp.dialogState = null;
-          if (npc) npc.interacted = true;
         }
       }
     }
@@ -167,6 +269,14 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       (fp.colonyInteractCooldownFrames ?? 0) <= 0 &&
       keys.shoot;
     if (canFire) {
+      // NPC targeting takes priority: if an NPC is in range and faced, open its
+      // dialog and DISARM (§H1). Disarming forces a shoot-key release before any
+      // door/pad can fire, closing the close-frame bounce (a dialog closing with
+      // the interact key still held would otherwise trigger door/pad that frame).
+      if (tryOpenNpcDialog(gs, fp)) {
+        fp.colonyInteractArmed = false;
+        return;
+      }
       const standingOn = { x: Math.floor(fp.posX), y: Math.floor(fp.posY) };
       const step = Math.abs(fp.dirX) >= Math.abs(fp.dirY)
         ? { x: Math.sign(fp.dirX), y: 0 }
@@ -189,31 +299,11 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   // ─── End colony hook block ───
 
   // ── NPC Interaction (press shoot near NPC) ──
+  // Same outer gate as before (npcs present, shoot held, gunCooldown ready); the
+  // proximity/facing/open body now lives in tryOpenNpcDialog (§H1). Opening a
+  // dialog returns, skipping the shot this frame — behavior-identical.
   if (fp.npcs && keys.shoot && fp.gunCooldown <= 0) {
-    const NPC_INTERACT_RANGE = 2.0;
-    for (const npc of fp.npcs) {
-      const dx = npc.x - posX;
-      const dy = npc.y - posY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < NPC_INTERACT_RANGE) {
-        // Check if roughly facing the NPC
-        const dot = dx * dirX + dy * dirY;
-        if (dot > 0) { // NPC is in front of us
-          fp.dialogState = {
-            active: true,
-            npcId: npc.id,
-            lines: npc.dialog,
-            currentLine: 0,
-            shopOpen: false,
-            shopItems: npc.shopItems,
-          };
-          fp.gunCooldown = 15;
-          gs.audioEvents.push(AudioEvent.DIALOG_ADVANCE);
-          gs.player.bankDir = 0;
-          return; // Skip shooting this frame
-        }
-      }
-    }
+    if (tryOpenNpcDialog(gs, fp)) return;
   }
 
   // ── Shooting ──

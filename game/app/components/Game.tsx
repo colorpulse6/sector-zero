@@ -45,6 +45,7 @@ import {
   getCockpitTouchHotspot,
   COCKPIT_HOTSPOTS,
 } from "./engine/cockpit";
+import { applyShopPurchase } from "./engine/consumables";
 import { checkQuestCompletion, type QuestCheckData } from "./engine/sideQuests";
 import { recordKill } from "./engine/bestiary";
 import { allocateNode } from "./engine/skillTree";
@@ -58,11 +59,13 @@ import {
 } from "./engine/ending";
 import { restoreCheckpoint } from "./engine/phases";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./engine/groundLevel";
+import { createTurretState } from "./engine/turretEngine";
 import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
 import { getSpecialMissionDef } from "./engine/specialMissions";
 import {
   advanceWorldCycle,
   colonyReducer,
+  colonyMerchantRank,
   enterColonyExploration,
   stepColonyExploration,
   exitColonyExploration,
@@ -72,9 +75,13 @@ import type { ColonyEvent, SceneStack } from "./colony";
 import { ColoniesScreen } from "./colony/meta";
 import { applyColonyFixture, findFixture } from "./colony/dev/seedColony";
 import DevPanel from "./DevPanel";
+import { createGradePass } from "./engine/postFx";
+import { selectPreset, type GradeScene } from "./engine/postFx/presets";
 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // WebGL overlay canvas that presents the graded frame over the 2D game canvas.
+  const glCanvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [showStartScreen, setShowStartScreen] = useState(true);
   const [showIntro, setShowIntro] = useState(false);
@@ -107,12 +114,31 @@ export default function Game() {
   });
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
   const mouseRef = useRef<{ x: number; y: number; down: boolean }>({ x: 0.5, y: 0.5, down: false });
+  // Last mouse position already applied to the turret crosshair — lets keyboard
+  // aiming coexist with the mouse (an idle mouse must not stomp arrow-key aim
+  // back to its own position every frame).
+  const lastTurretMouseRef = useRef<{ x: number; y: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  // Dedicated rAF handle for the grade-pass present loop. MUST stay separate from
+  // animationFrameRef, which is shared/clobbered across the game/intro/ending loops.
+  const presentRafRef = useRef<number | null>(null);
+  // Scene key the present rAF reads for grade-preset selection (it can't read
+  // React state). The game loop stamps the live mode each tick; the menu-
+  // detection effect below flips it back to "menu" whenever gameplay isn't
+  // the active surface — gameStateRef alone goes stale on those screens.
+  const presetModeRef = useRef<GradeScene>("menu");
   const audioRef = useRef<AudioEngine | null>(null);
   const introFrameRef = useRef(0);
   const endingFrameRef = useRef(0);
   // Wall-clock timestamp of the previous simulated frame, for delta-time scaling.
   const lastFrameTsRef = useRef(0);
+  // Unconsumed wall-clock time (ms) carried between rAF callbacks by the
+  // fixed-timestep game loop — see the accumulator note inside gameLoop.
+  const simAccumulatorRef = useRef(0);
+  // Live mirror of gameState for the grade-pass present loop, whose raw rAF can't
+  // read React state. Updated every game-loop tick (see below); the present loop
+  // reads .currentMode to pick a grade preset. Starts null until the first tick.
+  const gameStateRef = useRef(gameState);
 
   const ensureAudio = useCallback(() => {
     if (!audioRef.current) {
@@ -633,15 +659,7 @@ export default function Game() {
           currentMode: "turret",
           currentPhase: 1,
           totalPhases: 2,
-          turretState: {
-            crosshairX: 0.5, crosshairY: 0.5,
-            enemies: [], shipHp: 10, shipMaxHp: 10,
-            wave: 0, totalWaves: 5, waveTimer: 120,
-            spawnTimer: 0, enemiesRemaining: 0,
-            killCount: 0, targetKills: 0,
-            completed: false, fireCooldown: 0,
-            bolts: [],
-          },
+          turretState: createTurretState(),
           briefingTimer: 0,
           devInvincible: gameState?.devInvincible ?? false,
         });
@@ -969,6 +987,40 @@ export default function Game() {
     };
   }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen]);
 
+  // Grade-scene menu detection: whenever gameplay isn't the active surface
+  // (start screen, intro, cockpit, star map, ending) the grade preset eases
+  // back to the menu DEFAULT. PAUSED/GAME_OVER keep the last mode's grade —
+  // the frozen frame beneath their DOM overlays is still that mode's scene.
+  useEffect(() => {
+    const gameplayActive =
+      !!gameState && !showStartScreen && !showCockpit && !showMap && !showIntro && endingPhase === "off";
+    if (!gameplayActive) presetModeRef.current = "menu";
+  }, [gameState, showStartScreen, showCockpit, showMap, showIntro, endingPhase]);
+
+  // Held-input reset on focus loss. keyup/mouseup are delivered to whatever
+  // surface has focus, so Alt-Tab / tab-switch / DevPanel clicks while holding a
+  // key would otherwise leave keysRef stuck true (ship slides + auto-fires until
+  // the key is pressed again). Mount-once: only refs are touched.
+  useEffect(() => {
+    const clearHeldInput = () => {
+      const k = keysRef.current;
+      k.left = k.right = k.up = k.down = false;
+      k.strafeLeft = k.strafeRight = false;
+      k.shoot = k.bomb = k.jump = false;
+      mouseRef.current.down = false;
+      touchPosRef.current = null;
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) clearHeldInput();
+    };
+    window.addEventListener("blur", clearHeldInput);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", clearHeldInput);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
   // Touch input
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1275,20 +1327,37 @@ export default function Game() {
     if (!ctx) return;
 
     const gameLoop = () => {
-      // Delta time since the previous frame (ms), clamped so a long stall (tab
-      // backgrounded, GC pause) can't produce a huge movement step. 16.67ms = 60fps
-      // → dtF = 1.0, so a steady 60fps player sees identical behavior to before.
+      // FIXED-TIMESTEP SIMULATION. rAF fires at the display's refresh rate
+      // (120/144Hz on fast screens), but the shooter/turret engines and every
+      // frameCount-driven animation assume one update = 16.67ms. So instead of
+      // stepping once per rAF, wall-clock time accumulates and the sim steps in
+      // fixed 16.67ms ticks: 120Hz → a tick every other callback; a slow frame
+      // → up to 3 catch-up ticks (the 50ms clamp bounds stall recovery, same
+      // budget as the engines' dtF<=3 clamp). At a steady 60fps this is
+      // behavior-identical to the old once-per-rAF step.
+      const STEP_MS = 1000 / 60;
       const now = performance.now();
       const last = lastFrameTsRef.current;
-      const dtMs = last === 0 ? 16.67 : Math.min(now - last, 50);
+      const rawDt = last === 0 ? STEP_MS : Math.min(now - last, 50);
       lastFrameTsRef.current = now;
+      simAccumulatorRef.current += rawDt;
 
-      // Feed mouse position into turret crosshair + mouse-click as shoot
+      // Feed mouse position into turret crosshair — but only when the mouse
+      // actually moved, so keyboard aim (arrow keys) isn't snapped back to an
+      // idle mouse's position every frame.
+      let turretMouseFire = false;
       if (gameState?.currentMode === "turret" && gameState.turretState) {
         const m = mouseRef.current;
-        gameState.turretState.crosshairX = Math.max(0.05, Math.min(0.95, m.x));
-        gameState.turretState.crosshairY = Math.max(0.05, Math.min(0.95, m.y));
-        if (m.down) keysRef.current.shoot = true;
+        const last = lastTurretMouseRef.current;
+        if (!last || last.x !== m.x || last.y !== m.y) {
+          gameState.turretState.crosshairX = Math.max(0.05, Math.min(0.95, m.x));
+          gameState.turretState.crosshairY = Math.max(0.05, Math.min(0.95, m.y));
+          lastTurretMouseRef.current = { x: m.x, y: m.y };
+        }
+        // Held mouse button fires this frame only — never latch keysRef.shoot
+        // (the old latch kept auto-firing after the button was released until
+        // an unrelated Z/Shift keyup happened to clear it).
+        turretMouseFire = m.down;
       }
 
       // In colony-exploration mode, suppress input when exit menu is open (DOM handles it)
@@ -1296,19 +1365,35 @@ export default function Game() {
         ? { left: false, right: false, up: false, down: false,
             strafeLeft: false, strafeRight: false,
             shoot: false, bomb: false, jump: false }
-        : keysRef.current;
+        : turretMouseFire && !keysRef.current.shoot
+          ? { ...keysRef.current, shoot: true }
+          : keysRef.current;
 
-      const newState = updateGame(
-        gameState,
-        effectiveKeys,
-        touchPosRef.current?.x ?? null,
-        touchPosRef.current?.y ?? null,
-        dtMs
-      );
-
-      // Play audio events
-      for (const event of newState.audioEvents) {
-        audioRef.current?.play(event);
+      // Consume whole fixed ticks. Zero ticks (fast display, no tick due yet)
+      // → newState === gameState, setGameState bails on the identical
+      // reference, and this same rAF loop just runs again next callback.
+      let newState = gameState;
+      let simMs = 0; // sim time consumed this callback (feeds the colony step)
+      while (simAccumulatorRef.current >= STEP_MS) {
+        simAccumulatorRef.current -= STEP_MS;
+        simMs += STEP_MS;
+        newState = updateGame(
+          newState,
+          effectiveKeys,
+          touchPosRef.current?.x ?? null,
+          touchPosRef.current?.y ?? null,
+          STEP_MS
+        );
+        // Play audio per tick — catch-up ticks each carry their own events.
+        for (const event of newState.audioEvents) {
+          audioRef.current?.play(event);
+        }
+      }
+      if (newState === gameState) {
+        // No tick this callback: nothing changed, skip the React commit and
+        // redraw entirely.
+        animationFrameRef.current = requestAnimationFrame(gameLoop);
+        return;
       }
 
       // ── Colony exploration orchestrator step ──
@@ -1320,7 +1405,7 @@ export default function Game() {
           setExitMenuOpen(true);
           if (fp) fp.colonyTransitionRequest = undefined;
         } else {
-          const nextStack = stepColonyExploration(sceneStack, saveData, 16);
+          const nextStack = stepColonyExploration(sceneStack, saveData, simMs);
           if (nextStack !== sceneStack) {
             setSceneStack(nextStack);
             // When stack layer changes (interior enter/exit), propagate the new
@@ -1332,6 +1417,38 @@ export default function Game() {
         }
       }
 
+      // ── FP shop purchase drain (Phase 5a §I) ──
+      // The quartermaster's shop emits a one-shot purchase request; apply it to
+      // the player wallet via the audited purchaseConsumable helper (consumables
+      // only). This is the one intentional SaveData write during colony
+      // exploration. On failure (locked / unaffordable / max-carry → null) show a
+      // brief generic flash. The request is cleared either way. Only a canBuy
+      // merchant ever sets this, so Ashfall's display-only shop never reaches here.
+      {
+        const fpBuy = newState.firstPersonState;
+        const buyReq = fpBuy?.shopPurchaseRequest;
+        if (fpBuy && buyReq) {
+          fpBuy.shopPurchaseRequest = undefined;
+          // Colony merchants charge faction-adjusted prices (Phase 5a): derive
+          // the buy rank from the explored colony's primary faction — the same
+          // rank the shop's displayed costs were built with, so the charge
+          // always equals the display (adjustedBuyPrice on both sides).
+          const buyRank = colonyMerchantRank(saveData.colonies, saveData.factionStandings, sceneStack?.colonyId);
+          const nextSave = applyShopPurchase(saveData, buyReq, buyRank);
+          if (nextSave) {
+            saveSave(nextSave);
+            setSaveData(nextSave);
+          } else if (fpBuy.dialogState) {
+            fpBuy.dialogState.shopFlashFrames = 90;
+          }
+        }
+      }
+
+      // Mirror the fully-computed state so the grade-pass present rAF (which can't
+      // read React state) can select a preset by currentMode. Set after all
+      // newState mutations above, alongside the React commit.
+      gameStateRef.current = newState;
+      presetModeRef.current = newState.currentMode;
       setGameState(newState);
       drawGame(ctx, newState);
 
@@ -1421,84 +1538,170 @@ export default function Game() {
     preloadAll();
   }, []);
 
+  // Mount the WebGL color-grade pass over the game canvas (Layer A of the visual
+  // overhaul). It presents the 2D canvas through the DOOM color grade, selecting
+  // a preset per frame by the live gameStateRef.currentMode. It runs on its OWN
+  // requestAnimationFrame loop stored in presentRafRef — deliberately NOT
+  // animationFrameRef, which several other rAF loops in this component share and
+  // reset. createGradePass yields a pass that is disabled by default (present()
+  // no-ops until enabled), so we enable it here.
+  // Cleanup cancels the loop and releases the GL resources. Runs once on mount —
+  // the refs are attached before effects fire.
+  useEffect(() => {
+    const glCanvas = glCanvasRef.current;
+    if (!glCanvas) return;
+
+    const pass = createGradePass(glCanvas);
+    pass.setEnabled(true);
+
+    const present = () => {
+      const source = canvasRef.current;
+      // gameStateRef is null before the first game-loop tick (start screen etc.);
+      // selectPreset falls back to DEFAULT for an empty/unknown mode, so the whole
+      // app — menus included — gets the same grade until a mode is active.
+      if (source) pass.present(source, selectPreset(presetModeRef.current));
+      presentRafRef.current = requestAnimationFrame(present);
+    };
+    presentRafRef.current = requestAnimationFrame(present);
+
+    return () => {
+      if (presentRafRef.current !== null) {
+        cancelAnimationFrame(presentRafRef.current);
+        presentRafRef.current = null;
+      }
+      pass.dispose();
+    };
+  }, []);
+
   return (
     <div className="relative w-full h-screen flex items-center justify-center bg-black">
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        className="border border-white/10"
-        style={{
-          maxHeight: "100vh",
-          maxWidth: "100vw",
-          objectFit: "contain",
-          cursor: gameState?.currentMode === "turret" ? "none" : "default",
-        }}
-        onMouseMove={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const scaleX = CANVAS_WIDTH / rect.width;
-          const scaleY = CANVAS_HEIGHT / rect.height;
-          mouseRef.current.x = (e.clientX - rect.left) * scaleX / CANVAS_WIDTH;
-          mouseRef.current.y = (e.clientY - rect.top) * scaleY / CANVAS_HEIGHT;
-        }}
-        onMouseDown={(e) => {
-          if (e.button === 0) mouseRef.current.down = true;
-        }}
-        onMouseUp={(e) => {
-          if (e.button === 0) mouseRef.current.down = false;
-        }}
-        onMouseLeave={() => {
-          mouseRef.current.down = false;
-        }}
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const scaleX = CANVAS_WIDTH / rect.width;
-          const scaleY = CANVAS_HEIGHT / rect.height;
-          const cx = (e.clientX - rect.left) * scaleX;
-          const cy = (e.clientY - rect.top) * scaleY;
+      {/* Grade-pass mount: this position:relative wrapper shrink-wraps the 2D
+          canvas (it keeps its own maxHeight/maxWidth/objectFit sizing), giving the
+          absolutely-positioned WebGL overlay below a definite box to fill. */}
+      <div style={{ position: "relative", display: "inline-flex", lineHeight: 0 }}>
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          className="border border-white/10"
+          style={{
+            maxHeight: "100vh",
+            maxWidth: "100vw",
+            objectFit: "contain",
+            cursor: gameState?.currentMode === "turret" ? "none" : "default",
+          }}
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const scaleX = CANVAS_WIDTH / rect.width;
+            const scaleY = CANVAS_HEIGHT / rect.height;
+            mouseRef.current.x = (e.clientX - rect.left) * scaleX / CANVAS_WIDTH;
+            mouseRef.current.y = (e.clientY - rect.top) * scaleY / CANVAS_HEIGHT;
+          }}
+          onMouseDown={(e) => {
+            if (e.button === 0) mouseRef.current.down = true;
+          }}
+          onMouseUp={(e) => {
+            if (e.button === 0) mouseRef.current.down = false;
+          }}
+          onMouseLeave={() => {
+            mouseRef.current.down = false;
+          }}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const scaleX = CANVAS_WIDTH / rect.width;
+            const scaleY = CANVAS_HEIGHT / rect.height;
+            const cx = (e.clientX - rect.left) * scaleX;
+            const cy = (e.clientY - rect.top) * scaleY;
 
-          // Cockpit hub — click on hotspots
-          if (showCockpit && cockpitState.screen === "hub") {
-            for (let i = 0; i < COCKPIT_HOTSPOTS.length; i++) {
-              const h = COCKPIT_HOTSPOTS[i];
-              if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
-                setCockpitState((prev) => ({
-                  ...prev,
-                  screen: h.id,
-                  selectedHotspot: i,
-                }));
-                break;
-              }
+            // Intro crawl / ending sequence — mirror the touch handlers so a
+            // mouse-only desktop player isn't stuck on keyboard-only flows
+            // (the DESTROY/MERGE boxes are drawn at y 320-420 / 460-560).
+            if (showIntro) {
+              finishIntro();
+              return;
             }
-          }
-
-          // Cockpit sub-screens — click near top-left to go back
-          if (showCockpit && cockpitState.screen !== "hub") {
-            if (cx < 60 && cy < 50) {
-              setCockpitState((prev) => ({ ...prev, screen: "hub" }));
+            if (endingPhase === "choice") {
+              if (cy >= 320 && cy < 420) confirmChoice("destroy");
+              else if (cy >= 460 && cy < 560) confirmChoice("merge");
+              return;
             }
-          }
+            if (endingPhase === "pre-choice" || endingPhase === "ending" || endingPhase === "credits") {
+              advanceEnding();
+              return;
+            }
 
-          // Star map — click on world nodes to select
-          if (showMap && starMapState) {
-            const worldNodes = getWorldNodes(saveData);
-            for (const node of worldNodes) {
-              if (!node.unlocked) continue;
-              const dx = cx - node.x;
-              const dy = cy - node.y;
-              if (dx * dx + dy * dy < 30 * 30) {
-                if (starMapState.selectedWorld === node.world && !starMapState.expanded) {
-                  // Double-click to expand
-                  setStarMapState((prev) => prev ? { ...prev, expanded: true, selectedLevel: 1 } : prev);
-                } else {
-                  setStarMapState((prev) => prev ? { ...prev, selectedWorld: node.world, expanded: false } : prev);
+            // Cockpit hub — click on hotspots
+            if (showCockpit && cockpitState.screen === "hub") {
+              for (let i = 0; i < COCKPIT_HOTSPOTS.length; i++) {
+                const h = COCKPIT_HOTSPOTS[i];
+                if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
+                  // "starmap" is not a cockpit sub-screen (drawCockpit has no
+                  // branch for it — setting it freezes the hub frame): open the
+                  // star map overlay instead, mirroring the touch path above.
+                  if (h.id === "starmap") {
+                    setShowCockpit(false);
+                    setShowMap(true);
+                    resetStarMapKeys();
+                  } else {
+                    setCockpitState((prev) => ({
+                      ...prev,
+                      screen: h.id,
+                      selectedHotspot: i,
+                    }));
+                  }
+                  break;
                 }
-                break;
               }
             }
-          }
-        }}
-      />
+
+            // Cockpit sub-screens — click near top-left to go back
+            if (showCockpit && cockpitState.screen !== "hub") {
+              if (cx < 60 && cy < 50) {
+                setCockpitState((prev) => ({ ...prev, screen: "hub" }));
+              }
+            }
+
+            // Star map — click on world nodes to select
+            if (showMap && starMapState) {
+              const worldNodes = getWorldNodes(saveData);
+              for (const node of worldNodes) {
+                if (!node.unlocked) continue;
+                const dx = cx - node.x;
+                const dy = cy - node.y;
+                if (dx * dx + dy * dy < 30 * 30) {
+                  if (starMapState.selectedWorld === node.world && !starMapState.expanded) {
+                    // Double-click to expand
+                    setStarMapState((prev) => prev ? { ...prev, expanded: true, selectedLevel: 1 } : prev);
+                  } else {
+                    setStarMapState((prev) => prev ? { ...prev, selectedWorld: node.world, expanded: false } : prev);
+                  }
+                  break;
+                }
+              }
+            }
+          }}
+        />
+        {/* WebGL color-grade overlay — a sibling of the 2D canvas, painted on its
+            own rAF loop (presentRafRef). Fixed 480x854 backing store (no
+            devicePixelRatio scaling — the 2D game canvas uses none, so matching it
+            keeps the two layers pixel-aligned). pointerEvents:none so every
+            mouse/touch still reaches the 2D canvas beneath; inset:0 + 100%/100%
+            makes it track that canvas box exactly. The DOM UI overlays are
+            later-in-source siblings of this wrapper, so they still paint above the
+            overlay and stay ungraded. */}
+        <canvas
+          ref={glCanvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
 
       {/* Start Screen */}
       {showStartScreen && (
@@ -1836,8 +2039,11 @@ export default function Game() {
         </button>
       )}
 
-      {/* Dev Panel — development only */}
-      {process.env.NODE_ENV === "development" && (
+      {/* Dev Panel — dev mode, or a prod build explicitly opted in via
+          NEXT_PUBLIC_DEVTOOLS=1 (for smooth prod-build playtesting). The CI
+          deploy build never sets that flag, so production stays clean. */}
+      {(process.env.NODE_ENV === "development" ||
+        process.env.NEXT_PUBLIC_DEVTOOLS === "1") && (
         <DevPanel gameState={gameState} onAction={handleDevAction} />
       )}
 

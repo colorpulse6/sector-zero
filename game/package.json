@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "colony:test": "tsx --test tests/colony/*.test.ts",
-    "engine:test": "tsx --test tests/engine/*.test.ts"
+    "engine:test": "tsx --test tests/engine/*.test.ts",
+    "sprites:classify": "tsx scripts/sprites/classify.ts",
+    "sprites:remat": "tsx scripts/sprites/remat.ts",
+    "sprites:test": "tsx --test tests/sprites/*.test.ts"
   },
   "dependencies": {
     "next": "15.3.1",

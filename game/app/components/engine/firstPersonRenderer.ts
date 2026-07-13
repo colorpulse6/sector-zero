@@ -99,10 +99,14 @@ function drawCrosshair(ctx: CanvasRenderingContext2D): void {
 }
 
 function drawCompass(ctx: CanvasRenderingContext2D, fp: FirstPersonState): void {
-  // Direction indicator at top center
+  // Direction indicator at top center. atan2 already spans (-π, π] with 0 = +X
+  // = east and -Y = north (dir (0,-1) is "facing north" per colonyLayout), so
+  // the slot index is just angle / 45° wrapped into [0,8). The old formula
+  // added π first, shifting every reading by 4 slots — the compass showed the
+  // exact opposite heading and disagreed with the minimap by 180°.
   const angle = Math.atan2(fp.dirY, fp.dirX);
   const dirs = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
-  const idx = Math.round(((angle + Math.PI) / (Math.PI * 2)) * 8) % 8;
+  const idx = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
 
   ctx.fillStyle = "#44ccff88";
   ctx.font = "bold 12px monospace";
@@ -321,6 +325,12 @@ function drawDialogBox(
 
   if (ds.shopOpen && ds.shopItems) {
     // ── Shop UI ──
+    // Buyable shops (quartermaster, §I) get row selection + a LEAVE row; a
+    // display-only shop (Ashfall, shopCanBuy falsy) keeps the classic browse UI.
+    const canBuy = ds.shopCanBuy === true;
+    const selectedIndex = ds.selectedIndex ?? 0;
+    const leaveIndex = ds.shopItems.length;
+
     ctx.fillStyle = "#ffaa44";
     ctx.font = "bold 12px monospace";
     ctx.textAlign = "left";
@@ -329,17 +339,35 @@ function drawDialogBox(
 
     ctx.fillStyle = "#667788";
     ctx.font = "9px monospace";
-    ctx.fillText("[Z] Close Shop", boxX + boxW - 110, boxY + 12);
+    if (canBuy) {
+      ctx.textAlign = "right";
+      const headerHint = selectedIndex === leaveIndex ? "[Z] LEAVE" : "[Z] BUY  ↑↓ SELECT";
+      ctx.fillText(headerHint, boxX + boxW - 12, boxY + 12);
+      ctx.textAlign = "left";
+    } else {
+      // Display-only shop (Ashfall) — unchanged from pre-Phase-5a rendering:
+      // left-aligned (textAlign is still "left" from the header above), drawn
+      // inset from the right edge rather than flush against it.
+      ctx.fillText("[Z] Close Shop", boxX + boxW - 110, boxY + 12);
+    }
 
     for (let i = 0; i < ds.shopItems.length; i++) {
       const item = ds.shopItems[i];
       const iy = boxY + 34 + i * 52;
+      const selected = canBuy && selectedIndex === i;
 
-      // Item background
-      ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
+      // Item background (highlighted when selected)
+      ctx.fillStyle = selected ? "rgba(255, 170, 68, 0.18)" : "rgba(255, 255, 255, 0.03)";
       ctx.beginPath();
       ctx.roundRect(boxX + 8, iy, boxW - 16, 46, 4);
       ctx.fill();
+      if (selected) {
+        ctx.strokeStyle = "#ffaa44";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(boxX + 8, iy, boxW - 16, 46, 4);
+        ctx.stroke();
+      }
 
       // Item name
       ctx.fillStyle = "#ffffff";
@@ -357,6 +385,37 @@ function drawDialogBox(
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "right";
       ctx.fillText(`◆ ${item.cost}`, boxX + boxW - 16, iy + 14);
+      ctx.textAlign = "left";
+    }
+
+    // Trailing LEAVE row (buyable shops only)
+    if (canBuy) {
+      const ly = boxY + 34 + ds.shopItems.length * 52;
+      const selected = selectedIndex === leaveIndex;
+      ctx.fillStyle = selected ? "rgba(255, 170, 68, 0.18)" : "rgba(255, 255, 255, 0.03)";
+      ctx.beginPath();
+      ctx.roundRect(boxX + 8, ly, boxW - 16, 26, 4);
+      ctx.fill();
+      if (selected) {
+        ctx.strokeStyle = "#ffaa44";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(boxX + 8, ly, boxW - 16, 26, 4);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#cccccc";
+      ctx.font = "bold 11px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("LEAVE", boxX + 16, ly + 7);
+    }
+
+    // Transient generic "purchase unavailable" flash (§I)
+    if ((ds.shopFlashFrames ?? 0) > 0) {
+      ctx.fillStyle = "#ff6666";
+      ctx.font = "bold 10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("PURCHASE UNAVAILABLE", boxX + boxW / 2, boxY + boxH - 14);
+      ctx.textAlign = "left";
     }
   } else {
     // ── Dialog text ──
@@ -390,10 +449,12 @@ function drawDialogBox(
     }
     if (textLine) ctx.fillText(textLine, boxX + 12, ty);
 
-    // Advance prompt
+    // Advance prompt. At end-of-dialog a merchant's shop opens while it hasn't
+    // been shown this session (§I per-session gate), so key off ds.shopSeen — this
+    // keeps the prompt accurate now that reopening is no longer `!npc.interacted`.
     const prompt = ds.currentLine < ds.lines.length - 1
       ? "[Z] Continue"
-      : npc?.type === "merchant" && !npc.interacted
+      : npc?.type === "merchant" && !ds.shopSeen
         ? "[Z] Open Shop"
         : "[Z] Close";
 

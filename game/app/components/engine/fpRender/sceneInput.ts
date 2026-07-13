@@ -46,6 +46,29 @@ export const NPC_SPRITE_MAP: Record<string, string> = {
   "Scavenger": SPRITES.NPC_SCAVENGER,
 };
 
+/** ms per NPC animation frame (~5.5fps walk cycle). Exported for tests. */
+export const NPC_ANIM_FRAME_MS = 180;
+
+/** NPC billboard sprite resolution (Phase 5a §H2 + DOOM-overhaul animation).
+ *  Animated NPCs (optional walkSprites/idleSprites) cycle frames off the
+ *  stepper-accumulated animClockMs — walkSprites while isMoving, idleSprites
+ *  while standing, fallback chain walk → idle → static. Walk frames are never
+ *  shown while standing. NPCs without animation fields resolve EXACTLY as
+ *  before (strictly opt-in, golden-safe): an explicit `sprite` wins (colony
+ *  NPCs set distinct SPRITES.NPC_* assets), otherwise the name map (Ashfall's
+ *  named NPCs), otherwise the survivor fallback. Exported for a focused unit
+ *  test of the resolution order. */
+export function resolveNpcSprite(n: {
+  sprite?: string; name: string;
+  walkSprites?: string[]; idleSprites?: string[];
+  isMoving?: boolean; animClockMs?: number;
+}): string {
+  const frames = (n.isMoving && n.walkSprites?.length ? n.walkSprites : undefined)
+    ?? (n.idleSprites?.length ? n.idleSprites : undefined);
+  if (frames) return frames[Math.floor((n.animClockMs ?? 0) / NPC_ANIM_FRAME_MS) % frames.length];
+  return n.sprite ?? NPC_SPRITE_MAP[n.name] ?? SPRITES.NPC_SURVIVOR;
+}
+
 export class SceneBuilder {
   private scene: RenderScene | null = null;
   private lastMap: BoardingMap | null = null;
@@ -140,7 +163,7 @@ export class SceneBuilder {
       s.billboards.push({ x: e.x, y: e.y, texId: reg.idFor(sprite, "billboard"), scale: 1, alpha256: alpha, widthFactor: 1, vAnchor: "center" });
     }
     for (const n of fp.npcs) {
-      s.billboards.push({ x: n.x, y: n.y, texId: reg.idFor(NPC_SPRITE_MAP[n.name] ?? SPRITES.NPC_SURVIVOR, "billboard"), scale: 1, alpha256: 256, widthFactor: 0.4, vAnchor: "npc" });
+      s.billboards.push({ x: n.x, y: n.y, texId: reg.idFor(resolveNpcSprite(n), "billboard"), scale: 1, alpha256: 256, widthFactor: 0.4, vAnchor: "npc" });
     }
     // Objective marker: NOT pushed here. It stays the classic overlay
     // (drawObjectiveBillboard — glow + label are vector draws that already

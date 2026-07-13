@@ -1,0 +1,1130 @@
+{
+  "generated": "sprites:classify",
+  "counts": {
+    "other": 111,
+    "allowlisted-billboard": 65,
+    "sheet": 8
+  },
+  "entries": [
+    {
+      "path": "backgrounds/ missions-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/abyssia-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/abyssia-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/abyssia-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/armory-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ashfall-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ashfall-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ashfall-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/aurelia-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/aurelia-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/aurelia-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/bastion-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/bastion-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/bastion-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/codex-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/crew-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/cryon-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/cryon-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/cryon-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/fold-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/fold-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/fold-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/genesis-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/genesis-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/genesis-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/glaciem-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/glaciem-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/glaciem-near.png",
+      "width": 480,
+      "height": 854,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/graveyard-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/graveyard-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/graveyard-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/hollow-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/hollow-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/hollow-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ignis-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ignis-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ignis-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/luminos-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/luminos-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/luminos-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ossuary-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ossuary-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/ossuary-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/prismara-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/prismara-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/prismara-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/pyraxis-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/pyraxis-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/pyraxis-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/scar-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/scar-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/scar-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/verdania-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/verdania-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/verdania-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/void-far.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/void-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "backgrounds/void-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "boarding/enemy-fp-death.png",
+      "width": 598,
+      "height": 798,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/enemy-fp-flinch.png",
+      "width": 598,
+      "height": 798,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/enemy-fp-front.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/enemy-grunt-attack.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/enemy-grunt-idle.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/gun-sheet.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "sheet",
+      "frames": 2,
+      "frameWidth": 768
+    },
+    {
+      "path": "boarding/npc-kael.png",
+      "width": 128,
+      "height": 256,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/npc-reyes.png",
+      "width": 128,
+      "height": 256,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/npc-scavenger.png",
+      "width": 128,
+      "height": 256,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/npc-survivor.png",
+      "width": 128,
+      "height": 256,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/npc-voss.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/player-down.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/player-left.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/player-right.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/player-up.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "boarding/tiles.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "sheet",
+      "frames": 3,
+      "frameWidth": 512
+    },
+    {
+      "path": "bosses/beacon.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "bosses/cindermaw.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "bosses/glacius.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "bosses/hollow-mind.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "bosses/nyxar.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "bosses/reflection.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "bosses/revenant.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "bosses/rockjaw.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "bullets/enemy-bullet.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "sheet",
+      "frames": 4,
+      "frameWidth": 384
+    },
+    {
+      "path": "bullets/player-bullets.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "sheet",
+      "frames": 4,
+      "frameWidth": 384
+    },
+    {
+      "path": "cockpit/armory-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "cockpit/cockpit-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "cockpit/codex-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "cockpit/crew-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "cockpit/missions-bg.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "cockpit/upgrade-icons.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "effects/collectible-orb.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "effects/defend-structure.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "effects/explosion.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "sheet",
+      "frames": 7,
+      "frameWidth": 219.42857142857142
+    },
+    {
+      "path": "ending/scene-1.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "ending/scene-2.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "ending/scene-3.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "ending/scene-4.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "enemies/bomber.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/cloaker.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/drone.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/echo.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/elite.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/gunner.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/mine.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/mirror.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/scout.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/shielder.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/swarm.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/turret.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "enemies/wraith.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "environment/foundation.png",
+      "width": 64,
+      "height": 64,
+      "class": "other"
+    },
+    {
+      "path": "environment/landing-pad.png",
+      "width": 64,
+      "height": 64,
+      "class": "other"
+    },
+    {
+      "path": "explore/scrapyard-outpost-floor-metal.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "explore/scrapyard-outpost-ground.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "explore/scrapyard-outpost-landmark-rig.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "explore/scrapyard-outpost-prop-antenna.png",
+      "width": 512,
+      "height": 512,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "explore/scrapyard-outpost-prop-barrel.png",
+      "width": 512,
+      "height": 512,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "explore/scrapyard-outpost-prop-cable-spool.png",
+      "width": 512,
+      "height": 512,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "explore/scrapyard-outpost-prop-crates.png",
+      "width": 512,
+      "height": 512,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "explore/scrapyard-outpost-prop-lamp.png",
+      "width": 512,
+      "height": 512,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "explore/scrapyard-outpost-prop-signpost.png",
+      "width": 512,
+      "height": 512,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "explore/scrapyard-outpost-prop-terminal.png",
+      "width": 512,
+      "height": 512,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "explore/scrapyard-outpost-sky.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "explore/scrapyard-outpost-wall-exterior.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "explore/scrapyard-outpost-wall-interior.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "ground/bg-surface-far.png",
+      "width": 1028,
+      "height": 1529,
+      "class": "other"
+    },
+    {
+      "path": "ground/bg-surface-mid.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "ground/bg-surface-near.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "ground/enemy-flyer.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/enemy-jumper.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/enemy-patrol.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/enemy-turret.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-hurt.png",
+      "width": 240,
+      "height": 271,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-idle.png",
+      "width": 267,
+      "height": 330,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-infantry.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-jump.png",
+      "width": 295,
+      "height": 276,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-run-1.png",
+      "width": 340,
+      "height": 307,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-run-2.png",
+      "width": 277,
+      "height": 326,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-run-3.png",
+      "width": 324,
+      "height": 309,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-run-4.png",
+      "width": 303,
+      "height": 258,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/player-shoot.png",
+      "width": 384,
+      "height": 287,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ground/tiles.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "sheet",
+      "frames": 3,
+      "frameWidth": 512
+    },
+    {
+      "path": "interiors/bunk.png",
+      "width": 48,
+      "height": 48,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "interiors/farm-crate.png",
+      "width": 48,
+      "height": 48,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "interiors/purifier-pump.png",
+      "width": 48,
+      "height": 64,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "interiors/solar-panel.png",
+      "width": 48,
+      "height": 48,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "map/map.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-abyssia.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-ashfall.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-bastion.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-genesis.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-glaciem.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-luminos.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-ossuary.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-prismara.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-pyraxis.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/planet-verdania.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "other"
+    },
+    {
+      "path": "map/ship-cursor.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/world-1.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/world-2.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/world-3.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/world-4.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/world-5.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/world-6.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/world-7.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "map/world-8.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "portraits/hollow.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "portraits/kael.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "portraits/reyes.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "portraits/voss.png",
+      "width": 1024,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "powerups/powerups.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "sheet",
+      "frames": 6,
+      "frameWidth": 256
+    },
+    {
+      "path": "props/scaffolding.png",
+      "width": 64,
+      "height": 96,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ships/escort-ship.png",
+      "width": 1024,
+      "height": 1536,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "ships/player.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "sheet",
+      "frames": 3,
+      "frameWidth": 512
+    },
+    {
+      "path": "turret/bg-space.png",
+      "width": 480,
+      "height": 714,
+      "class": "other"
+    },
+    {
+      "path": "turret/cockpit-frame.png",
+      "width": 480,
+      "height": 714,
+      "class": "other"
+    },
+    {
+      "path": "turret/crosshair.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "other"
+    },
+    {
+      "path": "turret/enemy-bomber.png",
+      "width": 128,
+      "height": 128,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "turret/enemy-drone.png",
+      "width": 64,
+      "height": 64,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "turret/enemy-fighter.png",
+      "width": 1536,
+      "height": 1024,
+      "class": "allowlisted-billboard"
+    },
+    {
+      "path": "walls/farm.png",
+      "width": 64,
+      "height": 64,
+      "class": "other"
+    },
+    {
+      "path": "walls/habitat.png",
+      "width": 64,
+      "height": 64,
+      "class": "other"
+    },
+    {
+      "path": "walls/purifier.png",
+      "width": 64,
+      "height": 64,
+      "class": "other"
+    },
+    {
+      "path": "walls/solar.png",
+      "width": 64,
+      "height": 64,
+      "class": "other"
+    }
+  ]
+}

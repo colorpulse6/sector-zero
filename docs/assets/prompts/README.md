@@ -19,4 +19,6 @@ Each phase (or asset class) gets its own subfolder.
 
 ## Index
 
-- `colony-phase-2/` — 11 assets for Phase 2 FPS descent (walls, environment, interiors)
+- `doom/` — **master style guide** (modern-DOOM art direction; ALL prompts inherit it)
+- `colony-phase-2/` — 11 assets for Phase 2 FPS descent (walls, environment, interiors);
+  its aesthetic section is superseded by `doom/00-master-style-guide.md`

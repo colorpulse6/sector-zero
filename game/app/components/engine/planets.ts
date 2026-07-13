@@ -6,6 +6,7 @@ import type {
   PlanetId,
   SaveData,
 } from "./types";
+import { adjustStanding, PLANET_MISSION_STANDING } from "../colony/shared/factionLedger";
 
 // ─── Planet Definition ──────────────────────────────────────────────
 
@@ -464,6 +465,17 @@ export function completePlanet(save: SaveData, planetId: PlanetId): SaveData {
   // Unlock enhancement
   if (planet.enhancementUnlock && !updated.unlockedEnhancements.includes(planet.enhancementUnlock)) {
     updated.unlockedEnhancements = [...updated.unlockedEnhancements, planet.enhancementUnlock];
+  }
+
+  // Faction standing (Phase 5a): completing a mission on a planet with a native
+  // faction earns standing with it — every completion, not just the first.
+  const standingReward = PLANET_MISSION_STANDING[planetId];
+  if (standingReward) {
+    updated.factionStandings = adjustStanding(
+      updated.factionStandings,
+      standingReward.factionId,
+      standingReward.delta
+    );
   }
 
   return updated;

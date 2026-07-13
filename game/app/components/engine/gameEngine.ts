@@ -428,6 +428,123 @@ export function createSpecialMissionGameState(
 
 // ─── Update ──────────────────────────────────────────────────────────
 
+/** Shared level-complete countdown → next-phase transition or level end.
+ *
+ *  EVERY mode's engine sets `levelCompleteTimer = 360` when its phase goal is
+ *  met and then freezes itself while the timer is > 0 (`if (timer > 0) return`
+ *  guards in ground/boarding/first-person/turret) — so every mode dispatch in
+ *  updateGame must tick this, or that mode soft-locks forever on its COMPLETE
+ *  banner. Alt-mode phases are always the terminal phase in makeMultiPhase
+ *  levels, which is exactly the case that used to freeze: only the shooter and
+ *  boss paths carried (duplicated) copies of this countdown. */
+function tickLevelComplete(s: GameState): void {
+  if (s.levelCompleteTimer <= 0) return;
+  s.levelCompleteTimer -= 1;
+  if (s.levelCompleteTimer > 0) return;
+
+  if (!isLastPhase(s)) {
+    s.screen = GameScreen.PHASE_TRANSITION;
+    s.phaseTransitionTimer = 180;
+    s.currentPhase += 1;
+    const multiPhase = getMultiPhaseLevelData(s.currentWorld, s.currentLevel);
+    const nextPhaseData = multiPhase?.phases[s.currentPhase];
+    const nextMode = nextPhaseData?.config.mode ?? "shooter";
+    s.currentMode = nextMode;
+    s.phaseCheckpoint = createCheckpoint(s);
+    s.phaseTransitionCard = `PHASE ${s.currentPhase + 1}`;
+    s.phaseTransitionSubtext = "Preparing next phase...";
+    if (nextPhaseData?.transitionIn) {
+      s.phaseTransitionCard = nextPhaseData.transitionIn.cardText;
+      s.phaseTransitionSubtext = nextPhaseData.transitionIn.cardSubtext ?? "";
+      s.phaseTransitionTimer = nextPhaseData.transitionIn.duration;
+    }
+    if (nextPhaseData?.config.waves) {
+      const newWaves = nextPhaseData.config.waves.map((def) => ({
+        definition: def,
+        spawned: false,
+        enemiesRemaining: def.enemies.reduce((sum, e) => sum + e.count, 0),
+      }));
+      s.waves = newWaves;
+      s.currentWave = 0;
+      s.totalWaves = newWaves.length;
+      s.waveDelay = 120;
+      s.totalEnemies += newWaves.reduce((sum, w) => sum + w.enemiesRemaining, 0);
+      // Clear battlefield
+      s.enemies = [];
+      s.enemyBullets = [];
+      s.playerBullets = [];
+      s.particles = [];
+      s.explosions = [];
+      s.floatingLabels = [];
+      s.boss = null;
+    }
+    // Initialize mode-specific state
+    if (nextPhaseData?.config.mode === "ground-run") {
+      const groundState = createTestGroundState();
+      const spawn = getGroundSpawn(groundState.tileMap);
+      s.groundState = groundState;
+      s.boardingState = undefined;
+      s.player = { ...s.player, x: spawn.x, y: spawn.y };
+    } else if (nextPhaseData?.config.mode === "boarding") {
+      const boardingState = createBoardingState();
+      const spawn = getBoardingSpawn(boardingState.map);
+      s.boardingState = boardingState;
+      s.groundState = undefined;
+      s.firstPersonState = undefined;
+      s.player = { ...s.player, x: spawn.x, y: spawn.y };
+    } else if (nextPhaseData?.config.mode === "first-person") {
+      const boardingState = createBoardingState();
+      s.firstPersonState = {
+        map: boardingState.map,
+        posX: 2.5, posY: 2.5,
+        dirX: 1, dirY: 0,
+        planeX: 0, planeY: 0.66,
+        moveSpeed: 0.06,
+        rotSpeed: 0.04,
+        goalReached: false,
+        enemies: boardingState.enemies.map((e, i) => ({
+          id: i + 1,
+          x: e.x / boardingState.map.tileSize + 0.5,
+          y: e.y / boardingState.map.tileSize + 0.5,
+          hp: e.hp, maxHp: e.maxHp,
+          speed: e.type === "charger" ? 0.03 : 0.015,
+          type: e.type as "grunt" | "charger" | "sentry",
+          aggroRange: e.aggroRange / boardingState.map.tileSize,
+          isAggro: false, deathTimer: 0,
+          fireTimer: e.fireTimer, classId: e.classId,
+        })),
+        gunFireTimer: 0,
+        gunCooldown: 0,
+        npcs: [],
+        dialogState: null,
+      };
+      s.groundState = undefined;
+      s.boardingState = undefined;
+    } else if (nextPhaseData?.config.mode === "turret") {
+      s.turretState = createTurretState();
+      s.groundState = undefined;
+      s.boardingState = undefined;
+      s.firstPersonState = undefined;
+    } else {
+      s.groundState = undefined;
+      s.boardingState = undefined;
+      s.firstPersonState = undefined;
+      s.turretState = undefined;
+    }
+  } else {
+    // Check if this is the final level in the game
+    const maxLevels = getWorldLevelCount(s.currentWorld);
+    const isLastLevelInWorld = s.currentLevel >= maxLevels;
+    let isFinalLevel = false;
+    if (isLastLevelInWorld) {
+      let nw = s.currentWorld + 1;
+      while (nw <= 8 && getWorldLevelCount(nw) === 0) nw++;
+      isFinalLevel = nw > 8;
+    }
+    s.screen = isFinalLevel ? GameScreen.ENDING : GameScreen.LEVEL_COMPLETE;
+  }
+}
+
 export function updateGame(
   state: GameState,
   keys: Keys,
@@ -474,6 +591,7 @@ export function updateGame(
     s.floatingLabels = updateFloatingLabels(s.floatingLabels);
     s.background = updateBackground(s.background);
     if (s.screenShake > 0) s.screenShake *= 0.9;
+    tickLevelComplete(s);
     return s;
   }
 
@@ -485,6 +603,7 @@ export function updateGame(
     s.explosions = updateSpriteExplosions(s.explosions);
     s.floatingLabels = updateFloatingLabels(s.floatingLabels);
     if (s.screenShake > 0) s.screenShake *= 0.9;
+    tickLevelComplete(s);
     return s;
   }
 
@@ -493,6 +612,7 @@ export function updateGame(
     const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
     updateFirstPerson(s, keys, dtMs);
     if (s.screenShake > 0) s.screenShake *= 0.9;
+    tickLevelComplete(s);
     return s;
   }
 
@@ -512,6 +632,7 @@ export function updateGame(
     s.explosions = updateSpriteExplosions(s.explosions);
     s.floatingLabels = updateFloatingLabels(s.floatingLabels);
     if (s.screenShake > 0) s.screenShake *= 0.9;
+    tickLevelComplete(s);
     return s;
   }
 
@@ -670,104 +791,8 @@ export function updateGame(
     }
   }
 
-  // Level complete timer countdown — show results screen
-  if (s.levelCompleteTimer > 0) {
-    s.levelCompleteTimer -= 1;
-    if (s.levelCompleteTimer <= 0) {
-      if (!isLastPhase(s)) {
-        s.screen = GameScreen.PHASE_TRANSITION;
-        s.phaseTransitionTimer = 180;
-        s.currentPhase += 1;
-        const multiPhase = getMultiPhaseLevelData(s.currentWorld, s.currentLevel);
-        const nextPhaseData = multiPhase?.phases[s.currentPhase];
-        const nextMode = nextPhaseData?.config.mode ?? "shooter";
-        s.currentMode = nextMode;
-        s.phaseCheckpoint = createCheckpoint(s);
-        s.phaseTransitionCard = `PHASE ${s.currentPhase + 1}`;
-        s.phaseTransitionSubtext = "Preparing next phase...";
-        if (nextPhaseData?.transitionIn) {
-          s.phaseTransitionCard = nextPhaseData.transitionIn.cardText;
-          s.phaseTransitionSubtext = nextPhaseData.transitionIn.cardSubtext ?? "";
-          s.phaseTransitionTimer = nextPhaseData.transitionIn.duration;
-        }
-        if (nextPhaseData?.config.waves) {
-          const newWaves = nextPhaseData.config.waves.map((def) => ({
-            definition: def,
-            spawned: false,
-            enemiesRemaining: def.enemies.reduce((sum, e) => sum + e.count, 0),
-          }));
-          s.waves = newWaves;
-          s.currentWave = 0;
-          s.totalWaves = newWaves.length;
-          s.waveDelay = 120;
-          s.totalEnemies += newWaves.reduce((sum, w) => sum + w.enemiesRemaining, 0);
-          // Clear battlefield
-          s.enemies = [];
-          s.enemyBullets = [];
-          s.playerBullets = [];
-          s.particles = [];
-          s.explosions = [];
-          s.floatingLabels = [];
-          s.boss = null;
-        }
-        // Initialize mode-specific state
-        if (nextPhaseData?.config.mode === "ground-run") {
-          const groundState = createTestGroundState();
-          const spawn = getGroundSpawn(groundState.tileMap);
-          s.groundState = groundState;
-          s.boardingState = undefined;
-          s.player = { ...s.player, x: spawn.x, y: spawn.y };
-        } else if (nextPhaseData?.config.mode === "boarding") {
-          const boardingState = createBoardingState();
-          const spawn = getBoardingSpawn(boardingState.map);
-          s.boardingState = boardingState;
-          s.groundState = undefined;
-          s.firstPersonState = undefined;
-          s.player = { ...s.player, x: spawn.x, y: spawn.y };
-        } else if (nextPhaseData?.config.mode === "first-person") {
-          const boardingState = createBoardingState();
-          s.firstPersonState = {
-            map: boardingState.map,
-            posX: 2.5, posY: 2.5,
-            dirX: 1, dirY: 0,
-            planeX: 0, planeY: 0.66,
-            moveSpeed: 0.06,
-            rotSpeed: 0.04,
-            goalReached: false,
-            enemies: boardingState.enemies.map((e, i) => ({
-              id: i + 1,
-              x: e.x / boardingState.map.tileSize + 0.5,
-              y: e.y / boardingState.map.tileSize + 0.5,
-              hp: e.hp, maxHp: e.maxHp,
-              speed: e.type === "charger" ? 0.03 : 0.015,
-              type: e.type as "grunt" | "charger" | "sentry",
-              aggroRange: e.aggroRange / boardingState.map.tileSize,
-              isAggro: false, deathTimer: 0,
-              fireTimer: e.fireTimer, classId: e.classId,
-            })),
-            gunFireTimer: 0,
-            gunCooldown: 0,
-            npcs: [],
-            dialogState: null,
-          };
-          s.groundState = undefined;
-          s.boardingState = undefined;
-        } else if (nextPhaseData?.config.mode === "turret") {
-          s.turretState = createTurretState();
-          s.groundState = undefined;
-          s.boardingState = undefined;
-          s.firstPersonState = undefined;
-        } else {
-          s.groundState = undefined;
-          s.boardingState = undefined;
-          s.firstPersonState = undefined;
-          s.turretState = undefined;
-        }
-      } else {
-        s.screen = GameScreen.LEVEL_COMPLETE;
-      }
-    }
-  }
+  // Level complete timer countdown — phase transition / results screen
+  tickLevelComplete(s);
 
   // Check game over
   if (s.lives <= 0 && s.player.hp <= 0) {
@@ -939,112 +964,7 @@ function updateBossFight(
   }
 
   // Boss level complete timer — let dialog play out, then transition
-  if (s.levelCompleteTimer > 0) {
-    s.levelCompleteTimer -= 1;
-    if (s.levelCompleteTimer <= 0) {
-      if (!isLastPhase(s)) {
-        s.screen = GameScreen.PHASE_TRANSITION;
-        s.phaseTransitionTimer = 180;
-        s.currentPhase += 1;
-        const multiPhase = getMultiPhaseLevelData(s.currentWorld, s.currentLevel);
-        const nextPhaseData = multiPhase?.phases[s.currentPhase];
-        const nextMode = nextPhaseData?.config.mode ?? "shooter";
-        s.currentMode = nextMode;
-        s.phaseCheckpoint = createCheckpoint(s);
-        s.phaseTransitionCard = `PHASE ${s.currentPhase + 1}`;
-        s.phaseTransitionSubtext = "Preparing next phase...";
-        if (nextPhaseData?.transitionIn) {
-          s.phaseTransitionCard = nextPhaseData.transitionIn.cardText;
-          s.phaseTransitionSubtext = nextPhaseData.transitionIn.cardSubtext ?? "";
-          s.phaseTransitionTimer = nextPhaseData.transitionIn.duration;
-        }
-        if (nextPhaseData?.config.waves) {
-          const newWaves = nextPhaseData.config.waves.map((def) => ({
-            definition: def,
-            spawned: false,
-            enemiesRemaining: def.enemies.reduce((sum, e) => sum + e.count, 0),
-          }));
-          s.waves = newWaves;
-          s.currentWave = 0;
-          s.totalWaves = newWaves.length;
-          s.waveDelay = 120;
-          s.totalEnemies += newWaves.reduce((sum, w) => sum + w.enemiesRemaining, 0);
-          // Clear battlefield
-          s.enemies = [];
-          s.enemyBullets = [];
-          s.playerBullets = [];
-          s.particles = [];
-          s.explosions = [];
-          s.floatingLabels = [];
-          s.boss = null;
-        }
-        // Initialize mode-specific state
-        if (nextPhaseData?.config.mode === "ground-run") {
-          const groundState = createTestGroundState();
-          const spawn = getGroundSpawn(groundState.tileMap);
-          s.groundState = groundState;
-          s.boardingState = undefined;
-          s.player = { ...s.player, x: spawn.x, y: spawn.y };
-        } else if (nextPhaseData?.config.mode === "boarding") {
-          const boardingState = createBoardingState();
-          const spawn = getBoardingSpawn(boardingState.map);
-          s.boardingState = boardingState;
-          s.groundState = undefined;
-          s.firstPersonState = undefined;
-          s.player = { ...s.player, x: spawn.x, y: spawn.y };
-        } else if (nextPhaseData?.config.mode === "first-person") {
-          const boardingState = createBoardingState();
-          s.firstPersonState = {
-            map: boardingState.map,
-            posX: 2.5, posY: 2.5,
-            dirX: 1, dirY: 0,
-            planeX: 0, planeY: 0.66,
-            moveSpeed: 0.06,
-            rotSpeed: 0.04,
-            goalReached: false,
-            enemies: boardingState.enemies.map((e, i) => ({
-              id: i + 1,
-              x: e.x / boardingState.map.tileSize + 0.5,
-              y: e.y / boardingState.map.tileSize + 0.5,
-              hp: e.hp, maxHp: e.maxHp,
-              speed: e.type === "charger" ? 0.03 : 0.015,
-              type: e.type as "grunt" | "charger" | "sentry",
-              aggroRange: e.aggroRange / boardingState.map.tileSize,
-              isAggro: false, deathTimer: 0,
-              fireTimer: e.fireTimer, classId: e.classId,
-            })),
-            gunFireTimer: 0,
-            gunCooldown: 0,
-            npcs: [],
-            dialogState: null,
-          };
-          s.groundState = undefined;
-          s.boardingState = undefined;
-        } else if (nextPhaseData?.config.mode === "turret") {
-          s.turretState = createTurretState();
-          s.groundState = undefined;
-          s.boardingState = undefined;
-          s.firstPersonState = undefined;
-        } else {
-          s.groundState = undefined;
-          s.boardingState = undefined;
-          s.firstPersonState = undefined;
-          s.turretState = undefined;
-        }
-      } else {
-        // Check if this is the final level in the game
-        const maxLevels = getWorldLevelCount(s.currentWorld);
-        const isLastLevelInWorld = s.currentLevel >= maxLevels;
-        let isFinalLevel = false;
-        if (isLastLevelInWorld) {
-          let nw = s.currentWorld + 1;
-          while (nw <= 8 && getWorldLevelCount(nw) === 0) nw++;
-          isFinalLevel = nw > 8;
-        }
-        s.screen = isFinalLevel ? GameScreen.ENDING : GameScreen.LEVEL_COMPLETE;
-      }
-    }
-  }
+  tickLevelComplete(s);
 
   // Check game over
   if (s.lives <= 0 && s.player.hp <= 0) {
@@ -1175,11 +1095,20 @@ function updatePlayer(
       player.y += (dy / dist) * Math.min(speed * 1.5, dist);
     }
   } else {
-    // Keyboard controls
-    if (keys.left) player.x -= speed;
-    if (keys.right) player.x += speed;
-    if (keys.up) player.y -= speed;
-    if (keys.down) player.y += speed;
+    // Keyboard controls — diagonal input is normalized so holding two axes
+    // doesn't move √2 (~41%) faster than a single axis.
+    let mx = 0;
+    let my = 0;
+    if (keys.left) mx -= 1;
+    if (keys.right) mx += 1;
+    if (keys.up) my -= 1;
+    if (keys.down) my += 1;
+    if (mx !== 0 && my !== 0) {
+      mx *= Math.SQRT1_2;
+      my *= Math.SQRT1_2;
+    }
+    player.x += mx * speed;
+    player.y += my * speed;
   }
 
   // Clamp to canvas
@@ -1413,6 +1342,11 @@ function handleCollisions(state: GameState): GameState {
         }
 
         const newHp = enemy.hp - finalDamage;
+        // Write back onto the lookup object too: several bullets can hit the
+        // same enemy in one frame, and each reads hp via enemyById — without
+        // this they all compute from the original hp (last-write-wins) and the
+        // enemy under-counts damage.
+        enemy.hp = newHp;
 
         if (newHp <= 0) {
           destroyedEnemies.add(enemy.id);
@@ -1527,6 +1461,11 @@ function handleCollisions(state: GameState): GameState {
   // Enemies → Player (contact damage)
   if (s.player.invincibleTimer <= 0) {
     for (const enemy of s.enemies) {
+      // Re-check each iteration: playerHit grants i-frames (and may respawn a
+      // fresh player), so a tight multi-enemy overlap in one frame must stop
+      // dealing contact hits after the first — not cost a life AND chew HP off
+      // the respawned player in the same frame.
+      if (s.player.invincibleTimer > 0) break;
       if (destroyedEnemies.has(enemy.id)) continue;
       if (enemy.cloaked) continue;
 
@@ -1875,11 +1814,15 @@ function updatePowerUps(state: GameState): GameState {
 // ─── Pause / State Transitions ───────────────────────────────────────
 
 export function togglePause(state: GameState): GameState {
-  if (state.screen === GameScreen.PLAYING) {
+  // BOSS_FIGHT is pausable too — the pause button/ESC are wired during boss
+  // fights, and silently no-oping here made pause a dead control mid-boss.
+  if (state.screen === GameScreen.PLAYING || state.screen === GameScreen.BOSS_FIGHT) {
     return { ...state, screen: GameScreen.PAUSED };
   }
   if (state.screen === GameScreen.PAUSED) {
-    return { ...state, screen: GameScreen.PLAYING };
+    // Resume to the boss fight when one is in progress (state.boss can't
+    // change while paused — updates are gated on the screen).
+    return { ...state, screen: state.boss ? GameScreen.BOSS_FIGHT : GameScreen.PLAYING };
   }
   return state;
 }
