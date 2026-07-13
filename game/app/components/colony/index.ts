@@ -23,6 +23,17 @@ export {
 } from "./shared/factionLedger";
 export type { FactionRank, KnownFactionId, FactionDef } from "./shared/factionLedger";
 export { derivePowerGrid, powerCapacityOf, powerDemandOf } from "./shared/powerGrid";
+export { HABITAT_CAPACITY_PER_MODULE, habitatCapacity } from "./shared/colonyCatalog";
+export {
+  MISSION_DELIVERY_REASON,
+  deliveryPayloadForPlanet,
+  resolveDeliveryColony,
+  resolveMissionDelivery,
+  missionDeliveryEvent,
+  applyMissionDelivery,
+  deliveryPayloadLabel,
+} from "./shared/missionDelivery";
+export type { MissionDelivery } from "./shared/missionDelivery";
 export {
   assertColonyInvariant,
   assertSaveInvariant,

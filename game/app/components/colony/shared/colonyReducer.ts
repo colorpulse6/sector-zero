@@ -2,6 +2,7 @@ import type { SaveData } from "../../engine/types";
 import type { ColonyEvent } from "./colonyEvents";
 import type { ColonyState } from "./colonyTypes";
 import { rankFromStanding } from "./factionLedger";
+import { habitatCapacity } from "./colonyCatalog";
 
 export function colonyReducer(state: SaveData, event: ColonyEvent): SaveData {
   switch (event.type) {
@@ -123,7 +124,13 @@ function handleBuildingCompleted(
   const nextBuildings = [...colony.buildings];
   nextBuildings[bIdx] = { ...nextBuildings[bIdx], status: "operational", buildProgressCycles: 0 };
   const nextColonies = [...state.colonies];
-  nextColonies[idx] = { ...colony, buildings: nextBuildings };
+  // OW-0: capacity is derived from operational habitats — recompute immediately
+  // so a habitat completing construction houses colonists without waiting a cycle.
+  nextColonies[idx] = {
+    ...colony,
+    buildings: nextBuildings,
+    population: { ...colony.population, capacity: habitatCapacity(nextBuildings) },
+  };
   return { ...state, colonies: nextColonies };
 }
 

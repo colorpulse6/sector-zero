@@ -292,6 +292,7 @@ export const SPRITES = {
   COLONY_WALL_SOLAR: "/sprites/walls/solar.png",
   COLONY_WALL_FARM: "/sprites/walls/farm.png",
   COLONY_WALL_PURIFIER: "/sprites/walls/purifier.png",
+  COLONY_WALL_MINE: "/sprites/walls/mine.png",
   COLONY_WALL_HABITAT: "/sprites/walls/habitat.png",
 
   // Colony Phase 2 — environment tiles (pad/foundation 3D pending floor-casting)

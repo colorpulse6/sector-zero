@@ -69,6 +69,9 @@ import {
   enterColonyExploration,
   stepColonyExploration,
   exitColonyExploration,
+  applyMissionDelivery,
+  resolveMissionDelivery,
+  deliveryPayloadLabel,
   LandingPadExitMenu,
 } from "./colony";
 import type { ColonyEvent, SceneStack } from "./colony";
@@ -432,6 +435,9 @@ export default function Game() {
         }
       }
       newSave = { ...newSave, bestiary: updatedBestiary };
+      // OW-0: planet missions deliver a resource payload to a colony
+      // (the colony on this planet if any, else the player's first colony).
+      newSave = applyMissionDelivery(newSave, activePlanetId).save;
       const cycledSave = advanceWorldCycle(newSave);
       saveSave(cycledSave);
       setSaveData(cycledSave);
@@ -1873,6 +1879,16 @@ export default function Game() {
                 )}
               </div>
             )}
+            {activePlanetId && (() => {
+              // OW-0: preview the colony delivery applied on COMPLETE (every run, not first-completion gated)
+              const delivery = resolveMissionDelivery(activePlanetId, saveData.colonies);
+              if (!delivery) return null;
+              return (
+                <p className="text-sm text-amber-300 mt-2">
+                  {deliveryPayloadLabel(delivery.payload)} &rarr; {delivery.colonyName.toUpperCase()}
+                </p>
+              );
+            })()}
             {activeSpecialMissionId === "kepler-black-box" && gameState.firstPersonState?.objectiveCollected && !saveData.storyItems.includes("kepler-black-box") && (
               <div className="mt-3 space-y-1">
                 <p className="text-sm text-amber-300 font-bold animate-pulse">+ KEPLER BLACK BOX</p>

@@ -6,7 +6,7 @@
 import type { SaveData } from "../../engine/types";
 import { colonyReducer } from "../shared/colonyReducer";
 import { Events } from "../shared/colonyEvents";
-import type { BuildingType } from "../shared/colonyTypes";
+import type { BuildingType, ColonyResources } from "../shared/colonyTypes";
 
 type BuildingSeed = { type: BuildingType; operational: boolean };
 
@@ -16,6 +16,10 @@ export interface ColonyFixture {
   buildings: BuildingSeed[];
   hour: number;
   layoutSeed: number;
+  /** OW-0 stage fields — optional so the original time-of-day fixtures stay untouched. */
+  population?: number;
+  resources?: Partial<ColonyResources>;
+  happiness?: number;
 }
 
 export const COLONY_FIXTURES: ColonyFixture[] = [
@@ -54,6 +58,47 @@ export const COLONY_FIXTURES: ColonyFixture[] = [
     ],
     hour: 6,
     layoutSeed: 7,
+  },
+  {
+    // OW-0 stage seed: a mature, healthy colony — all 5 build-menu types
+    // operational (incl. mine), population at habitat capacity, fat stockpiles.
+    // The 7th building (second solar) keeps the power grid in surplus; the FP
+    // exterior renders the first 6 buildings (assignSlots slices to 6 slots),
+    // so ordering puts the duplicate solar last — every TYPE is still visible.
+    id: "grown",
+    label: "SEED GROWN",
+    buildings: [
+      { type: "solar_array", operational: true },
+      { type: "farm", operational: true },
+      { type: "water_purifier", operational: true },
+      { type: "habitat_module", operational: true },
+      { type: "habitat_module", operational: true },
+      { type: "mine", operational: true },
+      { type: "solar_array", operational: true },
+    ],
+    hour: 12,
+    layoutSeed: 2024,
+    population: 20,   // = 2 habitats × 10 capacity
+    resources: { food: 300, water: 200, metal: 150 },
+    happiness: 85,
+  },
+  {
+    // OW-0 stage seed: everything built and running, but the larders are
+    // nearly empty — the next cycles will tank happiness and shed colonists.
+    id: "strained",
+    label: "SEED STRAINED",
+    buildings: [
+      { type: "solar_array", operational: true },
+      { type: "farm", operational: true },
+      { type: "water_purifier", operational: true },
+      { type: "habitat_module", operational: true },
+      { type: "habitat_module", operational: true },
+    ],
+    hour: 12,
+    layoutSeed: 13,
+    population: 12,
+    resources: { food: 5, water: 3, metal: 40 },
+    happiness: 30,
   },
 ];
 
@@ -100,9 +145,30 @@ export function applyColonyFixture(
       cyclesToBuild: 2,
     }));
     if (b.operational) {
+      // buildingCompleted also recomputes population.capacity (OW-0), so
+      // habitat seeds set real housing without any extra fixture plumbing.
       s = colonyReducer(s, Events.buildingCompleted({ colonyId, buildingId }));
     }
   });
+
+  // OW-0 stage fields — applied through the reducer like everything else.
+  if (fx.resources) {
+    s = colonyReducer(s, Events.resourceChanged({
+      colonyId,
+      delta: fx.resources,
+      reason: "dev_seed",
+    }));
+  }
+  if (fx.population !== undefined || fx.happiness !== undefined) {
+    const seeded = s.colonies.find(c => c.id === colonyId)!;
+    s = colonyReducer(s, Events.cycleAdvanced({
+      colonyId,
+      toCycle: seeded.lastCycleProcessed,  // stage seeds don't advance the clock
+      resourceDelta: {},
+      populationDelta: fx.population ?? 0,
+      happinessAfter: fx.happiness ?? seeded.happiness,
+    }));
+  }
 
   s = { ...s, gameClock: { ...s.gameClock, hour: fx.hour, minute: 0 } };
 

@@ -2,10 +2,11 @@ import type { ColonyState, ColonyResources } from "./colonyTypes";
 import type { SaveData } from "../../engine/types";
 import { derivePowerGrid, powerCapacityOf, powerDemandOf } from "./powerGrid";
 import { runStandardInvariants } from "./colonyAssert";
-import { RESOURCE_PRODUCTION, RESOURCE_UPKEEP } from "./colonyCatalog";
+import { RESOURCE_PRODUCTION, RESOURCE_UPKEEP, habitatCapacity } from "./colonyCatalog";
 
 export function processCycle(colony: ColonyState, toCycle: number): ColonyState {
   let state = colony;
+  state = step0_capacityRecompute(state);
   state = step1_production(state);
   state = step2_populationConsumption(state);
   state = step3_buildingUpkeep(state);
@@ -18,6 +19,19 @@ export function processCycle(colony: ColonyState, toCycle: number): ColonyState 
   state = step9_bountyDecay(state);
   state = step10_finalize(state, toCycle);
   return state;
+}
+
+/**
+ * OW-0: population capacity is DERIVED state — 10 per operational
+ * habitat_module (see habitatCapacity). Recomputed at the top of every cycle
+ * so habitats knocked offline (brownout, damage) actually cost housing.
+ * Recomputed again after step4_5 so a habitat finishing construction this
+ * cycle raises capacity immediately.
+ */
+function step0_capacityRecompute(c: ColonyState): ColonyState {
+  const capacity = habitatCapacity(c.buildings);
+  if (capacity === c.population.capacity) return c;
+  return { ...c, population: { ...c.population, capacity } };
 }
 
 function step1_production(c: ColonyState): ColonyState {
@@ -80,8 +94,13 @@ function step4_populationChange(c: ColonyState): ColonyState {
   const h = c.happiness;
   let newborns = 0;
   let departures = 0;
-  if (h > 60) {
-    newborns = Math.floor(c.population.total * 0.02 * (h / 100));
+  // OW-0 growth fix: the raw formula floor(total * 0.02 * h/100) is 0 for any
+  // population below 63 even at happiness 100 — and colonies found at
+  // population 0, so growth could NEVER start. A happy colony with spare
+  // housing always attracts at least one settler per cycle; the percentage
+  // term takes over once the colony is large.
+  if (h > 60 && c.population.total < c.population.capacity) {
+    newborns = Math.max(1, Math.floor(c.population.total * 0.02 * (h / 100)));
   }
   if (h < 40) {
     departures = Math.floor(c.population.total * 0.05 * ((40 - h) / 40));
@@ -102,7 +121,8 @@ function step4_5_buildingProgress(c: ColonyState): ColonyState {
     }
     return { ...b, buildProgressCycles: next };
   });
-  return { ...c, buildings: nextBuildings };
+  // A habitat that just completed houses colonists immediately (OW-0).
+  return step0_capacityRecompute({ ...c, buildings: nextBuildings });
 }
 
 function step5_happinessRecompute(c: ColonyState): ColonyState {

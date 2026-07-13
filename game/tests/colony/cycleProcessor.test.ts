@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { processCycle } from "../../app/components/colony/shared/cycleProcessor";
-import { makeTestColony } from "./fixtures";
+import { makeTestColony, makeBuilding } from "./fixtures";
 
 test("processCycle step 1: operational farm produces food and water purifier produces water (net of farm upkeep)", () => {
   const before = makeTestColony({
@@ -49,10 +49,17 @@ test("processCycle step 5: happiness recomputed based on state", () => {
 });
 
 test("processCycle step 4: population grows when happiness > 60", () => {
+  // OW-0: capacity is derived from operational habitats, so the colony needs
+  // real housing (2 habitats = 20) for growth to have headroom.
   const before = makeTestColony({
     resources: { food: 100, water: 100, metal: 0, credits: 0 },
     population: { total: 10, capacity: 20, namedCount: 0, growthRate: 0, recentDeaths: [] },
     happiness: 80,
+    buildings: [
+      makeBuilding("solar_array"),
+      makeBuilding("habitat_module"),
+      makeBuilding("habitat_module"),
+    ],
   });
   const after = processCycle(before, 1);
   assert.ok(after.population.total >= 10);
@@ -61,10 +68,14 @@ test("processCycle step 4: population grows when happiness > 60", () => {
 test("processCycle step 4: population departures when happiness < 40", () => {
   // formula: floor(total * 0.05 * ((40 - h) / 40))
   // With total=100, h=20: floor(100 * 0.05 * 20/40) = floor(2.5) = 2 departures.
+  // OW-0: capacity is derived — 10 operational habitats give the 100 housing
+  // this test's population needs (else the capacity clamp, not departures,
+  // would drive the number down).
   const before = makeTestColony({
     resources: { food: 1000, water: 1000, metal: 0, credits: 0 },
     population: { total: 100, capacity: 100, namedCount: 0, growthRate: 0, recentDeaths: [] },
     happiness: 20,
+    buildings: Array.from({ length: 10 }, () => makeBuilding("habitat_module")),
   });
   const after = processCycle(before, 1);
   assert.ok(after.population.total < 100, `expected population < 100, got ${after.population.total}`);
