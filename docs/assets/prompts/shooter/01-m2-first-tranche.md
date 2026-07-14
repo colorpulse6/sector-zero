@@ -114,14 +114,29 @@ production sprite tree.
 ### Bomber
 
 - **Sprite ID:** `SPRITES.ENEMY_BOMBER`
-- **Accepted output identifier/path:** pending
-- **Seed:** pending
+- **Accepted output identifier/path:** built-in image result
+  `019f6093-6ee2-7e32-a1dc-389622647e4f/exec-fa063d3b-e514-403e-8a4e-362d9404491a.png`;
+  production `game/public/sprites/enemies/bomber.png`
+- **Seed:** not exposed by built-in tool
 - **Reference role:** original sprite inspected for semantics and scale only
-- **Generated source dimensions:** pending
-- **Matte:** pending
-- **Iteration notes:** pending
-- **Actual-size verdict:** pending
-- **Rejected candidates:** pending
+- **Generated source dimensions:** 1122x1402 RGB
+- **Matte:** local `remove_chroma_key.py` with border sampling, soft matte,
+  thresholds 12/220, despill, and a one-pixel edge contraction. Sampled key
+  `#03f905`; 912,339 transparent and 5,105 partially transparent source
+  pixels. Output is 1536x1024 sRGBA with a transparent corner and 414x674
+  5%-alpha envelope.
+- **Iteration notes:** Candidate 1 passed the shape gate. The first live check
+  appeared to show green edge spill, so the approved one-pixel contraction was
+  tested. Pixel tracing then proved the 44x56 asset contained zero
+  green-dominant pixels: the live green is the unchanged bio-organic
+  `#44ff66` multiply tint in `drawEnemies`, not chroma contamination. The
+  contracted matte was retained as the more conservative edge result.
+- **Actual-size verdict:** accepted at 44x56 on dark and bright comparison
+  fields, at 96x96 in the Bestiary contract, and live in World 3-3 Solar
+  Storm. The bone ram, furnace sac, and tall impact profile remain distinct
+  during the close attack run; no chroma or white halo was present. Browser
+  console: zero errors and zero warnings.
+- **Rejected candidates:** none; one candidate with two matte passes
 
 ### Gunner
 
