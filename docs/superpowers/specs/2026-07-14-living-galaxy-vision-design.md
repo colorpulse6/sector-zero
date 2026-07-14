@@ -290,6 +290,9 @@ postgame simulation can support the promised continuation.
 
 #### 5.3.2 Slow metamorphosis — DECIDED DIRECTION
 
+Sections 5.3.2 through 5.3.4 apply only after the player voluntarily chooses to join
+the Fold. They do not run in the remain-separate sandbox.
+
 Joining the Fold does not mutate the cast all at once. Transformation unfolds across
 centuries and millennia of galactic time, shaped by exposure, inheritance, technology,
 environment, and political choice.
