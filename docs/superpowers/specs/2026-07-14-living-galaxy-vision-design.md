@@ -389,6 +389,11 @@ choice, skill impression, or short interactive echo. It never exposes an entire 
 The captain cannot freely browse every memory, read all current thoughts, automatically
 discover every secret, or use resonance as a complete archive of objective truth.
 
+Every discovered fragment retains provenance such as its source person, place, event,
+cycle or uncertainty, and discovery context. Persisted provenance keeps reloads
+deterministic and prevents a memory, interpretation, or possible future from silently
+becoming a confirmed physical fact in another screen.
+
 Availability depends on context such as proximity, relationship, exposure, historical
 significance, attunement, consent, resistance, and the condition of the memory. Opening
 or acting on an intimate fragment may affect trust, reputation, politics, or the
@@ -405,6 +410,8 @@ resonant color, shared-memory traces, and competing perspectives.
 The transformation is cumulative and tied to the captain's actual Fold progression.
 It should begin subtly, become unmistakable across centuries, and eventually make the
 interface itself evidence that the player now perceives a more connected universe.
+Interface and character presentation must read the same persisted Fold-branch and
+progression state as the simulation rather than inferring separate local stages.
 
 Legibility and learned controls remain invariant:
 
