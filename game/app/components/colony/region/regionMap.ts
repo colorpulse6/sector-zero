@@ -120,6 +120,7 @@ export function generateRegionMap(planetId: PlanetId, seed: number): RegionMap {
       [nodes[0].id, nodes[2].id],
       [nodes[0].id, nodes[4].id],
       [nodes[1].id, nodes[3].id],
+      [nodes[4].id, nodes[3].id],
       [nodes[2].id, nodes[5].id],
     ],
   };

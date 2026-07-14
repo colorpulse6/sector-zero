@@ -306,13 +306,16 @@ function handlePoiCleared(state: SaveData, p: Extract<ColonyEvent, { type: "colo
   if (!planet) return state;
   const nodeIdx = planet.regionMap.nodes.findIndex(n => n.id === p.regionNodeId);
   if (nodeIdx < 0) return state;
-  const nextNodes = [...planet.regionMap.nodes];
-  nextNodes[nodeIdx] = {
-    ...nextNodes[nodeIdx],
-    intel: "cleared",
-    discovered: true,
-    cleared: true,
-  };
+  const adjacent = new Set<string>();
+  for (const [from, to] of planet.regionMap.edges) {
+    if (from === p.regionNodeId) adjacent.add(to);
+    if (to === p.regionNodeId) adjacent.add(from);
+  }
+  const nextNodes = planet.regionMap.nodes.map((node, index) => {
+    if (index === nodeIdx) return { ...node, intel: "cleared" as const, discovered: true, cleared: true };
+    if (adjacent.has(node.id) && node.intel === "unknown") return { ...node, intel: "rumored" as const, discovered: true };
+    return node;
+  });
   const nextPlanets = state.planets.map(pl =>
     pl.id === colony.planetId
       ? { ...pl, regionMap: { ...pl.regionMap, nodes: nextNodes } }

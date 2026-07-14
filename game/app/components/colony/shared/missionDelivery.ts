@@ -109,6 +109,17 @@ export function applyMissionDelivery(
   return { save: colonyReducer(save, missionDeliveryEvent(delivery)), delivery };
 }
 
+export function applyExplicitMissionDelivery(
+  save: SaveData,
+  colonyId: ColonyId,
+  payload: Partial<ColonyResources>,
+): { save: SaveData; delivery: MissionDelivery | null } {
+  const target = save.colonies.find(colony => colony.id === colonyId);
+  if (!target) return { save, delivery: null };
+  const delivery = { colonyId: target.id, colonyName: target.name, payload };
+  return { save: colonyReducer(save, missionDeliveryEvent(delivery)), delivery };
+}
+
 /** "+80 METAL, +30 FOOD" — display helper for the completion overlay. */
 export function deliveryPayloadLabel(payload: Partial<ColonyResources>): string {
   const parts: string[] = [];
