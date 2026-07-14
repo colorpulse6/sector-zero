@@ -325,6 +325,21 @@ remains: identity, agency, relationships, commitments, private experience, perso
 and the capacity to disagree. The connected layer surrounds and sometimes crosses
 those boundaries without making individuality an illusion.
 
+**Fold connection and the Hollow Mind are not synonymous.** The existing Hollow is a
+pathological civilization produced by traumatic displacement, involuntary fusion,
+weaponization, isolation, and thousands of recursive conflicts. Its statement that the
+Kepler colonists “became one,” and the crew's description of a hive mind, accurately
+describe what happened to that collective. They do not establish that every society
+touching the Fold must lose individuality.
+
+During the opening campaign, the Hollow is humanity's only known example of Fold
+transformation, so characters reasonably mistake its outcome for a universal law. A
+player-created Fold civilization enters the same connected medium with knowledge of
+that catastrophe and may preserve porous individuality through culture, consent,
+technology, institutions, and resistance. Forced or voluntary deep fusion can still
+occur, and a society may still collapse into a Hollow-like collective, but identity
+loss is a contingent danger rather than the Fold's predetermined endpoint.
+
 Shared memory appears as incomplete resonance rather than perfect telepathy:
 
 - far from the Fold's edge, people experience intuition, shared dreams, emotional
