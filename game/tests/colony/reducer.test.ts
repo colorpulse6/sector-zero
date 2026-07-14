@@ -55,6 +55,9 @@ test("colony/founded adds a new colony to save data", () => {
   assert.equal(next.colonies.length, 1);
   assert.equal(next.colonies[0].id, "c1");
   assert.equal(next.colonies[0].name, "Test Colony");
+  assert.deepEqual(next.colonies[0].siteStats, {
+    oreDensity: 50, waterTable: 50, buildableSlots: 6, threat: 50,
+  });
   assert.equal(next.colonies[0].foundingType, "outpost");
   assert.equal(next.colonies[0].tier, 1);
   assert.equal(next.colonies[0].happiness, 50);

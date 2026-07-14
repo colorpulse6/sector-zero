@@ -62,6 +62,10 @@ export type ColonyEvent =
       colonyId: ColonyId;
       regionNodeId: RegionNodeId;
     } }
+  | { type: "colony/regionSurveyed"; payload: {
+      colonyId: ColonyId;
+      regionNodeId: RegionNodeId;
+    } }
   | { type: "colony/shipmentOrdered"; payload: {
       colonyId: ColonyId;
       shipmentId: ShipmentId;
@@ -97,6 +101,8 @@ export const Events = {
     Extract<ColonyEvent, { type: "colony/attackIncoming" }> => ({ type: "colony/attackIncoming", payload }),
   poiCleared: (payload: Extract<ColonyEvent, { type: "colony/poiCleared" }>["payload"]):
     Extract<ColonyEvent, { type: "colony/poiCleared" }> => ({ type: "colony/poiCleared", payload }),
+  regionSurveyed: (payload: Extract<ColonyEvent, { type: "colony/regionSurveyed" }>["payload"]):
+    Extract<ColonyEvent, { type: "colony/regionSurveyed" }> => ({ type: "colony/regionSurveyed", payload }),
   shipmentOrdered: (payload: Extract<ColonyEvent, { type: "colony/shipmentOrdered" }>["payload"]):
     Extract<ColonyEvent, { type: "colony/shipmentOrdered" }> => ({ type: "colony/shipmentOrdered", payload }),
   shipmentArrived: (payload: Extract<ColonyEvent, { type: "colony/shipmentArrived" }>["payload"]):

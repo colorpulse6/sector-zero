@@ -48,6 +48,13 @@ export {
   generateRegionMap,
   neutralSiteStats,
 } from "./region/regionMap";
+export { checkRegionAction, surveyRegionNode } from "./region/siteEconomy";
+export type {
+  RegionAction,
+  RegionActionBlockReason,
+  RegionActionCheck,
+  SurveyRegionResult,
+} from "./region/siteEconomy";
 
 export {
   enterColonyExploration,

@@ -27,6 +27,8 @@ export function colonyReducer(state: SaveData, event: ColonyEvent): SaveData {
       return handleAttackIncoming(state, event.payload);
     case "colony/poiCleared":
       return handlePoiCleared(state, event.payload);
+    case "colony/regionSurveyed":
+      return handleRegionSurveyed(state, event.payload);
     case "colony/shipmentOrdered":
       return handleShipmentOrdered(state, event.payload);
     case "colony/shipmentArrived":
@@ -48,6 +50,13 @@ function handleFounded(
 ): SaveData {
   if (state.colonies.some(c => c.id === p.colonyId)) {
     throw new Error(`[colonyReducer] colony/founded: colony ${p.colonyId} already exists`);
+  }
+  const foundingPlanet = state.planets.find(planet => planet.id === p.planetId);
+  if (foundingPlanet) {
+    const foundingNode = foundingPlanet.regionMap.nodes.find(node => node.id === p.regionNodeId);
+    if (!foundingNode || foundingNode.type !== "colony_site" || foundingNode.intel !== "surveyed") {
+      return state;
+    }
   }
   const newColony: ColonyState = {
     id: p.colonyId,
@@ -73,7 +82,21 @@ function handleFounded(
     layoutSeed: p.layoutSeed,
     founded: { missionCount: p.missionCount, gameClockTick: 0 },
   };
-  return { ...state, colonies: [...state.colonies, newColony] };
+  const colonies = [...state.colonies, newColony];
+  const planets = state.planets.map(planet => {
+    if (planet.id !== p.planetId) return planet;
+    const nodeIdx = planet.regionMap.nodes.findIndex(node => node.id === p.regionNodeId);
+    if (nodeIdx < 0) return planet;
+    const nodes = [...planet.regionMap.nodes];
+    nodes[nodeIdx] = {
+      ...nodes[nodeIdx],
+      intel: "claimed",
+      discovered: true,
+      cleared: true,
+    };
+    return { ...planet, regionMap: { ...planet.regionMap, nodes } };
+  });
+  return { ...state, colonies, planets };
 }
 
 function handleBuildingCommissioned(
@@ -235,6 +258,44 @@ function handlePoiCleared(state: SaveData, p: Extract<ColonyEvent, { type: "colo
       : pl
   );
   return { ...state, planets: nextPlanets };
+}
+
+function handleRegionSurveyed(
+  state: SaveData,
+  p: Extract<ColonyEvent, { type: "colony/regionSurveyed" }>["payload"],
+): SaveData {
+  const colony = state.colonies.find(entry => entry.id === p.colonyId);
+  if (!colony) return state;
+  const planetIdx = state.planets.findIndex(planet => planet.id === colony.planetId);
+  if (planetIdx < 0) return state;
+  const planet = state.planets[planetIdx];
+  const origin = planet.regionMap.nodes.find(node => node.id === colony.regionNodeId);
+  const target = planet.regionMap.nodes.find(node => node.id === p.regionNodeId);
+  if (!origin || origin.intel !== "claimed" || !target || target.intel !== "rumored") {
+    return state;
+  }
+  const isAdjacent = planet.regionMap.edges.some(([from, to]) =>
+    (from === origin.id && to === target.id) || (from === target.id && to === origin.id)
+  );
+  if (!isAdjacent) return state;
+
+  const adjacent = new Set<string>();
+  for (const [from, to] of planet.regionMap.edges) {
+    if (from === p.regionNodeId) adjacent.add(to);
+    if (to === p.regionNodeId) adjacent.add(from);
+  }
+  const nodes = planet.regionMap.nodes.map(node => {
+    if (node.id === p.regionNodeId) {
+      return { ...node, intel: "surveyed" as const, discovered: true, cleared: false };
+    }
+    if (adjacent.has(node.id) && node.intel === "unknown") {
+      return { ...node, intel: "rumored" as const, discovered: true };
+    }
+    return node;
+  });
+  const planets = [...state.planets];
+  planets[planetIdx] = { ...planet, regionMap: { ...planet.regionMap, nodes } };
+  return { ...state, planets };
 }
 
 function handleShipmentOrdered(state: SaveData, p: Extract<ColonyEvent, { type: "colony/shipmentOrdered" }>["payload"]): SaveData {
