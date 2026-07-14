@@ -193,5 +193,31 @@ production sprite tree.
 ## Browser verification
 
 Before and after captures use the DevPanel-enabled production static export at
-480x854. Final results, console evidence, exact comparison commands, and visual
-verdicts are recorded here after all four replacements pass.
+480x854. The final export completed successfully with
+`NEXT_PUBLIC_DEVTOOLS=1 yarn build` before these captures.
+
+| Enemy | Gameplay evidence | Bestiary evidence | Verdict |
+|---|---|---|---|
+| Drone | `after-world-1-4-drone.png` | `after-bestiary-drone.png` | Eight compact cyan-centered orbs remain distinct in the opening V formation. |
+| Gunner | `after-world-1-4-gunner.png`; `after-world-5-4.png` | `after-bestiary-gunner.png` | Squared-U barges remain legible in the five-unit grid and Event Horizon darkness. |
+| Bomber | `after-world-3-3-bomber.png` | `after-bestiary-bomber.png` | Tall bone ram and furnace sac remain visible over Solar Storm's red field. |
+| Swarm | `after-world-8-3-swarm.png` | `after-bestiary-swarm.png` | The orange-edged three-body cluster survives a 28-unit scatter wave. |
+
+All level and Bestiary sessions reported zero browser-console errors and zero
+warnings. The green visible on Bomber is the existing bio-organic multiply
+tint; the accepted 44x56 PNG contains zero green-dominant pixels.
+
+Actual-size sheets are under `actual-size/`. Each sheet is a 2x2 grid with
+before/after on the top dark row and before/after on the bottom bright row.
+Each source was first reduced exactly as the renderer does, then enlarged with
+point filtering only for inspection:
+
+```text
+magick <1536x1024-source> -resize '<gameplay-width>x<gameplay-height>!' <actual.png>
+magick -size <gameplay-width>x<gameplay-height> xc:<field> <actual.png> \
+  -gravity center -composite -filter point -resize '320x320' \
+  -gravity center -background '#111111' -extent 320x320 <panel.png>
+```
+
+No source-code, registration, atlas, frame-count, renderer, hitbox, spawn,
+stat, collision, or balance change was required.
