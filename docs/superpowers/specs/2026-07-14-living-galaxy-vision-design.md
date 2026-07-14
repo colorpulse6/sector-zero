@@ -206,7 +206,8 @@ The system must preserve causal restraint:
 - an anomalous remnant can foreshadow or echo a simulated actor but cannot force that
   actor to develop along one predetermined path;
 - generated evidence derives from durable save history, deterministic seeds, or an
-  explicitly authored possibility set;
+  explicitly authored possibility set; a seed selects possible evidence but never
+  reserves a future actor's identity, allegiance, or development path;
 - discovering a possible future creates pressure, opportunity, or interpretation,
   not an unavoidable prophecy;
 - the current cycle's living House remains a product of current people and events,
@@ -231,7 +232,10 @@ The authored and systemic story protects the central reveal through layers:
 
 Optional content may foreshadow later layers, but it must use uncertainty, incomplete
 context, or alternate interpretations rather than casually spoiling the authored
-revelation.
+revelation. Systemic anomaly generation is gated by the save's current revelation
+layer. Exact House echoes and other unmistakable causal anomalies cannot appear before
+the authored story has established enough context for the player to interpret them
+without preempting the recursive reveal.
 
 ### 5.2 World growth
 
