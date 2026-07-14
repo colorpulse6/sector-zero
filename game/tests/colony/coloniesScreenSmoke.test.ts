@@ -4,6 +4,7 @@ import { renderToString } from "react-dom/server";
 import { createElement } from "react";
 import { ColoniesScreen } from "../../app/components/colony/meta";
 import type { SaveData } from "../../app/components/engine/types";
+import { makeTestColony, makeTestSave } from "./fixtures";
 
 function makeEmptySave(): SaveData {
   return {
@@ -68,4 +69,17 @@ test("ColoniesScreen renders populated state without throwing", () => {
   }));
   assert.ok(html.includes("Ashfall Primary"), "should render colony name");
   assert.ok(html.includes("RETURN TO COCKPIT"), "should render back link");
+});
+
+test("ColoniesScreen exposes every founded colony for selection", () => {
+  const alpha = makeTestColony({ id: "alpha", name: "Alpha Camp", regionNodeId: "ashfall-forward-camp" });
+  const beta = makeTestColony({ id: "beta", name: "Basalt Basin", regionNodeId: "ashfall-basalt-basin" });
+  const html = renderToString(createElement(ColoniesScreen, {
+    save: makeTestSave({ colonies: [alpha, beta] }),
+    onDispatch: () => {},
+    onExit: () => {},
+    onDescend: () => {},
+  }));
+  assert.ok(html.includes("Alpha Camp"));
+  assert.ok(html.includes("Basalt Basin"), "new outposts must be selectable so their landing pads remain reachable");
 });

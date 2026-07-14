@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import type { SaveData } from "../../engine/types";
 import type { ColonyEvent } from "../shared/colonyEvents";
 import { Events } from "../shared/colonyEvents";
@@ -82,9 +82,41 @@ function PopulatedView({
   onDescend?: (colonyId: string) => void;
   onRegionMap?: (colonyId: string) => void;
 }) {
-  const colony = save.colonies[0];
+  const [selectedColonyId, setSelectedColonyId] = useState(save.colonies[0]?.id ?? "");
+  const colony = save.colonies.find(entry => entry.id === selectedColonyId) ?? save.colonies[0];
+  if (!colony) return null;
   return (
     <>
+      {save.colonies.length > 1 && (
+        <div
+          role="tablist"
+          aria-label="Colonies"
+          style={{ display: "flex", gap: 8, padding: "12px 16px", overflowX: "auto", borderBottom: `1px solid ${hudColors.borderHud}` }}
+        >
+          {save.colonies.map(entry => {
+            const selected = entry.id === colony.id;
+            return (
+              <button
+                key={entry.id}
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setSelectedColonyId(entry.id)}
+                style={{
+                  flex: "0 0 auto",
+                  padding: "8px 12px",
+                  border: `1px solid ${selected ? hudColors.cyanAccent : hudColors.borderHud}`,
+                  background: selected ? "rgba(0, 240, 255, 0.08)" : "transparent",
+                  color: selected ? hudColors.cyanAccent : hudColors.textMuted,
+                  fontFamily: hudFonts.mono,
+                  cursor: "pointer",
+                }}
+              >
+                {entry.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <ColonyHeader
         colony={colony}
         missionsSinceStart={save.missionsSinceStart}
