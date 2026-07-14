@@ -85,14 +85,31 @@ production sprite tree.
 ### Swarm
 
 - **Sprite ID:** `SPRITES.ENEMY_SWARM`
-- **Accepted output identifier/path:** pending
-- **Seed:** pending
+- **Accepted output identifier/path:** built-in image result
+  `019f6093-6ee2-7e32-a1dc-389622647e4f/exec-200ab586-2f83-4777-a6f2-277ff615ca87.png`;
+  production `game/public/sprites/enemies/swarm.png`
+- **Seed:** not exposed by built-in tool
 - **Reference role:** original sprite inspected for semantics and scale only
-- **Generated source dimensions:** pending
-- **Matte:** pending
-- **Iteration notes:** pending
-- **Actual-size verdict:** pending
-- **Rejected candidates:** pending
+- **Generated source dimensions:** 1254x1254 RGB
+- **Matte:** local `remove_chroma_key.py` with border sampling, soft matte,
+  thresholds 12/220, and despill. The system `python3` lacked Pillow, so the
+  helper ran with the existing rembg virtualenv interpreter (Pillow 12.3)
+  without invoking rembg. Sampled key `#04f608`; 1,013,621 transparent and
+  4,125 partially transparent source pixels. Output is 1536x1024 sRGBA with a
+  transparent corner and 559x362 5%-alpha envelope.
+- **Iteration notes:** Candidate 2 widened the cluster, simplified each lobe,
+  and raised the scorched-bone edge values after candidate 1 failed the live
+  dark-scene gate. No cropping, stretching, or hand-painted correction was
+  used.
+- **Actual-size verdict:** accepted at 32x32 on dark and bright comparison
+  fields, at 96x96 in the Bestiary contract, and live in World 8-3 Spawning
+  Chamber. The three-body claw cluster remains readable after the wave
+  separates; no green fringe or white halo was visible. Browser console: zero
+  errors and zero warnings.
+- **Rejected candidates:** candidate 1
+  (`/private/tmp/sector-zero-m2-rejected/swarm-candidate-1-source.png`) became
+  a narrow orange streak at 32x32 in World 8-3 and lost its three-lobed role
+  silhouette.
 
 ### Bomber
 
