@@ -406,6 +406,9 @@ Every person retains a protected interior that the Fold cannot make public witho
 their willing participation. Some memories are absolutely inaccessible unless their
 owner chooses to open them. This boundary survives deeper attunement, stronger
 technology, institutional authority, coercion, and the captain's maximum progression.
+Hollow-like forced fusion may damage, trap, or erase a person's ability to express
+their interior, but it cannot convert an unshared sovereign memory into readable
+information. The result is loss, silence, contradiction, or noise rather than access.
 
 Resonance interactions fall into four broad classes:
 
@@ -428,8 +431,9 @@ meaningful resistance or recovery rather than taking control away arbitrarily.
 
 Death does not dissolve memory sovereignty. A person may leave explicit access,
 inheritance, or memorial instructions, but otherwise their protected memories remain
-sealed. An echo may repeat what was already shared; it cannot consent on the dead
-person's behalf or manufacture new private testimony.
+sealed. Posthumous instructions apply only to fragments the person explicitly
+authorized while alive. An echo may repeat what was already shared; it cannot consent
+on the dead person's behalf or manufacture new private testimony.
 
 Quest and campaign continuity cannot depend on violating this boundary. A refused,
 sealed, destroyed, or unavailable memory may close one relationship or source, but
