@@ -165,14 +165,30 @@ production sprite tree.
 ### Drone
 
 - **Sprite ID:** `SPRITES.ENEMY_DRONE`
-- **Accepted output identifier/path:** pending
-- **Seed:** pending
+- **Accepted output identifier/path:** built-in image result
+  `019f6093-6ee2-7e32-a1dc-389622647e4f/exec-619ef135-93bd-4bd5-82d1-5d309a6d54bc.png`;
+  production `game/public/sprites/enemies/drone.png`
+- **Seed:** not exposed by built-in tool
 - **Reference role:** original sprite inspected for semantics and scale only
-- **Generated source dimensions:** pending
-- **Matte:** pending
-- **Iteration notes:** pending
-- **Actual-size verdict:** pending
-- **Rejected candidates:** pending
+- **Generated source dimensions:** 1254x1254 RGB
+- **Matte:** local `remove_chroma_key.py` with border sampling, soft matte,
+  thresholds 12/220, and despill. Sampled key `#04f605`; 874,818 transparent
+  and 3,718 partially transparent source pixels. Output is 1536x1024 sRGBA
+  with a transparent corner and 417x413 5%-alpha envelope.
+- **Iteration notes:** Candidate 1 was rejected before production because its
+  large side vanes collapsed into a Y-shaped fighter at 40x40. Candidate 2
+  made the spherical core at least 70% of the silhouette and reduced the three
+  vanes to short indexing tabs. The first live screenshots missed the fast
+  opening wave; the accepted capture polls DevPanel for a fresh `Enemies: 0`
+  state, then captures 300ms after the eight-Drone spawn.
+- **Actual-size verdict:** accepted at 40x40 on dark and bright comparison
+  fields, at 96x96 in the Bestiary contract, and live in the opening V
+  formation of World 1-4 The Gauntlet. All eight units read as compact
+  cyan-centered armored orbs; no chroma or white halo was visible. Browser
+  console: zero errors and zero warnings.
+- **Rejected candidates:** candidate 1
+  (`/private/tmp/sector-zero-m2-rejected/drone-candidate-1-source.png`) became
+  a winged Y-shaped fighter at 40x40 and lost the required spherical role read.
 
 ## Browser verification
 
