@@ -141,14 +141,26 @@ production sprite tree.
 ### Gunner
 
 - **Sprite ID:** `SPRITES.ENEMY_GUNNER`
-- **Accepted output identifier/path:** pending
-- **Seed:** pending
+- **Accepted output identifier/path:** built-in image result
+  `019f6093-6ee2-7e32-a1dc-389622647e4f/exec-e362a9d3-7d51-40b7-aab1-742fcc5753ab.png`;
+  production `game/public/sprites/enemies/gunner.png`
+- **Seed:** not exposed by built-in tool
 - **Reference role:** original sprite inspected for semantics and scale only
-- **Generated source dimensions:** pending
-- **Matte:** pending
-- **Iteration notes:** pending
-- **Actual-size verdict:** pending
-- **Rejected candidates:** pending
+- **Generated source dimensions:** 1254x1254 RGB
+- **Matte:** local `remove_chroma_key.py` with border sampling, soft matte,
+  thresholds 12/220, and despill. Sampled key `#06f806`; 684,226 transparent
+  and 4,675 partially transparent source pixels. Output is 1536x1024 sRGBA
+  with a transparent corner and 564x548 5%-alpha envelope.
+- **Iteration notes:** Candidate 1 passed without a generation or matte retry.
+  The first browser capture caught the formation partly above the playfield, so
+  the same W1-4 wave was restarted and captured once the five-unit grid had
+  fully entered. No art or renderer adjustment was made.
+- **Actual-size verdict:** accepted at 56x56 on dark and bright comparison
+  fields, at 96x96 in the Bestiary contract, and live in World 1-4 The
+  Gauntlet. The repeated squared-U silhouette, twin cannon shoulders, and red
+  apertures remain legible in the five-unit grid; no chroma or white halo was
+  visible. Browser console: zero errors and zero warnings.
+- **Rejected candidates:** none
 
 ### Drone
 
