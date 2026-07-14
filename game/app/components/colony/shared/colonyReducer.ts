@@ -3,6 +3,7 @@ import type { ColonyEvent } from "./colonyEvents";
 import type { ColonyState } from "./colonyTypes";
 import { rankFromStanding } from "./factionLedger";
 import { habitatCapacity } from "./colonyCatalog";
+import { neutralSiteStats } from "../region/regionMap";
 
 export function colonyReducer(state: SaveData, event: ColonyEvent): SaveData {
   switch (event.type) {
@@ -55,6 +56,7 @@ function handleFounded(
     foundingType: p.foundingType,
     tier: 1,
     regionNodeId: p.regionNodeId,
+    siteStats: neutralSiteStats(),
     population: { total: 0, capacity: 0, namedCount: 0, growthRate: 0, recentDeaths: [] },
     resources: { food: 0, water: 0, metal: 0, credits: 0 },
     buildings: [],
@@ -221,7 +223,12 @@ function handlePoiCleared(state: SaveData, p: Extract<ColonyEvent, { type: "colo
   const nodeIdx = planet.regionMap.nodes.findIndex(n => n.id === p.regionNodeId);
   if (nodeIdx < 0) return state;
   const nextNodes = [...planet.regionMap.nodes];
-  nextNodes[nodeIdx] = { ...nextNodes[nodeIdx], cleared: true };
+  nextNodes[nodeIdx] = {
+    ...nextNodes[nodeIdx],
+    intel: "cleared",
+    discovered: true,
+    cleared: true,
+  };
   const nextPlanets = state.planets.map(pl =>
     pl.id === colony.planetId
       ? { ...pl, regionMap: { ...pl.regionMap, nodes: nextNodes } }

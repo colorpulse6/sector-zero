@@ -214,8 +214,9 @@ test("colony/poiCleared marks node cleared on matching planet", () => {
   save.planets = [{
     id: "ashfall",
     regionMap: {
+      seed: 1,
       nodes: [{
-        id: "rn_ruins", type: "ruins", discovered: true, authored: false,
+        id: "rn_ruins", name: "Ruins", type: "ruins", intel: "rumored", siteStats: null, discovered: true, authored: false,
         templateId: "t1", seed: 1, cleared: false, respawnMissions: null,
         coords: { x: 0, y: 0 }, elevationMetadata: null,
       }],

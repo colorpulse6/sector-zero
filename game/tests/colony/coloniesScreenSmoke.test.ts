@@ -43,6 +43,7 @@ test("ColoniesScreen renders populated state without throwing", () => {
       foundingType: "outpost" as const,
       tier: 1 as const,
       regionNodeId: "ashfall_starter_region",
+      siteStats: { oreDensity: 50, waterTable: 50, buildableSlots: 6, threat: 50 },
       population: { total: 0, capacity: 0, namedCount: 0, growthRate: 0, recentDeaths: [] },
       resources: { food: 0, water: 0, metal: 500, credits: 0 },
       buildings: [],

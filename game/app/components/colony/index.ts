@@ -41,6 +41,13 @@ export {
 } from "./shared/colonyAssert";
 export { Events } from "./shared/colonyEvents";
 export type { ColonyEvent } from "./shared/colonyEvents";
+export {
+  ASHFALL_REGION_SEED,
+  REGION_INTEL_ORDER,
+  createPlanetRegionState,
+  generateRegionMap,
+  neutralSiteStats,
+} from "./region/regionMap";
 
 export {
   enterColonyExploration,
@@ -93,4 +100,6 @@ export type {
   FactionId,
   PlanetBiome,
   PoiType,
+  RegionIntelState,
+  SiteStats,
 } from "./shared/colonyTypes";

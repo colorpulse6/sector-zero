@@ -73,6 +73,15 @@ export type EngineKind =
   | "turret"
   | "shooter";
 
+export type RegionIntelState = "unknown" | "rumored" | "surveyed" | "cleared" | "claimed";
+
+export interface SiteStats {
+  oreDensity: number;                  // 0-100
+  waterTable: number;                  // 0-100
+  buildableSlots: number;              // M1 Ashfall range: 3-6
+  threat: number;                      // 0-100
+}
+
 // ---------------------------------------------------------------------------
 // Section B — Data Model
 // ---------------------------------------------------------------------------
@@ -85,6 +94,7 @@ export interface ColonyState {
   foundingType: "outpost" | "colony" | "stronghold";
   tier: 1 | 2 | 3 | 4;                 // growth ladder
   regionNodeId: RegionNodeId;          // location on planet's node graph
+  siteStats: SiteStats;                // immutable snapshot copied from founding node
 
   population: PopulationState;
   resources: ColonyResources;          // local stockpile (separate from global)
@@ -180,20 +190,26 @@ export interface PlanetState {
 }
 
 export interface RegionMap {
+  seed: number;
   nodes: RegionNode[];
   edges: [RegionNodeId, RegionNodeId][];
 }
 
 export interface RegionNode {
   id: RegionNodeId;
+  name: string;
   type: "colony_site" | "ruins" | "hollow_bunker" | "cave" | "crash_site" |
-        "raider_outpost" | "neutral_village" | "wilderness" | "anomaly" |
+        "wreck" | "raider_outpost" | "neutral_village" | "wilderness" | "anomaly" |
         "abandoned_colony";
-  discovered: boolean;
+  intel: RegionIntelState;
+  siteStats: SiteStats | null;
+  /** @deprecated M1 loads this only for legacy-save migration. */
+  discovered?: boolean;
   authored: boolean;                   // true = hand-built landmark
   templateId: TemplateId | null;
   seed: number;                        // deterministic RNG
-  cleared: boolean;
+  /** @deprecated M1 loads this only for legacy-save migration. */
+  cleared?: boolean;
   respawnMissions: number | null;      // respawn interval in cycles
   coords: { x: number; y: number };
   elevationMetadata: ElevationMeta | null;
