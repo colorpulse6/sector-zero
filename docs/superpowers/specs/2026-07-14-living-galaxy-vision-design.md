@@ -247,6 +247,56 @@ eventually expose deterministic interval advancement:
 
 Exact algorithms belong in a later implementation spec and plan.
 
+### 8.4 Travel fiction — DECIDED
+
+Sector Zero uses grounded, recognizable science-fiction rules with limited invented
+technology. It does not attempt rigorous relativistic physics, and it does not allow
+unrestricted space-opera teleportation.
+
+- Interstellar ships use established near-light transit corridors.
+- The captain and traveling crew use cryosleep plus modest life-extension medicine.
+- Local travel takes hours or days.
+- Interplanetary travel takes weeks or months.
+- Interstellar travel takes external years or decades while the captain experiences
+  weeks or months.
+- Ship, route, and navigation improvements reduce travel time but never erase the
+  strategic meaning of distance.
+- Travel commitments always state both captain time and galactic elapsed time.
+
+The fiction may simplify real physics wherever needed for legibility and consistent
+game rules. Those simplifications must remain stable once established.
+
+### 8.5 Transit interruptions — DECIDED DIRECTION
+
+Cryosleep is not necessarily an uneventful skip. The ship may wake the captain for a
+bounded, significant interruption:
+
+- interception or distress contact;
+- route failure or navigation anomaly;
+- dangerous discovery;
+- crew or cryosystem emergency;
+- a decision that cannot be delegated under the current doctrine.
+
+Interruptions are exceptional story or gameplay events, not repetitive random checks.
+The player sees whether a route has known interruption risk before departure.
+
+### 8.6 Interstellar communication — DECIDED DIRECTION
+
+Communication relays transmit faster than ships but remain delayed and
+bandwidth-limited.
+
+- Reports and compact orders can cross established relay routes.
+- Messages show sent, expected-arrival, and received dates.
+- The captain can alter high-level doctrine or emergency authority remotely when a
+  relay path exists.
+- Distance, damage, hostile control, and undeveloped regions can delay, distort, or
+  prevent contact.
+- Communication does not permit real-time remote colony management.
+
+Orders may arrive after circumstances have changed. Leadership interprets stale orders
+according to its granted authority, personality, faction alignment, and current local
+conditions. This keeps delegation meaningful while allowing limited intervention.
+
 ## 9. Delegation before departure — APPROVED DIRECTION
 
 Before a long journey, the captain prepares settlements to act without them:
@@ -315,21 +365,17 @@ prematurely:
 These questions remain unresolved and must be answered before this spec becomes
 decision-complete:
 
-1. What exact travel fiction preserves the same captain: cryosleep, relativity,
-   medicine, or a combined setting rule?
-2. How does delayed interstellar communication work, and when can the captain intervene
-   remotely?
-3. How deep is generational simulation: aging/succession only, or households,
+1. How deep is generational simulation: aging/succession only, or households,
    children, inheritance, and culture?
-4. What kinds of autonomy doctrines and emergency authority can the player set?
-5. How much uncertainty should a departure forecast expose?
-6. How does the authored campaign query and react to a fully mutable cast?
-7. What happens fictionally when the captain loses a mission or would otherwise die?
-8. How are historical events ranked, compressed, and presented without overwhelming
+2. What kinds of autonomy doctrines and emergency authority can the player set?
+3. How much uncertainty should a departure forecast expose?
+4. How does the authored campaign query and react to a fully mutable cast?
+5. What happens fictionally when the captain loses a mission or would otherwise die?
+6. How are historical events ranked, compressed, and presented without overwhelming
    the player?
-9. What is the first thin vertical slice that proves long-duration catch-up is fun
+7. What is the first thin vertical slice that proves long-duration catch-up is fun
    before M6?
-10. Which data-model foundations should land early in M3/M4, and which must wait?
+8. Which data-model foundations should land early in M3/M4, and which must wait?
 
 ## 14. Explicit non-goals for the current implementation roadmap
 
