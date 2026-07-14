@@ -1,8 +1,8 @@
 # Sector Zero — Living Galaxy Vision
 
-**Date:** 2026-07-14  
-**Status:** IN DISCUSSION — approved decisions are recorded; open decisions remain  
-**Planning horizon:** M3–M6 foundation, then post-M6 eras  
+**Date:** 2026-07-14
+**Status:** IN DISCUSSION — approved decisions are recorded; open decisions remain
+**Planning horizon:** M3–M6 foundation, then post-M6 eras
 **Authority:** Extends `docs/ROADMAP.md`; it does not reorder the active roadmap until
 the design is complete and the roadmap is explicitly updated.
 
@@ -489,7 +489,7 @@ The game tracks two related clocks:
 
 A travel commitment may preview:
 
-> Captain time: 23 days  
+> Captain time: 23 days
 > Galactic time: 14 years, 7 months
 
 ### 8.1 Time scales
