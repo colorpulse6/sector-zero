@@ -135,6 +135,17 @@ export function applyColonyFixture(
     layoutSeed: fx.layoutSeed,
   }));
 
+  // Dev fixtures may deliberately overfill the normal six-slot layout (the
+  // GROWN seed carries a second solar array for a healthy power surplus).
+  // Raise only the fixture snapshot cap so the production fixture remains
+  // valid while real colonies continue to enforce their surveyed site cap.
+  s = {
+    ...s,
+    colonies: s.colonies.map(colony => colony.id === colonyId
+      ? { ...colony, siteStats: { ...colony.siteStats, buildableSlots: Math.max(colony.siteStats.buildableSlots, fx.buildings.length) } }
+      : colony),
+  };
+
   fx.buildings.forEach((b, i) => {
     const buildingId = `${colonyId}_b${i}`;
     s = colonyReducer(s, Events.buildingCommissioned({

@@ -3,6 +3,7 @@ import type { SaveData } from "../../engine/types";
 import { derivePowerGrid, powerCapacityOf, powerDemandOf } from "./powerGrid";
 import { runStandardInvariants } from "./colonyAssert";
 import { RESOURCE_PRODUCTION, RESOURCE_UPKEEP, habitatCapacity } from "./colonyCatalog";
+import { mineOutputForSite } from "../region/siteModifiers";
 
 export function processCycle(colony: ColonyState, toCycle: number): ColonyState {
   let state = colony;
@@ -42,7 +43,7 @@ function step1_production(c: ColonyState): ColonyState {
     if (!prod) continue;
     if (prod.food) delta.food! += prod.food;
     if (prod.water) delta.water! += prod.water;
-    if (prod.metal) delta.metal! += prod.metal;
+    if (prod.metal) delta.metal! += b.type === "mine" ? mineOutputForSite(c, prod.metal) : prod.metal;
     if (prod.credits) delta.credits! += prod.credits;
   }
   return applyResourceDelta(c, delta);
@@ -79,7 +80,7 @@ function step3_buildingUpkeep(c: ColonyState): ColonyState {
       if (shed >= deficit) break;
       if (b.status !== "operational") continue;
       if (powerCapacityOf(b.type) > 0) continue;  // never shed a capacity producer
-      const demand = powerDemandOf(b.type);
+      const demand = powerDemandOf(b.type, state);
       if (demand <= 0) continue;                    // no point shedding a zero-demand building
       const i = nextBuildings.findIndex(nb => nb.id === b.id);
       nextBuildings[i].status = "offline";

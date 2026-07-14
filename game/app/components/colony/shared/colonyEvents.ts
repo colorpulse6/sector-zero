@@ -66,6 +66,13 @@ export type ColonyEvent =
       colonyId: ColonyId;
       regionNodeId: RegionNodeId;
     } }
+  | { type: "colony/regionOutpostFounded"; payload: {
+      originColonyId: ColonyId;
+      colonyId: ColonyId;
+      regionNodeId: RegionNodeId;
+      name: string;
+      cost: Pick<ColonyResources, "metal" | "food" | "water">;
+    } }
   | { type: "colony/shipmentOrdered"; payload: {
       colonyId: ColonyId;
       shipmentId: ShipmentId;
@@ -103,6 +110,8 @@ export const Events = {
     Extract<ColonyEvent, { type: "colony/poiCleared" }> => ({ type: "colony/poiCleared", payload }),
   regionSurveyed: (payload: Extract<ColonyEvent, { type: "colony/regionSurveyed" }>["payload"]):
     Extract<ColonyEvent, { type: "colony/regionSurveyed" }> => ({ type: "colony/regionSurveyed", payload }),
+  regionOutpostFounded: (payload: Extract<ColonyEvent, { type: "colony/regionOutpostFounded" }>["payload"]):
+    Extract<ColonyEvent, { type: "colony/regionOutpostFounded" }> => ({ type: "colony/regionOutpostFounded", payload }),
   shipmentOrdered: (payload: Extract<ColonyEvent, { type: "colony/shipmentOrdered" }>["payload"]):
     Extract<ColonyEvent, { type: "colony/shipmentOrdered" }> => ({ type: "colony/shipmentOrdered", payload }),
   shipmentArrived: (payload: Extract<ColonyEvent, { type: "colony/shipmentArrived" }>["payload"]):

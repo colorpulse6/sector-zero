@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { migrateSave } from "../../app/components/engine/save";
 import { colonyReducer } from "../../app/components/colony/shared/colonyReducer";
 import { Events } from "../../app/components/colony/shared/colonyEvents";
-import { checkRegionAction, surveyRegionNode } from "../../app/components/colony/region/siteEconomy";
+import { checkRegionAction, foundOutpost, OUTPOST_FOUNDING_COST, surveyRegionNode } from "../../app/components/colony/region/siteEconomy";
+import { hasBuildableSlot, mineOutputForSite, purifierPowerPenalty } from "../../app/components/colony/region/siteModifiers";
+import { makeBuilding, makeTestColony } from "./fixtures";
 
 function claimedAshfallSave() {
   const fresh = migrateSave({});
@@ -161,4 +163,46 @@ test("colony/founded cannot forge a claimed origin on a POI", () => {
   assert.strictEqual(forged, before);
   assert.equal(forged.colonies.length, 0);
   assert.equal(intel(forged, "ashfall-cinder-relay"), "rumored");
+});
+
+test("founding is atomic, resource-gated, and snapshots deterministic site stats", () => {
+  let save = claimedAshfallSave();
+  save = colonyReducer(save, Events.resourceChanged({
+    colonyId: "ashfall_primary",
+    delta: { ...OUTPOST_FOUNDING_COST },
+    reason: "test",
+  }));
+  const surveyed = surveyRegionNode(save, "ashfall_primary", "ashfall-basalt-basin");
+  assert.equal(surveyed.ok, true);
+  if (!surveyed.ok) return;
+  const node = surveyed.save.planets[0].regionMap.nodes.find(n => n.id === "ashfall-basalt-basin")!;
+  const founded = foundOutpost(surveyed.save, "ashfall_primary", node.id, "Basalt Basin");
+  assert.equal(founded.ok, true);
+  if (!founded.ok) return;
+  const source = founded.save.colonies.find(c => c.id === "ashfall_primary")!;
+  const outpost = founded.save.colonies.find(c => c.id === founded.colonyId)!;
+  assert.deepEqual(source.resources, { food: 0, water: 0, metal: 0, credits: 0 });
+  assert.deepEqual(outpost.siteStats, node.siteStats);
+  assert.notStrictEqual(outpost.siteStats, node.siteStats);
+  assert.equal(outpost.layoutSeed, node.seed);
+  assert.equal(intel(founded.save, node.id), "claimed");
+  assert.strictEqual(foundOutpost(founded.save, "ashfall_primary", node.id, "Again").save, founded.save);
+});
+
+test("founding with insufficient resources leaves the save untouched", () => {
+  const surveyed = surveyRegionNode(claimedAshfallSave(), "ashfall_primary", "ashfall-basalt-basin");
+  assert.equal(surveyed.ok, true);
+  if (!surveyed.ok) return;
+  const result = foundOutpost(surveyed.save, "ashfall_primary", "ashfall-basalt-basin", "Basalt");
+  assert.equal(result.ok, false);
+  assert.strictEqual(result.save, surveyed.save);
+});
+
+test("site modifiers use ore, water, and buildable slot stats", () => {
+  assert.equal(mineOutputForSite(makeTestColony({ siteStats: { oreDensity: 0, waterTable: 50, buildableSlots: 1, threat: 0 } }), 10), 5);
+  assert.equal(mineOutputForSite(makeTestColony({ siteStats: { oreDensity: 100, waterTable: 50, buildableSlots: 1, threat: 0 } }), 10), 15);
+  assert.equal(purifierPowerPenalty(makeTestColony({ siteStats: { oreDensity: 50, waterTable: 0, buildableSlots: 1, threat: 0 } })), 2);
+  assert.equal(purifierPowerPenalty(makeTestColony({ siteStats: { oreDensity: 50, waterTable: 75, buildableSlots: 1, threat: 0 } })), 0);
+  const full = makeTestColony({ siteStats: { oreDensity: 50, waterTable: 50, buildableSlots: 1, threat: 0 }, buildings: [makeBuilding("mine")] });
+  assert.equal(hasBuildableSlot(full), false);
 });

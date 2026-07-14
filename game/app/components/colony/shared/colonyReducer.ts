@@ -4,6 +4,7 @@ import type { ColonyState } from "./colonyTypes";
 import { rankFromStanding } from "./factionLedger";
 import { habitatCapacity } from "./colonyCatalog";
 import { neutralSiteStats } from "../region/regionMap";
+import { hasBuildableSlot } from "../region/siteModifiers";
 
 export function colonyReducer(state: SaveData, event: ColonyEvent): SaveData {
   switch (event.type) {
@@ -29,6 +30,8 @@ export function colonyReducer(state: SaveData, event: ColonyEvent): SaveData {
       return handlePoiCleared(state, event.payload);
     case "colony/regionSurveyed":
       return handleRegionSurveyed(state, event.payload);
+    case "colony/regionOutpostFounded":
+      return handleRegionOutpostFounded(state, event.payload);
     case "colony/shipmentOrdered":
       return handleShipmentOrdered(state, event.payload);
     case "colony/shipmentArrived":
@@ -65,7 +68,7 @@ function handleFounded(
     foundingType: p.foundingType,
     tier: 1,
     regionNodeId: p.regionNodeId,
-    siteStats: neutralSiteStats(),
+    siteStats: foundingPlanet?.regionMap.nodes.find(node => node.id === p.regionNodeId)?.siteStats ?? neutralSiteStats(),
     population: { total: 0, capacity: 0, namedCount: 0, growthRate: 0, recentDeaths: [] },
     resources: { food: 0, water: 0, metal: 0, credits: 0 },
     buildings: [],
@@ -107,6 +110,11 @@ function handleBuildingCommissioned(
   if (idx < 0) throw new Error(`[colonyReducer] buildingCommissioned: colony ${p.colonyId} not found`);
   const colony = state.colonies[idx];
 
+  if (!hasBuildableSlot(colony)) return state;
+  for (const [key, value] of Object.entries(p.costDeducted)) {
+    if ((value ?? 0) > colony.resources[key as keyof typeof colony.resources]) return state;
+  }
+
   const nextResources = { ...colony.resources };
   for (const [k, v] of Object.entries(p.costDeducted)) {
     if (v === undefined) continue;
@@ -135,6 +143,59 @@ function handleBuildingCommissioned(
   const nextColonies = [...state.colonies];
   nextColonies[idx] = nextColony;
   return { ...state, colonies: nextColonies };
+}
+
+function handleRegionOutpostFounded(
+  state: SaveData,
+  p: Extract<ColonyEvent, { type: "colony/regionOutpostFounded" }>["payload"],
+): SaveData {
+  if (state.colonies.some(colony => colony.id === p.colonyId || colony.regionNodeId === p.regionNodeId)) return state;
+  const originIdx = state.colonies.findIndex(colony => colony.id === p.originColonyId);
+  if (originIdx < 0) return state;
+  const origin = state.colonies[originIdx];
+  const planetIdx = state.planets.findIndex(planet => planet.id === origin.planetId);
+  if (planetIdx < 0) return state;
+  const planet = state.planets[planetIdx];
+  const node = planet.regionMap.nodes.find(entry => entry.id === p.regionNodeId);
+  if (!node || node.type !== "colony_site" || node.intel !== "surveyed" || !node.siteStats) return state;
+  const adjacent = planet.regionMap.edges.some(([from, to]) =>
+    (from === origin.regionNodeId && to === node.id) || (to === origin.regionNodeId && from === node.id));
+  if (!adjacent) return state;
+  if (origin.resources.metal < p.cost.metal || origin.resources.food < p.cost.food || origin.resources.water < p.cost.water) return state;
+
+  const source: ColonyState = {
+    ...origin,
+    resources: {
+      ...origin.resources,
+      metal: origin.resources.metal - p.cost.metal,
+      food: origin.resources.food - p.cost.food,
+      water: origin.resources.water - p.cost.water,
+    },
+  };
+  const outpost: ColonyState = {
+    id: p.colonyId,
+    name: p.name,
+    planetId: origin.planetId,
+    foundingType: "outpost",
+    tier: 1,
+    regionNodeId: node.id,
+    siteStats: { ...node.siteStats },
+    population: { total: 0, capacity: 0, namedCount: 0, growthRate: 0, recentDeaths: [] },
+    resources: { food: 0, water: 0, metal: 0, credits: 0 },
+    buildings: [], districts: [], namedNpcs: [], backgroundColonistDensity: 0,
+    happiness: 50, selfSufficient: false, lastCycleProcessed: state.missionsSinceStart,
+    lastGameClock: { ...state.gameClock }, activeThreats: [], activeQuestlines: [], discoveredPoiIds: [],
+    layoutSeed: node.seed, founded: { missionCount: state.missionsSinceStart, gameClockTick: 0 },
+  };
+  const colonies = [...state.colonies];
+  colonies[originIdx] = source;
+  colonies.push(outpost);
+  const nodes = planet.regionMap.nodes.map(entry => entry.id === node.id
+    ? { ...entry, intel: "claimed" as const, discovered: true, cleared: true }
+    : entry);
+  const planets = [...state.planets];
+  planets[planetIdx] = { ...planet, regionMap: { ...planet.regionMap, nodes } };
+  return { ...state, colonies, planets };
 }
 
 function handleBuildingCompleted(
