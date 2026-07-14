@@ -262,6 +262,109 @@ examples, not yet approved content commitments.
 The campaign may conclude, but its conclusion transforms the sandbox instead of
 ending it.
 
+#### 5.3.1 The campaign threshold — DECIDED
+
+The Hollow confrontation ends the authored opening campaign, not the save. Credits may
+roll, but continuing returns the player to the same captain, crew, colonies, actors,
+and historical galaxy in a new era called **the Long Search**.
+
+The final choice creates two persistent post-campaign directions:
+
+1. **Remain separate:** reject the Fold and continue the living-galaxy sandbox
+   indefinitely. Colonies and world actors operate through delegation and autonomy;
+   the captain may manage, explore, intervene, or follow Horizon investigations
+   without a mandatory final objective.
+2. **Join the Fold:** accept a slow transformation of the captain, crew, and their
+   civilization. The player keeps the same captain and remains in the same save, but
+   eventually experiences the cycle from the defending side.
+
+Neither direction expires after a fixed amount of time. Joining the Fold is voluntary,
+and remaining separate cannot secretly force the player into it later.
+
+The current `ending.ts` presentation is not authoritative for this future postgame
+layer. In particular, the Merge epilogue currently treats the crew's disappearance and
+`CYCLE 4,891 — FINAL` as terminal. When the postgame transition is implemented, that
+ending must be revised so merging begins the Fold era rather than erasing the captain's
+agency. No near-term roadmap milestone should rewrite the existing ending before the
+postgame simulation can support the promised continuation.
+
+#### 5.3.2 Slow metamorphosis — DECIDED DIRECTION
+
+Joining the Fold does not mutate the cast all at once. Transformation unfolds across
+centuries and millennia of galactic time, shaped by exposure, inheritance, technology,
+environment, and political choice.
+
+Early effects may include shared dreams, memory bleed, unfamiliar scars, altered
+senses, resonant machinery, and people remembering places they never visited. Later
+effects may include merged bodies, collective perception, living ships, organic
+infrastructure, new ecologies, and institutions that no longer resemble their human
+origins.
+
+Mutation is simultaneously physical, cultural, political, and mechanical:
+
+- the captain and named crew remain recognizable historical individuals even as their
+  bodies, abilities, relationships, and perception change;
+- households, Great Houses, colonies, and fleets retain stable identities and lineage
+  through their altered forms;
+- transformed capabilities introduce advantages, dependencies, conflicts, and risks
+  rather than functioning as cosmetic skins or automatic moral corruption;
+- some people embrace, resist, regulate, exploit, worship, or flee the process;
+- the civilization continues building, colonizing, trading, governing, fracturing,
+  and creating culture throughout the transformation.
+
+The player is not waiting passively to become the old enemy. They build the strange,
+mutated civilization that the next cycle will mistake for one.
+
+#### 5.3.3 Perspective inversion and the Fold war — DECIDED
+
+Eventually an unknown force enters Sector Zero through the temporal boundary. From
+the Fold civilization's perspective, it is an invasion: scouts trespass in inhabited
+systems, fleets attack defensive organisms, boarding teams strip meaningful ruins,
+and an unidentified captain advances toward the civilization's core.
+
+The invaders are humanity's next cycle.
+
+The player remains the transformed captain and commands the defense. Fold perception,
+temporal interference, and incompatible communication initially conceal the invaders'
+humanity. Familiarity accumulates through play:
+
+- formations resemble tactics the captain once used;
+- weapons and hulls descend from recognizable human technology;
+- intercepted signals resolve into frightened human voices;
+- the hostile flagship resembles the Vanguard;
+- the invading captain believes they are saving humanity from an alien intelligence.
+
+The original campaign roles are now reversed. The player protects the Fold core,
+intercepts scouts, defends transformed colonies, repels boarding parties, and attempts
+to communicate with attackers who interpret Fold contact as manipulation.
+
+Defeating an invasion does not end the Fold era. The same captain may survive repeated
+incursions, continue mutating, and expand the civilization indefinitely. The cycle
+creates pressure and recurring antagonists, not a scheduled loss.
+
+#### 5.3.4 True defeat and perspective succession — DECIDED
+
+A Fold-era captain truly loses only when an invading captain wins the decisive war and
+conquers or destroys the player's final Fold anchor. This cannot occur through an
+offscreen simulation roll, a routine mission failure, or an unavoidable time skip. It
+requires telegraphed deterioration, meaningful recovery opportunities, and a playable
+final conflict.
+
+On true defeat, the player hands the reins to the victor:
+
+- control transfers to the invading captain from the next cycle;
+- the cycle number advances, but the save is not reset;
+- the existing galaxy, chronology, discoveries, ruins, and actor histories persist;
+- the former captain, crew, Houses, colonies, and Fold civilization become historical
+  actors, remnants, survivors, memories, and threats in the victor's world;
+- the new captain begins with an incomplete and distorted understanding of what the
+  player already knows.
+
+This is a genuine loss of the captain's era, not deletion of the player's history.
+The victor may eventually build a civilization, enter the Fold, defend it, and lose to
+another cycle in turn. The recursive structure can therefore continue without a
+conventional terminal game-over.
+
 ### 5.4 Multiplicative-content rule
 
 Every major addition should connect to at least two existing systems and create new
@@ -466,7 +569,8 @@ records are not silently deleted.
 ## 7. The captain — DECIDED
 
 The same captain remains the player's long-term anchor while generations change around
-them.
+them. Control passes to a successor captain only after the player voluntarily joins
+the Fold and later suffers a true, playable Fold-era defeat.
 
 The captain experiences less subjective time than the galaxy during long-distance
 travel through cryosleep, relativistic effects, advanced medicine, or a combination
@@ -477,7 +581,8 @@ This does not make the captain omnipotent or universally beloved. Their prolonge
 presence may make them a founder, myth, relic, threat, or contested political symbol to
 later generations.
 
-The exact fiction of captain defeat, aging, and possible retirement remains open.
+Ordinary defeat, aging, and possible retirement must not silently trigger perspective
+succession. Their exact fiction remains open.
 
 ## 8. Layered galactic time — DECIDED DIRECTION
 
@@ -650,8 +755,8 @@ decision-complete:
 
 1. What exact rules govern household formation, adoption, partnership, inheritance,
    cadet branches, and household dissolution?
-2. How do the existing campaign endings transition into an ongoing same-captain
-   sandbox without weakening either ending's meaning?
+2. What exact telegraphing, recovery window, and final-defense conditions make a true
+   Fold-era defeat fair?
 3. What kinds of autonomy doctrines and emergency authority can the player set?
 4. How much uncertainty should a departure forecast expose?
 5. How does the authored campaign query and react to a fully mutable cast?
@@ -670,6 +775,9 @@ decision-complete:
 - Do not populate the opening galaxy with living precursor empires or ancient Great
   Houses.
 - Do not canonically solve the ultimate origin of the temporal tear.
+- Do not mutate the cast instantaneously when the campaign ends.
+- Do not force a player who remains separate to enter the Fold later.
+- Do not trigger Fold-era defeat or perspective succession offscreen.
 - Do not add generational time jumps to M1–M3 merely because this vision exists.
 - Do not rewrite the current campaign before the continuity substrate is proven.
 - Do not allow long-horizon work to block the playable M2–M5 slices.
