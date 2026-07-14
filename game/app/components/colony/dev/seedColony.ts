@@ -7,6 +7,7 @@ import type { SaveData } from "../../engine/types";
 import { colonyReducer } from "../shared/colonyReducer";
 import { Events } from "../shared/colonyEvents";
 import type { BuildingType, ColonyResources } from "../shared/colonyTypes";
+import { ASHFALL_REGION_SEED, generateRegionMap } from "../region/regionMap";
 
 type BuildingSeed = { type: BuildingType; operational: boolean };
 
@@ -20,6 +21,7 @@ export interface ColonyFixture {
   population?: number;
   resources?: Partial<ColonyResources>;
   happiness?: number;
+  regionIntel?: Record<string, "unknown" | "rumored" | "surveyed" | "cleared" | "claimed">;
 }
 
 export const COLONY_FIXTURES: ColonyFixture[] = [
@@ -100,6 +102,21 @@ export const COLONY_FIXTURES: ColonyFixture[] = [
     resources: { food: 5, water: 3, metal: 40 },
     happiness: 30,
   },
+  {
+    id: "region",
+    label: "SEED REGION",
+    buildings: [],
+    hour: 12,
+    layoutSeed: ASHFALL_REGION_SEED,
+    resources: { food: 250, water: 250, metal: 600 },
+    regionIntel: {
+      "ashfall-cinder-relay": "surveyed",
+      "ashfall-oathbreaker-wreck": "surveyed",
+      "ashfall-glassknife-canyon": "rumored",
+      "ashfall-basalt-basin": "surveyed",
+      "ashfall-ironreach-shelf": "unknown",
+    },
+  },
 ];
 
 const fixtureColonyId = (fx: ColonyFixture): string => `fx_${fx.id}`;
@@ -122,18 +139,54 @@ export function applyColonyFixture(
 
   let s: SaveData = {
     ...save,
-    colonies: save.colonies.filter(c => c.id !== colonyId),
+    colonies: save.colonies.filter(c => c.id !== colonyId && c.regionNodeId !== "ashfall-forward-camp" && (!fx.regionIntel || c.planetId !== "ashfall")),
+    planets: save.planets.map(planet => planet.id !== "ashfall" ? planet : {
+      ...planet,
+      regionMap: {
+        ...planet.regionMap,
+        nodes: planet.regionMap.nodes.map(node => node.id === "ashfall-forward-camp"
+          ? { ...node, intel: "surveyed" as const, discovered: true, cleared: false }
+          : node),
+      },
+    }),
   };
+
+  if (fx.regionIntel) {
+    s = {
+      ...s,
+      planets: s.planets.map(planet => planet.id !== "ashfall" ? planet : {
+        ...planet,
+        regionMap: {
+          ...generateRegionMap("ashfall", ASHFALL_REGION_SEED),
+          nodes: generateRegionMap("ashfall", ASHFALL_REGION_SEED).nodes.map(node => {
+            const intel = fx.regionIntel?.[node.id] ?? node.intel;
+            return { ...node, intel, discovered: intel !== "unknown", cleared: intel === "cleared" || intel === "claimed" };
+          }),
+        },
+      }),
+    };
+  }
 
   s = colonyReducer(s, Events.founded({
     colonyId,
     name: `Seed ${fx.label}`,
     planetId: "ashfall",
     foundingType: "outpost",
-    regionNodeId: "dev_seed_region",
+    regionNodeId: "ashfall-forward-camp",
     missionCount: s.missionsSinceStart,
     layoutSeed: fx.layoutSeed,
   }));
+
+  // Dev fixtures may deliberately overfill the normal six-slot layout (the
+  // GROWN seed carries a second solar array for a healthy power surplus).
+  // Raise only the fixture snapshot cap so the production fixture remains
+  // valid while real colonies continue to enforce their surveyed site cap.
+  s = {
+    ...s,
+    colonies: s.colonies.map(colony => colony.id === colonyId
+      ? { ...colony, siteStats: { ...colony.siteStats, buildableSlots: Math.max(colony.siteStats.buildableSlots, fx.buildings.length) } }
+      : colony),
+  };
 
   fx.buildings.forEach((b, i) => {
     const buildingId = `${colonyId}_b${i}`;

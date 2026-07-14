@@ -5,6 +5,7 @@ import { Events } from "../shared/colonyEvents";
 import { genBuildingId } from "./buildingIdGen";
 import { HABITAT_CAPACITY_PER_MODULE } from "../shared/colonyCatalog";
 import { hudColors, hudFonts, hudSpacing } from "./hudTokens";
+import { hasBuildableSlot } from "../region/siteModifiers";
 
 export interface ColonyCommissionMenuProps {
   colony: ColonyState;
@@ -101,7 +102,7 @@ export function ColonyCommissionMenu({ colony, onDispatch }: ColonyCommissionMen
         gap: hudSpacing.md,
       }}>
         {PHASE_1_BUILD_OPTIONS.map(opt => {
-          const affordable = canAfford(colony, opt.cost);
+          const affordable = canAfford(colony, opt.cost) && hasBuildableSlot(colony);
           return (
             <div
               key={opt.type}

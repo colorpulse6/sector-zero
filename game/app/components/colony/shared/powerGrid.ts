@@ -1,4 +1,5 @@
 import type { ColonyState, PowerGrid, BuildingType } from "./colonyTypes";
+import { purifierPowerPenalty } from "../region/siteModifiers";
 
 // Spec Section E: Survival & Infrastructure building catalog.
 // These are the authoritative Phase 0 values. Later phases may add richer
@@ -33,7 +34,7 @@ export function derivePowerGrid(colony: ColonyState): PowerGrid {
   for (const building of colony.buildings) {
     if (building.status !== "operational") continue;
     capacity += POWER_CAPACITY[building.type] ?? 0;
-    demand += POWER_DEMAND[building.type] ?? 0;
+    demand += powerDemandOf(building.type, colony);
   }
   return { capacity, demand, surplus: capacity - demand };
 }
@@ -42,6 +43,7 @@ export function powerCapacityOf(buildingType: BuildingType): number {
   return POWER_CAPACITY[buildingType] ?? 0;
 }
 
-export function powerDemandOf(buildingType: BuildingType): number {
-  return POWER_DEMAND[buildingType] ?? 0;
+export function powerDemandOf(buildingType: BuildingType, colony?: Pick<ColonyState, "siteStats">): number {
+  const base = POWER_DEMAND[buildingType] ?? 0;
+  return buildingType === "water_purifier" && colony ? base + purifierPowerPenalty(colony) : base;
 }

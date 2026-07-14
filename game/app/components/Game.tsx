@@ -76,6 +76,10 @@ import {
 } from "./colony";
 import type { ColonyEvent, SceneStack } from "./colony";
 import { ColoniesScreen } from "./colony/meta";
+import { PoiOutcomeScreen, RegionMapScreen } from "./colony/meta";
+import { foundOutpost } from "./colony/region/siteEconomy";
+import { dispatchPoi, regionExpeditionRequestId, startRegionExpedition } from "./colony/region/poiDispatcher";
+import { createPoiGameState, preparePoiCompletion, resolvePoiCompletion, type ActivePoiDescriptor, type PendingPoiResolution } from "./colony/region/poiRuntime";
 import { applyColonyFixture, findFixture } from "./colony/dev/seedColony";
 import DevPanel from "./DevPanel";
 import { createGradePass } from "./engine/postFx";
@@ -103,6 +107,17 @@ export default function Game() {
   const [specialPromptChoice, setSpecialPromptChoice] = useState(0);
   const [sceneStack, setSceneStack] = useState<SceneStack | null>(null);
   const [exitMenuOpen, setExitMenuOpen] = useState(false);
+  const [regionMapSurface, setRegionMapSurface] = useState<{ mode: "pad" | "view"; originColonyId: string } | null>(null);
+  const [activePoi, setActivePoi] = useState<ActivePoiDescriptor | null>(null);
+  const [pendingPoiResolution, setPendingPoiResolution] = useState<PendingPoiResolution | null>(null);
+  const [poiOutcomeResolving, setPoiOutcomeResolving] = useState(false);
+  const [poiOutcomeError, setPoiOutcomeError] = useState<string | null>(null);
+  const saveDataRef = useRef(saveData);
+  const expeditionRequestRef = useRef<string | null>(null);
+  const poiCompletionHandledRef = useRef(false);
+  const poiResolutionRef = useRef(false);
+
+  useEffect(() => { saveDataRef.current = saveData; }, [saveData]);
 
   const keysRef = useRef<Keys>({
     left: false,
@@ -257,6 +272,11 @@ export default function Game() {
     setSaveData(loadSave());
     setSceneStack(null);
     setExitMenuOpen(false);
+    expeditionRequestRef.current = null;
+    setRegionMapSurface(null);
+    setActivePoi(null);
+    setPendingPoiResolution(null);
+    setPoiOutcomeError(null);
     resetCockpitKeys();
     audioRef.current?.switchMusic("menu");
   }, []);
@@ -301,6 +321,86 @@ export default function Game() {
     setCockpitState(prev => ({ ...prev, screen: "hub" }));
   }, [saveData, ensureAudio]);
 
+  const handleRegionExpedition = useCallback((kind: "survey" | "poi", targetNodeId: string) => {
+    const surface = regionMapSurface;
+    if (!surface || surface.mode !== "pad" || expeditionRequestRef.current) return;
+    const request = { kind, originColonyId: surface.originColonyId, targetNodeId } as const;
+    expeditionRequestRef.current = regionExpeditionRequestId(request);
+    const result = startRegionExpedition(saveDataRef.current, request, null);
+    if (!result.ok) { expeditionRequestRef.current = null; return; }
+    let poiState: GameState | null = null;
+    if (result.session) {
+      try { poiState = createPoiGameState(result.session, result.save); }
+      catch { expeditionRequestRef.current = null; return; }
+    }
+    try { saveSave(result.save); } catch { expeditionRequestRef.current = null; return; }
+    saveDataRef.current = result.save;
+    setSaveData(result.save);
+    if (!result.session || !poiState) { expeditionRequestRef.current = null; return; }
+    setActivePoi({ originColonyId: surface.originColonyId, session: result.session });
+    poiCompletionHandledRef.current = false;
+    poiResolutionRef.current = false;
+    setPendingPoiResolution(null);
+    setPoiOutcomeError(null);
+    setRegionMapSurface(null);
+    setExitMenuOpen(false);
+    setSceneStack(null);
+    setShowCockpit(false);
+    setShowMap(false);
+    setActivePlanetId(null);
+    setActiveSpecialMissionId(null);
+    setGameState(poiState);
+    expeditionRequestRef.current = null;
+  }, [regionMapSurface]);
+
+  const handleFoundRegionOutpost = useCallback((targetNodeId: string) => {
+    const surface = regionMapSurface;
+    if (!surface || surface.mode !== "pad" || expeditionRequestRef.current) return;
+    expeditionRequestRef.current = `found:${surface.originColonyId}:${targetNodeId}`;
+    const current = saveDataRef.current;
+    const colony = current.colonies.find(c => c.id === surface.originColonyId);
+    const name = current.planets.find(p => p.id === colony?.planetId)?.regionMap.nodes.find(n => n.id === targetNodeId)?.name ?? "Frontier Outpost";
+    const result = foundOutpost(current, surface.originColonyId, targetNodeId, name);
+    if (result.ok) {
+      try { saveSave(result.save); saveDataRef.current = result.save; setSaveData(result.save); }
+      catch { /* leave the current surface intact */ }
+    }
+    expeditionRequestRef.current = null;
+  }, [regionMapSurface]);
+
+  useEffect(() => {
+    if (!activePoi || !gameState || gameState.screen !== GameScreen.LEVEL_COMPLETE || poiCompletionHandledRef.current) return;
+    poiCompletionHandledRef.current = true;
+    const pending = preparePoiCompletion(saveDataRef.current, activePoi, gameState.screen);
+    if (!pending) { setPoiOutcomeError("COMPLETION COULD NOT BE VERIFIED — NO REWARD WAS SAVED"); return; }
+    setPendingPoiResolution(pending);
+  }, [activePoi, gameState?.screen]);
+
+  const handlePoiOutcomeConfirm = useCallback((destinationColonyId: string | null) => {
+    const pending = pendingPoiResolution;
+    if (!pending || poiResolutionRef.current) return;
+    poiResolutionRef.current = true;
+    setPoiOutcomeResolving(true);
+    setPoiOutcomeError(null);
+    const resolved = resolvePoiCompletion(pending, destinationColonyId);
+    if (!resolved.ok) {
+      setPoiOutcomeError(resolved.reason === "destination_missing" ? "DESTINATION UNAVAILABLE" : "OUTCOME CHANGED — RETURN TO HUB");
+      poiResolutionRef.current = false; setPoiOutcomeResolving(false); return;
+    }
+    try {
+      const entered = enterColonyExploration(resolved.save, pending.originColonyId);
+      const base = createGameState(1, 1, resolved.save.upgrades, resolved.save.unlockedEnhancements, resolved.save.pilotLevel, resolved.save.allocatedSkills);
+      saveSave(resolved.save);
+      saveDataRef.current = resolved.save; setSaveData(resolved.save);
+      setSceneStack(entered.sceneStack);
+      setGameState({ ...base, screen: GameScreen.PLAYING, currentMode: "colony-exploration", currentPhase: 0, totalPhases: 1, firstPersonState: entered.firstPersonState, briefingTimer: 0, devInvincible: false });
+      setActivePoi(null); setPendingPoiResolution(null); setPoiOutcomeResolving(false); setExitMenuOpen(false);
+    } catch {
+      setPoiOutcomeError("SAVE FAILED — RETRY DELIVERY");
+      poiResolutionRef.current = false; setPoiOutcomeResolving(false);
+    }
+  }, [pendingPoiResolution]);
+
   useEffect(() => {
     if (shouldPromptKeplerMission) {
       setSpecialPromptChoice(0);
@@ -338,6 +438,16 @@ export default function Game() {
     audio.switchMusic("game");
     if (gameState) {
       updateSectorZeroProfile(gameState.score);
+    }
+    if (activePoi) {
+      const dispatched = dispatchPoi(saveDataRef.current, activePoi.originColonyId, activePoi.session.nodeId);
+      if (dispatched.ok) {
+        setActivePoi({ originColonyId: activePoi.originColonyId, session: dispatched.session });
+        poiCompletionHandledRef.current = false;
+        setPendingPoiResolution(null);
+        setGameState(createPoiGameState(dispatched.session, saveDataRef.current));
+      }
+      return;
     }
     // If we have a checkpoint (multi-phase, not phase 1), restart from checkpoint
     if (gameState?.phaseCheckpoint && gameState.currentPhase > 0) {
@@ -386,7 +496,7 @@ export default function Game() {
     } else {
       setGameState(createGameState(gameState?.currentWorld ?? 1, gameState?.currentLevel ?? 1, saveData.upgrades, saveData.unlockedEnhancements));
     }
-  }, [gameState, activePlanetId, activeSpecialMissionId, ensureAudio, saveData]);
+  }, [gameState, activePlanetId, activeSpecialMissionId, activePoi, ensureAudio, saveData]);
 
   const nextLevel = useCallback((options?: { unlockSpecialMission?: SpecialMissionId; launchSpecialMission?: boolean }) => {
     if (!gameState) return;
@@ -603,7 +713,12 @@ export default function Game() {
         if (!fx) return;
         const { save: seeded, colonyId } = applyColonyFixture(saveData, fx);
         saveSave(seeded);
+        saveDataRef.current = seeded;
         setSaveData(seeded);
+        setActivePoi(null);
+        setPendingPoiResolution(null);
+        setRegionMapSurface(null);
+        setExitMenuOpen(false);
         ensureAudio();
         setShowStartScreen(false);
         setShowMap(false);
@@ -818,6 +933,7 @@ export default function Game() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Colonies screen uses a DOM overlay for input — let the overlay handle keys.
       if (showCockpit && cockpitState.screen === "colonies") return;
+      if (regionMapSurface || pendingPoiResolution) return;
       // Landing-pad exit menu is a DOM overlay on top of canvas — let DOM handle keys.
       if (exitMenuOpen) return;
 
@@ -899,6 +1015,7 @@ export default function Game() {
           } else if (gameState?.screen === GameScreen.GAME_OVER) {
             returnToCockpit();
           } else if (gameState?.screen === GameScreen.LEVEL_COMPLETE) {
+            if (activePoi) return;
             if (shouldPromptKeplerMission) {
               if (specialPromptChoice === 0) {
                 nextLevel({ unlockSpecialMission: "kepler-black-box", launchSpecialMission: true });
@@ -991,7 +1108,7 @@ export default function Game() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen]);
+  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, gameState, openMap, finishIntro, advanceEnding, confirmChoice, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi]);
 
   // Grade-scene menu detection: whenever gameplay isn't the active surface
   // (start screen, intro, cockpit, star map, ending) the grade preset eases
@@ -1367,7 +1484,7 @@ export default function Game() {
       }
 
       // In colony-exploration mode, suppress input when exit menu is open (DOM handles it)
-      const effectiveKeys = (gameState.currentMode === "colony-exploration" && exitMenuOpen)
+      const effectiveKeys = (gameState.currentMode === "colony-exploration" && (exitMenuOpen || regionMapSurface))
         ? { left: false, right: false, up: false, down: false,
             strafeLeft: false, strafeRight: false,
             shoot: false, bomb: false, jump: false }
@@ -1468,7 +1585,7 @@ export default function Game() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameState, showStartScreen, showCockpit, showMap, saveData, sceneStack, exitMenuOpen]);
+  }, [gameState, showStartScreen, showCockpit, showMap, saveData, sceneStack, exitMenuOpen, regionMapSurface]);
 
   // Auto-trigger ending when game engine sets ENDING screen (final boss defeated)
   useEffect(() => {
@@ -1790,7 +1907,7 @@ export default function Game() {
       )}
 
       {/* Level Complete Overlay (boss levels + planet missions) */}
-      {gameState?.screen === GameScreen.LEVEL_COMPLETE && (
+      {gameState?.screen === GameScreen.LEVEL_COMPLETE && !activePoi && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-white">
           <h2
             className="text-4xl font-bold mb-4 tracking-wider"
@@ -2070,6 +2187,7 @@ export default function Game() {
           onDispatch={handleColonyDispatch}
           onExit={handleColoniesExit}
           onDescend={handleDescend}
+          onRegionMap={(colonyId) => setRegionMapSurface({ mode: "view", originColonyId: colonyId })}
         />
       )}
 
@@ -2083,7 +2201,40 @@ export default function Game() {
             returnToCockpit();
           }}
           onStay={() => setExitMenuOpen(false)}
+          onRegionMap={() => {
+            const originColonyId = sceneStack.current.state.colonyContext?.colonyId;
+            if (!originColonyId) return;
+            setExitMenuOpen(false);
+            setRegionMapSurface({ mode: "pad", originColonyId });
+          }}
         />
+      )}
+      {regionMapSurface && (
+        <RegionMapScreen
+          save={saveData}
+          originColonyId={regionMapSurface.originColonyId}
+          mode={regionMapSurface.mode}
+          onClose={() => {
+            const wasPad = regionMapSurface.mode === "pad";
+            setRegionMapSurface(null);
+            if (wasPad) setExitMenuOpen(true);
+          }}
+          onSurvey={(id) => handleRegionExpedition("survey", id)}
+          onTravel={(id) => handleRegionExpedition("poi", id)}
+          onFound={handleFoundRegionOutpost}
+        />
+      )}
+      {pendingPoiResolution && (
+        <PoiOutcomeScreen pending={pendingPoiResolution} colonies={saveData.colonies} resolving={poiOutcomeResolving} error={poiOutcomeError} onConfirm={handlePoiOutcomeConfirm} onHub={returnToCockpit} />
+      )}
+      {activePoi && gameState?.screen === GameScreen.LEVEL_COMPLETE && !pendingPoiResolution && poiOutcomeError && (
+        <div role="dialog" aria-modal="true" aria-label="POI completion error" className="absolute inset-0 z-[1300] flex items-center justify-center bg-black/95 text-white">
+          <div className="max-w-md border border-red-500 p-8 text-center">
+            <h2 className="mb-4 text-xl text-red-400">OUTCOME LOCKED</h2>
+            <p className="mb-6 text-sm">{poiOutcomeError}</p>
+            <button onClick={returnToCockpit} className="border border-cyan-400 px-6 py-3 text-cyan-300">RETURN TO HUB</button>
+          </div>
+        </div>
       )}
     </div>
   );

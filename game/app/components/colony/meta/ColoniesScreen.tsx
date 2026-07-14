@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import type { SaveData } from "../../engine/types";
 import type { ColonyEvent } from "../shared/colonyEvents";
 import { Events } from "../shared/colonyEvents";
@@ -15,9 +15,22 @@ export interface ColoniesScreenProps {
   onDispatch: (event: ColonyEvent) => void;
   onExit: () => void;
   onDescend?: (colonyId: string) => void;
+  onRegionMap?: (colonyId: string) => void;
 }
 
-export function ColoniesScreen({ save, onDispatch, onExit, onDescend }: ColoniesScreenProps) {
+export function bootstrapColonyEvent(save: SaveData): ColonyEvent {
+  return Events.founded({
+    colonyId: "ashfall_primary",
+    name: "Ashfall Primary",
+    planetId: "ashfall",
+    foundingType: "outpost",
+    regionNodeId: "ashfall-forward-camp",
+    missionCount: save.missionsSinceStart,
+    layoutSeed: 42,
+  });
+}
+
+export function ColoniesScreen({ save, onDispatch, onExit, onDescend, onRegionMap }: ColoniesScreenProps) {
   // Escape key to exit
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -31,20 +44,7 @@ export function ColoniesScreen({ save, onDispatch, onExit, onDescend }: Colonies
   }, [onExit]);
 
   const handleFound = () => {
-    onDispatch(Events.founded({
-      colonyId: "ashfall_primary",
-      name: "Ashfall Primary",
-      planetId: "ashfall",
-      foundingType: "outpost",
-      regionNodeId: "ashfall_starter_region",
-      missionCount: save.missionsSinceStart,
-      layoutSeed: 42,
-    }));
-    onDispatch(Events.resourceChanged({
-      colonyId: "ashfall_primary",
-      delta: { metal: 500 },
-      reason: "starter_grant",
-    }));
+    onDispatch(bootstrapColonyEvent(save));
   };
 
   return (
@@ -63,7 +63,7 @@ export function ColoniesScreen({ save, onDispatch, onExit, onDescend }: Colonies
       {save.colonies.length === 0 ? (
         <ColonyEmptyState onFound={handleFound} />
       ) : (
-        <PopulatedView save={save} onDispatch={onDispatch} onExit={onExit} onDescend={onDescend} />
+        <PopulatedView save={save} onDispatch={onDispatch} onExit={onExit} onDescend={onDescend} onRegionMap={onRegionMap} />
       )}
     </div>
   );
@@ -74,21 +74,56 @@ function PopulatedView({
   onDispatch,
   onExit,
   onDescend,
+  onRegionMap,
 }: {
   save: SaveData;
   onDispatch: (event: ColonyEvent) => void;
   onExit: () => void;
   onDescend?: (colonyId: string) => void;
+  onRegionMap?: (colonyId: string) => void;
 }) {
-  const colony = save.colonies[0];
+  const [selectedColonyId, setSelectedColonyId] = useState(save.colonies[0]?.id ?? "");
+  const colony = save.colonies.find(entry => entry.id === selectedColonyId) ?? save.colonies[0];
+  if (!colony) return null;
   return (
     <>
+      {save.colonies.length > 1 && (
+        <div
+          role="tablist"
+          aria-label="Colonies"
+          style={{ display: "flex", gap: 8, padding: "12px 16px", overflowX: "auto", borderBottom: `1px solid ${hudColors.borderHud}` }}
+        >
+          {save.colonies.map(entry => {
+            const selected = entry.id === colony.id;
+            return (
+              <button
+                key={entry.id}
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setSelectedColonyId(entry.id)}
+                style={{
+                  flex: "0 0 auto",
+                  padding: "8px 12px",
+                  border: `1px solid ${selected ? hudColors.cyanAccent : hudColors.borderHud}`,
+                  background: selected ? "rgba(0, 240, 255, 0.08)" : "transparent",
+                  color: selected ? hudColors.cyanAccent : hudColors.textMuted,
+                  fontFamily: hudFonts.mono,
+                  cursor: "pointer",
+                }}
+              >
+                {entry.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <ColonyHeader
         colony={colony}
         missionsSinceStart={save.missionsSinceStart}
         onBack={onExit}
         onDescend={onDescend ? () => onDescend(colony.id) : undefined}
       />
+      {onRegionMap && <div style={{ padding: 16 }}><button onClick={() => onRegionMap(colony.id)}>REGION — VIEW ONLY</button></div>}
       <ColonyResourcePanel colony={colony} />
       <ColonyMetrics colony={colony} />
       <ColonyBuildingsList colony={colony} />

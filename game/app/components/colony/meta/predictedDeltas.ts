@@ -1,5 +1,6 @@
 import { RESOURCE_PRODUCTION, RESOURCE_UPKEEP } from "../shared/colonyCatalog";
 import type { ColonyState } from "../shared/colonyTypes";
+import { mineOutputForSite } from "../region/siteModifiers";
 
 export type StockpileDelta = {
   food: number;
@@ -24,7 +25,7 @@ export function predictedDeltas(colony: ColonyState): StockpileDelta {
     const prod = RESOURCE_PRODUCTION[b.type];
     if (prod?.food) delta.food += prod.food;
     if (prod?.water) delta.water += prod.water;
-    if (prod?.metal) delta.metal += prod.metal;
+    if (prod?.metal) delta.metal += b.type === "mine" ? mineOutputForSite(colony, prod.metal) : prod.metal;
   }
 
   for (const b of colony.buildings) {

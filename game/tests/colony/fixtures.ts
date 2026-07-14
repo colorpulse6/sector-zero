@@ -46,6 +46,7 @@ export function makeTestColony(overrides: Partial<ColonyState> = {}): ColonyStat
     foundingType: "outpost",
     tier: 1,
     regionNodeId: "test-region-node-1",
+    siteStats: { oreDensity: 50, waterTable: 50, buildableSlots: 6, threat: 50 },
     population: {
       total: 0,
       capacity: 0,

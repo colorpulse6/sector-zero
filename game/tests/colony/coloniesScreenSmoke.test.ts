@@ -4,6 +4,7 @@ import { renderToString } from "react-dom/server";
 import { createElement } from "react";
 import { ColoniesScreen } from "../../app/components/colony/meta";
 import type { SaveData } from "../../app/components/engine/types";
+import { makeTestColony, makeTestSave } from "./fixtures";
 
 function makeEmptySave(): SaveData {
   return {
@@ -43,6 +44,7 @@ test("ColoniesScreen renders populated state without throwing", () => {
       foundingType: "outpost" as const,
       tier: 1 as const,
       regionNodeId: "ashfall_starter_region",
+      siteStats: { oreDensity: 50, waterTable: 50, buildableSlots: 6, threat: 50 },
       population: { total: 0, capacity: 0, namedCount: 0, growthRate: 0, recentDeaths: [] },
       resources: { food: 0, water: 0, metal: 500, credits: 0 },
       buildings: [],
@@ -67,4 +69,17 @@ test("ColoniesScreen renders populated state without throwing", () => {
   }));
   assert.ok(html.includes("Ashfall Primary"), "should render colony name");
   assert.ok(html.includes("RETURN TO COCKPIT"), "should render back link");
+});
+
+test("ColoniesScreen exposes every founded colony for selection", () => {
+  const alpha = makeTestColony({ id: "alpha", name: "Alpha Camp", regionNodeId: "ashfall-forward-camp" });
+  const beta = makeTestColony({ id: "beta", name: "Basalt Basin", regionNodeId: "ashfall-basalt-basin" });
+  const html = renderToString(createElement(ColoniesScreen, {
+    save: makeTestSave({ colonies: [alpha, beta] }),
+    onDispatch: () => {},
+    onExit: () => {},
+    onDescend: () => {},
+  }));
+  assert.ok(html.includes("Alpha Camp"));
+  assert.ok(html.includes("Basalt Basin"), "new outposts must be selectable so their landing pads remain reachable");
 });

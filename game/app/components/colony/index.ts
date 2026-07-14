@@ -41,6 +41,23 @@ export {
 } from "./shared/colonyAssert";
 export { Events } from "./shared/colonyEvents";
 export type { ColonyEvent } from "./shared/colonyEvents";
+export {
+  ASHFALL_REGION_SEED,
+  REGION_INTEL_ORDER,
+  createPlanetRegionState,
+  generateRegionMap,
+  neutralSiteStats,
+} from "./region/regionMap";
+export { checkRegionAction, surveyRegionNode } from "./region/siteEconomy";
+export { dispatchPoi, startRegionExpedition } from "./region/poiDispatcher";
+export { createPoiOutcome, confirmPoiOutcome, POI_CARGO } from "./region/poiOutcomes";
+export { createFirstPersonRuinTemplate, createBoardingWreckTemplate, createGroundRunCanyonTemplate } from "./region/poiTemplates";
+export type {
+  RegionAction,
+  RegionActionBlockReason,
+  RegionActionCheck,
+  SurveyRegionResult,
+} from "./region/siteEconomy";
 
 export {
   enterColonyExploration,
@@ -93,4 +110,6 @@ export type {
   FactionId,
   PlanetBiome,
   PoiType,
+  RegionIntelState,
+  SiteStats,
 } from "./shared/colonyTypes";
