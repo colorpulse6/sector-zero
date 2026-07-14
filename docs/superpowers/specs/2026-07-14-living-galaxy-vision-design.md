@@ -400,6 +400,48 @@ or acting on an intimate fragment may affect trust, reputation, politics, or the
 fragment itself. Ambient connection may be unavoidable near the edge, but deliberate
 attention remains a player action rather than a constant forced interruption.
 
+##### Memory sovereignty — DECIDED
+
+Every person retains a protected interior that the Fold cannot make public without
+their willing participation. Some memories are absolutely inaccessible unless their
+owner chooses to open them. This boundary survives deeper attunement, stronger
+technology, institutional authority, coercion, and the captain's maximum progression.
+
+Resonance interactions fall into four broad classes:
+
+1. **Bleed:** an involuntary peripheral fragment escapes through proximity or a
+   significant event. It is brief, incomplete, and not treated as consent to continue.
+2. **Communion:** a person willingly opens a bounded memory or perspective. Consent is
+   scoped to what is offered rather than blanket access to the person.
+3. **Intrusion:** the captain or another actor forces contact with the accessible
+   surface. Intrusion can injure, distort, alert the subject, create false fragments,
+   and produce personal, legal, or political consequences, but it cannot break the
+   sovereign interior.
+4. **Public memory:** a person or institution deliberately contributes a fragment to a
+   memorial, court, archive, House, school, or community commons under stated terms.
+
+Contextual prompts must distinguish these actions and expose known risk before the
+player commits. A refusal is a durable choice, not a temporary lock waiting for a
+higher skill level. The rules are reciprocal: the captain is not metaphysically exempt
+from attempted intrusion, although hostile access must be telegraphed and provide
+meaningful resistance or recovery rather than taking control away arbitrarily.
+
+Death does not dissolve memory sovereignty. A person may leave explicit access,
+inheritance, or memorial instructions, but otherwise their protected memories remain
+sealed. An echo may repeat what was already shared; it cannot consent on the dead
+person's behalf or manufacture new private testimony.
+
+Quest and campaign continuity cannot depend on violating this boundary. A refused,
+sealed, destroyed, or unavailable memory may close one relationship or source, but
+critical information must remain discoverable through physical evidence, witnesses,
+institutions, inference, alternate memories, or a changed quest outcome.
+
+Memory law becomes a source of politics rather than a universal rulebook. Settlements,
+Houses, religions, courts, and Fold cultures may disagree about testimony, warrants,
+inheritance, public archives, edited experience, stolen fragments, and the right to
+remain silent. Regardless of local law, no authority can make the sovereign interior
+technically readable without consent.
+
 ##### Interface metamorphosis — DECIDED DIRECTION
 
 The game's interface changes as the captain changes. The cockpit, reports, maps,
@@ -905,8 +947,8 @@ decision-complete:
    cadet branches, and household dissolution?
 2. What exact telegraphing, recovery window, and final-defense conditions make a true
    Fold-era defeat fair?
-3. What consent, privacy, reputation, inheritance, and governance consequences apply
-   when the captain or an institution accesses shared memory?
+3. What local laws, institutions, reputation effects, and enforcement systems govern
+   bleed, communion, intrusion, public memory, and memory inheritance?
 4. What kinds of autonomy doctrines and emergency authority can the player set?
 5. How much uncertainty should a departure forecast expose?
 6. How does the authored campaign query and react to a fully mutable cast?
@@ -933,6 +975,9 @@ decision-complete:
 - Do not use memory echoes to erase the consequences of death.
 - Do not provide full-mind browsing, universal mind-reading, or a complete objective
   memory archive.
+- Do not bypass a sovereign refusal through a skill upgrade, plot convenience,
+  coercive technology, institutional authority, or the person's death.
+- Do not make critical save continuation depend on violating memory sovereignty.
 - Do not let Fold interface effects obscure critical information or destabilize learned
   controls.
 - Do not apply one uniform mutation appearance to every person or community.
