@@ -99,7 +99,7 @@ test("migrateSave maps legacy discovered and cleared flags to intel without drop
   assert.equal(migrated.planets[0].regionMap.seed, 4107);
   assert.ok(migrated.planets[0].regionMap.nodes.some(entry => entry.id === "ashfall-forward-camp"));
   assert.ok(migrated.planets[0].regionMap.nodes.some(entry => entry.id === "ashfall-oathbreaker-wreck"));
-  assert.equal(migrated.planets[0].regionMap.edges.length, 5);
+  assert.equal(migrated.planets[0].regionMap.edges.length, 6);
 });
 
 test("migrateSave preserves current M1 intel and site stats", () => {

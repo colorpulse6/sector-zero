@@ -3,9 +3,10 @@ import React, { useEffect, useRef } from "react";
 export interface ExitMenuProps {
   onTakeOff: () => void;
   onStay: () => void;
+  onRegionMap?: () => void;
 }
 
-export function LandingPadExitMenu({ onTakeOff, onStay }: ExitMenuProps) {
+export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap }: ExitMenuProps) {
   const takeOffRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { takeOffRef.current?.focus(); }, []);
 
@@ -62,6 +63,7 @@ export function LandingPadExitMenu({ onTakeOff, onStay }: ExitMenuProps) {
         >
           Take Off
         </button>
+        {onRegionMap && <button onClick={onRegionMap} style={{ padding: "12px 24px", background: "rgba(0,240,255,.08)", color: tokens.cyan, border: `1px solid ${tokens.cyan}`, fontFamily: tokens.mono }}>REGION MAP</button>}
         <button
           onClick={onStay}
           style={{
