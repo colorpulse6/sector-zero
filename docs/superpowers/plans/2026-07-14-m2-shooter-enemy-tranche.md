@@ -14,11 +14,11 @@
 
 - Branch: `feat/m2-shooter-enemy-tranche`
 - Worktree: `/private/tmp/sector-zero-m2-shooter`
-- Base: `origin/main` at `0778fa2bcbc90a8a92fa43332f472b939d4bf077`
+- Base: current `origin/main` at `d052814` after the final docs-only rebase
 - Production paths remain `game/public/sprites/enemies/{swarm,bomber,gunner,drone}.png`.
 - Every production source remains 1536x1024 RGBA with one frame.
 
-| Enemy | 5%-alpha envelope | Entity/hitbox | Gameplay render | Bestiary |
+| Enemy | Original max 5%-alpha envelope | Entity/hitbox | Gameplay render | Bestiary |
 |---|---:|---:|---:|---:|
 | Swarm | 559x594 | 24x24 | 32x32 | 96x96 |
 | Bomber | 414x829 | 36x48 | 44x56 | 96x96 |
