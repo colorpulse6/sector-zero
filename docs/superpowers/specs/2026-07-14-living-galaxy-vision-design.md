@@ -366,6 +366,71 @@ Death remains consequential. A person may leave memories, habits, impressions, o
 interactive echo in the connected layer, but an echo is not a complete resurrection
 and cannot be treated as the dead person continuing to make new choices.
 
+##### Captain access to shared memory — DECIDED DIRECTION
+
+The captain accesses resonance through contextual interaction and menu prompts. The
+ability enters ordinary play gradually rather than arriving as one omniscient postgame
+screen.
+
+Possible progression:
+
+1. **Latent:** rare audiovisual cues and optional prompts appear near a highly
+   significant person, place, object, or event.
+2. **Attuned:** a resonance action joins existing interaction menus, and the captain
+   can revisit fragments they have personally encountered.
+3. **Connected:** relevant prompts may appear in dialogue, colony reports, the
+   chronicle, and region or galaxy views. Several fragments may offer conflicting
+   perspectives on the same event.
+4. **Deep Fold:** cross-cycle and shared-memory layers become a normal part of
+   navigation and decision-making, while remaining optional to open and easy to close.
+
+A prompt opens a bounded fragment: an emotion, image, sensory sequence, remembered
+choice, skill impression, or short interactive echo. It never exposes an entire mind.
+The captain cannot freely browse every memory, read all current thoughts, automatically
+discover every secret, or use resonance as a complete archive of objective truth.
+
+Availability depends on context such as proximity, relationship, exposure, historical
+significance, attunement, consent, resistance, and the condition of the memory. Opening
+or acting on an intimate fragment may affect trust, reputation, politics, or the
+fragment itself. Ambient connection may be unavoidable near the edge, but deliberate
+attention remains a player action rather than a constant forced interruption.
+
+##### Interface metamorphosis — DECIDED DIRECTION
+
+The game's interface changes as the captain changes. The cockpit, reports, maps,
+interaction menus, chronicle, and other long-lived surfaces gradually shift from UEC
+instrumentation toward a layered Fold language of organic geometry, temporal overlap,
+resonant color, shared-memory traces, and competing perspectives.
+
+The transformation is cumulative and tied to the captain's actual Fold progression.
+It should begin subtly, become unmistakable across centuries, and eventually make the
+interface itself evidence that the player now perceives a more connected universe.
+
+Legibility and learned controls remain invariant:
+
+- critical information, costs, risks, elapsed time, and consequences remain explicit;
+- primary actions do not move unpredictably merely to make the interface feel alien;
+- memory layers are distinguishable from current physical facts;
+- distortion intensity can be reduced for accessibility without changing world state;
+- the remain-separate branch keeps its appropriate interface and does not inherit Fold
+  treatment merely because the campaign is complete.
+
+##### Visible character metamorphosis — DECIDED DIRECTION
+
+The captain, crew, named NPCs, populations, ships, settlements, and later descendants
+change visibly over long galactic time. Mutation is gradual, uneven, and derived from
+exposure, lineage, environment, technology, personal decisions, and political response.
+
+Every persistent named character retains recognizable anchors such as silhouette,
+voice, palette, insignia, movement, clothing, equipment, or characteristic features.
+Their Fold form should read as the same person transformed by their particular history,
+not a generic monster skin. Different communities may cultivate, conceal, stabilize,
+weaponize, celebrate, or resist visible change.
+
+Appearance progression must agree with the underlying simulation and saved history.
+It cannot change randomly between visits, jump every character to the same final form,
+or imply a stage of transformation the character has not experienced.
+
 #### 5.3.4 The apparent edge of the universe — DECIDED DIRECTION
 
 Sector Zero and the Fold behave as though they approach the end of the universe: a
@@ -833,8 +898,8 @@ decision-complete:
    cadet branches, and household dissolution?
 2. What exact telegraphing, recovery window, and final-defense conditions make a true
    Fold-era defeat fair?
-3. What consent, privacy, access, inheritance, and governance rules apply to shared
-   memory?
+3. What consent, privacy, reputation, inheritance, and governance consequences apply
+   when the captain or an institution accesses shared memory?
 4. What kinds of autonomy doctrines and emergency authority can the player set?
 5. How much uncertainty should a departure forecast expose?
 6. How does the authored campaign query and react to a fully mutable cast?
@@ -859,6 +924,11 @@ decision-complete:
 - Do not turn Fold connection into a uniform hive mind, omniscience, or automatic
   agreement.
 - Do not use memory echoes to erase the consequences of death.
+- Do not provide full-mind browsing, universal mind-reading, or a complete objective
+  memory archive.
+- Do not let Fold interface effects obscure critical information or destabilize learned
+  controls.
+- Do not apply one uniform mutation appearance to every person or community.
 - Do not canonically confirm that the Fold is literally the physical end of the
   universe.
 - Do not add generational time jumps to M1–M3 merely because this vision exists.
