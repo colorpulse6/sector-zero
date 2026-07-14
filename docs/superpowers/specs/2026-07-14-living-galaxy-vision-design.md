@@ -142,6 +142,160 @@ Every major addition should connect to at least two existing systems and create 
 combinations. Weather should affect travel and production, not only visuals. A new
 faction should create people, trade, territory, missions, and political consequences.
 
+### 5.5 Generational population — DECIDED DIRECTION
+
+Generations are present and consequential. The simulation uses different fidelity
+levels so a galaxy-scale save does not require every background citizen to run a daily
+schedule.
+
+**Background cohorts** represent most of a settlement's population:
+
+- children;
+- young adults;
+- working adults;
+- elders;
+- recent arrivals;
+- displaced or transient populations.
+
+Births, aging, deaths, and migration move population between cohorts. Cohorts carry
+settlement-level health, education, culture, employment, and origin information where
+those values affect the simulation.
+
+**Named people** are persistent individuals. A background citizen is promoted to a
+named entity when they become a leader, witness, merchant, guard, criminal, specialist,
+quest participant, important relative, or otherwise story-significant person.
+Promotion is deterministic from the cohort, household, date, and seed so it does not
+invent a contradictory past.
+
+A named person may track:
+
+- birth date, age, origin, and life stage;
+- parents, partners, children, adoption, and household;
+- residence, role, profession, and institutional memberships;
+- relationships, memories, beliefs, and personality;
+- possessions, inheritance, obligations, and debts;
+- injuries, health, disappearance, death, and burial or memorial state;
+- significant-event history and relationship to the captain.
+
+Named people remain individually simulated across distance and time at a fidelity
+appropriate to their current significance.
+
+### 5.6 Households and inheritance — DECIDED DIRECTION
+
+Named family and social households are visible in ordinary play. They are not only
+hidden genealogy data.
+
+Households can:
+
+- share residences, resources, businesses, obligations, and reputations;
+- inherit property, offices, debts, alliances, and enemies;
+- adopt, marry, split, merge, migrate, or form cadet branches;
+- remember how the captain treated earlier generations;
+- sponsor members for offices, professions, or quests;
+- be elevated or disgraced by systemic and authored events.
+
+The player never manages reproduction or pairs colonists for optimization. Family
+formation emerges from the simulation. Inheritance transmits opportunity and
+historical pressure, not identical personalities.
+
+### 5.7 Generational identity and culture — DECIDED DIRECTION
+
+Significant events create generation-level identity:
+
+- Founders' Generation;
+- Children of the Redlung Outbreak;
+- Vulture War Veterans;
+- Glassknife Exodus;
+- First Relay Generation.
+
+These identities affect barks, political attitudes, recruitment, memorials, cultural
+events, and how later generations interpret the captain. A person born after the
+captain departed may know them through family memory, education, monuments,
+propaganda, or grievance rather than direct relationship.
+
+### 5.8 From household to Great House — DECIDED DIRECTION
+
+A household can accumulate enough durable power to become a strategic world actor.
+This is an emergent escalation, not an authored promotion awarded only to designated
+families.
+
+Progression stages:
+
+1. **Household:** a family or bonded social unit with shared local interests.
+2. **Notable house:** controls a business, office, district institution, militia, or
+   culturally important role.
+3. **Planetary house:** holds influence across multiple settlements or regional assets.
+4. **Great House:** maintains independent holdings, diplomacy, armed forces, and a
+   multi-generational agenda.
+5. **Interstellar power:** operates fleets, colonies, routes, and alliances across
+   systems.
+
+Power can accumulate through several domains:
+
+- trade, industry, land, and resource control;
+- military service, militias, fleets, and security contracts;
+- elected, appointed, inherited, or seized political office;
+- science, infrastructure, and control of strategic technology;
+- religion, culture, education, media, and public legitimacy;
+- crime, smuggling, coercion, and captured syndicate networks.
+
+Different foundations produce different behavior. A merchant dynasty should not use
+the same agenda or methods as a military, scientific, popular, or criminal house.
+
+### 5.9 Great Houses as world actors — DECIDED DIRECTION
+
+Great Houses act on the same strategic layer as factions and syndicates. They can:
+
+- acquire, build, contest, or lose holdings;
+- sponsor construction, expeditions, research, and public works;
+- form alliances, trade compacts, protectorates, and rivalries;
+- support candidates, claim offices, influence succession, or attempt coups;
+- build escorts, warships, transports, and eventually interstellar fleets;
+- colonize, blockade, raid, defend, negotiate, defect, or split;
+- offer the captain patronage, joint operations, contracts, threats, and ultimatums;
+- remember treaties and betrayals across generations.
+
+The captain may ally with, protect, weaken, expose, divide, reconcile, or defeat a
+House. Destroying its fleet or seat does not automatically erase its surviving people,
+cadet branches, debts, claims, or allies.
+
+### 5.10 World-actor substrate — APPROVED ARCHITECTURAL DIRECTION
+
+Houses, factions, syndicates, governments, and later polities should share a common
+strategic-actor contract while retaining type-specific rules.
+
+A conceptual actor record needs:
+
+- stable ID, name, origin, type, and founding event;
+- leaders, members, succession, and internal factions;
+- ideology, values, agenda, and risk tolerance;
+- wealth, influence, legitimacy, military strength, and logistics;
+- holdings, routes, fleets, claims, treaties, and enemies;
+- relationship and history with the captain and other actors;
+- current plans, action budget, communication reach, and last-action date;
+- active, dormant, exiled, fractured, dissolved, or historical status.
+
+This shared substrate lets a syndicate legitimize into a ruling House, a House fracture
+into rival actors, a trading family become a faction, or a defeated power survive in
+exile without bespoke systems for every transition.
+
+### 5.11 Infinite-scope controls — DECIDED
+
+The possibility space may be near-infinite, but active simulation and presentation are
+bounded:
+
+- Only significant actors receive high-fidelity strategic turns.
+- Minor or dormant actors advance through coarse aggregated rules.
+- Each actor has a bounded action budget per interval.
+- Promotion to world-actor status requires durable power and narrative significance.
+- Old low-significance activity is compressed into history rather than retained as
+  endless notifications.
+- No power can create an irreversible galaxy monopoly without telegraphing,
+  counter-coalitions, succession risk, internal fracture, or direct captain
+  counterplay.
+- A House may dominate, but its dominance becomes a playable political situation, not
+  a solved simulation.
+
 ## 6. Continuity without immunity — DECIDED
 
 Sector Zero uses full simulation permanence, constrained by world-continuity
@@ -365,17 +519,19 @@ prematurely:
 These questions remain unresolved and must be answered before this spec becomes
 decision-complete:
 
-1. How deep is generational simulation: aging/succession only, or households,
-   children, inheritance, and culture?
-2. What kinds of autonomy doctrines and emergency authority can the player set?
-3. How much uncertainty should a departure forecast expose?
-4. How does the authored campaign query and react to a fully mutable cast?
-5. What happens fictionally when the captain loses a mission or would otherwise die?
-6. How are historical events ranked, compressed, and presented without overwhelming
+1. What exact rules govern household formation, adoption, partnership, inheritance,
+   cadet branches, and household dissolution?
+2. Does the starting galaxy contain authored ancient Great Houses, or should all Houses
+   emerge from the simulation after play begins?
+3. What kinds of autonomy doctrines and emergency authority can the player set?
+4. How much uncertainty should a departure forecast expose?
+5. How does the authored campaign query and react to a fully mutable cast?
+6. What happens fictionally when the captain loses a mission or would otherwise die?
+7. How are historical events ranked, compressed, and presented without overwhelming
    the player?
-7. What is the first thin vertical slice that proves long-duration catch-up is fun
+8. What is the first thin vertical slice that proves long-duration catch-up is fun
    before M6?
-8. Which data-model foundations should land early in M3/M4, and which must wait?
+9. Which data-model foundations should land early in M3/M4, and which must wait?
 
 ## 14. Explicit non-goals for the current implementation roadmap
 
