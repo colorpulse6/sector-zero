@@ -111,6 +111,128 @@ feature islands.
 - **Personal histories:** named colonists, merchants, governors, guards, rivals, and
   crew remember and respond to what happened.
 
+#### 5.1.1 The opening frontier — DECIDED
+
+Sector Zero begins as an uncharted human frontier, not an established political
+galaxy. There are no living ancient empires, authored Great Houses, or functioning
+interstellar civilizations waiting to induct the captain into their existing order.
+
+The starting actors are deliberately limited:
+
+- the Vanguard expedition and its crew;
+- Earth Command and organizations operating from beyond the Aurelia Boundary;
+- isolated frontier camps, survey teams, traders, survivors, and later expeditions;
+- the Hollow and forces initially understood as alien;
+- ruins, wrecks, dormant systems, automated defenses, and fragmentary signals.
+
+The galaxy is **uncharted, not untouched**. Permanent human politics inside Sector Zero
+emerge during play. Settlements founded in the current save produce the households,
+institutions, factions, polities, and eventual Great Houses that populate its future.
+
+#### 5.1.2 Temporal archaeology — DECIDED DIRECTION
+
+The ruins form a **graveyard of futures**. What first appears to be evidence of one or
+more ancient alien civilizations is progressively revealed to be largely human,
+Hollow-derived, or displaced through the temporal loop.
+
+Remnants may have several observable provenances:
+
+1. **Kepler remnants:** settlements and vessels created by the lost Kepler colony
+   fleet after it entered the tear and emerged in Sector Zero's past.
+2. **Deep-time human remnants:** cultures descended from those colonists across
+   centuries or millennia of subjective history.
+3. **Loop echoes:** wrecks, facilities, recordings, or alternate outcomes left by
+   previous Vanguard cycles.
+4. **Hollow memory architecture:** physical spaces and machines grown from distorted
+   human memories, identities, and technologies.
+5. **Causal anomalies:** remnants bearing names, symbols, relationships, or technical
+   ideas associated with civilizations that have not yet arisen in the current cycle.
+6. **Origin-unknown remnants:** evidence that supports multiple interpretations and
+   cannot be assigned a final provenance.
+
+These categories describe authoring and simulation truth; the player does not receive
+clean labels in advance. Classification is an investigative process, and some sites
+remain disputed forever.
+
+This direction extends rather than replaces the existing campaign canon: Kepler was
+displaced into the past, the Hollow is human-derived, Vanguard has repeated the cycle,
+and prior iterations can leave recognizable evidence. It must not be retconned into a
+conventional conflict with a populated alien empire.
+
+#### 5.1.3 A mystery with no final bottom — DECIDED
+
+The campaign may answer **what the apparent alien force is**. It does not answer
+**what ultimately caused the tear**.
+
+The tear may have a genuinely nonhuman origin, may be a natural phenomenon, may be
+created by humanity in an unreachable causal future, or may have no meaningful first
+cause inside the loop. The game never canonically confirms or disproves these
+possibilities. No codex entry, procedural event, expansion, or final encounter may
+reduce the ultimate origin to a solved precursor species or singular inventor.
+
+This is deliberate negative space, not an absent ending. Individual expeditions still
+produce concrete answers, usable discoveries, changed relationships, world state, and
+new questions. The player can learn how a ruin operated, who inhabited it, which loop
+it may belong to, and what consequence it has now without learning why time itself was
+first torn.
+
+Clues follow four rules:
+
+- every major discovery resolves at least one local question;
+- competing origin theories remain supportable but incomplete;
+- later evidence may reinterpret an earlier conclusion without declaring all prior
+  investigation meaningless;
+- the deepest ambiguity concerns the tear's origin, not basic objectives or ordinary
+  cause and effect.
+
+The mystery therefore remains explorable for the full life of an open-world save
+without becoming a perpetually deferred answer to the main campaign.
+
+#### 5.1.4 Emergent civilizations as loop evidence — DECIDED DIRECTION
+
+Great Houses and other interstellar powers arise from the current simulation, but
+temporal recursion allows their possible remnants to appear out of chronological
+order. A captain may discover an ancient structure carrying the emblem of a House
+that formed only decades earlier, or one that has not yet formed in the current save.
+
+Such evidence may indicate an earlier loop, a displaced future, a Hollow
+reconstruction, a recurring social pattern, or a future the player can still prevent.
+The game does not automatically choose one explanation. These anomalies turn the
+player's generated history into material for future exploration and make the living
+galaxy part of the central mystery rather than disconnected post-campaign content.
+
+The system must preserve causal restraint:
+
+- an anomalous remnant can foreshadow or echo a simulated actor but cannot force that
+  actor to develop along one predetermined path;
+- generated evidence derives from durable save history, deterministic seeds, or an
+  explicitly authored possibility set;
+- discovering a possible future creates pressure, opportunity, or interpretation,
+  not an unavoidable prophecy;
+- the current cycle's living House remains a product of current people and events,
+  not a puppet of its ruins.
+
+#### 5.1.5 Revelation ladder — DECIDED DIRECTION
+
+The authored and systemic story protects the central reveal through layers:
+
+1. **Alien frontier:** Sector Zero appears empty except for hostile forces and
+   incomprehensible ruins.
+2. **Uncomfortable familiarity:** materials, proportions, tactics, language, and
+   machine logic suggest human connections.
+3. **Kepler truth:** the lost colonists entered Sector Zero's past and became part of
+   the history being excavated.
+4. **Recursive truth:** Vanguard has crossed this territory in prior cycles and helped
+   create the enemy it was sent to destroy.
+5. **Living-galaxy truth:** civilizations founded during play may also leave echoes
+   elsewhere in the loop.
+6. **Permanent horizon:** the cause of the tear remains beyond proof even as the
+   captain continues to investigate it.
+
+Optional content may foreshadow later layers, but it must use uncertainty, incomplete
+context, or alternate interpretations rather than casually spoiling the authored
+revelation.
+
 ### 5.2 World growth
 
 1. One outpost becomes a network of settlements.
@@ -121,7 +243,7 @@ feature islands.
 
 Possible later planetary rules include heat infrastructure on frozen worlds, floating
 settlements on ocean worlds, mutation on infected worlds, pollution and labor conflict
-on industrial worlds, and destabilizing technology on ancient worlds. These are
+on industrial worlds, and destabilizing technology on ruin-dense worlds. These are
 examples, not yet approved content commitments.
 
 ### 5.3 Long-term eras
@@ -217,7 +339,10 @@ propaganda, or grievance rather than direct relationship.
 
 A household can accumulate enough durable power to become a strategic world actor.
 This is an emergent escalation, not an authored promotion awarded only to designated
-families.
+families. No Great House exists inside Sector Zero at the start of the game; every
+living House encountered there descends from people and institutions established
+during the current save. Temporally displaced ruins may imply other iterations of a
+House, but they are evidence and possibility rather than a pre-existing living polity.
 
 Progression stages:
 
@@ -521,8 +646,8 @@ decision-complete:
 
 1. What exact rules govern household formation, adoption, partnership, inheritance,
    cadet branches, and household dissolution?
-2. Does the starting galaxy contain authored ancient Great Houses, or should all Houses
-   emerge from the simulation after play begins?
+2. How do the existing campaign endings transition into an ongoing same-captain
+   sandbox without weakening either ending's meaning?
 3. What kinds of autonomy doctrines and emergency authority can the player set?
 4. How much uncertainty should a departure forecast expose?
 5. How does the authored campaign query and react to a fully mutable cast?
@@ -538,6 +663,9 @@ decision-complete:
 - Do not add real-time background simulation while the game is closed.
 - Do not simulate every unnamed colonist as an individual.
 - Do not implement literal relativistic physics.
+- Do not populate the opening galaxy with living precursor empires or ancient Great
+  Houses.
+- Do not canonically solve the ultimate origin of the temporal tear.
 - Do not add generational time jumps to M1–M3 merely because this vision exists.
 - Do not rewrite the current campaign before the continuity substrate is proven.
 - Do not allow long-horizon work to block the playable M2–M5 slices.
