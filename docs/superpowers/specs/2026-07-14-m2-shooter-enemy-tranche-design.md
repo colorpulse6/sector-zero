@@ -7,8 +7,8 @@
 
 Begin M2 "The Look" with four high-visibility vertical-shooter enemy
 replacements that are clearly more readable and more distinctive at their real
-24-48 px draw sizes, without changing gameplay, sprite registration, asset
-geometry, or rendering behavior.
+32-56 px gameplay render sizes, without changing gameplay, sprite registration,
+asset geometry, or rendering behavior.
 
 This is a quality-controlled pilot tranche. It does not establish a mandate
 that vertical-shooter art must look like first-person DOOM art. For these
@@ -21,15 +21,21 @@ Selection is based on explicit authored spawn counts in `ALL_LEVELS` and
 `PLANET_LEVELS`, not intuition or file-name frequency. Conditional boss adds
 reinforce the chosen set and do not change the selection boundary.
 
-| Enemy | Campaign spawns | Planet spawns | Total | Runtime draw size |
-|---|---:|---:|---:|---:|
-| Swarm | 549 | 38 | 587 | 24x24 px |
-| Bomber | 447 | 51 | 498 | 36x48 px |
-| Gunner | 397 | 67 | 464 | 48x48 px |
-| Drone | 374 | 76 | 450 | 32x32 px |
+| Enemy | Campaign spawns | Planet spawns | Total | Entity/hitbox | Gameplay render rectangle |
+|---|---:|---:|---:|---:|---:|
+| Swarm | 549 | 38 | 587 | 24x24 px | 32x32 px |
+| Bomber | 447 | 51 | 498 | 36x48 px | 44x56 px |
+| Gunner | 397 | 67 | 464 | 48x48 px | 56x56 px |
+| Drone | 374 | 76 | 450 | 32x32 px | 40x40 px |
 
 The next-highest authored total is Cloaker at 403, leaving a clear boundary
 below the selected four.
+
+`drawEnemies` expands the entity rectangle by four pixels on every side when it
+draws the sprite; the actual-size quality gate uses the gameplay render
+rectangle, never the smaller entity/hitbox dimensions. The Bestiary separately
+draws the same source paths in a 96x96 square and is a required enlarged-use
+check.
 
 All four current files are inspected single-frame RGBA billboards, not atlases.
 Each production source canvas is 1536x1024 px and is registered at its existing
@@ -41,17 +47,18 @@ The four replacements must not collapse into variations of the current narrow
 arrowhead silhouette.
 
 - **Swarm:** a compact cluster of three hooked bio-organic attack organisms
-  that reads as one serrated mass at 24x24. It is a hell-corruption/swarm
-  register asset, fast and numerous rather than individually imposing.
+  that reads as one serrated mass at its 32x32 render size. It is a
+  hell-corruption/swarm register asset, fast and numerous rather than
+  individually imposing.
 - **Bomber:** a heavy, bulbous hell-corrupted breaching torpedo with a bright
   furnace sac and an armored ram. Its mass and forward momentum must read at
-  36x48 without looking like the Swarm.
+  its 44x56 render size without looking like the Swarm.
 - **Gunner:** a wide, square industrial weapons barge with twin oversized
   cannon shoulders and restrained amber emissives. It is the armored
-  tech-base silhouette and must feel slow, stable, and dangerous at 48x48.
+  tech-base silhouette and must feel slow, stable, and dangerous at 56x56.
 - **Drone:** a compact spherical tech drone with three stabilizer vanes and one
   cold cyan sensor. It must remain visually distinct from the broad Gunner at
-  32x32.
+  its 40x40 render size.
 
 No humanoids are introduced. Tech-base and hell-corruption registers remain
 visibly distinct.
@@ -60,7 +67,7 @@ visibly distinct.
 
 When goals compete, use this order:
 
-1. silhouette readability at the actual runtime draw size;
+1. silhouette readability at the actual gameplay render size;
 2. enemy role and bestiary semantics;
 3. distinct tech-base versus bio-organic/hell register;
 4. cohesion with Sector Zero's desaturated industrial palette and emissive
@@ -82,7 +89,8 @@ shadow, reflection, gradient, texture, or green in the subject.
 For each enemy:
 
 1. inspect and record the original path, dimensions, alpha, registration,
-   runtime draw size, and representative levels;
+   entity/hitbox dimensions, gameplay render rectangle, Bestiary size, and
+   representative levels;
 2. generate one strong canonical candidate using the asset-specific prompt plus
    the authoritative suffixes;
 3. self-reject and regenerate with one targeted correction when the result is
@@ -142,7 +150,8 @@ Every accepted replacement must pass all of these gates:
 - no text, logo, watermark, pixel-art treatment, cartoon outline, or saturated
   painted armor;
 - no stretching or crop that changes the enemy's top-down gameplay footprint;
-- recognizable as its own enemy at the runtime draw size;
+- recognizable as its own enemy at the gameplay render size and in the 96x96
+  Bestiary view;
 - clearly distinct from the other three silhouettes;
 - clearly better than the original in a real game scene, not only when viewed
   at source resolution.
@@ -161,9 +170,9 @@ Playtest the replacements in authored levels where they are heavily used:
 - dark-scene cross-check: World 5-4, **Event Horizon**.
 
 Inspect movement, overlap, class tinting, weapon effects, bright backgrounds,
-crushed dark scenes, emissive readability, and edge halos. Capture before and
-after screenshots at the actual 480x854 game scale and confirm the browser
-console has no new errors.
+crushed dark scenes, emissive readability, edge halos, and the shared 96x96
+Bestiary presentation. Capture before and after screenshots at the actual
+480x854 game scale and confirm the browser console has no new errors.
 
 ## Repository and verification contract
 
