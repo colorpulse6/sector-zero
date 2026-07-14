@@ -2227,6 +2227,15 @@ export default function Game() {
       {pendingPoiResolution && (
         <PoiOutcomeScreen pending={pendingPoiResolution} colonies={saveData.colonies} resolving={poiOutcomeResolving} error={poiOutcomeError} onConfirm={handlePoiOutcomeConfirm} onHub={returnToCockpit} />
       )}
+      {activePoi && gameState?.screen === GameScreen.LEVEL_COMPLETE && !pendingPoiResolution && poiOutcomeError && (
+        <div role="dialog" aria-modal="true" aria-label="POI completion error" className="absolute inset-0 z-[1300] flex items-center justify-center bg-black/95 text-white">
+          <div className="max-w-md border border-red-500 p-8 text-center">
+            <h2 className="mb-4 text-xl text-red-400">OUTCOME LOCKED</h2>
+            <p className="mb-6 text-sm">{poiOutcomeError}</p>
+            <button onClick={returnToCockpit} className="border border-cyan-400 px-6 py-3 text-cyan-300">RETURN TO HUB</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
