@@ -1,6 +1,6 @@
 # Region Map Selection UX
 
-**Date:** 2026-07-14  
+**Date:** 2026-07-14
 **Status:** Approved in conversation
 
 ## Problem
