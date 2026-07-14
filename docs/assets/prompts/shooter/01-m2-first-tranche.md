@@ -64,7 +64,8 @@ fidelity. Originals are semantic references only, not silhouettes to copy.
 
 ## Pre-change baseline
 
-Run from `game/` on `c2642d1` before production sprite changes:
+Run from `game/` on `a0cfb7e` before production sprite changes (rebased onto
+the current `origin/main`):
 
 | Gate | Result |
 |---|---|
