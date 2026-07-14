@@ -257,18 +257,54 @@ examples, not yet approved content commitments.
 - **Crisis Era:** decay, infestation, syndicates, and defensive wars.
 - **Federation Era:** multiple colonies, routes, delegation, and alliances.
 - **Galactic Era:** distant systems, long travel, generations, and territorial powers.
-- **Legacy Era:** the galaxy visibly embodies the complete history of the save.
+- **Legacy Civilization Era:** the galaxy visibly embodies the save's history through
+  mature settlements, Great Houses, fleets, cultures, ruins, and interstellar powers.
+- **Fold Era (optional):** a mature civilization voluntarily binds itself to the Fold
+  and begins changing across centuries and millennia.
+- **Cycle Era (optional):** the transformed civilization confronts humanity's next
+  incursion and may eventually pass the perspective to its victor.
 
 The campaign may conclude, but its conclusion transforms the sandbox instead of
-ending it.
+ending it. These are descriptive eras, not a mandatory progression track. A save may
+remain in the Settlement, Galactic, or Legacy Civilization Era indefinitely.
 
-#### 5.3.1 The campaign threshold — DECIDED
+#### 5.3.1 The campaign, civilization, and Fold thresholds — DECIDED
 
 The Hollow confrontation ends the authored opening campaign, not the save. Credits may
 roll, but continuing returns the player to the same captain, crew, colonies, actors,
-and historical galaxy in a new era called **the Long Search**.
+and historical galaxy in a new era called **the Long Search**. This begins the
+civilization-scale game; it does not automatically begin Fold metamorphosis or present
+an immediate demand to join the Fold.
 
-The final choice creates two persistent post-campaign directions:
+The long-form chronology is:
+
+1. **Opening campaign and frontier:** the captain fights the apparent alien threat,
+   enters dangerous Fold space, uncovers the recursive truth, and establishes the first
+   colonies.
+2. **Living civilization:** the player develops inhabited hubs, survives decay and
+   political crises, builds relationships and institutions, and expands across several
+   colonies. Generations, households, factions, and Great Houses grow from the people
+   who actually lived in the save.
+3. **Legacy civilization and the Long Search:** settlements become interstellar
+   societies with their own fleets, cultures, alliances, enemies, ruins, and competing
+   interpretations of the tear. The captain can explore and govern this open-ended era
+   for as long as the player wants.
+4. **Fold Threshold:** only after a mature civilization exists does an optional,
+   explicit, consequential opportunity arise to bind the captain's civilization to the
+   Fold. Exact unlock conditions belong to a later design; they must express lived
+   history and civilizational maturity rather than a single resource total or campaign
+   completion flag.
+5. **Fold and Cycle Eras:** choosing to join begins the slow metamorphosis, connected
+   memory, interface changes, transformed civilization, and eventual next-cycle war
+   described below.
+
+The campaign's existing location called **the Fold** and the late-game choice to
+**join the Fold** are different thresholds. The former means reaching and surviving a
+physical-temporal region during the authored story. The latter means voluntarily
+binding a mature civilization to the connected medium. Merely entering the region,
+defeating the Hollow, or finishing the campaign cannot trigger civilizational mutation.
+
+At the late Fold Threshold, the player chooses between two persistent directions:
 
 1. **Remain separate:** reject the Fold and continue the living-galaxy sandbox
    indefinitely. Colonies and world actors operate through delegation and autonomy;
@@ -279,7 +315,10 @@ The final choice creates two persistent post-campaign directions:
    eventually experiences the cycle from the defending side.
 
 Neither direction expires after a fixed amount of time. Joining the Fold is voluntary,
-and remaining separate cannot secretly force the player into it later.
+and remaining separate cannot secretly force the player into it later. The pre-Fold
+civilization game is not a prologue to rush through: it is a complete, indefinitely
+playable form of Sector Zero and must be deep enough to justify what the player may
+later transform or defend.
 
 The current `ending.ts` presentation is not authoritative for this future postgame
 layer. In particular, the Merge epilogue currently treats the crew's disappearance and
@@ -290,8 +329,10 @@ postgame simulation can support the promised continuation.
 
 #### 5.3.2 Slow metamorphosis — DECIDED DIRECTION
 
-Sections 5.3.2 through 5.3.6 apply only after the player voluntarily chooses to join
-the Fold. They do not run in the remain-separate sandbox.
+Sections 5.3.2–5.3.4 and 5.3.6–5.3.7 apply only after the player voluntarily chooses
+to join the Fold. Section 5.3.5 permits uncertain pre-Fold belief movements, but its
+direct-resonance institutions and dedicated religion mechanics are also post-Threshold.
+None of these post-Threshold systems run in the remain-separate sandbox.
 
 Joining the Fold does not mutate the cast all at once. Transformation unfolds across
 centuries and millennia of galactic time, shaped by exposure, inheritance, technology,
@@ -509,7 +550,43 @@ thing is completely separate. Every action, memory, person, and civilization lea
 pressure on the whole. Approaching the edge lets the player perceive more of those
 connections without ever reaching a final explanatory room at the end of existence.
 
-#### 5.3.5 Perspective inversion and the Fold war — DECIDED
+#### 5.3.5 Religions of connectedness — DECIDED DIRECTION
+
+Religion develops around the Fold because its effects are lived, disputed, and never
+fully explained. It is not one canonical church and it does not provide the game's
+missing cosmological answer. Different communities may interpret the same resonance as
+divine communion, ancestral continuity, a natural information field, a dangerous loss
+of self, proof of universal interdependence, or evidence that should not be worshipped
+at all.
+
+Before the Fold Threshold, the galaxy may contain precursor movements: tear cults,
+scientific schools, philosophies of recurrence, memorial traditions, Hollow
+apologists, anti-Fold purists, and religions built around ruins or incomplete visions.
+They work from rumor, archaeology, rare exposure, and contested testimony. None has
+reliable shared-memory access or confirmed knowledge of the Fold's ultimate nature,
+and none should appear as an already mature galactic Fold institution during the
+frontier campaign.
+
+After the player joins the Fold, direct resonance can produce new religions and change
+old ones across generations. Possible traditions include:
+
+- communion faiths that treat consensual sharing as sacred;
+- quiet-self traditions that defend the sovereign interior as the soul's sanctuary;
+- ancestral and memorial orders that curate voluntarily shared lives;
+- Houses that build identity and legitimacy around guarded lineage memories;
+- anti-Fold communities that resist mutation or seek distance from resonance;
+- universalist movements that interpret connection as an ethical duty across species,
+  colonies, and cycles.
+
+Religions are living world actors rather than static lore entries. They may establish
+rituals, laws, sanctuaries, schools, funeral practices, memory commons, protected
+archives, missions, architecture, political blocs, schisms, alliances, and conflicts.
+Their doctrines can shape consent, mutation, diplomacy, inheritance, and war, but no
+religious authority can override memory sovereignty or settle the cause of the tear.
+Exact faith-generation and institution mechanics belong in a later Fold-era systems
+spec after the pre-Fold cultural and faction simulation exists.
+
+#### 5.3.6 Perspective inversion and the Fold war — DECIDED
 
 Eventually an unknown force enters Sector Zero through the temporal boundary. From
 the Fold civilization's perspective, it is an invasion: scouts trespass in inhabited
@@ -536,7 +613,7 @@ Defeating an invasion does not end the Fold era. The same captain may survive re
 incursions, continue mutating, and expand the civilization indefinitely. The cycle
 creates pressure and recurring antagonists, not a scheduled loss.
 
-#### 5.3.6 True defeat and perspective succession — DECIDED
+#### 5.3.7 True defeat and perspective succession — DECIDED
 
 A Fold-era captain truly loses only when an invading captain wins the decisive war and
 conquers or destroys the player's final Fold anchor. This cannot occur through an
@@ -930,6 +1007,9 @@ later dialogue, quests, memorials, and political identity draw facts.
 This vision should influence foundations without pulling galactic simulation forward
 prematurely:
 
+- **M1–M2:** remain entirely pre-Fold-transformation. Region travel, POIs, survey,
+  founding, visual identity, and the current campaign establish the frontier that later
+  civilization grows from.
 - **M3 Hubs:** named NPC identity, roles, relationships, schedules, and event-log
   visibility become the first living-history substrate.
 - **M4 Decay:** significant events, succession-safe quest generation, antagonist
@@ -940,7 +1020,10 @@ prematurely:
   simulation, and the chronicle become the first implementation boundary for layered
   time.
 - **Post-M6:** generational aging, long interstellar travel, cultural memory, and era
-  transitions build on proven M3–M6 data rather than arriving as one monolith.
+  transitions build on proven M3–M6 data rather than arriving as one monolith. The
+  civilization and Legacy eras must become substantial, enjoyable play before any
+  implementation of joining the Fold, shared-memory interaction, civilizational
+  mutation, Fold interface metamorphosis, or next-cycle war.
 
 ## 13. Open-decision ledger
 
@@ -962,6 +1045,10 @@ decision-complete:
 9. What is the first thin vertical slice that proves long-duration catch-up is fun
    before M6?
 10. Which data-model foundations should land early in M3/M4, and which must wait?
+11. What qualitative history and civilizational conditions make the optional Fold
+    Threshold meaningful without turning it into a checklist or resource grind?
+12. Which pre-Fold belief systems should emerge from existing faction and cultural
+    simulation before Fold-era religion receives its own mechanics?
 
 ## 14. Explicit non-goals for the current implementation roadmap
 
@@ -971,7 +1058,14 @@ decision-complete:
 - Do not populate the opening galaxy with living precursor empires or ancient Great
   Houses.
 - Do not canonically solve the ultimate origin of the temporal tear.
-- Do not mutate the cast instantaneously when the campaign ends.
+- Do not treat entering the Fold region, defeating the Hollow, or completing the
+  opening campaign as joining the Fold.
+- Do not add player or civilizational mutation, shared-memory menus, Fold interface
+  metamorphosis, Fold religions, or next-cycle war to M1–M6.
+- Do not compress the living-civilization and Legacy eras into a prerequisite meter or
+  short bridge between the campaign and the Fold choice.
+- Do not mutate the cast instantaneously when the campaign ends or when the Fold is
+  eventually joined.
 - Do not force a player who remains separate to enter the Fold later.
 - Do not trigger Fold-era defeat or perspective succession offscreen.
 - Do not turn Fold connection into a uniform hive mind, omniscience, or automatic
@@ -987,6 +1081,8 @@ decision-complete:
 - Do not apply one uniform mutation appearance to every person or community.
 - Do not canonically confirm that the Fold is literally the physical end of the
   universe.
+- Do not establish one canonical Fold church, give any religion objective cosmological
+  certainty, or let religious authority bypass memory sovereignty.
 - Do not add generational time jumps to M1–M3 merely because this vision exists.
 - Do not rewrite the current campaign before the continuity substrate is proven.
 - Do not allow long-horizon work to block the playable M2–M5 slices.
