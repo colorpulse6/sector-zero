@@ -290,7 +290,7 @@ postgame simulation can support the promised continuation.
 
 #### 5.3.2 Slow metamorphosis — DECIDED DIRECTION
 
-Sections 5.3.2 through 5.3.4 apply only after the player voluntarily chooses to join
+Sections 5.3.2 through 5.3.6 apply only after the player voluntarily chooses to join
 the Fold. They do not run in the remain-separate sandbox.
 
 Joining the Fold does not mutate the cast all at once. Transformation unfolds across
@@ -318,7 +318,65 @@ Mutation is simultaneously physical, cultural, political, and mechanical:
 The player is not waiting passively to become the old enemy. They build the strange,
 mutated civilization that the next cycle will mistake for one.
 
-#### 5.3.3 Perspective inversion and the Fold war — DECIDED
+#### 5.3.3 Individuality within the Fold — DECIDED
+
+The Fold does not reduce its civilization to a uniform hive mind. Most of each person
+remains: identity, agency, relationships, commitments, private experience, personality,
+and the capacity to disagree. The connected layer surrounds and sometimes crosses
+those boundaries without making individuality an illusion.
+
+Shared memory appears as incomplete resonance rather than perfect telepathy:
+
+- far from the Fold's edge, people experience intuition, shared dreams, emotional
+  harmonics, and deja vu;
+- deeper inside, they may receive sensory fragments, skills, grief, or memories that
+  belong to another person, ancestor, or cycle;
+- near the apparent edge, several perspectives may become simultaneously present and
+  the distinction between remembered, inherited, and personally lived experience may
+  become difficult to prove.
+
+Connection is never automatic omniscience. A shared memory can be partial, symbolic,
+damaged, contradictory, misattributed, resisted, or deliberately obscured. It cannot
+function as a universal quest answer, infallible lie detector, or unrestricted access
+to every other mind.
+
+The shared layer creates ordinary social and political consequences. People and
+institutions debate consent, privacy, memory ownership, testimony, inheritance,
+education, punishment, and whether withholding oneself from the collective is a right
+or betrayal. Houses may preserve guarded ancestral memories; communities may form
+trusted memory commons; criminals and governments may traffic in stolen or edited
+experience. Exact institutions belong in later system designs.
+
+Death remains consequential. A person may leave memories, habits, impressions, or an
+interactive echo in the connected layer, but an echo is not a complete resurrection
+and cannot be treated as the dead person continuing to make new choices.
+
+#### 5.3.4 The apparent edge of the universe — DECIDED DIRECTION
+
+Sector Zero and the Fold behave as though they approach the end of the universe: a
+cosmic horizon where separations become less absolute. The closer something moves to
+that edge, the clearer the universe's underlying connectedness becomes.
+
+Boundaries begin to overlap:
+
+- one mind and another;
+- past, present, and possible future;
+- matter, memory, and information;
+- separate civilizations and separate cycles;
+- observer and observed.
+
+This connectedness is experientially real but not a solved cosmology. Characters may
+interpret the Fold as a physical edge, temporal convergence, information horizon,
+living universe, spiritual whole, or something for which human language has no valid
+category. The game never announces which interpretation is correct and never uses this
+idea to canonically solve the tear's origin.
+
+The Fold therefore expresses a central metaphor: individual things are real, but no
+thing is completely separate. Every action, memory, person, and civilization leaves
+pressure on the whole. Approaching the edge lets the player perceive more of those
+connections without ever reaching a final explanatory room at the end of existence.
+
+#### 5.3.5 Perspective inversion and the Fold war — DECIDED
 
 Eventually an unknown force enters Sector Zero through the temporal boundary. From
 the Fold civilization's perspective, it is an invasion: scouts trespass in inhabited
@@ -345,7 +403,7 @@ Defeating an invasion does not end the Fold era. The same captain may survive re
 incursions, continue mutating, and expand the civilization indefinitely. The cycle
 creates pressure and recurring antagonists, not a scheduled loss.
 
-#### 5.3.4 True defeat and perspective succession — DECIDED
+#### 5.3.6 True defeat and perspective succession — DECIDED
 
 A Fold-era captain truly loses only when an invading captain wins the decisive war and
 conquers or destroys the player's final Fold anchor. This cannot occur through an
@@ -760,15 +818,17 @@ decision-complete:
    cadet branches, and household dissolution?
 2. What exact telegraphing, recovery window, and final-defense conditions make a true
    Fold-era defeat fair?
-3. What kinds of autonomy doctrines and emergency authority can the player set?
-4. How much uncertainty should a departure forecast expose?
-5. How does the authored campaign query and react to a fully mutable cast?
-6. What happens fictionally when the captain loses a mission or would otherwise die?
-7. How are historical events ranked, compressed, and presented without overwhelming
+3. What consent, privacy, access, inheritance, and governance rules apply to shared
+   memory?
+4. What kinds of autonomy doctrines and emergency authority can the player set?
+5. How much uncertainty should a departure forecast expose?
+6. How does the authored campaign query and react to a fully mutable cast?
+7. What happens fictionally when the captain loses a mission or would otherwise die?
+8. How are historical events ranked, compressed, and presented without overwhelming
    the player?
-8. What is the first thin vertical slice that proves long-duration catch-up is fun
+9. What is the first thin vertical slice that proves long-duration catch-up is fun
    before M6?
-9. Which data-model foundations should land early in M3/M4, and which must wait?
+10. Which data-model foundations should land early in M3/M4, and which must wait?
 
 ## 14. Explicit non-goals for the current implementation roadmap
 
@@ -781,6 +841,11 @@ decision-complete:
 - Do not mutate the cast instantaneously when the campaign ends.
 - Do not force a player who remains separate to enter the Fold later.
 - Do not trigger Fold-era defeat or perspective succession offscreen.
+- Do not turn Fold connection into a uniform hive mind, omniscience, or automatic
+  agreement.
+- Do not use memory echoes to erase the consequences of death.
+- Do not canonically confirm that the Fold is literally the physical end of the
+  universe.
 - Do not add generational time jumps to M1–M3 merely because this vision exists.
 - Do not rewrite the current campaign before the continuity substrate is proven.
 - Do not allow long-horizon work to block the playable M2–M5 slices.
