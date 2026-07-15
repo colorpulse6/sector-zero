@@ -915,3 +915,76 @@ loose particles, disconnected copies, thin scanlines, motion blur, transparent s
   `NEXT_PUBLIC_DEVTOOLS=1 yarn build` compiled, typechecked, generated six
   static pages, and exported three routes. Corepack's tool-only package drift
   was restored after verification.
+
+## Final tranche disposition and cross-silhouette verification
+
+Zero second-tranche candidates were accepted. Cloaker, Scout, Wraith, and
+Echo are all retained byte-for-byte from the pre-task production originals;
+there is no production sprite or runtime delta from this tranche. Because
+there are no accepted replacements, no candidate-only `after-*` artifact and
+no matched before/after acceptance sheet is present. The committed
+`before-*` panels remain baseline evidence only.
+
+| Enemy | Final decision | Candidate rejection summary | Static / Bestiary / live disposition |
+|---|---|---|---|
+| Cloaker | Original retained | Attempt 1 could not fit the approved broad envelope without underfill or crop; the targeted retry disappeared at 15% alpha in W5-3 and read right-facing while visible. | Static exact-size fields passed only as an isolated inspection. The retry reached live W5-3 and the 96x96 Bestiary, but failed the live silhouette gate. |
+| Scout | Original retained | Attempt 1 reduced to an undersized needle; the retry over-corrected to a nearly square `451x476` envelope whose twin upper prongs read as guns or heavy structure on an unarmed baseline attacker. | Both attempts failed before installation. The retry received exact `48x48` and static complete-canvas `96x96` inspection; no candidate live, contact, Bestiary-turntable, or console claim is made. |
+| Wraith | Original retained | Attempt 1 exposed a literal humanoid and skull; the targeted opaque-center retry fixed that defect but could not complete the mandatory live Bestiary-detail gate. | The retry passed exact-size and static complete-canvas `96x96` inspection plus W4-2 presentation. Its live Bestiary detail remained unverified, so fail-closed rejection applies. |
+| Echo | Original retained | The connected displaced-mass candidate passed static and W6-2 presentation but could not complete the mandatory live Bestiary-detail gate. | Exact visible/15%-alpha fields, static complete-canvas `96x96`, and W6-2 visible/ghosted presentation passed. Live Bestiary and collision-specific behavior were not verified, so fail-closed rejection applies. |
+
+### Final eight-enemy production comparison
+
+`docs/assets/reviews/m2-shooter-enemies-2/tranche-silhouette-comparison.png`
+shows the final production Swarm, Bomber, Gunner, Drone, Cloaker, Scout,
+Wraith, and Echo together on labeled `#05070b` and `#b8b8b0` fields. Every
+sprite is resized from its complete source canvas exactly to its renderer draw
+box at 1:1: Swarm `32x32`, Bomber `44x56`, Gunner `56x56`, Drone `40x40`,
+Cloaker `52x52`, Scout `48x48`, Wraith `56x52`, and Echo `44x44`. No visible-
+alpha crop, enlargement, class tint, or candidate image is used. The final
+system retains distinct production reads at those scales: Swarm's small
+cluster, Bomber's tall ram, Gunner's broad block, Drone's compact core,
+Cloaker's open crescent, Scout's simple dart, Wraith's broad spectral mass,
+and Echo's narrow phase mark.
+
+### Fresh restored-production browser pass
+
+After the original four sprites were restored, a fresh
+`NEXT_PUBLIC_DEVTOOLS=1 yarn build` compiled, typechecked, generated six
+static pages, and exported three routes. Corepack's tool-only root
+`packageManager` field was restored immediately. The export was served at
+`http://127.0.0.1:3000` and exercised in one fresh named Playwright session at
+`480x854`, device pixel ratio 1:
+
+- W1-1 First Contact HUD `WAVE 1/8`: all five production Scouts were fully
+  inside the opening line at about 4.3 seconds;
+- W5-3 Phantom Fleet HUD `WAVE 1/11`: all nine production Cloakers were
+  present in the start-hidden interval at about 3.7 seconds and visible after
+  the following 500 ms; the visible state fired the existing purple enemy
+  projectiles while none were visible in the captured hidden state;
+- W4-2 The Kepler Graveyard HUD `WAVE 1/10`: all four production Wraiths were
+  visible in the authored V under the existing Cinder presentation and fired
+  the existing red projectiles;
+- W6-2 Distortion Field HUD `WAVE 1/10`: all six production Echoes were
+  exercised in the start-hidden and following visible intervals; the visible
+  capture showed the existing purple fire, while the hidden capture showed no
+  enemy projectiles.
+
+These observations verify the restored production draw/state presentation;
+they do not create a new collision-specific claim. Movement, damage,
+visibility timing, wave data, hitboxes, statistics, registrations, and
+renderer code were not edited.
+
+The same fresh session seeded the documented four-entry Bestiary list and
+entered it through the cockpit hotspot. After a blur reset and neutral delay,
+one 300 ms held-Space selection attempt on Scout remained on the list rather
+than opening the 96x96 detail. No alternate key or input loop was attempted.
+This reproduces the existing automation/input limitation seen during the
+candidate gates; the committed pre-change 96x96 Bestiary captures remain the
+only live detail evidence, and no final-session detail-verification claim is
+made.
+
+The final browser console reported zero errors and the same two unchanged
+Next.js font-preload warnings for `fc727f226c737876-s.p.woff2` and
+`806de4d605d3ad01-s.p.woff2`. The request log showed HTTP 200 for all four
+production enemy sprites on initial load and HTTP 304 after reload; there were
+no failed Cloaker, Scout, Wraith, or Echo sprite requests.
