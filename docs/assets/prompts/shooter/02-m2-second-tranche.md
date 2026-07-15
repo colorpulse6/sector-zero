@@ -575,3 +575,221 @@ generic glowing triangle, large central orb, broad weapons barge, hollow crescen
   compiled, typechecked, generated six static pages, and exported three
   routes. `yarn sprites:test` passed 4/4. Corepack's tool-only root
   `packageManager` drift was restored after both runs.
+
+## Wraith production quality gate
+
+### Wraith attempt 1 — rejected after superseding quality review
+
+- **Output identifier/path:** built-in generation
+  `019f65d8-7d10-74a0-81ca-f90ea197b34c`, source
+  `/Users/nichalasbarnes/.codex/generated_images/019f65d8-7d10-74a0-81ca-f90ea197b34c/exec-1df14f9e-7787-4267-9c7e-16b99316dd16.png`
+- **Seed policy:** not exposed by the built-in tool
+- **Reference role:** no image reference input; the production original was
+  inspected only for semantics, canvas contract, scale, and comparison
+- **Generated source dimensions:** `1254x1254` sRGB RGB, one PNG frame
+- **Generated source SHA-256:**
+  `1fa70c15779298ee457fd1ea2e8782ea03989135058de493ac395339295a7c1c`;
+  the built-in output and canonical local source are byte-identical
+- **Matte:** installed `remove_chroma_key.py`; border auto-key, soft matte,
+  thresholds 12/220, despill; sampled key `#03f905`; 1,004,280 transparent
+  and 4,283 partially transparent pixels of 1,572,516. No edge contraction,
+  retry, hand painting, or BiRefNet fallback was used.
+- **Source matte geometry:** `1254x1254` sRGBA, one frame; 5%-alpha bounds
+  `994x1129+127+64`; four transparent corners; SHA-256
+  `d49e6d4fcc943b9218e5db77dfdc8c60813aa0392a89f12c851887fb524146a7`
+- **Fit method:** crop the source matte to its 5%-alpha bounds, resize
+  proportionally inside the original's `968x1284` visible envelope, center on
+  a `968x1284` transparent extent, then composite at `+28+97` on the preserved
+  `1024x1536` production canvas. No stretching or subject cropping was used.
+- **Fitted production derivative:** `1024x1536` sRGBA, one frame, 256 alpha
+  values; 5%-alpha bounds `968x1099+28+189`; twice-center `X=1024`, `Y=1477`;
+  four transparent corners; SHA-256
+  `a50c7392e0c5ccb258512ba6d13422b491546ab12108bb619a7bb0c72dac70b0`
+- **Preserved files:** source, alpha matte, fit, and production derivative are
+  retained under `/private/tmp/sector-zero-m2-tranche2-sources/` with the
+  canonical `wraith-*` names.
+- **Decision:** rejected. The earlier acceptance recorded by commit `8718db3`
+  is superseded by the quality review below.
+- **Rejection reason:** the central clear window contains a literal skull,
+  face, glowing eyes, bare torso, arms, and exposed full humanoid. That is a
+  direct violation of the prompt's `never as a portrait or exposed humanoid`
+  constraint. The earlier matched-sheet Bestiary pair also used mismatched
+  turntable angles, so it could not support an acceptance comparison.
+
+Exact prompt:
+
+```text
+Use case: stylized-concept
+Asset type: polished 2D game production asset, a single enemy billboard for a top-down vertical shooter.
+Create one top-down vertical-shooter enemy sprite on a perfectly flat solid #00ff00 chroma-key background for background removal. The background must be one uniform color with no shadows, gradients, texture, reflections, floor plane, or lighting variation. Keep the subject fully separated from the background with crisp edges and generous padding. Do not use #00ff00 anywhere in the subject. No cast shadow, no contact shadow, no reflection, no watermark, and no text.
+Subject: WRAITH enemy, a broad heavy corrupted sarcophagus-ship containing a trapped human pilot presence. Strict orthographic or near-orthographic top-down/front-down spacecraft view, descending toward the bottom of the image. Build one wide solid cruciform or armored reliquary silhouette with a dense central coffin chamber and broad weighted side masses. Show the human-scale containment cue only as a recessed shape behind cracked dark material, never as a portrait or exposed humanoid. Scorched desaturated armor, organic hull intrusion, crushed near-black recesses, and restrained cinder-orange light leaking through a few cracks and vents. It must remain a broad solid threat at a 56 by 52 gameplay draw, clearly heavier than Scout and Echo and never hollow like Cloaker. Centered with generous padding and no cropping.
+modern DOOM (2016 / Eternal) aesthetic, gritty industrial sci-fi, heavy worn scarred
+gunmetal and cracked concrete, crushed near-black shadows, very high contrast, low ambient
+saturation, single hot directional key light, emissive glow accents only (hellfire orange
+#ff5a1e, demon red #ff3366, toxic green #44ff99, tech cyan #00f0ff, portal purple #7800ff),
+strong readable silhouette, chunky weighted forms, painterly realistic detail, game asset,
+dark background separation, dramatic rim lighting
+Negative prompt:
+pixel art, 8-bit, 16-bit, dithering, visible pixels, cartoon, cel shading, anime, flat
+colors, outline style, pastel, bright cheerful colors, saturated painted surfaces, clean new
+pristine surfaces, chrome, gloss plastic, soft even lighting, washed out, low contrast, text,
+letters, numbers, logos, watermark, signature, jpeg artifacts, blurry, white background halo,
+wispy ghost, smoke body, hollow crescent, repeated afterimages, exposed human portrait, bright orange painted armor, sleek fighter, side view, three-quarter perspective, floor, contact shadow, cast shadow, horizon, environment scene
+```
+
+### Wraith attempt 1 superseding review and disposition
+
+- **Superseding static review:** the broad cruciform, weighted side masses,
+  cinder cracks, and dense center survived complete-canvas `56x52` dark/bright
+  Cinder simulations and a complete-canvas `96x96` draw. However, inspection
+  of the full generated source exposed a literal skull, face, glowing eyes,
+  bare torso, arms, and full humanoid behind a clear window. Reduced-size
+  readability does not waive that explicit semantic gate; the candidate is
+  rejected.
+- **Live gameplay:** a fresh cache-bypassed `480x854` browser session entered
+  W4-2 and captured Wave 1/10 with all four Wraiths in the intended V. The
+  complete-canvas `56x52` draws remain distinct across dark and brighter
+  starfield areas, retain the Cinder tint, descend slowly as a formation, and
+  visibly fire their existing red projectiles. The dark rectangular tint
+  fields also appear in the unchanged before baseline and are existing
+  renderer behavior, not an asset regression.
+- **Contact limitation:** a deliberate GOD-off ArrowUp pass visibly aligned
+  and overlapped the player with a Wraith. The player had already received
+  projectile damage and was in its existing hit/invulnerability sequence; all
+  four Wraiths remained through the overlap, and a later player explosion
+  cannot be attributed specifically to contact. A clean rerun reached Game
+  Over behind the open DEV panel before the timed input. This gate therefore
+  proves visible sprite/contact alignment only. It does **not** prove
+  collision-specific removal or claim zero collision regression beyond the
+  unchanged draw contract and unchanged collision/code paths.
+- **Bestiary evidence:** the earlier before/after pair was later found to use
+  mismatched turntable angles. It is discarded as acceptance evidence. The
+  existing `BEHAVIOR: Pursuit, phasing` copy is a pre-existing mismatch with
+  implemented behavior and was deliberately not used as art direction or
+  edited in this art-only tranche.
+- **Console:** the final fresh gameplay and Bestiary sessions each reported
+  zero browser console errors and zero warnings.
+- **Evidence disposition:** the candidate-only files
+  `docs/assets/reviews/m2-shooter-enemies-2/actual-size/after-wraith.png`
+  (`960x476`),
+  `docs/assets/reviews/m2-shooter-enemies-2/gameplay/after-wraith-w4-2.png`
+  (`480x854`),
+  `docs/assets/reviews/m2-shooter-enemies-2/bestiary/after-wraith.png`
+  (`480x854`), and the true four-panel matched sheet
+  `docs/assets/reviews/m2-shooter-enemies-2/matched/wraith.png`
+  (`2200x1900`) were removed after rejection. Baseline `before-*` evidence is
+  retained. No attempt-1 after or matched artifact remains at HEAD.
+- **Historical validation:** `yarn sprites:test` passed 4/4. A fresh
+  `NEXT_PUBLIC_DEVTOOLS=1 yarn build` compiled, typechecked, generated six
+  static pages, and exported three routes. Corepack's tool-only root
+  `packageManager` drift was restored after both runs.
+
+### Wraith attempt 2 — targeted reference edit, not accepted
+
+- **Reference role:** the attempt-1 generated source
+  `/private/tmp/sector-zero-m2-tranche2-sources/wraith-source.png`, SHA-256
+  `1fa70c15779298ee457fd1ea2e8782ea03989135058de493ac395339295a7c1c`,
+  was supplied as the edit target and silhouette/geometry reference. The
+  preserved production original remained a contract and comparison reference;
+  it was not an image input.
+- **Invocation history:** the initial built-in reference-edit invocation used
+  the exact prompt below but produced neither an artifact nor an error after
+  the practical timeout and was terminated after roughly six minutes. It has
+  no output ID or source path. One explicitly authorized fresh invocation then
+  reused the identical prompt and reference and succeeded.
+- **Successful output identifier/path:** built-in output
+  `exec-f8531636-6934-4e1d-ac24-3224300278f7.png`, source
+  `/Users/nichalasbarnes/.codex/generated_images/019f65d8-7d10-74a0-81ca-f90ea197b34c/exec-f8531636-6934-4e1d-ac24-3224300278f7.png`.
+- **Seed policy:** not exposed by the built-in tool.
+- **Generated source:** `1254x1254` sRGB RGB, one PNG frame; SHA-256
+  `ec33e8ee82c17e77bf8dea106b6fe962be6e21e0d3fbcffb8bed9920314cf42c`.
+  The built-in output and preserved
+  `/private/tmp/sector-zero-m2-tranche2-sources/wraith-attempt2-source.png`
+  are byte-identical.
+- **Matte:** installed `remove_chroma_key.py` with the same border auto-key,
+  soft-matte, thresholds 12/220, and despill pipeline as attempt 1; sampled key
+  `#13e613`; 1,005,126 transparent and 3,994 partially transparent pixels of
+  1,572,516. The source matte is `1254x1254` sRGBA, one frame, with 5%-alpha
+  bounds `993x1129+127+64`, four transparent corners, and SHA-256
+  `535792477f4e9d3e8efe65f568b4214713035ae5eb40b87b0bbd16ece212ff76`.
+- **Fit method:** crop the matte to its 5%-alpha bounds, resize
+  proportionally inside the original's `968x1284` visible envelope, center on
+  a `968x1284` transparent extent, then composite at `+28+97` on the preserved
+  `1024x1536` canvas. The intermediate fit SHA-256 is
+  `453f3f73feca9e17ace9a3f090dc6f6fe51321ea52e2cd3ae829216e696be78e`.
+- **Fitted production derivative:** `1024x1536` sRGBA, one frame;
+  5%-alpha bounds `968x1101+28+188`; twice-center `X=1024`, `Y=1477`; four
+  transparent corners; SHA-256
+  `0d57dde688e04dda4f703941b703be9e04cfdafccdad32216166a7734d8fd378`.
+- **Full-source semantic gate:** passed. The broad cruciform/reliquary and
+  weighted side masses remain, while the center is an opaque cracked plate.
+  No identifiable skull, face, eyes, skin, torso, body, limbs, anatomy, glass
+  display, or exposed pilot remains.
+
+Exact reference-edit prompt used for both invocations:
+
+```text
+Use case: precise-object-edit
+Asset type: polished 2D game production asset, a single enemy billboard for a top-down vertical shooter.
+Input images: Image 1: edit target and silhouette/geometry reference.
+Primary request: Make one targeted correction to Image 1 while preserving its successful broad reliquary design.
+Create one top-down vertical-shooter enemy sprite on a perfectly flat solid #00ff00 chroma-key background for background removal. The background must be one uniform color with no shadows, gradients, texture, reflections, floor plane, or lighting variation. Keep the subject fully separated from the background with crisp edges and generous padding. Do not use #00ff00 anywhere in the subject. No cast shadow, no contact shadow, no reflection, no watermark, and no text.
+Subject: WRAITH enemy, a broad heavy corrupted sarcophagus-ship containing a trapped human pilot presence. Strict orthographic or near-orthographic top-down/front-down spacecraft view, descending toward the bottom of the image.
+Targeted retry invariants and corrections: Preserve the broad solid cruciform/reliquary outer silhouette, weighted side masses, exact top-down/front-down down-screen orientation, and restrained cinder crack layout from Image 1. Change the central chamber only: replace the clear glass window and literal visible skull, face, glowing eyes, bare torso, arms, and full body with an OPAQUE cracked dark sarcophagus plate. No face, skull, eyes, skin, body, limbs, anatomy, portrait, glass display, or exposed humanoid. Human presence may be suggested only by an ambiguous recessed human-scale head-and-shoulder depression, rib-like shadow, or biometric silhouette BENEATH opaque scarred material; it must not be identifiable as a person. Any current skull-like surface motif must become ambiguous organic or mechanical intrusion without changing the outer geometry. Slightly raise desaturated midtone separation on the coffin recess and inner rim so the reliquary center survives the unchanged #cc6644 multiply tint at 56 by 52, without painting armor orange or increasing emissive coverage. Keep the uniform chroma background, no floor, shadow, reflection, or scene, centered and padded. The only semantic correction is eliminating literal humanoid and skull imagery; do not redesign the outer craft.
+modern DOOM (2016 / Eternal) aesthetic, gritty industrial sci-fi, heavy worn scarred
+gunmetal and cracked concrete, crushed near-black shadows, very high contrast, low ambient
+saturation, single hot directional key light, emissive glow accents only (hellfire orange
+#ff5a1e, demon red #ff3366, toxic green #44ff99, tech cyan #00f0ff, portal purple #7800ff),
+strong readable silhouette, chunky weighted forms, painterly realistic detail, game asset,
+dark background separation, dramatic rim lighting
+Negative prompt:
+pixel art, 8-bit, 16-bit, dithering, visible pixels, cartoon, cel shading, anime, flat
+colors, outline style, pastel, bright cheerful colors, saturated painted surfaces, clean new
+pristine surfaces, chrome, gloss plastic, soft even lighting, washed out, low contrast, text,
+letters, numbers, logos, watermark, signature, jpeg artifacts, blurry, white background halo,
+wispy ghost, smoke body, hollow crescent, repeated afterimages, exposed human portrait, bright orange painted armor, sleek fighter, side view, three-quarter perspective, floor, contact shadow, cast shadow, horizon, environment scene,
+skull, face, eyes, glowing eyes, skin, bare torso, arms, legs, full human body, anatomy, portrait, glass coffin, transparent window, exposed pilot, orange painted armor
+```
+
+### Wraith attempt 2 review and final retained-original disposition
+
+- **Static review:** complete-canvas `56x52` dark and bright simulations with
+  the production Cinder-Wraith multiply tint (`#cc6644` at 0.35 alpha) passed.
+  The opaque center, inner rim, broad reliquary, and restrained cinder cracks
+  also survive a complete-canvas `96x96` simulation. The deterministic
+  Bestiary simulations resized the complete preserved original and complete
+  retry production canvas exactly to `96x96`, with no alpha crop or horizontal
+  compression and the same neutral presentation.
+- **Retry gameplay:** a fresh `480x854` DevPanel build entered W4-2 The Kepler
+  Graveyard and captured HUD WAVE 1/10 with all four retry Wraiths in the
+  intended V. Their Cinder tint, slow descending formation, readable centers,
+  and existing red projectile fire were visible. This proves the unchanged
+  gameplay draw/state contract only; it is not collision-specific evidence.
+- **Retry Bestiary blocker:** mandatory live detail verification was not
+  completed. Multiple earlier automation runs that remained on the isolated
+  WRAITH list were invalid and discarded. The final code-traced run entered
+  Bestiary through the mouse hotspot, held ArrowDown for 120 ms, released it,
+  waited 350 ms for a neutral cockpit tick, held Enter for 200 ms, released it,
+  and waited 500 ms. It still remained on the isolated WRAITH list instead of
+  opening detail. No alternate final key attempt was made. The final session
+  reported zero console errors and zero warnings.
+- **Validation:** the retry passed `yarn sprites:test` 4/4 and a fresh
+  `NEXT_PUBLIC_DEVTOOLS=1 yarn build`. These gates do not substitute for the
+  missing mandatory live Bestiary detail verification.
+- **Decision:** not accepted. Under the fail-closed evidence policy, the
+  preserved production original is retained. Temporary deterministic `96x96`
+  simulations are not committed, and no candidate-only after or matched sheet
+  remains. All baseline `before-*` evidence remains.
+- **Retained original:**
+  `/private/tmp/sector-zero-m2-tranche2-originals/wraith.png` was restored
+  byte-for-byte to `game/public/sprites/enemies/wraith.png`; SHA-256
+  `b0c3198822dae2410922b4e59f52c8c1fa404081bc8a52c900a863f45331c241`;
+  `1024x1536` sRGBA, one frame; 5%-alpha bounds `968x1284+28+97`;
+  twice-center `X=1024`, `Y=1478`; four transparent corners.
+- **Runtime disposition:** production is identical to the pre-task original,
+  so there is no Wraith sprite, registration, draw, collision, behavior,
+  spawn, mechanic, statistic, balance, or runtime delta.
+- **Post-restoration validation:** with the original restored,
+  `yarn sprites:test` passed 4/4 and
+  `NEXT_PUBLIC_DEVTOOLS=1 yarn build` compiled, typechecked, generated six
+  static pages, and exported three routes. No package-manager drift remained.
