@@ -175,9 +175,9 @@ Playwright session `m2b` at `window.innerWidth=480`,
 
 | Evidence | Level / state | Capture timing and observed contract |
 |---|---|---|
-| `gameplay/before-cloaker-w5-3-visible.png` | W5-3 Phantom Fleet, HUD Wave 1 | DevPanel briefing skip, opening nine-Cloaker scatter after the first 120-frame cloak transition; visible sprites, unchanged `tech-drone` tint |
-| `gameplay/before-cloaker-w5-3-ghosted.png` | W5-3 Phantom Fleet, HUD Wave 1 | Same opening wave after the next cloak transition; start-hidden mechanic observed at the unchanged 15% renderer alpha |
-| `gameplay/before-scout-w1-1.png` | W1-1 First Contact, HUD Wave 1 | About 3.4 seconds after briefing skip; all five Scouts visible in the authored line under unchanged `swarm` tint |
+| `gameplay/before-cloaker-w5-3-visible.png` | W5-3 Phantom Fleet, HUD Wave 1/11 | About 4.2 seconds after DevPanel briefing skip; all nine opening-wave Cloakers are distinct and fully inside the playfield after the first 120-frame cloak transition, with unchanged `tech-drone` tint |
+| `gameplay/before-cloaker-w5-3-ghosted.png` | W5-3 Phantom Fleet, HUD Wave 1/11 | About 3.7 seconds after the same briefing skip and before the first cloak transition; the same pure nine-Cloaker opening scatter is in its unchanged start-hidden 15%-alpha state |
+| `gameplay/before-scout-w1-1.png` | W1-1 First Contact, HUD Wave 1/8 | About 4.3 seconds after briefing skip; all five Scouts are fully and readably inside the playfield in the authored line under unchanged `swarm` tint |
 | `gameplay/before-wraith-w4-2.png` | W4-2 The Kepler Graveyard, HUD Wave 1 | About 3.4 seconds after briefing skip; four-Wraith V visible under unchanged `elemental-cinder` tint |
 | `gameplay/before-echo-w6-2-visible.png` | W6-2 Distortion Field, HUD Wave 1 | Opening six-Echo scatter after the first 90-frame phase transition; visible sprites under unchanged `tech-drone` tint |
 | `gameplay/before-echo-w6-2-ghosted.png` | W6-2 Distortion Field, HUD Wave 1 | About 3.2 seconds after briefing skip during the start-hidden interval; unchanged 15% alpha makes the baseline silhouettes nearly disappear against the bright field |
@@ -192,4 +192,5 @@ is broad/front-facing rather than edge-on or visibly squashed.
 The complete browser session reported zero console errors. It emitted only the
 same two unchanged Next.js font-preload warnings for
 `fc727f226c737876-s.p.woff2` and `806de4d605d3ad01-s.p.woff2`; there were no new
-gameplay, asset, or renderer warnings.
+gameplay, asset, or renderer warnings. The focused correction capture session
+`m2c` separately reported zero console errors and zero warnings.
