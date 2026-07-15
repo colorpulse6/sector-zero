@@ -523,10 +523,12 @@ generic glowing triangle, large central orb, broad weapons barge, hollow crescen
   canonical `scout-*` names.
 - **Decision:** rejected; the byte-identical production original was retained.
 - **Rejection reason:** the targeted retry corrected the long portrait
-  footprint without stretching or cropping, but at the exact `48x48` draw its
-  split upper masses read as twin gun barrels or heavy prongs. That contradicts
-  Scout's unarmed, light, simplest-attacker role, and the production original
-  remained clearly better.
+  footprint without stretching or cropping, but it over-corrected to an
+  almost-square `451x476` fitted envelope despite the requested `1.25` to
+  `1.5` tall:wide footprint. At the exact `48x48` draw its split upper masses
+  read as twin gun barrels or heavy prongs. That contradicts Scout's unarmed,
+  light, simplest-attacker role, and the production original remained clearly
+  better.
 
 Exact prompt:
 
@@ -554,10 +556,10 @@ generic glowing triangle, large central orb, broad weapons barge, hollow crescen
 
 - **Static review:** attempt 1 and attempt 2 were inspected at exact complete-
   canvas `48x48` on `#05070b` and `#b8b8b0`, and attempt 2 was also inspected
-  at the production Bestiary's `96x96` draw. Both were compared directly with
-  the production original, merged Drone, and current Echo. Attempt 1 became an
-  undersized needle; attempt 2 looked armed/heavy because of its twin upper
-  prongs. Neither was clearly better than the original.
+  in a static simulation of the `96x96` Bestiary draw. Both were compared
+  directly with the production original, merged Drone, and current Echo.
+  Attempt 1 became an undersized needle; attempt 2 looked armed/heavy because
+  of its twin upper prongs. Neither was clearly better than the original.
 - **Live gameplay / Bestiary / contact / console:** not attempted. The retry
   failed the required static visual-role interceptor, so it was never installed
   and no browser state was changed. No claim is made for candidate speed,
@@ -793,3 +795,123 @@ skull, face, eyes, glowing eyes, skin, bare torso, arms, legs, full human body, 
   `yarn sprites:test` passed 4/4 and
   `NEXT_PUBLIC_DEVTOOLS=1 yarn build` compiled, typechecked, generated six
   static pages, and exported three routes. No package-manager drift remained.
+
+## Echo production quality gate
+
+### Echo attempt 1 — rejected at the mandatory live Bestiary gate
+
+- **Output identifier/path:** built-in generation
+  `019f6670-5b36-7d92-86d0-694268c55d80`, source
+  `/Users/nichalasbarnes/.codex/generated_images/019f6670-5b36-7d92-86d0-694268c55d80/exec-7ca19769-a7b4-4cc7-b175-487443e7e27c.png`.
+- **Seed policy:** not exposed by the built-in tool.
+- **Reference role:** no image reference input; the production original was
+  inspected only for semantics, contracts, scale, and comparison.
+- **Generated source:** `1254x1254` sRGB RGB, one PNG frame; SHA-256
+  `07c4fe09c4330dd696ecbb131a06480fe653fb04787d12c2d68d457a5998f43d`.
+  The built-in output and canonical
+  `/private/tmp/sector-zero-m2-tranche2-sources/echo-source.png` are
+  byte-identical.
+- **Matte:** installed `remove_chroma_key.py`, invoked with the already
+  installed rembg pipx Python because the system Python lacked Pillow; border
+  auto-key, soft matte, thresholds 12/220, and despill; sampled key `#0df60a`;
+  967,379 transparent and 4,397 partially transparent pixels of 1,572,516.
+  No edge contraction, hand painting, or BiRefNet fallback was used.
+- **Source matte:** `1254x1254` sRGBA, one frame; 5%-alpha bounds
+  `956x1079+149+82`; four transparent corners; SHA-256
+  `77d031b4e3daaf62484de7811ea6386d9d9cab4be7440d9fba46168b05729786`.
+- **Fit method:** crop the matte to its 5%-alpha bounds, resize proportionally
+  inside the original's `1037x895` visible envelope, center on a `1037x895`
+  transparent extent, then composite at `+258+49` on the preserved
+  `1536x1024` production canvas. No stretching or subject cropping was used.
+- **Fitted candidate derivative:** `1536x1024` sRGBA, one frame, 256 alpha
+  values; 5%-alpha bounds `793x895+380+49`; twice-center exactly `X=1553`,
+  `Y=993`; four transparent corners; SHA-256
+  `7792dd06f55d200df43084d7acd06b487e16058a3b1b350318967100701b276e`.
+  Dark and bright inspection showed no green fringe, halo, floor, reflection,
+  cast shadow, or contact shadow.
+- **Iteration decision:** no retry. The one generated candidate had no concrete
+  static defect that justified blind iteration; it advanced to live review.
+- **Decision:** rejected. The mandatory one-attempt live Bestiary detail gate
+  did not open, so the byte-identical production original was restored and no
+  candidate-only after or matched evidence was retained.
+
+Exact prompt:
+
+```text
+Use case: stylized-concept
+Asset type: polished 2D game production asset, a single enemy billboard for a top-down vertical shooter.
+
+Create one top-down vertical-shooter enemy sprite on a perfectly flat solid #00ff00 chroma-key background for background removal. The background must be one uniform color with no shadows, gradients, texture, reflections, floor plane, or lighting variation. Keep the subject fully separated from the background with crisp edges and generous padding. Do not use #00ff00 anywhere in the subject. No cast shadow, no contact shadow, no reflection, no watermark, and no text.
+
+Subject: ECHO enemy, a compact phase craft assembled from one stable dark core and two or three visibly displaced repeating armor masses. Strict orthographic or near-orthographic top-down/front-down spacecraft view, descending toward the bottom of the image. The repeated plates overlap and remain physically connected, forming a chunky offset silhouette that communicates delayed pattern mimicry without loose particles or scanline effects. Use worn desaturated tech surfaces, crushed dark gaps, restrained cold tech-cyan seams with a few muted warm phase seams, and large simple value breaks. It must read as one compact connected enemy at a 44 by 44 gameplay draw and remain recognizable at 15 percent opacity. Avoid Scout's clean dart, Cloaker's hollow crescent, and Wraith's solid coffin mass. Centered with generous padding and no cropping.
+
+modern DOOM (2016 / Eternal) aesthetic, gritty industrial sci-fi, heavy worn scarred
+gunmetal and cracked concrete, crushed near-black shadows, very high contrast, low ambient
+saturation, single hot directional key light, emissive glow accents only (hellfire orange
+#ff5a1e, demon red #ff3366, toxic green #44ff99, tech cyan #00f0ff, portal purple #7800ff),
+strong readable silhouette, chunky weighted forms, painterly realistic detail, game asset,
+dark background separation, dramatic rim lighting
+
+Negative prompt:
+pixel art, 8-bit, 16-bit, dithering, visible pixels, cartoon, cel shading, anime, flat
+colors, outline style, pastel, bright cheerful colors, saturated painted surfaces, clean new
+pristine surfaces, chrome, gloss plastic, soft even lighting, washed out, low contrast, text,
+letters, numbers, logos, watermark, signature, jpeg artifacts, blurry, white background halo
+loose particles, disconnected copies, thin scanlines, motion blur, transparent smoke, simple triangular fighter, hollow crescent, solid coffin, humanoid, side view, three-quarter perspective, floor, contact shadow, cast shadow, horizon, environment scene.
+```
+
+### Echo retained-original disposition
+
+- **Static review:** the fitted candidate passed exact complete-canvas `44x44`
+  visible and 15%-alpha simulations on `#05070b` and `#b8b8b0`, plus a static
+  simulation of the complete-canvas `96x96` Bestiary draw. Its connected,
+  staggered armor masses remained attached around one stable dark core; the
+  visible and ghosted silhouettes were more readable than the production
+  original and did not read as Scout's triangle, Cloaker's crescent, or
+  Wraith's coffin.
+- **Candidate validation:** after temporary installation,
+  `yarn sprites:test` passed 4/4. The first sandboxed invocation could not
+  create tsx's local IPC socket (`listen EPERM`); the identical approved
+  outside-sandbox invocation passed. `NEXT_PUBLIC_DEVTOOLS=1 yarn build`
+  completed successfully, and the fresh export served the candidate at
+  `480x854`.
+- **Live gameplay:** W6-2 Distortion Field HUD `WAVE 1/10` was launched twice
+  from the fresh DevPanel export. At about 4.0 seconds after briefing skip,
+  the six-Echo scatter was visible as three random overlap groups with the
+  candidate's connected displaced-cluster silhouette, unchanged dark/cyan
+  `tech-drone` tint, lateral offsets, and visible purple enemy fire. At about
+  3.2 seconds after a fresh launch, the start-hidden 15%-alpha craft nearly
+  disappeared against the bright field, consistent with the baseline, and no
+  enemy fire was visible. These observations prove the draw/state presentation
+  only; they do not prove collision behavior.
+- **Contact limitation:** a deliberate player-contact pass was not attempted
+  after the mandatory Bestiary gate failed. No claim is made for candidate
+  collision-specific removal or pass-through. The draw canvas, hitbox, phase
+  code, collision code, registration, and statistics were never changed, and
+  restoration removes every production art delta.
+- **Mandatory Bestiary blocker:** the documented four-entry isolated save was
+  seeded in `Scout, Cloaker, Wraith, Echo` order. The production cockpit
+  Bestiary was entered by its mouse hotspot; three held ArrowDown inputs
+  selected Echo; after a neutral tick, one held-Space input was issued for 300
+  ms and released. The UI remained on the Echo list row instead of opening the
+  96x96 detail. Per the one-controlled-attempt rule, no Enter retry or loop was
+  attempted. Live Bestiary use was therefore not verified.
+- **Console:** the final session reported zero browser console errors and two
+  warnings, both the unchanged Next.js font-preload warnings for
+  `fc727f226c737876-s.p.woff2` and `806de4d605d3ad01-s.p.woff2`.
+- **Evidence disposition:** temporary candidate files
+  `actual-size/after-echo.png`, `gameplay/after-echo-w6-2-visible.png`,
+  `gameplay/after-echo-w6-2-ghosted.png`, `bestiary/after-echo.png`,
+  `matched/echo-visible.png`, and `matched/echo-ghosted.png` do not remain.
+  All preserved `before-*` evidence remains unchanged. The Playwright session,
+  local server, and `.playwright-cli` metadata were removed.
+- **Production restoration:** `game/public/sprites/enemies/echo.png` was
+  restored byte-for-byte from the preserved original, SHA-256
+  `dc4a2532e68ef83225b9f30b5c32bb054f339796b06e8942ccdd4c5a5bf3cf4d`;
+  `1536x1024` sRGBA, one frame; 5%-alpha bounds `1037x895+258+49`;
+  twice-center `X=1553`, `Y=993`; four transparent corners.
+- **Post-restoration validation:** against the restored original,
+  `yarn sprites:test` passed 4/4 and a fresh
+  `NEXT_PUBLIC_DEVTOOLS=1 yarn build` compiled, typechecked, generated six
+  static pages, and exported three routes. Corepack's tool-only package drift
+  was restored after verification.
