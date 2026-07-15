@@ -946,6 +946,12 @@ cluster, Bomber's tall ram, Gunner's broad block, Drone's compact core,
 Cloaker's open crescent, Scout's simple dart, Wraith's broad spectral mass,
 and Echo's narrow phase mark.
 
+The comparison is `1408x404` sRGBA with normalized page geometry
+`1408x404+0+0`. The accidental header-sized PNG `caNv` metadata was removed
+with `+repage`; the ImageMagick pixel signature remained
+`26c2dd8811deb58b6fc61064ceb473eaf23795011aa65f3e1733d2543d8784b4`,
+so the visible pixels and 1:1 size intent did not change.
+
 ### Fresh restored-production browser pass
 
 After the original four sprites were restored, a fresh
@@ -957,13 +963,25 @@ static pages, and exported three routes. Corepack's tool-only root
 
 - W1-1 First Contact HUD `WAVE 1/8`: all five production Scouts were fully
   inside the opening line at about 4.3 seconds;
+- W1-1 First Contact HUD `WAVE 8/8`: seven DevPanel `SKIP WAVE` actions
+  advanced from the opening wave to the authored dense composition of eight
+  Scouts in a V and five Drones in scatter. At 2.8 seconds after the final
+  action, all eight production Scouts were fully inside and readable in the
+  dense staggered V. No Drone sprite remained visibly inside the captured
+  field, so this frame proves dense Scout readability but does not claim a
+  live side-by-side Scout/Drone role comparison;
 - W5-3 Phantom Fleet HUD `WAVE 1/11`: all nine production Cloakers were
   present in the start-hidden interval at about 3.7 seconds and visible after
   the following 500 ms; the visible state fired the existing purple enemy
   projectiles while none were visible in the captured hidden state;
 - W4-2 The Kepler Graveyard HUD `WAVE 1/10`: all four production Wraiths were
   visible in the authored V under the existing Cinder presentation and fired
-  the existing red projectiles;
+  the existing red projectiles. A bounded follow-up sampled 3.4, 4.2, 5.0,
+  and 5.8 seconds after briefing skip. The 5.0 and 5.8 second frames place all
+  four sprites across the materially brighter blue-gray central nebula and
+  starfield; their broad Cinder-tinted silhouettes remain readable and red
+  fire remains visible. The dark rectangles around them are the unchanged
+  multiply-tint fields already present in baseline evidence;
 - W6-2 Distortion Field HUD `WAVE 1/10`: all six production Echoes were
   exercised in the start-hidden and following visible intervals; the visible
   capture showed the existing purple fire, while the hidden capture showed no
@@ -974,17 +992,51 @@ they do not create a new collision-specific claim. Movement, damage,
 visibility timing, wave data, hitboxes, statistics, registrations, and
 renderer code were not edited.
 
-The same fresh session seeded the documented four-entry Bestiary list and
-entered it through the cockpit hotspot. After a blur reset and neutral delay,
-one 300 ms held-Space selection attempt on Scout remained on the list rather
-than opening the 96x96 detail. No alternate key or input loop was attempted.
-This reproduces the existing automation/input limitation seen during the
-candidate gates; the committed pre-change 96x96 Bestiary captures remain the
-only live detail evidence, and no final-session detail-verification claim is
-made.
+### Fresh Bestiary detail evidence and confirmed blocker
 
-The final browser console reported zero errors and the same two unchanged
-Next.js font-preload warnings for `fc727f226c737876-s.p.woff2` and
-`806de4d605d3ad01-s.p.woff2`. The request log showed HTTP 200 for all four
-production enemy sprites on initial load and HTTP 304 after reload; there were
-no failed Cloaker, Scout, Wraith, or Echo sprite requests.
+A fresh browser session seeded the documented four-entry Bestiary in Scout,
+Cloaker, Wraith, Echo order and entered it through the cockpit hotspot. The
+game samples keyboard state in `updateCockpit` on animation frames and opens a
+detail only on a false-to-true `shoot` transition. The successful detail flow
+was: dispatch the existing window blur reset, wait 500 ms for neutral frames,
+click the canvas to restore focus, wait 300 ms, hold Enter for 300 ms, release,
+and wait for the rendered detail. Using that flow:
+
+- Cloaker opened to its named statistics/lore screen with the production
+  sprite in the 96x96 turntable presentation;
+- Scout opened to its named statistics/lore screen with the production sprite
+  in the same 96x96 presentation. Seven frames sampled 500 ms apart covered
+  the turntable rotation and included a full-horizontal-magnitude frame.
+
+The remaining live-detail gate is confirmed blocked rather than reported as a
+generic focus failure. The same browser session was reloaded with an isolated
+sole-entry Wraith save and entered the production Bestiary, which visibly
+showed `DISCOVERED 1/13` and the selected Wraith row. The bounded native
+blur/neutral/refocus/Enter attempt stayed on that list. A page-local diagnostic
+then proved the exact Enter down/up events reached the real window listener,
+but the screen still did not transition.
+
+Foreground throttling was ruled out before the final trusted-input checks:
+
+- after `bringToFront()`, `document.visibilityState` was `visible` and 62
+  `requestAnimationFrame` callbacks ran in 501.2 ms. A trusted native Enter
+  keydown at `640208.4` ms and keyup at `640711.6` ms (503.2 ms held) still
+  left the sole Wraith row on the list;
+- a second foreground check was `visible` and counted 38 animation callbacks
+  in 301.6 ms. After another neutral interval, trusted native Space keydown at
+  `916582.2` ms and keyup at `917086.5` ms (504.3 ms held) also left the sole
+  Wraith row on the list.
+
+Both traces had the exact expected key/code pairs (`Enter`/`Enter` and
+` `/`Space`), `isTrusted=true`, active rAF sampling, and no console error. No
+game code was changed to bypass the failure. Per the stop condition, live Echo
+detail was not attempted after the confirmed Wraith blocker. Task 6 therefore
+remains incomplete only for live Wraith and Echo Bestiary-detail verification;
+the final Task 7 gate, push, and draft PR were not performed.
+
+The Bestiary session reported zero errors and the same two unchanged Next.js
+font-preload warnings for `fc727f226c737876-s.p.woff2` and
+`806de4d605d3ad01-s.p.woff2`. The later dense-Scout and bright-Wraith gameplay
+session reported zero errors and zero warnings. The request log showed HTTP
+200 for all four production enemy sprites on initial load and HTTP 304 after
+reload; there were no failed Cloaker, Scout, Wraith, or Echo sprite requests.
