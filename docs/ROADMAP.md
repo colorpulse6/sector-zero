@@ -1,6 +1,6 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-07-13** (Fable planning session — decisions recorded with the user).
+**Updated 2026-07-15** (active course unchanged; long-horizon vision links added).
 This is the single entry point. Every other doc is either DONE, absorbed here, or linked
 below with its authority noted.
 
@@ -107,6 +107,13 @@ after the sandbox core proves fun. **Spec status: ready in colony spec, sequence
   economy reference; unbuilt remainders absorbed into M5.
 - `audits/2026-07-12-full-game-audit.md` — deferred PERF/POLISH backlog (pull from it
   during any nearby work).
+- `superpowers/specs/2026-07-14-living-galaxy-vision-design.md` — approved long-horizon
+  direction for generations, Great Houses, galactic time, Fold eras, and world
+  continuity. It does not reorder M1–M6.
+- `superpowers/specs/2026-07-15-civilization-frontier-design.md` — approved skeleton for
+  political authority, autonomous colonies, recontact/exile, bounded governor
+  decisions, and the eventual non-linear logistics frontier. It decomposes into future
+  focused specs and does not authorize an immediate star-map rewrite.
 
 ## Execution model
 
