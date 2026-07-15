@@ -173,6 +173,113 @@ The export was served from `game/out` on port 3000 and captured through named
 Playwright session `m2b` at `window.innerWidth=480`,
 `window.innerHeight=854`, and device pixel ratio 1.
 
+### Reproducible DevPanel navigation
+
+The baseline browser was opened and sized with:
+
+```bash
+playwright-cli -s=m2b open http://127.0.0.1:3000
+playwright-cli -s=m2b resize 480 854
+```
+
+The initial set used `m2b`; the focused Cloaker/Scout correction used `m2c`
+with the same URL and viewport. For each gameplay capture, click `DEV`, click
+the exact level button, click `GOD ON` once for the session (later level
+launches preserve it), click `SKIP BRIEF`, and close the panel with its exact
+`X` button. The final accepted timings after that sequence were:
+
+- W5-3: wait 3,700 ms and capture the start-hidden 15%-alpha opening wave,
+  then wait another 500 ms and capture the first visible interval;
+- W1-1: start a fresh level, wait 4,300 ms, then capture the fully entered
+  five-Scout line;
+- W4-2: start a fresh level, wait 3,400 ms, then capture the four-Wraith V;
+- W6-2 visible: start a fresh level, wait 4,000 ms, then capture after the
+  first 90-frame phase transition;
+- W6-2 ghosted: start another fresh level, wait 3,200 ms, then capture during
+  the start-hidden interval.
+
+The same actions were issued with Playwright role locators, for example:
+
+```js
+await page.getByRole('button', { name: 'DEV' }).click();
+await page.getByRole('button', { name: '5-3', exact: true }).click();
+await page.getByRole('button', { name: 'SKIP BRIEF' }).click();
+await page.getByRole('button', { name: 'X', exact: true }).click();
+```
+
+### Browser-session Bestiary seed and navigation
+
+The Bestiary setup modified only the isolated Playwright session's existing
+save. It contains no credential or secret. This is the complete exact storage
+key and four-record payload mutation used before reload:
+
+```js
+const key = 'sector-zero-save';
+const s = JSON.parse(localStorage.getItem(key) || '{}');
+s.introSeen = true;
+s.bestiary = {
+  SCOUT: {
+    enemyType: 'SCOUT',
+    classId: 'swarm',
+    killCount: 1,
+    firstSeenWorld: 1,
+  },
+  CLOAKER: {
+    enemyType: 'CLOAKER',
+    classId: 'tech-drone',
+    killCount: 1,
+    firstSeenWorld: 5,
+  },
+  WRAITH: {
+    enemyType: 'WRAITH',
+    classId: 'elemental-cinder',
+    killCount: 1,
+    firstSeenWorld: 4,
+  },
+  ECHO: {
+    enemyType: 'ECHO',
+    classId: 'tech-drone',
+    killCount: 1,
+    firstSeenWorld: 6,
+  },
+};
+localStorage.setItem(key, JSON.stringify(s));
+```
+
+After `page.reload()`, click `START MISSION` to enter the cockpit, then click
+the Bestiary hotspot at canvas-relative `(370, 145)` on the first game canvas.
+The seeded list order is Scout, Cloaker, Wraith, Echo. Open Scout, then close
+the detail, move down once, and reopen for each subsequent enemy.
+
+Cockpit selection is sampled by its animation loop. An instantaneous
+Playwright `press Enter` can complete between frames and be missed. Hold Space
+for roughly 200-350 ms before releasing it; held `Z` is the equivalent shoot/
+select input in the game key map. Hold `ArrowDown` the same way between
+entries, allow a release frame before the next input, and capture only when the
+96x96 turntable sprite is at full horizontal magnitude rather than edge-on.
+When an earlier input remained latched during automation, the actual recovery
+sequence dispatched the game's existing blur reset before the next held input:
+
+```js
+await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+await page.waitForTimeout(300);
+await page.keyboard.down(' ');
+await page.waitForTimeout(300);
+await page.keyboard.up(' ');
+await page.waitForTimeout(200);
+```
+
+### Matching policy
+
+Authored `scatter` formations call `Math.random()` for initial positions, so
+their positions are intentionally nondeterministic. Gameplay comparisons are
+state-matched by level, visible HUD wave, visibility/cloak state, unchanged
+class tint, 480x854 viewport, and target count. They are not position-matched
+or pixel-matched. Bestiary comparisons are matched by selected enemy, 96x96
+draw contract, and full-magnitude turntable angle/state; the continuously
+animated bob, glow, and rotation mean those captures are not assumed to be
+pixel-identical either.
+
 | Evidence | Level / state | Capture timing and observed contract |
 |---|---|---|
 | `gameplay/before-cloaker-w5-3-visible.png` | W5-3 Phantom Fleet, HUD Wave 1/11 | About 4.2 seconds after DevPanel briefing skip; all nine opening-wave Cloakers are distinct and fully inside the playfield after the first 120-frame cloak transition, with unchanged `tech-drone` tint |
@@ -194,3 +301,16 @@ same two unchanged Next.js font-preload warnings for
 `fc727f226c737876-s.p.woff2` and `806de4d605d3ad01-s.p.woff2`; there were no new
 gameplay, asset, or renderer warnings. The focused correction capture session
 `m2c` separately reported zero console errors and zero warnings.
+
+Console evidence was inspected after the complete capture flow with:
+
+```bash
+playwright-cli -s=m2b console warning
+playwright-cli -s=m2b console error
+```
+
+The `warning` query reported `Total messages: 2 (Errors: 0, Warnings: 2)` and
+listed the two font-preload messages above. The stricter `error` query reported
+the same total session summary but returned zero messages at error level. The
+focused correction session repeated the process with `-s=m2c`; both its
+warning- and error-level queries reported zero messages.
