@@ -314,3 +314,131 @@ listed the two font-preload messages above. The stricter `error` query reported
 the same total session summary but returned zero messages at error level. The
 focused correction session repeated the process with `-s=m2c`; both its
 warning- and error-level queries reported zero messages.
+
+## Cloaker production quality gate
+
+### Cloaker attempt 1 — rejected before matte
+
+- **Output identifier/path:** built-in generation `019f658c-f3d8-7251-8962-c1cb6978da22`, source `/Users/nichalasbarnes/.codex/generated_images/019f658c-f3d8-7251-8962-c1cb6978da22/exec-fe06809a-016f-4a6e-b9e9-10c5b88688a8.png`
+- **Seed policy:** not exposed by built-in tool
+- **Reference role:** no image reference input; the production original was inspected only for semantics, contracts, scale, and comparison
+- **Generated source dimensions:** `1024x1536` sRGB RGB, one PNG frame
+- **Generated source SHA-256:**
+  `40d32a9bc7429ecfa26809b5332e44bf40d699e7cfbfad5b994d685841455dff`;
+  the built-in output and preserved rejected copy are byte-identical
+- **Matte:** not run because the source-footprint gate had already failed
+- **Decision:** rejected; preserved as `/private/tmp/sector-zero-m2-tranche2-rejected/cloaker-attempt1-source.png`
+- **Rejection reason:** portrait canvas and tall, narrow subject. Proportional
+  fitting inside `633x596` would substantially underfill the available width
+  and lose the required broad crescent role read; scaling it to fill the width
+  would exceed and crop the permitted height.
+
+Exact prompt:
+
+```text
+Use case: stylized-concept
+Asset type: polished 2D game production asset, a single enemy billboard for a top-down vertical shooter.
+
+Create one top-down vertical-shooter enemy sprite on a perfectly flat solid #00ff00 chroma-key background for background removal. The background must be one uniform color with no shadows, gradients, texture, reflections, floor plane, or lighting variation. Keep the subject fully separated from the background with crisp edges and generous padding. Do not use #00ff00 anywhere in the subject. No cast shadow, no contact shadow, no reflection, no watermark, and no text.
+
+Subject: CLOAKER enemy, an organic stealth hunter built around one large broken-ring or crescent silhouette. Strict orthographic or near-orthographic top-down/front-down spacecraft view, descending toward the bottom of the image. A dense dark predatory core is partly enclosed by two chunky shutter-like chitin arcs, leaving one dominant open negative-space cutout that survives reduction to a 52 by 52 gameplay draw and remains recognizable at 15 percent opacity. Add worn black membrane, scarred desaturated shell, and only a few restrained cold tech-cyan seams that suggest an invasive cloaking mechanism. One connected enemy, broad solid shape breaks, strong rim separation, no thin wisps. It must read as hollow and evasive, never as Wraith's solid reliquary or Echo's repeated plates. Centered with generous padding and no cropping.
+
+modern DOOM (2016 / Eternal) aesthetic, gritty industrial sci-fi, heavy worn scarred
+gunmetal and cracked concrete, crushed near-black shadows, very high contrast, low ambient
+saturation, single hot directional key light, emissive glow accents only (hellfire orange
+#ff5a1e, demon red #ff3366, toxic green #44ff99, tech cyan #00f0ff, portal purple #7800ff),
+strong readable silhouette, chunky weighted forms, painterly realistic detail, game asset,
+dark background separation, dramatic rim lighting
+
+Negative prompt:
+pixel art, 8-bit, 16-bit, dithering, visible pixels, cartoon, cel shading, anime, flat
+colors, outline style, pastel, bright cheerful colors, saturated painted surfaces, clean new
+pristine surfaces, chrome, gloss plastic, soft even lighting, washed out, low contrast, text,
+letters, numbers, logos, watermark, signature, jpeg artifacts, blurry, white background halo
+thin wisps, smoke body, loose particles, solid coffin, repeated afterimages, humanoid, side view, three-quarter perspective, floor, contact shadow, cast shadow, horizon, environment scene
+```
+
+### Cloaker attempt 2 — rejected after live review
+
+- **Output identifier/path:** built-in generation `019f658c-f3d8-7251-8962-c1cb6978da22`, source `/Users/nichalasbarnes/.codex/generated_images/019f658c-f3d8-7251-8962-c1cb6978da22/exec-d646dc8d-03ad-4e97-94ce-7d528eb3853a.png`
+- **Seed policy:** not exposed by built-in tool
+- **Reference role:** no image reference input; the production original was inspected only for semantics, contracts, scale, and comparison
+- **Generated source dimensions:** `1536x1024` sRGB RGB, one PNG frame
+- **Generated source SHA-256:**
+  `49351aa6a1ad1ef7247ebbd22d99bac064fa76a2b393dc5bc68330e5e478fea3`;
+  the built-in output and canonical local source are byte-identical
+- **Matte:** installed `remove_chroma_key.py`; border auto-key, soft matte, thresholds 12/220, despill; sampled key `#03f902`; 1,115,357 transparent and 7,323 partially transparent pixels of 1,572,864. No edge contraction was needed because dark/light inspection showed no green fringe.
+- **Source matte geometry:** `1536x1024` sRGBA; 5%-alpha bounds `1009x930+238+46`; four transparent corners
+- **Fitted production derivative:** `1536x1024` sRGBA, one frame, 256 alpha values; 5%-alpha bounds `633x583+452+153`; twice-center `X=1537`, `Y=889`; four transparent corners
+- **Fitted rejected derivative SHA-256:**
+  `b80911f70e728c082148ac3cb3145115823532ca95864083516229ec95c637e6`
+  at `/private/tmp/sector-zero-m2-tranche2-sources/cloaker-production.png`
+- **Decision:** rejected; the byte-identical production original was retained.
+  The targeted retry corrected the portrait footprint, and its proportional fit
+  was centered, uncropped, and unstretched, but it failed the live visual-role
+  gate.
+- **Rejection reason:** the live 15%-alpha W5-3 frame had no discernible
+  Cloaker silhouettes. In the visible frame, the dominant crescent read
+  predominantly as a right-facing shape rather than a hunter oriented forward
+  down-screen. It therefore was not clearly better than the production
+  original and could not be promoted.
+
+Exact prompt:
+
+```text
+Use case: stylized-concept
+Asset type: polished 2D game production asset, a single enemy billboard for a top-down vertical shooter.
+
+Create one top-down vertical-shooter enemy sprite on a perfectly flat solid #00ff00 chroma-key background for background removal. The background must be one uniform color with no shadows, gradients, texture, reflections, floor plane, or lighting variation. Keep the subject fully separated from the background with crisp edges and generous padding. Do not use #00ff00 anywhere in the subject. No cast shadow, no contact shadow, no reflection, no watermark, and no text.
+
+Subject: CLOAKER enemy, an organic stealth hunter built around one large broken-ring or crescent silhouette. Strict orthographic or near-orthographic top-down/front-down spacecraft view, descending toward the bottom of the image. A dense dark predatory core is partly enclosed by two chunky shutter-like chitin arcs, leaving one dominant open negative-space cutout that survives reduction to a 52 by 52 gameplay draw and remains recognizable at 15 percent opacity. Add worn black membrane, scarred desaturated shell, and only a few restrained cold tech-cyan seams that suggest an invasive cloaking mechanism. One connected enemy, broad solid shape breaks, strong rim separation, no thin wisps. It must read as hollow and evasive, never as Wraith's solid reliquary or Echo's repeated plates. Centered with generous padding and no cropping. Targeted correction for the rejected first attempt: compose on a landscape 1536 by 1024 canvas and keep the connected subject footprint broad and approximately square, not tall or portrait, so fitting into a 633 by 596 production box does not squash or stretch it. Preserve one large clean crescent opening rather than several small perforations.
+
+modern DOOM (2016 / Eternal) aesthetic, gritty industrial sci-fi, heavy worn scarred
+gunmetal and cracked concrete, crushed near-black shadows, very high contrast, low ambient
+saturation, single hot directional key light, emissive glow accents only (hellfire orange
+#ff5a1e, demon red #ff3366, toxic green #44ff99, tech cyan #00f0ff, portal purple #7800ff),
+strong readable silhouette, chunky weighted forms, painterly realistic detail, game asset,
+dark background separation, dramatic rim lighting
+
+Negative prompt:
+pixel art, 8-bit, 16-bit, dithering, visible pixels, cartoon, cel shading, anime, flat
+colors, outline style, pastel, bright cheerful colors, saturated painted surfaces, clean new
+pristine surfaces, chrome, gloss plastic, soft even lighting, washed out, low contrast, text,
+letters, numbers, logos, watermark, signature, jpeg artifacts, blurry, white background halo
+thin wisps, smoke body, loose particles, solid coffin, repeated afterimages, humanoid, side view, three-quarter perspective, floor, contact shadow, cast shadow, horizon, environment scene
+```
+
+### Cloaker retained-original disposition
+
+- **Static review:** exact complete-canvas `52x52` visible and 15%-alpha
+  simulations were inspected on `#05070b` and `#b8b8b0`, and the candidate was
+  compared with the original, Wraith, and Echo. Those isolated fields were not
+  sufficient to establish replacement quality because the candidate failed
+  the live gameplay gate.
+- **Live blocker:** fresh cache-bypassed Playwright session `cloaker2`,
+  `480x854`, W5-3 HUD `WAVE 1/11`; the pure nine-Cloaker scatter was captured
+  about 3.7 seconds into the start-hidden interval and 500 ms later after the
+  first 120-frame transition. The 15%-alpha frame had no discernible candidate
+  silhouettes, and the visible frame read predominantly right-facing rather
+  than forward down-screen. The candidate was therefore rejected.
+- **Bestiary / console:** the isolated save was seeded only for discovery and
+  the candidate was inspected in the production cockpit Bestiary at the shared
+  `96x96` turntable draw. The session reported zero errors; four warnings were
+  the same two baseline Next.js font-preload warnings repeated after reload.
+- **Collision exercise:** a direct live player-contact collision exercise was
+  not completed. Restoring the byte-identical production original eliminates
+  any production art or collision change from this task; behavior code and
+  hitboxes were never modified.
+- **Evidence disposition:** the candidate-only actual-size sheet, two W5-3
+  after captures, Bestiary after capture, and two matched sheets were removed.
+  A non-replacement must not leave review artifacts that imply acceptance.
+  All preserved `before-*` baseline evidence remains unchanged.
+- **Production restoration:** `game/public/sprites/enemies/cloaker.png` was
+  restored byte-for-byte from the preserved original, SHA-256
+  `bcb400c45435948e3bbd9d1e43214f9bf7503092a031b2567fdaa250cdd51869`;
+  `1536x1024` sRGBA, one frame, 5%-alpha bounds `633x596+452+147`,
+  twice-center `X=1537`, `Y=890`.
+- **Post-restoration validation:** `NEXT_PUBLIC_DEVTOOLS=1 yarn build`
+  compiled, typechecked, generated six static pages, and exported three
+  routes. `yarn sprites:test` passed 4/4. Corepack's tool-only root
+  `packageManager` drift was restored after both runs.
