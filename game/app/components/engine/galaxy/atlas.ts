@@ -8,6 +8,8 @@ import type {
   AtlasGenerationIdentity,
   AtlasKnowledgeRecord,
   GalaxyAtlasState,
+  KnowledgeConfidence,
+  KnowledgeSource,
   KnowledgeState,
 } from "./galaxyTypes";
 
@@ -41,6 +43,13 @@ export interface GenerationAvailability {
 export interface AtlasKnowledgePromotionInput {
   fact: AtlasCellFact;
   record: Omit<AtlasKnowledgeRecord, "state" | "subjectId">;
+}
+
+export interface NegativeSurveyInput {
+  fact: AtlasCellFact & { kind: "empty"; contactId: null };
+  source: KnowledgeSource;
+  confidence: KnowledgeConfidence;
+  observedCycle: number;
 }
 
 const PROCEDURAL_KINDS: readonly AtlasCellFact["kind"][] = Object.freeze([
@@ -109,18 +118,15 @@ function proceduralFact(
 ): AtlasCellFact {
   const identityKey = proceduralIdentityKey(identity, coordinate);
   const stableSeed = stableHash(`seed:${identityKey}`);
-  const idSuffix = stableHash(`id:${identityKey}`)
-    .toString(16)
-    .padStart(8, "0");
+  const factId = `procedural:${identityKey}`;
   const kind = PROCEDURAL_KINDS[stableSeed % PROCEDURAL_KINDS.length];
 
   return {
-    id: `procedural:${idSuffix}`,
+    id: factId,
     cellKey: cellKey(coordinate),
     coordinate: canonicalCoordinate(coordinate),
     kind,
-    contactId:
-      kind === "stellar_contact" ? `contact:procedural:${idSuffix}` : null,
+    contactId: kind === "stellar_contact" ? `contact:${factId}` : null,
     stableSeed,
     authored: false,
   };
@@ -220,13 +226,27 @@ function cloneKnowledgeRecord(
   };
 }
 
+function emptyDictionary<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
+function ownDictionaryValue<T>(
+  dictionary: Record<string, T>,
+  key: string,
+): T | undefined {
+  if (!Object.prototype.hasOwnProperty.call(dictionary, key)) {
+    return undefined;
+  }
+  return dictionary[key];
+}
+
 function cloneAtlasState(state: GalaxyAtlasState): GalaxyAtlasState {
-  const materializedFacts: Record<string, AtlasCellFact> = {};
+  const materializedFacts = emptyDictionary<AtlasCellFact>();
   for (const [key, fact] of Object.entries(state.materializedFacts)) {
     materializedFacts[key] = cloneFact(fact);
   }
 
-  const knowledge: Record<string, AtlasKnowledgeRecord> = {};
+  const knowledge = emptyDictionary<AtlasKnowledgeRecord>();
   for (const [key, record] of Object.entries(state.knowledge)) {
     knowledge[key] = cloneKnowledgeRecord(record);
   }
@@ -260,17 +280,20 @@ function promoteKnowledge(
   input: AtlasKnowledgePromotionInput,
   targetState: Exclude<KnowledgeState, "unknown" | "lost_contact">,
 ): GalaxyAtlasState {
-  const current = state.knowledge[input.record.id];
+  const materializedFact = materializeCell(
+    ownDictionaryValue(state.materializedFacts, input.fact.cellKey) ?? null,
+    input.fact,
+  );
+  const current = ownDictionaryValue(state.knowledge, input.record.id);
+  if (current !== undefined && current.subjectId !== materializedFact.id) {
+    return state;
+  }
   if (!canPromote(current, targetState)) {
     return state;
   }
 
   const next = cloneAtlasState(state);
-  const materializedFact = materializeCell(
-    state.materializedFacts[input.fact.cellKey] ?? null,
-    input.fact,
-  );
-  next.materializedFacts[input.fact.cellKey] = cloneFact(materializedFact);
+  next.materializedFacts[materializedFact.cellKey] = cloneFact(materializedFact);
   next.knowledge[input.record.id] = {
     ...input.record,
     subjectId: materializedFact.id,
@@ -280,9 +303,9 @@ function promoteKnowledge(
 
   if (
     targetState !== "signal" &&
-    !next.mappedCellKeys.includes(input.fact.cellKey)
+    !next.mappedCellKeys.includes(materializedFact.cellKey)
   ) {
-    next.mappedCellKeys.push(input.fact.cellKey);
+    next.mappedCellKeys.push(materializedFact.cellKey);
   }
 
   return next;
@@ -311,7 +334,45 @@ export function visitFact(
 
 export function recordNegativeSurvey(
   state: GalaxyAtlasState,
-  input: AtlasKnowledgePromotionInput,
+  input: NegativeSurveyInput,
 ): GalaxyAtlasState {
-  return promoteKnowledge(state, input, "charted");
+  if (input.fact.kind !== "empty" || input.fact.contactId !== null) {
+    return state;
+  }
+
+  const materializedFact = materializeCell(
+    ownDictionaryValue(state.materializedFacts, input.fact.cellKey) ?? null,
+    input.fact,
+  );
+  if (materializedFact.kind !== "empty" || materializedFact.contactId !== null) {
+    return state;
+  }
+
+  const recordId = `knowledge:negative-survey:${JSON.stringify([
+    materializedFact.cellKey,
+    materializedFact.id,
+  ])}`;
+  if (ownDictionaryValue(state.knowledge, recordId) !== undefined) {
+    return state;
+  }
+
+  return promoteKnowledge(
+    state,
+    {
+      fact: materializedFact,
+      record: {
+        id: recordId,
+        observedProperties: {
+          negativeSurvey: true,
+          surveyResult: "no_contact",
+          cellKey: materializedFact.cellKey,
+        },
+        confidence: input.confidence,
+        source: input.source,
+        observedCycle: input.observedCycle,
+        expiresCycle: null,
+      },
+    },
+    "charted",
+  );
 }

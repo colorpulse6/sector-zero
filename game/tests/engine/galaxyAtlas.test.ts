@@ -76,6 +76,16 @@ function knowledgeInput(
   };
 }
 
+type NegativeSurveyInputKeys = keyof Parameters<
+  typeof recordNegativeSurvey
+>[1];
+const NEGATIVE_SURVEY_INPUT_SHAPE: Record<NegativeSurveyInputKeys, true> = {
+  fact: true,
+  source: true,
+  confidence: true,
+  observedCycle: true,
+};
+
 test("same complete generation identity and coordinate produces deep-identical facts", () => {
   const first = resolveCell(G0_GENERATION_IDENTITY, BLIND_FIXTURE_COORDINATE);
   const second = resolveCell(
@@ -89,11 +99,11 @@ test("same complete generation identity and coordinate produces deep-identical f
 
 test("registry v1 keeps the non-authored blind fixture stable", () => {
   assert.deepEqual(expectFact(G0_GENERATION_IDENTITY, BLIND_FIXTURE_COORDINATE), {
-    id: "procedural:f92b2a4b",
+    id: "procedural:[\"sector-zero-g0\",1,1,0,0,7,7]",
     cellKey: "0:0:7:7",
     coordinate: coord(0, 0, 1792, 1792),
     kind: "stellar_contact",
-    contactId: "contact:procedural:f92b2a4b",
+    contactId: "contact:procedural:[\"sector-zero-g0\",1,1,0,0,7,7]",
     stableSeed: 339038167,
     authored: false,
   });
@@ -251,9 +261,28 @@ test("authored reservation wins for every coordinate inside an authored cell", (
 test("procedural IDs and seeds pin the full identity tuple and cell address", () => {
   const fact = expectFact(G0_GENERATION_IDENTITY, BLIND_FIXTURE_COORDINATE);
 
-  assert.equal(fact.id, "procedural:f92b2a4b");
+  assert.equal(fact.id, "procedural:[\"sector-zero-g0\",1,1,0,0,7,7]");
   assert.equal(fact.stableSeed, 339038167);
   assert.equal(fact.cellKey, "0:0:7:7");
+});
+
+test("distinct complete tuples cannot collide in procedural fact or contact identity", () => {
+  const left = expectFact(
+    G0_GENERATION_IDENTITY,
+    coord(10, 12, 3840, 3840),
+  );
+  const right = expectFact(
+    G0_GENERATION_IDENTITY,
+    coord(12, 29, 2560, 3072),
+  );
+
+  assert.equal(left.cellKey, "10:12:15:15");
+  assert.equal(right.cellKey, "12:29:10:12");
+  assert.notEqual(left.stableSeed, right.stableSeed);
+  assert.notEqual(left.contactId, null);
+  assert.notEqual(right.contactId, null);
+  assert.notEqual(left.id, right.id);
+  assert.notEqual(left.contactId, right.contactId);
 });
 
 test("procedural kind selection uses the fixed explicit six-kind table", () => {
@@ -334,6 +363,58 @@ test("an explicitly serialized unknown record promotes to signal", () => {
   assert.equal(prior.knowledge[input.record.id].state, "unknown");
 });
 
+test("constructor is treated as a knowledge ID, not an inherited record", () => {
+  const fact = expectFact(G0_GENERATION_IDENTITY, BLIND_FIXTURE_COORDINATE);
+  const input = knowledgeInput(fact, { id: "constructor" });
+  const prior = emptyAtlasState();
+  const next = observeFact(prior, input);
+
+  assert.notEqual(next, prior);
+  assert.equal(Object.hasOwn(next.knowledge, "constructor"), true);
+  assert.equal(next.knowledge["constructor" as string].state, "signal");
+  assert.equal(Object.getPrototypeOf(next.knowledge), null);
+  assert.equal(Object.getPrototypeOf(next.materializedFacts), null);
+
+  const roundTripped = JSON.parse(JSON.stringify(next)) as GalaxyAtlasState;
+  assert.equal(Object.hasOwn(roundTripped.knowledge, "constructor"), true);
+  assert.equal(roundTripped.knowledge["constructor" as string].state, "signal");
+});
+
+test("__proto__ survives JSON-parsed promotion and JSON round-trip as an own record", () => {
+  const fact = expectFact(G0_GENERATION_IDENTITY, BLIND_FIXTURE_COORDINATE);
+  const input = knowledgeInput(fact, { id: "__proto__" });
+  const protoRecord: AtlasKnowledgeRecord = {
+    ...input.record,
+    subjectId: fact.id,
+    state: "signal",
+  };
+  const parsedKnowledge = JSON.parse(
+    JSON.stringify({ [protoRecord.id]: protoRecord }),
+  ) as Record<string, AtlasKnowledgeRecord>;
+  const parsedState: GalaxyAtlasState = {
+    ...emptyAtlasState(),
+    materializedFacts: { [fact.cellKey]: fact },
+    knowledge: parsedKnowledge,
+  };
+  const charted = chartFact(parsedState, input);
+
+  assert.equal(Object.hasOwn(charted.knowledge, "__proto__"), true);
+  assert.equal(charted.knowledge["__proto__"].state, "charted");
+  assert.equal(Object.getPrototypeOf(charted.knowledge), null);
+  assert.equal(Object.getPrototypeOf(charted.materializedFacts), null);
+
+  const roundTripped = JSON.parse(
+    JSON.stringify(charted),
+  ) as GalaxyAtlasState;
+  assert.equal(Object.hasOwn(roundTripped.knowledge, "__proto__"), true);
+  assert.equal(roundTripped.knowledge["__proto__"].state, "charted");
+
+  const visited = visitFact(roundTripped, input);
+  assert.equal(Object.hasOwn(visited.knowledge, "__proto__"), true);
+  assert.equal(visited.knowledge["__proto__"].state, "visited");
+  assert.equal(Object.getPrototypeOf(visited.knowledge), null);
+});
+
 test("chartFact and visitFact promote forward and map the cell once", () => {
   const fact = expectFact(G0_GENERATION_IDENTITY, BLIND_FIXTURE_COORDINATE);
   const observed = observeFact(emptyAtlasState(), knowledgeInput(fact));
@@ -386,6 +467,26 @@ test("forward promotion preserves a saved materialization over a regenerated fac
     charted.knowledge["knowledge:fixture"].subjectId,
     savedFact.id,
   );
+});
+
+test("a reused knowledge record ID cannot be rebound to a different subject", () => {
+  const factA = expectFact(G0_GENERATION_IDENTITY, BLIND_FIXTURE_COORDINATE);
+  const factB = expectFact(G0_GENERATION_IDENTITY, coord(0, 0, 257, 1));
+  const recordId = "knowledge:reused";
+  const observed = observeFact(
+    emptyAtlasState(),
+    knowledgeInput(factA, { id: recordId }),
+  );
+  const rejected = chartFact(
+    observed,
+    knowledgeInput(factB, { id: recordId }),
+  );
+
+  assert.notEqual(factB.id, factA.id);
+  assert.equal(rejected, observed);
+  assert.equal(rejected.knowledge[recordId].subjectId, factA.id);
+  assert.equal(rejected.knowledge[recordId].state, "signal");
+  assert.equal(Object.hasOwn(rejected.materializedFacts, factB.cellKey), false);
 });
 
 test("backward or duplicate promotion is a no-op", () => {
@@ -503,26 +604,77 @@ test("knowledge updates do not alias prior state or caller-owned nested values",
   assert.equal(next.materializedFacts[fact.cellKey].coordinate.localX, 1792);
 });
 
-test("recordNegativeSurvey durably maps and materializes the supplied fact idempotently", () => {
-  const fact = expectFact(G0_GENERATION_IDENTITY, coord(0, 0, 3841, 3841));
-  const input = knowledgeInput(fact, {
-    id: "knowledge:negative-survey:0:0:15:15",
-    observedProperties: { surveyResult: "no_contact" },
+test("recordNegativeSurvey owns durable negative metadata and is idempotent", () => {
+  assert.deepEqual(Object.keys(NEGATIVE_SURVEY_INPUT_SHAPE).sort(), [
+    "confidence",
+    "fact",
+    "observedCycle",
+    "source",
+  ]);
+
+  const fact = expectFact(G0_GENERATION_IDENTITY, coord(0, 0, 769, 1));
+  assert.equal(fact.kind, "empty");
+  const input = {
+    fact,
+    confidence: "high",
+    source: "sensor",
+    observedCycle: 29,
+  } as unknown as Parameters<typeof recordNegativeSurvey>[1];
+  const tamperedInput = {
+    ...input,
+    id: "caller-controlled-id",
+    state: "visited",
+    subjectId: "caller-controlled-subject",
+    expiresCycle: 30,
+    observedProperties: { surveyResult: "contact_found" },
+  } as unknown as Parameters<typeof recordNegativeSurvey>[1];
+  const first = recordNegativeSurvey(emptyAtlasState(), tamperedInput);
+  const recordId = `knowledge:negative-survey:${JSON.stringify([
+    fact.cellKey,
+    fact.id,
+  ])}`;
+  const second = recordNegativeSurvey(first, {
+    ...input,
+    confidence: "low",
+    source: "rumor",
+    observedCycle: 999,
+  });
+
+  assert.deepEqual(first.knowledge[recordId], {
+    id: recordId,
+    subjectId: fact.id,
+    state: "charted",
+    observedProperties: {
+      negativeSurvey: true,
+      surveyResult: "no_contact",
+      cellKey: fact.cellKey,
+    },
     confidence: "high",
     source: "sensor",
     observedCycle: 29,
     expiresCycle: null,
   });
-  const first = recordNegativeSurvey(emptyAtlasState(), input);
-  const second = recordNegativeSurvey(first, input);
-
-  assert.deepEqual(first.knowledge[input.record.id], {
-    ...input.record,
-    subjectId: fact.id,
-    state: "charted",
-  });
   assert.deepEqual(first.mappedCellKeys, [fact.cellKey]);
   assert.deepEqual(first.materializedFacts[fact.cellKey], fact);
-  assert.equal(first.knowledge[input.record.id].expiresCycle, null);
   assert.equal(second, first);
+});
+
+test("recordNegativeSurvey rejects a non-empty fact without changing state", () => {
+  const signalFact = expectFact(
+    G0_GENERATION_IDENTITY,
+    coord(0, 0, 2816, 1792),
+  );
+  assert.equal(signalFact.kind, "signal");
+  const prior = emptyAtlasState();
+  const rejected = recordNegativeSurvey(prior, {
+    fact: signalFact,
+    confidence: "high",
+    source: "sensor",
+    observedCycle: 30,
+  } as unknown as Parameters<typeof recordNegativeSurvey>[1]);
+
+  assert.equal(rejected, prior);
+  assert.deepEqual(rejected.mappedCellKeys, []);
+  assert.deepEqual(rejected.materializedFacts, {});
+  assert.deepEqual(rejected.knowledge, {});
 });
