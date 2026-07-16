@@ -106,30 +106,34 @@ test("registry version 999 returns the typed unsupported result", () => {
   });
 });
 
+test("the complete G0 generation identity is available", () => {
+  const availability = getGenerationAvailability(G0_GENERATION_IDENTITY);
+
+  assert.equal(availability.status, "available");
+  assert.equal(availability.generationVersionAvailable, true);
+  assert.equal(availability.authoredAnchorRegistryVersionAvailable, true);
+});
+
 test("generation version 999 is unavailable", () => {
-  assert.deepEqual(
-    getGenerationAvailability({
-      ...G0_GENERATION_IDENTITY,
-      generationVersion: 999,
-    }),
-    {
-      generationVersionAvailable: false,
-      authoredAnchorRegistryVersionAvailable: true,
-    },
-  );
+  const availability = getGenerationAvailability({
+    ...G0_GENERATION_IDENTITY,
+    generationVersion: 999,
+  });
+
+  assert.equal(availability.status, "unavailable");
+  assert.equal(availability.generationVersionAvailable, false);
+  assert.equal(availability.authoredAnchorRegistryVersionAvailable, true);
 });
 
 test("registry version 999 is unavailable", () => {
-  assert.deepEqual(
-    getGenerationAvailability({
-      ...G0_GENERATION_IDENTITY,
-      authoredAnchorRegistryVersion: 999,
-    }),
-    {
-      generationVersionAvailable: true,
-      authoredAnchorRegistryVersionAvailable: false,
-    },
-  );
+  const availability = getGenerationAvailability({
+    ...G0_GENERATION_IDENTITY,
+    authoredAnchorRegistryVersion: 999,
+  });
+
+  assert.equal(availability.status, "unavailable");
+  assert.equal(availability.generationVersionAvailable, true);
+  assert.equal(availability.authoredAnchorRegistryVersionAvailable, false);
 });
 
 test("all authored IDs and coordinates stay reserved when only galaxySeed changes", () => {

@@ -33,6 +33,7 @@ export type ResolveCellResult =
     };
 
 export interface GenerationAvailability {
+  status: "available" | "unavailable";
   generationVersionAvailable: boolean;
   authoredAnchorRegistryVersionAvailable: boolean;
 }
@@ -156,12 +157,19 @@ function generationResolverFor(
 export function getGenerationAvailability(
   identity: AtlasGenerationIdentity,
 ): GenerationAvailability {
+  const generationVersionAvailable =
+    generationResolverFor(identity.generationVersion) !== undefined;
+  const authoredAnchorRegistryVersionAvailable = getAuthoredAnchorRegistry(
+    identity.authoredAnchorRegistryVersion,
+  ).ok;
+
   return {
-    generationVersionAvailable:
-      generationResolverFor(identity.generationVersion) !== undefined,
-    authoredAnchorRegistryVersionAvailable: getAuthoredAnchorRegistry(
-      identity.authoredAnchorRegistryVersion,
-    ).ok,
+    status:
+      generationVersionAvailable && authoredAnchorRegistryVersionAvailable
+        ? "available"
+        : "unavailable",
+    generationVersionAvailable,
+    authoredAnchorRegistryVersionAvailable,
   };
 }
 
