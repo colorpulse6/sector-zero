@@ -1270,6 +1270,22 @@ test("quality group 3 validates travel atomically across every valid state", () 
   });
 });
 
+test("resolved travel rejects a destination position without completed progress", () => {
+  const raw = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  raw.activeTravel = validTravel("resolved");
+  raw.vessel = {
+    status: "stationary",
+    coordinate: { ...TRAVEL_DESTINATION },
+    contactId: "contact:ashfall",
+    transitTransactionId: null,
+  };
+
+  const migrated = migrateGalaxyRun(raw);
+
+  assert.equal(migrated.activeTravel, null);
+  assert.deepEqual(migrated.vessel, raw.vessel);
+});
+
 function advancingTravelFixture(): Record<string, any> {
   const raw = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
   raw.activeTravel = validTravel("advancing");

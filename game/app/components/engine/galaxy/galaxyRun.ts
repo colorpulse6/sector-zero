@@ -1280,7 +1280,10 @@ function travelCommitmentIsCoherent(
     && vessel.transitTransactionId === null
     && (
       sameCoordinate(vessel.coordinate, travel.origin)
-      || sameCoordinate(vessel.coordinate, travel.destination)
+      || (
+        travel.nextLegIndex === travel.legs.length
+        && sameCoordinate(vessel.coordinate, travel.destination)
+      )
     );
 }
 
