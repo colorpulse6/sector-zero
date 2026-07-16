@@ -29,6 +29,7 @@ import {
   neutralSiteStats,
 } from "../colony/region/regionMap";
 import type { RegionIntelState, RegionNode, SiteStats } from "../colony/shared/colonyTypes";
+import { migrateGalaxyRun } from "./galaxy/galaxyRun";
 export type { SaveData };
 
 const SAVE_KEY = "sector-zero-save";
@@ -73,6 +74,8 @@ function createDefaultSave(): SaveData {
     realtimeMsPerGameMinute: 1000,
     season: "standard",
   },
+  activeExperience: "legacy",
+  galaxyRun: null,
   };
 }
 
@@ -120,6 +123,14 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       realtimeMsPerGameMinute: 1000,
       season: "standard",
     },
+    activeExperience: raw.activeExperience === "galaxy" || raw.activeExperience === "legacy"
+      ? raw.activeExperience
+      : "legacy",
+    galaxyRun: raw.galaxyRun !== null
+      && typeof raw.galaxyRun === "object"
+      && !Array.isArray(raw.galaxyRun)
+      ? migrateGalaxyRun(raw.galaxyRun)
+      : null,
   };
 }
 
