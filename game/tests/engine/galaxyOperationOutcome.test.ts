@@ -430,6 +430,62 @@ test("a hostile success completion cannot be replayed as a failure", () => {
   assert.deepEqual(first.save, before);
 });
 
+test("completion IDs with a prefix relationship keep exact operation ownership", () => {
+  const keplerRun = atContact("contact:kepler");
+  const keplerOutcome = normalize(
+    keplerRun,
+    requireContext(keplerRun, "op:kepler-black-box"),
+    "completion:prefix",
+    "success",
+  );
+  const afterKepler = requireOutcomeSuccess(applyOperationOutcome(parentFor(keplerRun), keplerOutcome));
+
+  const ashfallPreview = planRoute(afterKepler.galaxyRun, {
+    kind: "contact",
+    contactId: "contact:ashfall",
+  });
+  assert.equal(ashfallPreview.ok, true, ashfallPreview.ok ? undefined : ashfallPreview.reasons.join("; "));
+  if (!ashfallPreview.ok) throw new Error("ashfall route preview failed");
+  const ashfallRun = requireTravelSuccess(finalizeTravel(
+    requireTravelSuccess(resumeTravelToBoundary(
+      requireTravelSuccess(commitTravel(afterKepler.galaxyRun, ashfallPreview.plan)).galaxyRun,
+    )).galaxyRun,
+  )).galaxyRun;
+  const ashfallOutcome = normalize(
+    ashfallRun,
+    requireContext(ashfallRun, "op:ashfall-sortie"),
+    "completion:prefix:ashfall",
+    "success",
+  );
+  const afterAshfall = requireOutcomeSuccess(applyOperationOutcome(
+    { ...afterKepler.save, galaxyRun: ashfallRun },
+    ashfallOutcome,
+  ));
+
+  const replay = requireOutcomeSuccess(applyOperationOutcome(afterAshfall.save, keplerOutcome));
+
+  assert.equal(replay.changed, false);
+  assert.deepEqual(replay.save, afterAshfall.save);
+});
+
+test("a hostile completion ID is bound to its exact modifier and numeric reward payload", () => {
+  const run = atHostileInterruption();
+  const context = requireContext(run, "op:hostile-picket");
+  const completionId = "completion:picket:modifier-binding";
+  const quickDraw = normalize(run, context, completionId, "success", 3600);
+  const ordinarySuccess = normalize(run, context, completionId, "success", 3601);
+  assert.deepEqual(quickDraw.modifierIds, ["modifier:q-reyes-1-1"]);
+  assert.deepEqual(ordinarySuccess.modifierIds, []);
+  const first = requireOutcomeSuccess(applyOperationOutcome(parentFor(run), quickDraw));
+  const before = structuredClone(first.save);
+
+  const replay = applyOperationOutcome(first.save, ordinarySuccess);
+
+  assert.equal(replay.ok, false);
+  if (!replay.ok) assert.equal(replay.errors[0]?.code, "incoherent_completion_journal");
+  assert.deepEqual(first.save, before);
+});
+
 test("hostile replay requires a coherent shared operation-outcome travel checkpoint while travel is retained", () => {
   for (const checkpointKind of ["missing", "contradictory"] as const) {
     const run = atHostileInterruption();
@@ -478,4 +534,31 @@ test("a finalized hostile travel retains enough operation history for exact repl
 
   assert.equal(replay.changed, false);
   assert.deepEqual(replay.save, finalized);
+});
+
+test("a later active route does not invalidate an exact replay from finalized hostile travel", () => {
+  const run = atHostileInterruption();
+  const outcome = normalize(
+    run,
+    requireContext(run, "op:hostile-picket"),
+    "completion:picket:later-route-replay",
+    "success",
+    3600,
+  );
+  const first = requireOutcomeSuccess(applyOperationOutcome(parentFor(run), outcome));
+  const finalized = requireTravelSuccess(finalizeTravel(first.galaxyRun)).galaxyRun;
+  const nextPreview = planRoute(finalized, { kind: "contact", contactId: "contact:vanguard" });
+  assert.equal(nextPreview.ok, true, nextPreview.ok ? undefined : nextPreview.reasons.join("; "));
+  if (!nextPreview.ok) throw new Error("vanguard route preview failed");
+  const laterRoute = requireTravelSuccess(commitTravel(finalized, nextPreview.plan)).galaxyRun;
+  assert.notEqual(laterRoute.activeTravel?.transactionId, outcome.travelTransactionId);
+  const parent = migrateSave(JSON.parse(JSON.stringify({
+    ...first.save,
+    galaxyRun: laterRoute,
+  })) as Partial<SaveData>);
+
+  const replay = requireOutcomeSuccess(applyOperationOutcome(parent, outcome));
+
+  assert.equal(replay.changed, false);
+  assert.deepEqual(replay.save, parent);
 });

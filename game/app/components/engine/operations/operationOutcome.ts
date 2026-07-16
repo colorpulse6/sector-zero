@@ -7,6 +7,7 @@ import {
 import { calcPilotLevel, skillPointsAtLevel } from "../pilotLevel";
 import { getNode } from "../skillTree";
 import type { SaveData } from "../types";
+import { stableHash } from "../galaxy/coordinates";
 import {
   advanceGalaxyWorldCycles,
   mergeProjectionIntoGalaxy,
@@ -526,6 +527,54 @@ function incoherentReplay(message: string): OperationOutcomeError {
   return { code: "incoherent_completion_journal", message };
 }
 
+function canonicalOutcomePayload(outcome: NormalizedOperationOutcome): string {
+  const reward = outcome.rewards;
+  return JSON.stringify([
+    outcome.completionId,
+    outcome.operationId,
+    outcome.result,
+    outcome.authorizedCycle,
+    outcome.contactId,
+    outcome.causeFactIds,
+    outcome.travelTransactionId,
+    outcome.metrics === null ? null : [outcome.metrics.frameCount],
+    outcome.modifierIds,
+    [
+      reward.supply,
+      reward.credits,
+      reward.pilotXp,
+      reward.storyItemIds,
+      reward.knowledge.map((entry) => [entry.subjectId, entry.state, entry.confidence]),
+      reward.accessFactIds,
+      reward.historyKinds,
+      reward.missionDelivery === null
+        ? null
+        : [reward.missionDelivery.planetId, reward.missionDelivery.colonyId, reward.missionDelivery.reason],
+      reward.travelResolution,
+      reward.strandedAt === null
+        ? null
+        : [
+            reward.strandedAt.sectorX,
+            reward.strandedAt.sectorY,
+            reward.strandedAt.localX,
+            reward.strandedAt.localY,
+          ],
+      reward.returnToOrigin,
+    ],
+  ]);
+}
+
+function outcomeHistoryArtifactId(
+  outcome: NormalizedOperationOutcome,
+  index: number,
+): string {
+  const payload = canonicalOutcomePayload(outcome);
+  const hash = stableHash(`operation-outcome:${payload}`).toString(16).padStart(8, "0");
+  // Retain the full canonical payload so even a compact-hash collision cannot
+  // make two different normalized outcomes share a completion artifact.
+  return `history:outcome:${outcome.completionId}:${index}:${hash}:${encodeURIComponent(payload)}`;
+}
+
 function replayArtifactProblem(
   run: GalaxyRunState,
   operation: Operation,
@@ -544,17 +593,17 @@ function replayArtifactProblem(
     return incoherentReplay("Resolved operation state does not match the submitted completion.");
   }
 
-  const historyPrefix = `history:outcome:${outcome.completionId}:`;
-  const completionHistory = run.historyFacts.filter((fact) => fact.id.startsWith(historyPrefix));
-  if (completionHistory.length !== outcome.rewards.historyKinds.length) {
-    return incoherentReplay("Completion history does not match the catalog outcome.");
-  }
   for (let index = 0; index < outcome.rewards.historyKinds.length; index += 1) {
-    const id = `${historyPrefix}${index}`;
-    const matches = completionHistory.filter((fact) => fact.id === id);
+    const kind = outcome.rewards.historyKinds[index];
+    const id = outcomeHistoryArtifactId(outcome, index);
+    const matches = run.historyFacts.filter((fact) => fact.id === id);
+    const authoredMatches = run.historyFacts.filter((fact) =>
+      fact.kind === kind && fact.subjectId === outcome.operationId);
     if (
       matches.length !== 1 ||
-      matches[0].kind !== outcome.rewards.historyKinds[index] ||
+      authoredMatches.length !== 1 ||
+      authoredMatches[0].id !== id ||
+      matches[0].kind !== kind ||
       matches[0].subjectId !== outcome.operationId ||
       matches[0].cycle !== record.resolvedCycle ||
       !sameData(matches[0].causeFactIds, outcome.causeFactIds)
@@ -563,15 +612,13 @@ function replayArtifactProblem(
     }
   }
 
-  const knowledgePrefix = `knowledge:outcome:${outcome.completionId}:`;
   const completionKnowledge = Object.entries(run.atlas.knowledge).filter(([, knowledge]) =>
-    knowledge.id.startsWith(knowledgePrefix) ||
     knowledge.observedProperties?.completionId === outcome.completionId);
   if (completionKnowledge.length !== outcome.rewards.knowledge.length) {
     return incoherentReplay("Completion knowledge does not match the catalog outcome.");
   }
   for (let index = 0; index < outcome.rewards.knowledge.length; index += 1) {
-    const id = `${knowledgePrefix}${index}`;
+    const id = `knowledge:outcome:${outcome.completionId}:${index}`;
     const reward = outcome.rewards.knowledge[index];
     const matches = completionKnowledge.filter(([dictionaryKey, knowledge]) =>
       dictionaryKey === id && knowledge.id === id);
@@ -611,22 +658,16 @@ function replayArtifactProblem(
     }
   }
 
-  if (outcome.rewards.travelResolution !== "none" && run.activeTravel !== null) {
-    if (
-      outcome.travelTransactionId === null ||
-      run.activeTravel.transactionId !== outcome.travelTransactionId
-    ) {
-      return incoherentReplay("Retained travel does not own the operation completion.");
-    }
+  if (
+    outcome.rewards.travelResolution !== "none" &&
+    outcome.travelTransactionId !== null &&
+    run.activeTravel?.transactionId === outcome.travelTransactionId
+  ) {
     const sharedCheckpoint = `${outcome.travelTransactionId}:operation-outcome:${outcome.completionId}`;
-    const completionSuffix = `:operation-outcome:${outcome.completionId}`;
     const sharedMatches = run.activeTravel.appliedCheckpointIds.filter((id) => id === sharedCheckpoint);
-    const completionMatches = run.activeTravel.appliedCheckpointIds.filter((id) =>
-      id.endsWith(completionSuffix));
     const interruptionCheckpoint = `${outcome.travelTransactionId}:interruption:${outcome.rewards.travelResolution}`;
     if (
       sharedMatches.length !== 1 ||
-      completionMatches.length !== 1 ||
       !run.activeTravel.appliedCheckpointIds.includes(interruptionCheckpoint)
     ) {
       return incoherentReplay("Retained travel is missing its exact shared operation-outcome checkpoint.");
@@ -827,7 +868,7 @@ function applyOutcomeImpl(
   }
   for (let index = 0; index < outcome.rewards.historyKinds.length; index += 1) {
     const history: HistoricalFact = {
-      id: `history:outcome:${outcome.completionId}:${index}`,
+      id: outcomeHistoryArtifactId(outcome, index),
       kind: outcome.rewards.historyKinds[index],
       subjectId: outcome.operationId,
       cycle: resolvedCycle,
