@@ -386,6 +386,69 @@ test("corrupt nested fields fall back independently to fresh values", () => {
   assert.deepEqual(migrated.factionStandings, fresh.factionStandings);
 });
 
+test("mixed enum arrays preserve valid members and clone non-array fallbacks", () => {
+  const raw = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  raw.resources.materials = ["bio-fiber", "future-material", "phase-crystal"];
+  raw.ship.unlockedEnhancements = [
+    "reinforced-shield",
+    "future-enhancement",
+    "extended-magnet",
+  ];
+  raw.ship.equippedConsumables = [
+    "hull-repair",
+    "future-consumable",
+    "scanner-pulse",
+  ];
+  raw.pilot.allocatedSkills = ["sharpshooter", "future-skill", "adrenaline"];
+  raw.storyItems = ["kepler-black-box", "future-story-item", "kepler-black-box"];
+  const before = jsonClone(raw);
+
+  const migrated = migrateGalaxyRun(raw);
+
+  assert.deepEqual(migrated.resources.materials, ["bio-fiber", "phase-crystal"]);
+  assert.deepEqual(migrated.ship.unlockedEnhancements, [
+    "reinforced-shield",
+    "extended-magnet",
+  ]);
+  assert.deepEqual(migrated.ship.equippedConsumables, ["hull-repair", "scanner-pulse"]);
+  assert.deepEqual(migrated.pilot.allocatedSkills, ["sharpshooter", "adrenaline"]);
+  assert.deepEqual(migrated.storyItems, ["kepler-black-box", "kepler-black-box"]);
+  assert.deepEqual(raw, before);
+  assert.notEqual(migrated.resources.materials, raw.resources.materials);
+  assert.notEqual(migrated.ship.unlockedEnhancements, raw.ship.unlockedEnhancements);
+  assert.notEqual(migrated.ship.equippedConsumables, raw.ship.equippedConsumables);
+  assert.notEqual(migrated.pilot.allocatedSkills, raw.pilot.allocatedSkills);
+  assert.notEqual(migrated.storyItems, raw.storyItems);
+
+  const malformed = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  malformed.resources.materials = { future: true };
+  malformed.ship.unlockedEnhancements = null;
+  malformed.ship.equippedConsumables = 7;
+  malformed.pilot.allocatedSkills = "future-skill";
+  malformed.storyItems = { future: true };
+  const malformedBefore = jsonClone(malformed);
+  const firstFallback = migrateGalaxyRun(malformed);
+  const secondFallback = migrateGalaxyRun(malformed);
+
+  assert.deepEqual(firstFallback.resources.materials, []);
+  assert.deepEqual(firstFallback.ship.unlockedEnhancements, []);
+  assert.deepEqual(firstFallback.ship.equippedConsumables, []);
+  assert.deepEqual(firstFallback.pilot.allocatedSkills, []);
+  assert.deepEqual(firstFallback.storyItems, []);
+  assert.notEqual(firstFallback.resources.materials, secondFallback.resources.materials);
+  assert.notEqual(
+    firstFallback.ship.unlockedEnhancements,
+    secondFallback.ship.unlockedEnhancements,
+  );
+  assert.notEqual(
+    firstFallback.ship.equippedConsumables,
+    secondFallback.ship.equippedConsumables,
+  );
+  assert.notEqual(firstFallback.pilot.allocatedSkills, secondFallback.pilot.allocatedSkills);
+  assert.notEqual(firstFallback.storyItems, secondFallback.storyItems);
+  assert.deepEqual(malformed, malformedBefore);
+});
+
 test("valid nested serialized fields survive migration without aliases", () => {
   const raw = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
   raw.worldCycle = 17;
@@ -613,6 +676,111 @@ test("travel checkpoints and record arrays reject malformed serialized members",
   assert.deepEqual(migrated.activeTravel?.legs, []);
   assert.deepEqual(migrated.activeTravel?.appliedCheckpointIds, []);
   assert.deepEqual(migrated.atlas.mappedCellKeys, createFreshGalaxyRun(COMPLETE_IDENTITY).atlas.mappedCellKeys);
+});
+
+test("malformed prototype-key map entries use own type-correct fallbacks", () => {
+  const raw = JSON.parse(`{
+    "identity":{"galaxySeed":"prototype-fallbacks","generationVersion":1,"authoredAnchorRegistryVersion":1},
+    "operations":{
+      "__proto__":{"state":"future-operation"},
+      "constructor":null,
+      "op:valid-sibling":{"state":"active","acceptedCycle":2,"resolvedCycle":null,"completionIds":["completion:valid"]}
+    },
+    "atlas":{
+      "materializedFacts":{
+        "__proto__":{"kind":"future-fact"},
+        "constructor":{"id":"fact:constructor"},
+        "cell:valid-sibling":{"id":"fact:valid-sibling","cellKey":"cell:valid-sibling","coordinate":{"sectorX":1,"sectorY":2,"localX":256,"localY":512},"kind":"ruin","contactId":null,"stableSeed":44,"authored":false}
+      },
+      "knowledge":{
+        "__proto__":{"state":"future-knowledge"},
+        "constructor":{"id":"knowledge:constructor"},
+        "knowledge:valid-sibling":{"id":"knowledge:valid-sibling","subjectId":"fact:valid-sibling","state":"visited","observedProperties":{"safe":true},"confidence":"high","source":"direct_visit","observedCycle":3,"expiresCycle":null}
+      }
+    }
+  }`);
+
+  const ownEntry = (map: Record<string, unknown>, key: string): any => {
+    const descriptor = Object.getOwnPropertyDescriptor(map, key);
+    assert.ok(descriptor, `${key} must be retained as an own data property`);
+    assert.equal("value" in descriptor, true);
+    return descriptor.value;
+  };
+  const operationStates = new Set([
+    "available", "accepted", "active", "complete", "failed", "expired",
+  ]);
+  const factKinds = new Set([
+    "empty", "stellar_contact", "hazard", "ruin", "anomaly", "signal",
+  ]);
+  const knowledgeStates = new Set([
+    "unknown", "signal", "charted", "visited", "lost_contact",
+  ]);
+  const confidences = new Set(["low", "medium", "high"]);
+  const sources = new Set([
+    "sensor", "report", "rumor", "archive", "ally", "direct_visit", "authored",
+  ]);
+  const assertOperationEntry = (entry: any) => {
+    assert.equal(operationStates.has(entry.state), true);
+    assert.equal(
+      entry.acceptedCycle === null ||
+        (Number.isSafeInteger(entry.acceptedCycle) && entry.acceptedCycle >= 0),
+      true,
+    );
+    assert.equal(
+      entry.resolvedCycle === null ||
+        (Number.isSafeInteger(entry.resolvedCycle) && entry.resolvedCycle >= 0),
+      true,
+    );
+    assert.equal(Array.isArray(entry.completionIds), true);
+    assert.equal(entry.completionIds.every((id: unknown) => typeof id === "string"), true);
+  };
+  const assertCellFactEntry = (entry: any) => {
+    assert.equal(typeof entry.id, "string");
+    assert.equal(typeof entry.cellKey, "string");
+    assert.equal(factKinds.has(entry.kind), true);
+    assert.equal(entry.contactId === null || typeof entry.contactId === "string", true);
+    assert.equal(Number.isSafeInteger(entry.stableSeed) && entry.stableSeed >= 0, true);
+    assert.equal(typeof entry.authored, "boolean");
+    for (const field of ["sectorX", "sectorY", "localX", "localY"]) {
+      assert.equal(Number.isSafeInteger(entry.coordinate[field]), true);
+    }
+  };
+  const assertKnowledgeEntry = (entry: any) => {
+    assert.equal(typeof entry.id, "string");
+    assert.equal(typeof entry.subjectId, "string");
+    assert.equal(knowledgeStates.has(entry.state), true);
+    assert.equal(entry.observedProperties !== null && typeof entry.observedProperties === "object", true);
+    assert.equal(confidences.has(entry.confidence), true);
+    assert.equal(sources.has(entry.source), true);
+    assert.equal(Number.isSafeInteger(entry.observedCycle) && entry.observedCycle >= 0, true);
+    assert.equal(
+      entry.expiresCycle === null ||
+        (Number.isSafeInteger(entry.expiresCycle) && entry.expiresCycle >= 0),
+      true,
+    );
+  };
+
+  let migrated: ReturnType<typeof migrateGalaxyRun> | undefined;
+  assert.doesNotThrow(() => {
+    migrated = migrateGalaxyRun(raw);
+  });
+  assert.ok(migrated);
+
+  for (const key of ["__proto__", "constructor"]) {
+    assertOperationEntry(ownEntry(migrated.operations, key));
+    assertCellFactEntry(ownEntry(migrated.atlas.materializedFacts, key));
+    assertKnowledgeEntry(ownEntry(migrated.atlas.knowledge, key));
+  }
+  assert.equal(ownEntry(migrated.operations, "op:valid-sibling").state, "active");
+  assert.equal(ownEntry(migrated.atlas.materializedFacts, "cell:valid-sibling").kind, "ruin");
+  assert.equal(ownEntry(migrated.atlas.knowledge, "knowledge:valid-sibling").state, "visited");
+
+  const roundTripped = migrateGalaxyRun(JSON.parse(JSON.stringify(migrated)));
+  for (const key of ["__proto__", "constructor"]) {
+    assertOperationEntry(ownEntry(roundTripped.operations, key));
+    assertCellFactEntry(ownEntry(roundTripped.atlas.materializedFacts, key));
+    assertKnowledgeEntry(ownEntry(roundTripped.atlas.knowledge, key));
+  }
 });
 
 test("prototype-sensitive map keys survive migration and JSON roundtrip as own data", () => {

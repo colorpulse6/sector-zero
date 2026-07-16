@@ -769,10 +769,17 @@ function enumArray<T extends string>(
   const result: T[] = [];
   for (const entry of value) {
     const matched = enumMatch(entry, allowed);
-    if (matched === undefined) return [...fallback];
-    result.push(matched);
+    if (matched !== undefined) result.push(matched);
   }
   return result;
+}
+
+function ownDictionaryValue<T>(
+  dictionary: Readonly<Record<string, T>>,
+  key: string,
+): T | undefined {
+  if (!Object.prototype.hasOwnProperty.call(dictionary, key)) return undefined;
+  return dictionary[key];
 }
 
 function defineOwn<T>(target: Record<string, T>, key: string, value: T): void {
@@ -1010,20 +1017,21 @@ function migrateOperationMap(
 ): Record<string, GalaxyOperationRecord> {
   const result: Record<string, GalaxyOperationRecord> = {};
   for (const key of Object.keys(fallback)) {
-    defineOwn(result, key, migrateOperation(own(fallback, key), fallback[key]));
+    const ownFallback = ownDictionaryValue(fallback, key);
+    if (ownFallback !== undefined) {
+      defineOwn(result, key, migrateOperation(ownFallback, ownFallback));
+    }
   }
   const source = record(value);
   if (source === null) return result;
   for (const key of Object.keys(source)) {
     const rawEntry = own(source, key);
-    const rawRecord = record(rawEntry);
-    const entryFallback = fallback[key] ?? {
+    const entryFallback = ownDictionaryValue(fallback, key) ?? {
       state: "available",
       acceptedCycle: null,
       resolvedCycle: null,
       completionIds: [],
     };
-    if (rawRecord === null && fallback[key] === undefined) continue;
     defineOwn(result, key, migrateOperation(rawEntry, entryFallback));
   }
   return result;
@@ -1110,14 +1118,14 @@ function migrateCellFactMap(
 ): Record<string, AtlasCellFact> {
   const result = nullDictionary<AtlasCellFact>();
   for (const key of Object.keys(fallback)) {
-    defineOwn(result, key, cloneCellFact(fallback[key]));
+    const ownFallback = ownDictionaryValue(fallback, key);
+    if (ownFallback !== undefined) defineOwn(result, key, cloneCellFact(ownFallback));
   }
   const source = record(value);
   if (source === null) return result;
   for (const key of Object.keys(source)) {
     const rawEntry = own(source, key);
-    const rawSource = record(rawEntry);
-    const entryFallback = fallback[key] ?? {
+    const entryFallback = ownDictionaryValue(fallback, key) ?? {
       id: key,
       cellKey: key,
       coordinate: { ...coordinateFallback },
@@ -1126,7 +1134,6 @@ function migrateCellFactMap(
       stableSeed: 0,
       authored: false,
     };
-    if (rawSource === null && fallback[key] === undefined) continue;
     defineOwn(result, key, migrateCellFact(rawEntry, entryFallback, coordinateFallback));
   }
   return result;
@@ -1179,14 +1186,14 @@ function migrateKnowledgeMap(
 ): Record<string, AtlasKnowledgeRecord> {
   const result = nullDictionary<AtlasKnowledgeRecord>();
   for (const key of Object.keys(fallback)) {
-    defineOwn(result, key, cloneKnowledge(fallback[key]));
+    const ownFallback = ownDictionaryValue(fallback, key);
+    if (ownFallback !== undefined) defineOwn(result, key, cloneKnowledge(ownFallback));
   }
   const source = record(value);
   if (source === null) return result;
   for (const key of Object.keys(source)) {
     const rawEntry = own(source, key);
-    const rawSource = record(rawEntry);
-    const entryFallback = fallback[key] ?? {
+    const entryFallback = ownDictionaryValue(fallback, key) ?? {
       id: key,
       subjectId: key,
       state: "unknown",
@@ -1196,7 +1203,6 @@ function migrateKnowledgeMap(
       observedCycle: 0,
       expiresCycle: null,
     };
-    if (rawSource === null && fallback[key] === undefined) continue;
     defineOwn(result, key, migrateKnowledgeRecord(rawEntry, entryFallback));
   }
   return result;
