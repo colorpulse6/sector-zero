@@ -631,11 +631,169 @@ export function authorizeOperationLaunch(
   }
 }
 
-export function sameOperationLaunchContext(
-  left: OperationLaunchContext,
-  right: OperationLaunchContext,
+const LAUNCH_CONTEXT_KEYS = [
+  "operationId",
+  "adapterKind",
+  "adapterPayload",
+  "authorizedCycle",
+  "operationState",
+  "location",
+  "contactId",
+  "causeFactIds",
+  "travelTransactionId",
+] as const;
+
+function exactOwnData(
+  value: unknown,
+  expectedKeys: readonly string[],
+): Record<string, unknown> | null {
+  if (!isPlainRecord(value)) return null;
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== expectedKeys.length ||
+    keys.some((key) => typeof key !== "string" || !expectedKeys.includes(key))
+  ) return null;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of expectedKeys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor)) return null;
+    snapshot[key] = descriptor.value;
+  }
+  return snapshot;
+}
+
+function stringArraySnapshot(value: unknown): string[] | null {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    lengthDescriptor === undefined || !("value" in lengthDescriptor) ||
+    !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0
+  ) return null;
+  const length = lengthDescriptor.value as number;
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== length + 1 ||
+    keys.some((key) => key !== "length" && (
+      typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length
+    ))
+  ) return null;
+  const snapshot: string[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (descriptor === undefined || !("value" in descriptor) || typeof descriptor.value !== "string") {
+      return null;
+    }
+    snapshot.push(descriptor.value);
+  }
+  return snapshot;
+}
+
+function coordinateSnapshot(value: unknown): GalaxyCoordinate | null {
+  const snapshot = exactOwnData(value, ["sectorX", "sectorY", "localX", "localY"]);
+  if (snapshot === null) return null;
+  const coordinate = {
+    sectorX: snapshot.sectorX,
+    sectorY: snapshot.sectorY,
+    localX: snapshot.localX,
+    localY: snapshot.localY,
+  };
+  return validateCoordinate(coordinate).ok
+    ? coordinate as GalaxyCoordinate
+    : null;
+}
+
+function adapterSnapshot(value: unknown): OperationAdapterPayload | null {
+  const base = exactOwnData(value, ["kind", "world", "level"]);
+  if (base !== null) {
+    return base.kind === "legacy_level" && base.world === 1 && base.level === 1
+      ? { kind: "legacy_level", world: 1, level: 1 }
+      : null;
+  }
+  const special = exactOwnData(value, ["kind", "missionId"]);
+  if (special !== null) {
+    return special.kind === "special_mission" && special.missionId === "kepler-black-box"
+      ? { kind: "special_mission", missionId: "kepler-black-box" }
+      : null;
+  }
+  const planet = exactOwnData(value, ["kind", "planetId"]);
+  if (planet !== null) {
+    return planet.kind === "planet_mission" && planet.planetId === "ashfall"
+      ? { kind: "planet_mission", planetId: "ashfall" }
+      : null;
+  }
+  return null;
+}
+
+/** Copy launch authority from own data descriptors without invoking caller code. */
+export function snapshotOperationLaunchContext(
+  value: unknown,
+): OperationLaunchContext | null {
+  try {
+    const snapshot = exactOwnData(value, LAUNCH_CONTEXT_KEYS);
+    if (snapshot === null) return null;
+    const template = templateFor(snapshot.operationId);
+    const adapter = adapterSnapshot(snapshot.adapterPayload);
+    const location = coordinateSnapshot(snapshot.location);
+    const causes = stringArraySnapshot(snapshot.causeFactIds);
+    if (
+      template === null || adapter === null || location === null || causes === null ||
+      snapshot.adapterKind !== adapter.kind ||
+      !Number.isSafeInteger(snapshot.authorizedCycle) ||
+      (snapshot.authorizedCycle as number) < 0 ||
+      typeof snapshot.operationState !== "string" ||
+      !OPERATION_STATES.includes(snapshot.operationState as GalaxyOperationRecord["state"]) ||
+      !(snapshot.contactId === null || typeof snapshot.contactId === "string") ||
+      !(snapshot.travelTransactionId === null || typeof snapshot.travelTransactionId === "string")
+    ) return null;
+    return {
+      operationId: template.id,
+      adapterKind: adapter.kind,
+      adapterPayload: adapter,
+      authorizedCycle: snapshot.authorizedCycle as number,
+      operationState: snapshot.operationState as GalaxyOperationRecord["state"],
+      location,
+      contactId: snapshot.contactId as string | null,
+      causeFactIds: causes,
+      travelTransactionId: snapshot.travelTransactionId as string | null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sameAdapter(
+  left: OperationAdapterPayload,
+  right: OperationAdapterPayload,
 ): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  if (left.kind !== right.kind) return false;
+  switch (left.kind) {
+    case "legacy_level":
+      return right.kind === "legacy_level" &&
+        left.world === right.world && left.level === right.level;
+    case "special_mission":
+      return right.kind === "special_mission" && left.missionId === right.missionId;
+    case "planet_mission":
+      return right.kind === "planet_mission" && left.planetId === right.planetId;
+  }
+}
+
+export function sameOperationLaunchContext(
+  left: unknown,
+  right: unknown,
+): boolean {
+  const safeLeft = snapshotOperationLaunchContext(left);
+  const safeRight = snapshotOperationLaunchContext(right);
+  return safeLeft !== null && safeRight !== null &&
+    safeLeft.operationId === safeRight.operationId &&
+    safeLeft.adapterKind === safeRight.adapterKind &&
+    sameAdapter(safeLeft.adapterPayload, safeRight.adapterPayload) &&
+    safeLeft.authorizedCycle === safeRight.authorizedCycle &&
+    safeLeft.operationState === safeRight.operationState &&
+    sameCoordinate(safeLeft.location, safeRight.location) &&
+    safeLeft.contactId === safeRight.contactId &&
+    safeLeft.causeFactIds.length === safeRight.causeFactIds.length &&
+    safeLeft.causeFactIds.every((cause, index) => cause === safeRight.causeFactIds[index]) &&
+    safeLeft.travelTransactionId === safeRight.travelTransactionId;
 }
 
 export function adapterPayloadFor(operation: Operation): OperationAdapterPayload | null {

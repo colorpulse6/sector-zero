@@ -260,6 +260,31 @@ test("arbitrary legacy saves cannot masquerade as an engine projection", () => {
   if (!result.ok) assert.deepEqual(result.availability.reasons, ["projection_not_locked"]);
 });
 
+test("projection validation cannot be bypassed by live upgrades or toJSON", () => {
+  const run = atHostileInterruption();
+  const projection = projectGalaxyRunToLegacySave(richParent(run));
+  let toJSONReads = 0;
+  projection.upgrades = {
+    ...projection.upgrades,
+    hullPlating: 999,
+    toJSON() {
+      toJSONReads += 1;
+      return structuredClone(run.ship.upgrades);
+    },
+  } as typeof projection.upgrades;
+
+  const result = launchOperation(
+    run,
+    projection,
+    requireAuthorization(run, "op:hostile-picket"),
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.deepEqual(result.availability.reasons, ["projection_not_locked"]);
+  }
+  assert.equal(toJSONReads, 0);
+});
+
 test("explicit canonical launch contexts bypass all locked legacy availability fields", () => {
   const fixtures: Array<[OperationId, GalaxyRunState, string, number, number]> = [
     ["op:hostile-picket", atHostileInterruption(), "shooter", 1, 1],
@@ -486,6 +511,65 @@ test("hostile launch binds the saved target and destination but permits its exac
   assert.equal(interrupted.galaxyRun.activeTravel?.targetId, null);
   assert.deepEqual(interrupted.galaxyRun.vessel.coordinate, target);
   assert.equal(authorizeOperationLaunch(interrupted.galaxyRun, "op:hostile-picket").ok, true);
+});
+
+test("launch snapshots own context data once and cannot drift through getters or toJSON", () => {
+  const run = atHostileInterruption();
+  const projection = projectGalaxyRunToLegacySave(richParent(run));
+  const canonical = requireAuthorization(run, "op:hostile-picket");
+  const target = structuredClone(canonical);
+  let operationReads = 0;
+  let toJSONReads = 0;
+  const drifting = new Proxy(target, {
+    get(object, key, receiver) {
+      if (key === "toJSON") {
+        toJSONReads += 1;
+        return () => structuredClone(canonical);
+      }
+      if (key === "operationId") {
+        operationReads += 1;
+        return operationReads === 1 ? "op:hostile-picket" : "op:kepler-black-box";
+      }
+      if (key === "adapterKind") return "special_mission";
+      if (key === "adapterPayload") {
+        return { kind: "special_mission", missionId: "kepler-black-box" };
+      }
+      return Reflect.get(object, key, receiver);
+    },
+  }) as OperationLaunchContext;
+
+  let launch!: ReturnType<typeof launchOperation>;
+  assert.doesNotThrow(() => {
+    launch = launchOperation(run, projection, drifting);
+  });
+  assert.equal(launch.ok, true, launch.ok ? undefined : launch.availability.reasons.join("; "));
+  if (launch.ok) {
+    assert.equal(launch.context.operationId, "op:hostile-picket");
+    assert.equal(launch.context.adapterKind, "legacy_level");
+    assert.equal(launch.gameState.currentMode, "shooter");
+    assert.equal(launch.gameState.currentWorld, 1);
+    assert.equal(launch.gameState.currentLevel, 1);
+  }
+  assert.equal(operationReads, 0);
+  assert.equal(toJSONReads, 0);
+  assert.deepEqual(target, canonical);
+
+  let accessorReads = 0;
+  const accessor = structuredClone(canonical);
+  Object.defineProperty(accessor, "operationId", {
+    enumerable: true,
+    get() {
+      accessorReads += 1;
+      return "op:hostile-picket";
+    },
+  });
+  let rejected!: ReturnType<typeof launchOperation>;
+  assert.doesNotThrow(() => {
+    rejected = launchOperation(run, projection, accessor);
+  });
+  assert.equal(rejected.ok, false);
+  if (!rejected.ok) assert.equal(rejected.availability.recoverable, true);
+  assert.equal(accessorReads, 0);
 });
 
 test("contexts and adapter payloads are stable, exhaustive, non-mutating authority", () => {
