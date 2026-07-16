@@ -107,6 +107,7 @@ export type RouteBlockCode =
   | "invalid_target"
   | "unknown_contact"
   | "ambiguous_contact"
+  | "ambiguous_coordinate_cell"
   | "blind_travel_disabled"
   | "invalid_coordinate"
   | "cross_sector_route"
@@ -135,6 +136,11 @@ interface ResolvedTarget {
   destination: GalaxyCoordinate;
   threatSubjectId: string | null;
 }
+
+type FixedCellFactLookup =
+  | { status: "none" }
+  | { status: "single"; fact: AtlasCellFact }
+  | { status: "ambiguous"; factIds: string[] };
 
 const THREAT_DIMENSIONS: readonly ThreatDimension[] = Object.freeze([
   "military",
@@ -267,7 +273,7 @@ function factsForContact(
 function factAtCoordinate(
   run: GalaxyRunState,
   coordinate: GalaxyCoordinate,
-): AtlasCellFact | null {
+): FixedCellFactLookup {
   const requestedCellKey = cellKey(coordinate);
   const matches = ownValues(run.atlas.materializedFacts)
     .filter(
@@ -277,7 +283,9 @@ function factAtCoordinate(
         isKnownFact(run, fact),
     )
     .sort((left, right) => left.id.localeCompare(right.id));
-  return matches.length === 1 ? matches[0] : null;
+  if (matches.length === 0) return { status: "none" };
+  if (matches.length === 1) return { status: "single", fact: matches[0] };
+  return { status: "ambiguous", factIds: matches.map((fact) => fact.id) };
 }
 
 function resolveTarget(
@@ -349,11 +357,19 @@ function resolveTarget(
     }
     const destination = cloneCoordinate(value.coordinate as GalaxyCoordinate);
     const knownFact = factAtCoordinate(run, destination);
+    if (knownFact.status === "ambiguous") {
+      return blocked(
+        "ambiguous_coordinate_cell",
+        `Ambiguous Atlas cell ${cellKey(destination)} contains saved facts ${knownFact.factIds.join(
+          ", ",
+        )}; route plotting is blocked until the conflict is resolved.`,
+      );
+    }
     return {
       target: { kind: "coordinate", coordinate: cloneCoordinate(destination) },
       targetId: null,
       destination,
-      threatSubjectId: knownFact?.id ?? null,
+      threatSubjectId: knownFact.status === "single" ? knownFact.fact.id : null,
     };
   }
 

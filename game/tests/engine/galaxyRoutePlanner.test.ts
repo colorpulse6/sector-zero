@@ -7,6 +7,7 @@ import type {
   GalaxyRunState,
   ThreatDimension,
 } from "../../app/components/engine/galaxy/galaxyTypes";
+import { migrateSave } from "../../app/components/engine/save";
 import {
   G0_DIRECT_ROUTE_POLICY,
   planRoute,
@@ -248,6 +249,53 @@ test("blind coordinates inside a known fixed cell reuse its saved threat and cau
     plan.legs[0]?.interruptionCauseId,
     "fact:picket-patrol-active",
   );
+});
+
+test("ambiguous known facts in one fixed cell block after save migration", () => {
+  const run = runAtVanguard();
+  const picket = Object.values(run.atlas.materializedFacts).find(
+    (fact) => fact.id === "contact:hostile-picket",
+  );
+  assert.ok(picket);
+  run.atlas.materializedFacts["duplicate:hostile-picket-cell"] = {
+    ...structuredClone(picket),
+    id: "contact:hostile-picket-duplicate",
+    contactId: "contact:hostile-picket-duplicate",
+  };
+  run.atlas.knowledge["knowledge:hostile-picket-duplicate"] = {
+    id: "knowledge:hostile-picket-duplicate",
+    subjectId: "contact:hostile-picket-duplicate",
+    state: "charted",
+    observedProperties: { label: "Conflicting Picket Contact" },
+    confidence: "high",
+    source: "sensor",
+    observedCycle: 0,
+    expiresCycle: null,
+  };
+  run.atlas.accessFacts.push({
+    id: "access:hostile-picket-denied",
+    subjectId: "contact:hostile-picket",
+    assessment: "denied",
+    causeFactIds: ["fact:picket-patrol-active"],
+    cycle: 0,
+  });
+
+  const migrated = migrateSave(
+    JSON.parse(
+      JSON.stringify({ activeExperience: "galaxy", galaxyRun: run }),
+    ) as Record<string, unknown>,
+  ).galaxyRun;
+  assert.ok(migrated);
+
+  const result = planRoute(migrated, {
+    kind: "coordinate",
+    coordinate: coord(0, 0, 1281, 1024),
+  });
+  assert.equal(result.ok, false);
+  assert.ok(blockCodes(result).includes("ambiguous_coordinate_cell"));
+  if (!result.ok) {
+    assert.match(result.reasons.join(" "), /ambiguous.*cell/i);
+  }
 });
 
 test("route output and identity are deterministic independent of observation order", () => {
