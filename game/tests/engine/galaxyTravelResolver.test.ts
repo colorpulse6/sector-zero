@@ -770,6 +770,44 @@ test("migrated canonical routes cannot move the picket cause to or from another 
   }
 });
 
+test("authored Atlas proxies cannot transplant the picket cause into Ashfall", () => {
+  const outcomes: Array<{ label: string; ok: boolean; code: string | null }> = [];
+  for (const [label, target] of [
+    ["contact", contact("contact:ashfall")],
+    ["fixed-cell coordinate", {
+      kind: "coordinate",
+      coordinate: coord(0, 0, 1025, 512),
+    }],
+  ] as const) {
+    const run = commitTo(createFreshGalaxyRun(), target).result.galaxyRun;
+    const ashfallEntry = Object.entries(run.atlas.materializedFacts).find(
+      ([, fact]) => fact.id === "contact:ashfall",
+    );
+    assert.ok(ashfallEntry);
+    run.atlas.materializedFacts[ashfallEntry[0]] = {
+      ...structuredClone(ashfallEntry[1]),
+      id: "contact:hostile-picket",
+      contactId: "contact:ashfall",
+    };
+    run.activeTravel!.legs[0].interruptionCauseId = "fact:picket-patrol-active";
+    rebindCanonicalPlan(run);
+
+    const migrated = migrateRun(run);
+    const before = structuredClone(migrated);
+    const result = resumeTravelToBoundary(migrated);
+    outcomes.push({
+      label,
+      ok: result.ok,
+      code: result.ok ? null : result.errors[0]?.code ?? null,
+    });
+    assert.deepEqual(migrated, before);
+  }
+  assert.deepEqual(outcomes, [
+    { label: "contact", ok: false, code: "malformed_travel" },
+    { label: "fixed-cell coordinate", ok: false, code: "malformed_travel" },
+  ]);
+});
+
 test("cause validation uses the fixed target cell and plan-cycle access snapshot", () => {
   const destination = coord(0, 0, 1281, 1024);
   const committed = commitTo(createFreshGalaxyRun(), {

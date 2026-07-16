@@ -7,6 +7,10 @@ import {
   visitFact,
 } from "./atlas";
 import {
+  getAuthoredAnchorRegistry,
+  type AuthoredAnchor,
+} from "./authoredAnchors";
+import {
   cellKey,
   coordinateKey,
   distanceUnits as measureDistanceUnits,
@@ -486,6 +490,100 @@ type CauseSubjectResult =
   | { ok: true; subjectId: string | null }
   | { ok: false; message: string };
 
+function validateAuthoredTravelSubjects(
+  run: GalaxyRunState,
+  snapshot: CanonicalPlanSnapshot,
+): TravelError | null {
+  const registry = getAuthoredAnchorRegistry(
+    run.identity.authoredAnchorRegistryVersion,
+  );
+  if (!registry.ok) return null;
+
+  const anchors = registry.anchors;
+  const canonicalFactCounts = new Map<string, number>();
+  for (const dictionaryKey of Object.keys(run.atlas.materializedFacts)) {
+    if (!hasOwn(run.atlas.materializedFacts, dictionaryKey)) continue;
+    const rawFact = run.atlas.materializedFacts[dictionaryKey];
+    const rawCoordinateCell = isRecord(rawFact) &&
+      validateCoordinate(rawFact.coordinate).ok
+      ? cellKey(rawFact.coordinate as GalaxyCoordinate)
+      : null;
+    const candidates = new Map<string, AuthoredAnchor>();
+    for (const anchor of anchors) {
+      const anchorCell = cellKey(anchor.coordinate as GalaxyCoordinate);
+      const claimsIdentity = isRecord(rawFact) && (
+        rawFact.id === anchor.id ||
+        rawFact.contactId === anchor.id ||
+        (anchor.contactId !== null && (
+          rawFact.id === anchor.contactId ||
+          rawFact.contactId === anchor.contactId
+        ))
+      );
+      const claimsCell = dictionaryKey === anchorCell ||
+        (isRecord(rawFact) && rawFact.cellKey === anchorCell) ||
+        rawCoordinateCell === anchorCell;
+      if (claimsIdentity || claimsCell) candidates.set(anchor.id, anchor);
+    }
+    if (candidates.size === 0) continue;
+    if (candidates.size !== 1) {
+      return {
+        code: "malformed_travel",
+        message: "Saved Atlas fact ambiguously claims authored anchor identities.",
+      };
+    }
+
+    const anchor = candidates.values().next().value as AuthoredAnchor;
+    const anchorCell = cellKey(anchor.coordinate as GalaxyCoordinate);
+    if (
+      !isRecord(rawFact) ||
+      dictionaryKey !== anchorCell ||
+      !cellFactIsCoherent(rawFact as unknown as AtlasCellFact, anchorCell) ||
+      rawFact.id !== anchor.id ||
+      rawFact.contactId !== anchor.contactId ||
+      rawFact.kind !== anchor.kind ||
+      rawFact.authored !== true ||
+      !sameCoordinate(
+        rawFact.coordinate as GalaxyCoordinate,
+        anchor.coordinate as GalaxyCoordinate,
+      )
+    ) {
+      return {
+        code: "malformed_travel",
+        message: "Saved Atlas fact disagrees with its authored anchor registry identity.",
+      };
+    }
+    canonicalFactCounts.set(
+      anchor.id,
+      (canonicalFactCounts.get(anchor.id) ?? 0) + 1,
+    );
+  }
+
+  const targetAnchors = anchors.filter((anchor) =>
+    snapshot.target.kind === "contact"
+      ? anchor.id === snapshot.target.contactId ||
+        anchor.contactId === snapshot.target.contactId
+      : cellKey(anchor.coordinate as GalaxyCoordinate) === snapshot.fixedCellKey,
+  );
+  if (targetAnchors.length === 0) return null;
+  if (targetAnchors.length !== 1) {
+    return {
+      code: "malformed_travel",
+      message: "Travel target resolves to ambiguous authored anchors.",
+    };
+  }
+  const targetAnchor = targetAnchors[0];
+  if (
+    cellKey(targetAnchor.coordinate as GalaxyCoordinate) !== snapshot.fixedCellKey ||
+    canonicalFactCounts.get(targetAnchor.id) !== 1
+  ) {
+    return {
+      code: "malformed_travel",
+      message: "Travel target is not bound to its canonical authored Atlas fact.",
+    };
+  }
+  return null;
+}
+
 function factKnownAtSnapshot(
   run: GalaxyRunState,
   fact: AtlasCellFact,
@@ -643,6 +741,8 @@ function validateCauseBinding(
   travel: TravelCommitment,
   snapshot: CanonicalPlanSnapshot,
 ): TravelError | null {
+  const authoredProblem = validateAuthoredTravelSubjects(run, snapshot);
+  if (authoredProblem !== null) return authoredProblem;
   const subject = resolveCauseSubject(run, snapshot);
   if (!subject.ok) {
     return { code: "malformed_travel", message: subject.message };
