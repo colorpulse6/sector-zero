@@ -13,6 +13,12 @@ import {
   GalaxyAtlasScreen,
   GalaxyExperienceGate,
 } from "../../app/components/galaxy";
+import {
+  atlasCanvasHitRadius,
+  atlasSelectionForRun,
+  restoreAtlasFocus,
+  shouldHandleAtlasPointer,
+} from "../../app/components/galaxy/GalaxyAtlasScreen";
 
 function screen(
   overrides: Partial<React.ComponentProps<typeof GalaxyAtlasScreen>> = {},
@@ -131,12 +137,53 @@ test("blind coordinate preview discloses low confidence and unknown contributors
 });
 
 test("interrupted travel exposes launch and retreat without a new commitment", () => {
-  const html = screen({ run: interruptedRun() });
+  const run = interruptedRun();
+  const requested = { kind: "contact", contactId: "contact:ashfall" } as const;
+  const html = screen({
+    run,
+    initialTarget: requested,
+  });
 
   assert.match(html, /TRAVEL INTERRUPTED/);
   assert.match(html, /LAUNCH INTERCEPTION/);
   assert.match(html, /RETREAT TO ORIGIN/);
+  assert.match(html, /data-selected-target="contact:hostile-picket"/);
+  assert.match(html, /SELECTED TARGET[\s\S]*HOSTILE PICKET/);
+  assert.doesNotMatch(html, /data-selected-target="contact:ashfall"/);
   assert.doesNotMatch(html, />COMMIT TRAVEL<\/button>/);
+
+  assert.deepEqual(atlasSelectionForRun(run, requested), {
+    kind: "contact",
+    contactId: "contact:hostile-picket",
+  });
+  const blindTravel = structuredClone(run);
+  blindTravel.activeTravel!.targetId = null;
+  assert.deepEqual(atlasSelectionForRun(blindTravel, requested), {
+    kind: "coordinate",
+    coordinate: blindTravel.activeTravel!.destination,
+  });
+});
+
+test("visited contactless facts remain coordinate targets in DOM and selection state", () => {
+  const run = createFreshGalaxyRun();
+  const signal = Object.values(run.atlas.materializedFacts).find(
+    (fact) => fact.id === "signal:unresolved-g0",
+  );
+  assert.ok(signal);
+  assert.equal(signal.contactId, null);
+  run.atlas.knowledge["knowledge:unresolved-signal"].state = "visited";
+
+  const html = screen({
+    run,
+    initialTarget: { kind: "coordinate", coordinate: signal.coordinate },
+  });
+
+  assert.match(
+    html,
+    /data-atlas-contact="coordinate:0:0:2816:1792"[^>]*data-target-kind="coordinate"[^>]*data-selected-target="coordinate:0:0:2816:1792"/,
+  );
+  assert.doesNotMatch(html, /data-atlas-contact="signal:unresolved-g0"/);
+  assert.match(html, /BLIND COORDINATE/);
 });
 
 test("unsupported generation keeps the save visible with recoverable copy", () => {
@@ -172,4 +219,49 @@ test("Atlas exposes semantic levels, equivalent controls, and one selected targe
   }
   assert.match(html, /role="status"[^>]*aria-live="polite"/);
   assert.ok((html.match(/data-selected-target="contact:ashfall"/g) ?? []).length >= 3);
+});
+
+test("480px Atlas layout stacks its main panels and wraps coordinate controls", () => {
+  const html = screen();
+
+  assert.match(
+    html,
+    /data-atlas-layout="responsive"[^>]*style="[^"]*grid-template-columns:repeat\(auto-fit, minmax\(min\(100%, 360px\), 1fr\)\)/,
+  );
+  assert.match(
+    html,
+    /data-coordinate-layout="wrapping"[^>]*style="[^"]*grid-template-columns:repeat\(auto-fit, minmax\(min\(100%, 110px\), 1fr\)\)/,
+  );
+  assert.match(html, /<header style="[^"]*flex-wrap:wrap/);
+});
+
+test("Canvas hit testing preserves a twenty CSS pixel radius when scaled", () => {
+  assert.equal(atlasCanvasHitRadius(960), 20);
+  assert.equal(atlasCanvasHitRadius(480), 40);
+  assert.equal(atlasCanvasHitRadius(320), 60);
+  assert.equal(atlasCanvasHitRadius(480) * (480 / 960), 20);
+});
+
+test("touch input is owned only by the touch gesture stream", () => {
+  assert.equal(shouldHandleAtlasPointer("touch"), false);
+  assert.equal(shouldHandleAtlasPointer("mouse"), true);
+  assert.equal(shouldHandleAtlasPointer("pen"), true);
+  assert.equal(shouldHandleAtlasPointer(""), true);
+});
+
+test("parent-controlled focus restoration outranks the connected-element fallback", () => {
+  const calls: string[] = [];
+  const fallback = {
+    isConnected: true,
+    focus() { calls.push("fallback"); },
+  } as HTMLElement;
+
+  restoreAtlasFocus(() => { calls.push("parent"); }, fallback);
+  assert.deepEqual(calls, ["parent"]);
+
+  restoreAtlasFocus(undefined, fallback);
+  assert.deepEqual(calls, ["parent", "fallback"]);
+
+  restoreAtlasFocus(undefined, { ...fallback, isConnected: false });
+  assert.deepEqual(calls, ["parent", "fallback"]);
 });

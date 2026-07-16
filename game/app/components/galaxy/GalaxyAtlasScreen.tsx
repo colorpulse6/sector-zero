@@ -49,6 +49,7 @@ import {
 export interface GalaxyAtlasScreenProps {
   run: GalaxyRunState | null;
   onClose: () => void;
+  onRestoreFocus?: () => void;
   initialTarget?: AtlasTarget;
   statusMessage?: string | null;
   onSelectTarget?: (target: AtlasTarget) => void;
@@ -63,6 +64,7 @@ export interface GalaxyAtlasScreenProps {
 
 interface AtlasContactView extends AtlasViewportContact {
   factId: string;
+  target: AtlasTarget;
   label: string;
   knowledgeState: AtlasKnowledgeRecord["state"];
   confidence: AtlasKnowledgeRecord["confidence"];
@@ -139,12 +141,16 @@ function contactViews(run: GalaxyRunState | null): AtlasContactView[] {
       ) {
         return null;
       }
-      const effectiveContactId = fact.contactId ?? fact.id;
+      const target: AtlasTarget = fact.contactId === null
+        ? { kind: "coordinate", coordinate: { ...fact.coordinate } }
+        : { kind: "contact", contactId: fact.contactId };
+      const targetId = selectedTargetIdFor(target);
       const observedLabel = knowledge.observedProperties.label;
       return {
-        targetId: effectiveContactId,
-        contactId: effectiveContactId,
+        targetId,
+        contactId: targetId,
         factId: fact.id,
+        target,
         coordinate: { ...fact.coordinate },
         label:
           typeof observedLabel === "string" && observedLabel.trim().length > 0
@@ -165,11 +171,35 @@ function contactViews(run: GalaxyRunState | null): AtlasContactView[] {
 }
 
 function defaultTarget(contacts: readonly AtlasContactView[]): AtlasTarget | null {
-  const ashfall = contacts.find((contact) => contact.contactId === "contact:ashfall");
+  const ashfall = contacts.find((contact) =>
+    contact.target.kind === "contact" &&
+    contact.target.contactId === "contact:ashfall"
+  );
   const contact = ashfall ?? contacts[0];
-  return contact === undefined
-    ? null
-    : { kind: "contact", contactId: contact.contactId };
+  return contact?.target ?? null;
+}
+
+function activeTravelTarget(run: GalaxyRunState | null): AtlasTarget | null {
+  const travel = run?.activeTravel;
+  if (travel === null || travel === undefined) return null;
+  return travel.targetId === null
+    ? { kind: "coordinate", coordinate: { ...travel.destination } }
+    : { kind: "contact", contactId: travel.targetId };
+}
+
+export function atlasSelectionForRun(
+  run: GalaxyRunState | null,
+  requestedTarget: AtlasTarget | null,
+): AtlasTarget | null {
+  return activeTravelTarget(run) ?? requestedTarget;
+}
+
+function normalizeContactViewTarget(
+  target: AtlasTarget,
+  contacts: readonly AtlasContactView[],
+): AtlasTarget {
+  if (target.kind !== "contact") return target;
+  return contacts.find((contact) => contact.targetId === target.contactId)?.target ?? target;
 }
 
 function coordinateLabel(coordinate: GalaxyCoordinate): string {
@@ -182,7 +212,10 @@ function targetLabel(
 ): string {
   if (target === null) return "NO TARGET";
   if (target.kind === "coordinate") return coordinateLabel(target.coordinate);
-  return contacts.find((contact) => contact.contactId === target.contactId)?.label ??
+  return contacts.find((contact) =>
+    contact.target.kind === "contact" &&
+    contact.target.contactId === target.contactId
+  )?.label ??
     fallbackLabel(target.contactId);
 }
 
@@ -210,6 +243,28 @@ function canvasPoint(
     x: ((clientX - rect.left) / Math.max(1, rect.width)) * CANVAS_SIZE.width,
     y: ((clientY - rect.top) / Math.max(1, rect.height)) * CANVAS_SIZE.height,
   };
+}
+
+export function atlasCanvasHitRadius(cssWidth: number): number {
+  if (!Number.isFinite(cssWidth) || cssWidth <= 0) {
+    throw new RangeError("Atlas Canvas CSS width must be positive and finite");
+  }
+  return ATLAS_CONTACT_HIT_RADIUS_PX * (CANVAS_SIZE.width / cssWidth);
+}
+
+export function shouldHandleAtlasPointer(pointerType: string): boolean {
+  return pointerType !== "touch";
+}
+
+export function restoreAtlasFocus(
+  onRestoreFocus: (() => void) | undefined,
+  fallback: Pick<HTMLElement, "focus" | "isConnected"> | null,
+): void {
+  if (onRestoreFocus !== undefined) {
+    onRestoreFocus();
+    return;
+  }
+  if (fallback?.isConnected) fallback.focus();
 }
 
 function touchDistance(left: React.Touch, right: React.Touch): number {
@@ -266,6 +321,7 @@ function Button({
 export function GalaxyAtlasScreen({
   run,
   onClose,
+  onRestoreFocus,
   initialTarget,
   statusMessage = null,
   onSelectTarget,
@@ -278,8 +334,12 @@ export function GalaxyAtlasScreen({
   onOpenAshfallRegion,
 }: GalaxyAtlasScreenProps) {
   const contacts = useMemo(() => contactViews(run), [run]);
-  const firstTarget = initialTarget ?? defaultTarget(contacts);
-  const [selectedTarget, setSelectedTarget] = useState<AtlasTarget | null>(firstTarget);
+  const firstTarget = atlasSelectionForRun(
+    run,
+    initialTarget ?? defaultTarget(contacts),
+  );
+  const [localSelectedTarget, setLocalSelectedTarget] = useState<AtlasTarget | null>(firstTarget);
+  const selectedTarget = atlasSelectionForRun(run, localSelectedTarget);
   const [viewport, dispatchViewport] = useReducer(
     atlasViewportReducer,
     undefined,
@@ -302,7 +362,9 @@ export function GalaxyAtlasScreen({
   const pointerGestureRef = useRef<PointerGesture | null>(null);
   const touchGestureRef = useRef<TouchGesture | null>(null);
   const onCloseRef = useRef(onClose);
+  const onRestoreFocusRef = useRef(onRestoreFocus);
   onCloseRef.current = onClose;
+  onRestoreFocusRef.current = onRestoreFocus;
 
   const availability = useMemo(() => getGalaxyRunAvailability(run), [run]);
   const generationCopy = unavailableGenerationCopy(availability);
@@ -341,8 +403,7 @@ export function GalaxyAtlasScreen({
     invokingControlRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     return () => {
-      const invokingControl = invokingControlRef.current;
-      if (invokingControl?.isConnected) invokingControl.focus();
+      restoreAtlasFocus(onRestoreFocusRef.current, invokingControlRef.current);
     };
   }, []);
 
@@ -413,7 +474,7 @@ export function GalaxyAtlasScreen({
 
     for (const contact of contacts) {
       const point = worldToScreen(contact.coordinate, viewport, CANVAS_SIZE);
-      const selected = currentSelectedId === contact.contactId;
+      const selected = currentSelectedId === contact.targetId;
       context.beginPath();
       context.arc(point.x, point.y, selected ? 9 : 6, 0, Math.PI * 2);
       context.fillStyle = selected ? "#ffffff" : contact.kind === "signal" ? "#d6a4ff" : CYAN;
@@ -429,15 +490,19 @@ export function GalaxyAtlasScreen({
   }, [contacts, currentSelectedId, routeResult, viewport]);
 
   const selectTarget = (target: AtlasTarget) => {
-    setSelectedTarget((current) => sameTarget(current, target) ? current : target);
-    if (target.kind === "contact") {
-      dispatchViewport({ type: "select-contact", targetId: target.contactId });
+    if (run?.activeTravel !== null && run?.activeTravel !== undefined) return;
+    const normalizedTarget = normalizeContactViewTarget(target, contacts);
+    setLocalSelectedTarget((current) =>
+      sameTarget(current, normalizedTarget) ? current : normalizedTarget
+    );
+    if (normalizedTarget.kind === "contact") {
+      dispatchViewport({ type: "select-contact", targetId: normalizedTarget.contactId });
     } else {
-      dispatchViewport({ type: "select-coordinate", coordinate: target.coordinate });
-      setCoordinateInput({ ...target.coordinate });
+      dispatchViewport({ type: "select-coordinate", coordinate: normalizedTarget.coordinate });
+      setCoordinateInput({ ...normalizedTarget.coordinate });
     }
     setFormError(null);
-    onSelectTarget?.(target);
+    onSelectTarget?.(normalizedTarget);
   };
 
   const dispatchFromControl = (
@@ -453,13 +518,18 @@ export function GalaxyAtlasScreen({
     dispatchViewport(action);
   };
 
-  const targetAtPoint = (point: ScreenPoint, touch: boolean) =>
-    touch
-      ? targetFromTouch(point, viewport, CANVAS_SIZE, contacts, ATLAS_CONTACT_HIT_RADIUS_PX)
-      : targetFromPointer(point, viewport, CANVAS_SIZE, contacts, ATLAS_CONTACT_HIT_RADIUS_PX);
+  const targetAtPoint = (
+    point: ScreenPoint,
+    touch: boolean,
+    hitRadius: number,
+  ) =>
+    normalizeContactViewTarget(touch
+      ? targetFromTouch(point, viewport, CANVAS_SIZE, contacts, hitRadius)
+      : targetFromPointer(point, viewport, CANVAS_SIZE, contacts, hitRadius),
+    contacts);
 
   const canvasPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (viewport.viewLevel !== "sector") return;
+    if (!shouldHandleAtlasPointer(event.pointerType) || viewport.viewLevel !== "sector") return;
     event.currentTarget.setPointerCapture(event.pointerId);
     pointerGestureRef.current = {
       pointerId: event.pointerId,
@@ -469,6 +539,7 @@ export function GalaxyAtlasScreen({
   };
 
   const canvasPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!shouldHandleAtlasPointer(event.pointerType)) return;
     const gesture = pointerGestureRef.current;
     if (gesture === null || gesture.pointerId !== event.pointerId) return;
     const next = canvasPoint(event.currentTarget, event.clientX, event.clientY);
@@ -486,10 +557,24 @@ export function GalaxyAtlasScreen({
   };
 
   const canvasPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!shouldHandleAtlasPointer(event.pointerType)) return;
     const gesture = pointerGestureRef.current;
+    if (gesture === null || gesture.pointerId !== event.pointerId) return;
     pointerGestureRef.current = null;
-    if (gesture === null || gesture.pointerId !== event.pointerId || gesture.moved) return;
-    selectTarget(targetAtPoint(canvasPoint(event.currentTarget, event.clientX, event.clientY), false));
+    if (gesture.moved) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    selectTarget(targetAtPoint(
+      canvasPoint(event.currentTarget, event.clientX, event.clientY),
+      false,
+      atlasCanvasHitRadius(rect.width),
+    ));
+  };
+
+  const canvasPointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!shouldHandleAtlasPointer(event.pointerType)) return;
+    if (pointerGestureRef.current?.pointerId === event.pointerId) {
+      pointerGestureRef.current = null;
+    }
   };
 
   const canvasTouchStart = (event: React.TouchEvent<HTMLCanvasElement>) => {
@@ -546,7 +631,12 @@ export function GalaxyAtlasScreen({
     if (gesture?.kind !== "tap" || gesture.moved) return;
     const touch = event.changedTouches[0];
     if (touch === undefined) return;
-    selectTarget(targetAtPoint(canvasPoint(event.currentTarget, touch.clientX, touch.clientY), true));
+    const rect = event.currentTarget.getBoundingClientRect();
+    selectTarget(targetAtPoint(
+      canvasPoint(event.currentTarget, touch.clientX, touch.clientY),
+      true,
+      atlasCanvasHitRadius(rect.width),
+    ));
   };
 
   const submitCoordinate = (event: React.FormEvent<HTMLFormElement>) => {
@@ -617,7 +707,7 @@ export function GalaxyAtlasScreen({
         fontFamily: "ui-monospace, Menlo, monospace",
       }}
     >
-      <header style={{ display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${BORDER}`, paddingBottom: 12 }}>
+      <header style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${BORDER}`, paddingBottom: 12 }}>
         <Button onClick={onCloseRef.current}>← CLOSE ATLAS</Button>
         <div>
           <p style={{ margin: 0, color: "#6aa8b8", letterSpacing: ".12em" }}>VANGUARD NAVIGATION</p>
@@ -649,7 +739,10 @@ export function GalaxyAtlasScreen({
         </Button>
       </nav>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.7fr) minmax(290px, .8fr)", gap: 16, alignItems: "start" }}>
+      <div
+        data-atlas-layout="responsive"
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 16, alignItems: "start" }}
+      >
         <main style={{ minWidth: 0 }}>
           <section aria-label="Atlas field" style={{ border: `1px solid ${BORDER}`, background: PANEL, padding: 12 }}>
             <div
@@ -670,7 +763,7 @@ export function GalaxyAtlasScreen({
                 onPointerDown={canvasPointerDown}
                 onPointerMove={canvasPointerMove}
                 onPointerUp={canvasPointerUp}
-                onPointerCancel={() => { pointerGestureRef.current = null; }}
+                onPointerCancel={canvasPointerCancel}
                 onTouchStart={canvasTouchStart}
                 onTouchMove={canvasTouchMove}
                 onTouchEnd={canvasTouchEnd}
@@ -715,9 +808,13 @@ export function GalaxyAtlasScreen({
 
           <section style={{ marginTop: 16, border: `1px solid ${BORDER}`, background: PANEL, padding: 12 }}>
             <h2 style={{ marginTop: 0, color: CYAN }}>PLOT COORDINATE</h2>
-            <form onSubmit={submitCoordinate} style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(90px, 1fr)) auto", gap: 8, alignItems: "end" }}>
+            <form
+              data-coordinate-layout="wrapping"
+              onSubmit={submitCoordinate}
+              style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 110px), 1fr))", gap: 8, alignItems: "end" }}
+            >
               {(["sectorX", "sectorY", "localX", "localY"] as const).map((field) => (
-                <label key={field} style={{ display: "grid", gap: 4 }}>
+                <label key={field} style={{ display: "grid", gap: 4, minWidth: 0 }}>
                   <span>{field.replace(/([A-Z])/g, " $1").toUpperCase()}</span>
                   <input
                     name={field}
@@ -725,7 +822,7 @@ export function GalaxyAtlasScreen({
                     step="1"
                     value={coordinateInput[field]}
                     onChange={(event) => setCoordinateInput((current) => ({ ...current, [field]: event.target.value }))}
-                    style={{ minHeight: 40, border: `1px solid ${BORDER}`, background: "#07131d", color: "#ffffff", font: "inherit", padding: "6px 8px" }}
+                    style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${BORDER}`, background: "#07131d", color: "#ffffff", font: "inherit", padding: "6px 8px" }}
                   />
                 </label>
               ))}
@@ -740,13 +837,14 @@ export function GalaxyAtlasScreen({
             <h2 style={{ marginTop: 0, color: CYAN }}>CONTACTS</h2>
             <div role="listbox" aria-label="Atlas contacts" style={{ display: "grid", gap: 8 }}>
               {contacts.map((contact) => {
-                const selected = currentSelectedId === contact.contactId;
+                const selected = currentSelectedId === contact.targetId;
                 return (
                   <button
                     type="button"
                     role="option"
                     aria-selected={selected}
-                    data-atlas-contact={contact.contactId}
+                    data-atlas-contact={contact.targetId}
+                    data-target-kind={contact.target.kind}
                     data-selected-target={selected ? currentSelectedId ?? undefined : undefined}
                     key={contact.targetId}
                     onClick={() => {
