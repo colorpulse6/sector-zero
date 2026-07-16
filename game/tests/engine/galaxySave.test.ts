@@ -1191,6 +1191,24 @@ test("quality group 3 validates travel atomically across every valid state", () 
     assert.deepEqual(migrated.vessel, raw.vessel, `${state} vessel must survive`);
   }
 
+  const partialRoute = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  partialRoute.activeTravel = validTravel("committed");
+  partialRoute.activeTravel.legs = [partialRoute.activeTravel.legs[0], null];
+  partialRoute.vessel = {
+    status: "in_transit",
+    coordinate: { ...TRAVEL_DESTINATION },
+    contactId: null,
+    transitTransactionId: "travel:quality",
+  };
+  const partialRecovery = migrateGalaxyRun(partialRoute);
+  assert.equal(partialRecovery.activeTravel, null);
+  assert.deepEqual(partialRecovery.vessel, {
+    status: "stationary",
+    coordinate: TRAVEL_ORIGIN,
+    contactId: null,
+    transitTransactionId: null,
+  });
+
   const corrupt = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
   corrupt.activeTravel = validTravel("advancing");
   corrupt.activeTravel.nextLegIndex = 99;

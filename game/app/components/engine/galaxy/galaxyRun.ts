@@ -1178,12 +1178,13 @@ function migrateTravel(
     || (elapsedCycles as number) < 0
   ) return null;
   const rawLegs = own(source, "legs");
-  const legs = Array.isArray(rawLegs)
-    ? rawLegs.flatMap((entry) => {
-        const migrated = migrateRouteLeg(entry, coordinateFallback);
-        return migrated === null ? [] : [migrated];
-      })
-    : [];
+  if (!Array.isArray(rawLegs) || rawLegs.length === 0) return null;
+  const legs: RouteLeg[] = [];
+  for (const entry of rawLegs) {
+    const migrated = migrateRouteLeg(entry, coordinateFallback);
+    if (migrated === null) return null;
+    legs.push(migrated);
+  }
   return {
     transactionId: stringValue(own(source, "transactionId"), ""),
     state,
