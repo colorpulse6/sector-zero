@@ -90,11 +90,24 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       && Object.prototype.hasOwnProperty.call(rawGalaxyRun, "identity")
     ? (rawGalaxyRun as Record<string, unknown>).identity
     : null;
-  const galaxyRun = rawGalaxyIdentity !== null
+  const identitySource = rawGalaxyIdentity !== null
       && typeof rawGalaxyIdentity === "object"
       && !Array.isArray(rawGalaxyIdentity)
-    ? migrateGalaxyRun(rawGalaxyRun)
+    ? rawGalaxyIdentity as Record<string, unknown>
     : null;
+  const identityIsComplete = identitySource !== null
+    && Object.prototype.hasOwnProperty.call(identitySource, "galaxySeed")
+    && typeof identitySource.galaxySeed === "string"
+    && Object.prototype.hasOwnProperty.call(identitySource, "generationVersion")
+    && Number.isSafeInteger(identitySource.generationVersion)
+    && (identitySource.generationVersion as number) >= 0
+    && Object.prototype.hasOwnProperty.call(
+      identitySource,
+      "authoredAnchorRegistryVersion",
+    )
+    && Number.isSafeInteger(identitySource.authoredAnchorRegistryVersion)
+    && (identitySource.authoredAnchorRegistryVersion as number) >= 0;
+  const galaxyRun = identityIsComplete ? migrateGalaxyRun(rawGalaxyRun) : null;
   return {
     currentWorld: (raw.currentWorld as number) ?? 1,
     levels: (raw.levels as SaveData["levels"]) ?? {},

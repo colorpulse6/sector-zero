@@ -47,6 +47,7 @@ const TRAVEL_ORIGIN = { sectorX: 0, sectorY: 0, localX: 512, localY: 512 };
 const TRAVEL_DESTINATION = { sectorX: 0, sectorY: 0, localX: 1024, localY: 512 };
 
 function validTravel(state: string = "advancing") {
+  const completed = state === "arrived";
   return {
     transactionId: "travel:quality",
     state,
@@ -63,10 +64,12 @@ function validTravel(state: string = "advancing") {
       supplyCost: 2,
       interruptionCauseId: null,
     }],
-    nextLegIndex: state === "arrived" ? 1 : 0,
-    appliedCheckpointIds: ["checkpoint:departed"],
+    nextLegIndex: completed ? 1 : 0,
+    appliedCheckpointIds: completed
+      ? ["travel:quality:leg:0", "checkpoint:departed"]
+      : ["checkpoint:departed"],
     supplyCost: 2,
-    elapsedCycles: 0,
+    elapsedCycles: completed ? 2 : 0,
     interruptionOperationId: null,
   };
 }
@@ -564,7 +567,7 @@ test("valid nested serialized fields survive migration without aliases", () => {
     nextLegIndex: 0,
     appliedCheckpointIds: ["checkpoint:departed"],
     supplyCost: 4,
-    elapsedCycles: 1,
+    elapsedCycles: 0,
     interruptionOperationId: null,
   };
   raw.historyFacts.push({
@@ -1267,6 +1270,61 @@ test("quality group 3 validates travel atomically across every valid state", () 
   });
 });
 
+function advancingTravelFixture(): Record<string, any> {
+  const raw = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  raw.activeTravel = validTravel("advancing");
+  raw.vessel = {
+    status: "in_transit",
+    coordinate: { ...TRAVEL_ORIGIN },
+    contactId: null,
+    transitTransactionId: "travel:quality",
+  };
+  return raw;
+}
+
+function assertAtomicTravelRecovery(raw: Record<string, any>): void {
+  const migrated = migrateGalaxyRun(raw);
+  assert.equal(migrated.activeTravel, null);
+  assert.deepEqual(migrated.vessel, {
+    status: "stationary",
+    coordinate: TRAVEL_ORIGIN,
+    contactId: null,
+    transitTransactionId: null,
+  });
+}
+
+test("travel progress rejects elapsed cycles beyond completed legs", () => {
+  const raw = advancingTravelFixture();
+  raw.activeTravel.elapsedCycles = 99;
+  assertAtomicTravelRecovery(raw);
+});
+
+test("travel progress rejects a completed leg without its canonical checkpoint", () => {
+  const raw = advancingTravelFixture();
+  raw.activeTravel.nextLegIndex = 1;
+  raw.activeTravel.elapsedCycles = 2;
+  raw.vessel.coordinate = { ...TRAVEL_DESTINATION };
+  assertAtomicTravelRecovery(raw);
+});
+
+test("travel progress rejects a premature canonical leg checkpoint", () => {
+  const raw = advancingTravelFixture();
+  raw.activeTravel.appliedCheckpointIds.push("travel:quality:leg:0");
+  assertAtomicTravelRecovery(raw);
+});
+
+test("travel progress rejects an in-transit vessel away from its route endpoint", () => {
+  const raw = advancingTravelFixture();
+  raw.vessel.coordinate = { sectorX: 0, sectorY: 0, localX: 777, localY: 777 };
+  assertAtomicTravelRecovery(raw);
+});
+
+test("travel progress rejects an empty checkpoint ID", () => {
+  const raw = advancingTravelFixture();
+  raw.activeTravel.appliedCheckpointIds.push("");
+  assertAtomicTravelRecovery(raw);
+});
+
 test("quality group 4 enforces numeric domains and accepts exact boundaries", () => {
   const fresh = createFreshGalaxyRun(COMPLETE_IDENTITY);
   const invalid = jsonClone(fresh) as Record<string, any>;
@@ -1387,6 +1445,113 @@ test("quality group 5 keeps the save selector coherent with a recovered run", ()
   const legacy = migrateSave({ activeExperience: "legacy", galaxyRun: stored });
   assert.equal(legacy.activeExperience, "legacy");
   assert.deepEqual(legacy.galaxyRun, stored);
+});
+
+const INVALID_SAVE_IDENTITIES: ReadonlyArray<readonly [string, unknown]> = [
+  ["an empty identity", {}],
+  ["a missing galaxySeed", {
+    generationVersion: 1,
+    authoredAnchorRegistryVersion: 1,
+  }],
+  ["a non-string galaxySeed", {
+    galaxySeed: 7,
+    generationVersion: 1,
+    authoredAnchorRegistryVersion: 1,
+  }],
+  ["a missing generationVersion", {
+    galaxySeed: "partial",
+    authoredAnchorRegistryVersion: 1,
+  }],
+  ["a non-number generationVersion", {
+    galaxySeed: "partial",
+    generationVersion: "1",
+    authoredAnchorRegistryVersion: 1,
+  }],
+  ["a negative generationVersion", {
+    galaxySeed: "partial",
+    generationVersion: -1,
+    authoredAnchorRegistryVersion: 1,
+  }],
+  ["a fractional generationVersion", {
+    galaxySeed: "partial",
+    generationVersion: 1.5,
+    authoredAnchorRegistryVersion: 1,
+  }],
+  ["an unsafe generationVersion", {
+    galaxySeed: "partial",
+    generationVersion: Number.MAX_SAFE_INTEGER + 1,
+    authoredAnchorRegistryVersion: 1,
+  }],
+  ["a missing authoredAnchorRegistryVersion", {
+    galaxySeed: "partial",
+    generationVersion: 1,
+  }],
+  ["a non-number authoredAnchorRegistryVersion", {
+    galaxySeed: "partial",
+    generationVersion: 1,
+    authoredAnchorRegistryVersion: "1",
+  }],
+  ["a negative authoredAnchorRegistryVersion", {
+    galaxySeed: "partial",
+    generationVersion: 1,
+    authoredAnchorRegistryVersion: -1,
+  }],
+  ["a fractional authoredAnchorRegistryVersion", {
+    galaxySeed: "partial",
+    generationVersion: 1,
+    authoredAnchorRegistryVersion: 1.5,
+  }],
+  ["an unsafe authoredAnchorRegistryVersion", {
+    galaxySeed: "partial",
+    generationVersion: 1,
+    authoredAnchorRegistryVersion: Number.MAX_SAFE_INTEGER + 1,
+  }],
+];
+
+for (const [description, identity] of INVALID_SAVE_IDENTITIES) {
+  test(`SaveData boundary rejects ${description}`, () => {
+    const migrated = migrateSave({
+      activeExperience: "galaxy",
+      galaxyRun: { identity },
+    });
+    assert.equal(migrated.activeExperience, "legacy");
+    assert.equal(migrated.galaxyRun, null);
+  });
+}
+
+test("SaveData boundary drops an invalid run even under the legacy selector", () => {
+  const migrated = migrateSave({
+    activeExperience: "legacy",
+    galaxyRun: { identity: { galaxySeed: "partial" } },
+  });
+  assert.equal(migrated.activeExperience, "legacy");
+  assert.equal(migrated.galaxyRun, null);
+});
+
+test("SaveData boundary preserves a complete unsupported identity for neutral recovery", () => {
+  const identity = {
+    galaxySeed: "future-save-boundary",
+    generationVersion: 999,
+    authoredAnchorRegistryVersion: 998,
+  };
+  const migrated = migrateSave({
+    activeExperience: "galaxy",
+    galaxyRun: { identity },
+  });
+  assert.equal(migrated.activeExperience, "galaxy");
+  assert.deepEqual(migrated.galaxyRun?.identity, identity);
+  assert.deepEqual(getGalaxyRunAvailability(migrated.galaxyRun), {
+    status: "unavailable",
+    recoverable: true,
+    reason: "unsupported_generation_version",
+  });
+  assert.deepEqual(migrated.galaxyRun?.atlas, {
+    materializedFacts: {},
+    knowledge: {},
+    mappedCellKeys: [],
+    accessFacts: [],
+    threatObservations: [],
+  });
 });
 
 test("quality group 6 uses supplied identities and neutral unsupported recovery", () => {

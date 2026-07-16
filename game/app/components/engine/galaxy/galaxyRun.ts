@@ -1231,17 +1231,44 @@ function travelCommitmentIsCoherent(
   }
   if (totalSupply !== travel.supplyCost) return false;
 
+  let completedCycles = 0;
+  const completedCheckpoints = new Set<string>();
+  for (let index = 0; index < travel.nextLegIndex; index++) {
+    completedCycles += travel.legs[index].cycles;
+    if (!Number.isSafeInteger(completedCycles)) return false;
+    completedCheckpoints.add(`${travel.transactionId}:leg:${index}`);
+  }
+  if (completedCycles !== travel.elapsedCycles) return false;
+  const legCheckpointPrefix = `${travel.transactionId}:leg:`;
+  const checkpointIds = new Set(travel.appliedCheckpointIds);
+  for (const checkpointId of checkpointIds) {
+    if (checkpointId.length === 0) return false;
+    if (
+      checkpointId.startsWith(legCheckpointPrefix)
+      && !completedCheckpoints.has(checkpointId)
+    ) return false;
+  }
+  for (const checkpointId of completedCheckpoints) {
+    if (!checkpointIds.has(checkpointId)) return false;
+  }
+
+  const progressCoordinate = travel.nextLegIndex === 0
+    ? travel.origin
+    : travel.legs[travel.nextLegIndex - 1].to;
+
   if (
     travel.state === "committed"
     || travel.state === "advancing"
     || travel.state === "interrupted"
   ) {
     return vessel.status === "in_transit"
-      && vessel.transitTransactionId === travel.transactionId;
+      && vessel.transitTransactionId === travel.transactionId
+      && sameCoordinate(vessel.coordinate, progressCoordinate);
   }
   if (travel.state === "diverted") {
     return vessel.status === "stranded"
-      && vessel.transitTransactionId === travel.transactionId;
+      && vessel.transitTransactionId === travel.transactionId
+      && sameCoordinate(vessel.coordinate, progressCoordinate);
   }
   if (travel.state === "arrived") {
     return vessel.status === "stationary"
