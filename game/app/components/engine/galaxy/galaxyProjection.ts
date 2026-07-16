@@ -72,6 +72,9 @@ export type GalaxySaveCycleAdvanceResult =
   | { ok: true; galaxyRun: GalaxyRunState; save: SaveData }
   | { ok: false; errors: ProjectionError[] };
 
+/** Route previews promise at most three cycles in G0; one call cannot do more work. */
+export const G0_MAX_CYCLES_PER_ADVANCE = 3;
+
 const PROJECTION_CLOCK: SaveData["gameClock"] = Object.freeze({
   day: 0,
   hour: 7,
@@ -713,7 +716,16 @@ export function mergeProjectionIntoGalaxy(
   run: GalaxyRunState,
   delta: GalaxyProjectionDelta,
 ): ProjectionMergeResult {
-  const shapeProblem = validateDeltaShape(delta);
+  let shapeProblem: ProjectionError | null;
+  try {
+    shapeProblem = validateDeltaShape(delta);
+  } catch {
+    return failed(error(
+      "unsafe_delta",
+      "delta",
+      "Projection delta reflection failed during validation.",
+    ));
+  }
   if (shapeProblem !== null) return failed(shapeProblem);
   const rawDelta = delta as Record<string, unknown>;
   let candidate: GalaxyRunState;
@@ -752,13 +764,17 @@ export function advanceGalaxyWorldCycles(
   input: SaveData | GalaxyRunState,
   cycles: number,
 ): GalaxySaveCycleAdvanceResult | GalaxyRunCycleAdvanceResult {
-  if (!Number.isSafeInteger(cycles) || cycles < 0) {
+  if (
+    !Number.isSafeInteger(cycles) ||
+    cycles < 0 ||
+    cycles > G0_MAX_CYCLES_PER_ADVANCE
+  ) {
     return {
       ok: false,
       errors: [error(
         "invalid_cycle_count",
         "cycles",
-        "Galaxy cycle count must be a nonnegative safe integer.",
+        `Galaxy cycle count must be a safe integer from 0 to ${G0_MAX_CYCLES_PER_ADVANCE}.`,
       )],
     };
   }

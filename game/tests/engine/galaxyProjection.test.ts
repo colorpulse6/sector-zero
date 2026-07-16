@@ -4,6 +4,7 @@ import { advanceWorldCycle } from "../../app/components/colony/shared/cycleProce
 import { rankFromStanding } from "../../app/components/colony/shared/factionLedger";
 import { recordKill } from "../../app/components/engine/bestiary";
 import {
+  G0_MAX_CYCLES_PER_ADVANCE,
   advanceGalaxyWorldCycles,
   mergeProjectionIntoGalaxy,
   projectGalaxyRunToLegacySave,
@@ -417,6 +418,39 @@ test("unknown, inherited, prototype, accessor, and nested delta keys reject atom
   assert.equal(({} as Record<string, unknown>).polluted, undefined);
 });
 
+test("hostile reflection proxies reject explicitly without escaping or mutation", () => {
+  const traps: Array<{ name: string; delta: object }> = [
+    {
+      name: "getPrototypeOf trap",
+      delta: new Proxy({}, {
+        getPrototypeOf() {
+          throw new Error("hostile getPrototypeOf");
+        },
+      }),
+    },
+    {
+      name: "ownKeys trap",
+      delta: new Proxy({}, {
+        ownKeys() {
+          throw new Error("hostile ownKeys");
+        },
+      }),
+    },
+  ];
+
+  for (const { name, delta } of traps) {
+    const run = createFreshGalaxyRun();
+    const before = structuredClone(run);
+    const result = mergeProjectionIntoGalaxy(
+      run,
+      delta as GalaxyProjectionDelta,
+    );
+    assert.equal(result.ok, false, name);
+    if (!result.ok) assert.equal(result.errors[0]?.code, "unsafe_delta", name);
+    assert.deepEqual(run, before, name);
+  }
+});
+
 test("malformed or regressive authorized deltas fail closed", () => {
   const base = createFreshGalaxyRun();
   base.pilot.xp = 100;
@@ -556,6 +590,32 @@ test("run-only cycle API is deterministic for Task 6 and introduces no second co
   assert.deepEqual(run, before);
   assert.notEqual(left.galaxyRun, run);
   assert.notEqual(left.galaxyRun, right.galaxyRun);
+});
+
+test("cycle advancement rejects work above the G0 per-call boundary", () => {
+  assert.equal(G0_MAX_CYCLES_PER_ADVANCE, 3);
+  const run = createFreshGalaxyRun();
+  const runBefore = structuredClone(run);
+  const parent = richLegacyParent();
+  const parentBefore = structuredClone(parent);
+
+  for (const count of [4, Number.MAX_SAFE_INTEGER]) {
+    const runAbove = advanceGalaxyWorldCycles(run, count);
+    const saveAbove = advanceGalaxyWorldCycles(parent, count);
+    assert.equal(runAbove.ok, false, String(count));
+    assert.equal(saveAbove.ok, false, String(count));
+    if (!runAbove.ok) assert.equal(runAbove.errors[0]?.code, "invalid_cycle_count");
+    if (!saveAbove.ok) assert.equal(saveAbove.errors[0]?.code, "invalid_cycle_count");
+  }
+  assert.deepEqual(run, runBefore);
+  assert.deepEqual(parent, parentBefore);
+
+  const runAtBoundary = advanceGalaxyWorldCycles(run, 3);
+  const saveAtBoundary = advanceGalaxyWorldCycles(parent, 3);
+  assert.equal(runAtBoundary.ok, true);
+  assert.equal(saveAtBoundary.ok, true);
+  if (runAtBoundary.ok) assert.equal(runAtBoundary.galaxyRun.worldCycle, 3);
+  if (saveAtBoundary.ok) assert.equal(saveAtBoundary.galaxyRun.worldCycle, 3);
 });
 
 test("zero cycles is an identity no-op and invalid counts fail without mutation", () => {
