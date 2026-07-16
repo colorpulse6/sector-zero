@@ -46,16 +46,16 @@ Record the complete command outputs in provenance. Any mismatch means the previo
 ```bash
 # Wraith
 /Users/nichalasbarnes/.local/pipx/venvs/rembg/bin/python "${CODEX_HOME:-$HOME/.codex}/skills/.system/imagegen/scripts/remove_chroma_key.py" --input /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-source.png --out /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-alpha.png --auto-key border --soft-matte --transparent-threshold 12 --opaque-threshold 220 --despill
-magick /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-alpha.png -crop '993x1129+127+64' +repage -resize '968x1284' -gravity center -background none -extent 968x1284 /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-fit.png
-magick -size 1024x1536 xc:none /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-fit.png -geometry +28+97 -composite /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-production.png
+magick /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-alpha.png -crop '993x1129+127+64' +repage -resize '968x1284' -gravity center -background none -extent 968x1284 -strip /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-fit.png
+magick -size 1024x1536 xc:none /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-fit.png -geometry +28+97 -composite -strip /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/wraith-production.png
 
 # Echo
 /Users/nichalasbarnes/.local/pipx/venvs/rembg/bin/python "${CODEX_HOME:-$HOME/.codex}/skills/.system/imagegen/scripts/remove_chroma_key.py" --input /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-source.png --out /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-alpha.png --auto-key border --soft-matte --transparent-threshold 12 --opaque-threshold 220 --despill
-magick /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-alpha.png -crop '956x1079+149+82' +repage -resize '1037x895' -gravity center -background none -extent 1037x895 /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-fit.png
-magick -size 1536x1024 xc:none /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-fit.png -geometry +258+49 -composite /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-production.png
+magick /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-alpha.png -crop '956x1079+149+82' +repage -resize '1037x895' -gravity center -background none -extent 1037x895 -strip /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-fit.png
+magick -size 1536x1024 xc:none /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-fit.png -geometry +258+49 -composite -strip /private/tmp/sector-zero-m2-wraith-echo-recovery/sources/echo-production.png
 ```
 
-Expected intermediate hashes are Wraith matte `535792477f4e9d3e8efe65f568b4214713035ae5eb40b87b0bbd16ece212ff76`, fit `453f3f73feca9e17ace9a3f090dc6f6fe51321ea52e2cd3ae829216e696be78e`, derivative `0d57dde688e04dda4f703941b703be9e04cfdafccdad32216166a7734d8fd378`; Echo matte `77d031b4e3daaf62484de7811ea6386d9d9cab4be7440d9fba46168b05729786` and derivative `7792dd06f55d200df43084d7acd06b487e16058a3b1b350318967100701b276e`. Record the Echo fit hash after deterministic reproduction.
+The matte hashes are deterministic and must reproduce exactly: Wraith `535792477f4e9d3e8efe65f568b4214713035ae5eb40b87b0bbd16ece212ff76`; Echo `77d031b4e3daaf62484de7811ea6386d9d9cab4be7440d9fba46168b05729786`. The earlier ledger's unstripped fit/derivative SHA-256 values included volatile ImageMagick PNG date metadata and are historical provenance, not reproducibility gates. Repeated unstripped Wraith fits proved this with different file hashes, identical pixel signature `e6802e100e8f6613e5e80b92e9bc8d81fb6aa8be24b7dbeea1acd46e63232255`, and absolute pixel error `0`. The canonical stripped Wraith fit is `6bd64656fe270cd7db170951d7d9ae7e5a74a00862d1623b2a106c8fb9099b1b`; the canonical stripped derivative is `43974298bbc745519666291584e5642f0071d16d587598d57735d9ca51614f9d`, with pixel signature `8f4cb9ae11275f3d95f16203826c6b6bb11724721bb8254d9a77fe1253246a64`. Pin the stripped Echo fit, derivative, and pixel signatures after deterministic reproduction and require a second-run file-hash match.
 
 All acceptance decisions remain **provisional** until the user reviews the final exact-size sheet, angle-matched original/candidate Bestiary pair, matched `480x854` gameplay pair, and four-panel review sheet and explicitly approves that enemy. The PR may contain only user-approved production replacements. If candidate Bestiary detail cannot be observed at a full-horizontal-magnitude turntable frame, the candidate fails closed.
 
@@ -85,7 +85,7 @@ All acceptance decisions remain **provisional** until the user reviews the final
 
 - [ ] **Step 1: Copy the recorded Wraith source to a recovery workspace and verify SHA-256 `ec33e8ee82c17e77bf8dea106b6fe962be6e21e0d3fbcffb8bed9920314cf42c`.**
 - [ ] **Step 2: Matte with border auto-key, soft matte, thresholds 12/220, and despill; require source-matte SHA-256 `535792477f4e9d3e8efe65f568b4214713035ae5eb40b87b0bbd16ece212ff76`.**
-- [ ] **Step 3: Crop the 5%-alpha bounds, fit proportionally inside `968x1284`, align to `+28+97`, and require production derivative SHA-256 `0d57dde688e04dda4f703941b703be9e04cfdafccdad32216166a7734d8fd378`.**
+- [ ] **Step 3: Crop the 5%-alpha bounds, fit proportionally inside `968x1284`, align to `+28+97`, strip volatile metadata, and require the canonical fit/derivative hashes and pixel signatures above. Confirm a second stripped reconstruction has the same file hashes.**
 - [ ] **Step 4: Verify `1024x1536` sRGBA, one frame, transparent corners, bounds `968x1101+28+188`, center2 `1024,1477`, and clean edges. Treat the one-unit center2-Y difference from the original (`1478`) as a visible collision-alignment review item requiring explicit user approval; otherwise produce a separately hashed exact-center derivative or reject.**
 - [ ] **Step 5: Generate exact `56x52` dark/bright evidence and an angle-matched original/candidate `96x96` Bestiary pair at a full-horizontal-magnitude turntable frame. Build a four-panel sheet using identical fields, scaling, labels, and crop rules. Add an exact-size entity-rectangle overlay comparing each complete-canvas sprite inside the unchanged `48x44` hitbox plus four-pixel renderer padding, with the alpha centerline and half-pixel Wraith Y shift visibly annotated.**
 - [ ] **Step 6: Temporarily install, run sprite tests and DevPanel build, then capture an angle/state/timing-matched `480x854` W4-2 Wave 1 original/candidate pair. Observe the candidate in live Bestiary detail at the same turntable angle; remaining on the list is a failed gate.**
@@ -105,7 +105,7 @@ All acceptance decisions remain **provisional** until the user reviews the final
 
 - [ ] **Step 1: Copy the recorded Echo source and verify SHA-256 `07c4fe09c4330dd696ecbb131a06480fe653fb04787d12c2d68d457a5998f43d`.**
 - [ ] **Step 2: Matte with the recorded settings; require source-matte SHA-256 `77d031b4e3daaf62484de7811ea6386d9d9cab4be7440d9fba46168b05729786`.**
-- [ ] **Step 3: Crop the 5%-alpha bounds, fit proportionally inside `1037x895`, align to `+258+49`, and require production derivative SHA-256 `7792dd06f55d200df43084d7acd06b487e16058a3b1b350318967100701b276e`.**
+- [ ] **Step 3: Crop the 5%-alpha bounds, fit proportionally inside `1037x895`, align to `+258+49`, strip volatile metadata, and pin deterministic fit/derivative hashes and pixel signatures after two identical reconstructions. Compare geometry and pixels against the documented historical derivative rather than treating its volatile file hash as reproducible.**
 - [ ] **Step 4: Verify `1536x1024` sRGBA, one frame, transparent corners, bounds `793x895+380+49`, exact center2, and clean edges.**
 - [ ] **Step 5: Generate exact `44x44` visible/15%-alpha dark/bright evidence and an angle-matched original/candidate `96x96` Bestiary pair at a full-horizontal-magnitude turntable frame. Build visible and ghosted four-panel sheets using identical fields, scaling, labels, and crop rules.**
 - [ ] **Step 6: Temporarily install, run sprite tests and DevPanel build, then capture angle/state/timing-matched `480x854` W6-2 Wave 1 original/candidate pairs in visible and hidden states. Observe the candidate in live Bestiary detail at the same turntable angle; remaining on the list is a failed gate.**
@@ -122,3 +122,7 @@ All acceptance decisions remain **provisional** until the user reviews the final
 - [ ] **Step 3: Serve the fresh DevPanel export, repeat all user-approved live checks at `480x854`, observe the accepted sprites in Bestiary detail, and record console errors and unchanged warnings separately.**
 - [ ] **Step 4: Run `git diff --check origin/main...HEAD` and independently review the complete diff against this plan and the tranche-two design.**
 - [ ] **Step 5: Push `feat/m2-wraith-echo-recovery` and open a draft PR listing accepted/rejected decisions, exact contracts, evidence, and verification. Do not merge.**
+
+## Completion record
+
+2026-07-16: Wraith and Echo were explicitly approved by the user. Echo passed the live Bestiary-detail gate. Wraith passed static and W4-2 gameplay review; its unchanged live Bestiary-detail entry behavior was reproduced and waived by explicit user approval, with the disclosed half-pixel source alignment difference accepted. TypeScript, colony, engine, sprite, normal static-build, DevPanel-build, and diff checks passed before publication.
