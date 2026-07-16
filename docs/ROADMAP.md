@@ -1,16 +1,17 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-07-15** (active course unchanged; long-horizon vision links added).
+**Updated 2026-07-16** (continuous-galaxy reframe and G0 Atlas inserted).
 This is the single entry point. Every other doc is either DONE, absorbed here, or linked
 below with its authority noted.
 
 ## North star (DECIDED 2026-07-13)
 
-**Systemic sandbox — Dwarf-Fortress-ward.** Depth over breadth: the colony/region sim is
-the game; the campaign is the on-ramp and the source of ticks/resources. The 2026-04-20
-colony spec's "Deep Sim future-proofing" (entity IDs everywhere, serializable everything)
-is now the point, not an insurance policy. Prefer systems that generate stories over
-authored content; authored content exists to seed systems.
+**Systemic sandbox — Dwarf-Fortress-ward.** Depth over breadth. The simulation creates
+campaigns; playable campaigns reshape the simulation. Colony, region, travel, combat,
+exploration, politics, and history are reciprocal layers rather than separate games.
+The 2026-04-20 colony spec's "Deep Sim future-proofing" (entity IDs everywhere,
+serializable everything) is now the point, not an insurance policy. Prefer systems that
+generate stories; authored content seeds places, people, mysteries, and consequences.
 
 ## Decisions of record (2026-07-13)
 
@@ -28,7 +29,28 @@ authored content; authored content exists to seed systems.
 4. Cargo v1 abstract (physical holds later); travel costs a cycle; first colony gets
    warnings/protection while learning (from the stakes discussion + OW draft Q1/Q2).
 
-## What is DONE (verified in code, 2026-07-13)
+## Decisions of record (2026-07-16 — continuous galaxy)
+
+1. **Numbered worlds are retired from the new progression model.** Current W1–W8
+   missions, bosses, side quests, planet sorties, and special missions remain valuable
+   authored content, but migrate into named operations attached to physical locations.
+2. **The galaxy is continuous projected space, not a node ladder.** The Atlas supports
+   galaxy, sector, system, and planetary-region zoom. Players may follow known signals
+   or plot blind expeditions to arbitrary coordinates.
+3. **Generate detail through contact.** Seeded spatial cells make coordinates stable;
+   distant space remains coarse until observation, travel, ownership, or causality
+   requires deeper simulation.
+4. **Progression comes from unified operations.** Story pressure, contracts, battles,
+   colony needs, exploration, and reliable work use one located operation contract and
+   can yield material, knowledge, access, power, or historical consequences.
+5. **G0 Atlas moves ahead of M3–M5.** The minimal coordinate, signal, operation, route,
+   and travel substrate lands before hubs and decay build more dependencies on numeric
+   world IDs. M2 art continues in parallel.
+6. **The canonical galaxy starts fresh.** Development-era numbered-progression saves do
+   not fabricate galactic history. A later importer may preserve harmless Codex,
+   Bestiary, or cosmetic accomplishments.
+
+## What is DONE (verified in code, 2026-07-16)
 
 | Area | State |
 |---|---|
@@ -42,33 +64,41 @@ authored content; authored content exists to seed systems.
 | Animated NPC billboards + quartermaster (own sprite + 2-frame walk) | Live (deployed) |
 | Asset pipeline: Codex image_gen + BiRefNet + style guide — proven on character, poses, wall texture | Operational, $0 |
 | Ashfall explore zone + Kepler black-box sidequest | Live — these are the POI/quest-reward pattern precursors for M1 |
+| **M1 The Region**: Ashfall seeded graph, DOM map, intel, travel, POIs, cargo, survey/found, site economy | Live (PR #9) |
+| **M2 first shooter tranche**: Swarm, Bomber, Gunner, Drone regeneration + matched review evidence | Live (PR #12) |
 
 ## The course
 
-### M1 — OW-1/2: The Region (leave the base) — NEXT
-Per-planet region node graph (Ashfall vertical slice) + region-map screen (React/DOM per
-spec §I) + pad-gated travel that **costs a cycle** + `poiDispatcher` with 3 procgen POI
-templates (fp ruin / boarding wreck / groundRun canyon — build on `ashfallForwardCamp.ts`'s
-explore-zone shape and Kepler's one-time-reward pattern) + POI cargo → colony routing
-(missionDelivery.ts already does routing) + **survey → found**: site stats from seed,
-founding costs real resources (retire the free 500-metal grant), site stats modulate
-production. Spec source: colony spec §F (929-1028) + OW draft §2-3. **Spec status: ready.**
+### M1 — OW-1/2: The Region (leave the base) — DONE
+Ashfall proves the small-scale pattern the Atlas will extend: a seeded deterministic
+graph, progressive intel, React/DOM selection, cycle-cost travel, multi-mode POIs,
+cargo routing, surveying, resource-cost founding, and site-modulated economy.
 
 ### M2 — The Look (parallel track, asset-lane)
 DOOM Phase 1-2 regen at scale via the proven pipeline, in visibility order: 13 shooter
 enemies → 8 bosses → FP/boarding billboards (8-yaw via TRELLIS.2→headless Blender + the
 engine yaw-selector enabler, spec 2026-07-05 §5.4) → hub interior tilesets/props (feeds
-M3) → backgrounds. Style LoRA once ~30 accepted. Runs alongside M1 — different lane,
-no file conflicts. **Spec status: ready** (pipeline doc + style guide).
+M3) → backgrounds. Style LoRA once ~30 accepted. Runs alongside systemic work —
+different lane, no file conflicts. **Spec status: ready** (pipeline doc + style guide).
 
-### M3 — Phase 3: Hubs (places worth entering)
+### G0 — The Atlas (continuous-galaxy substrate) — NEXT SYSTEMIC SLICE
+Fresh canonical galaxy run + persistent vessel coordinate + continuous local-sector map
+with galaxy/sector/system/region zoom model + seeded spatial cells + known signals and
+blind-coordinate plotting + atlas knowledge/confidence + pure route preview + abstract
+supply/time commitment + bounded caused interruption + unified located operations.
+Prove the loop with Ashfall, Kepler, one shooter interception, one unresolved signal,
+and one deterministic blind discovery. Hybrid UI: Canvas 2D spatial field with
+focusable React/DOM controls and route panels. **Spec status: approved design in
+`2026-07-16-continuous-galaxy-atlas-design.md`; implementation plan next after review.**
+
+### M3 — Phase 3: Hubs (places worth entering, now located)
 Cantina, Marketplace, Town Hall hand-authored interiors + interior NPCs w/ schedules +
-faction dialog depth + **bulletin board v1**: procgen quests from the spec's §F Quest
+faction dialog depth + **bulletin board v1**: operations from the spec's §F Quest
 types (typed, unused, waiting in colonyTypes.ts 454-466; cycleProcessor step8 stub
 exists). Marketplace generalizes `marketContext`. **Spec status: ready** (colony spec
 Phase 3 + §F).
 
-### M4 — The Decay Arc & Emergent Antagonists (NEEDS SPEC — biggest new design)
+### M4 — The Decay Arc & Emergent Antagonists
 The user's stakes decision, formalized. Colony health drives a staged arc over many cycles:
 1. **Crime** (absorbs old 5b: witnesses, bounties, guards, silencing) —
    reducer stubs exist (`npcKilled`/`witnessed`, step9_bountyDecay).
@@ -79,18 +109,21 @@ The user's stakes decision, formalized. Colony health drives a staged arc over m
    acts on the world: claims POIs, raids other colonies, **intercepts your mission
    rewards/fleet (turret/escort engine reuse from spec Phase 7b), steals stockpiles**.
    Counterplay at every stage (guards/barracks, defense missions, raid their POI base).
-Absorbs spec Phases 5b + 8 and the interception half of 7b. **Spec status: TO WRITE —
-this is the first candidate for a dedicated design doc + plan.**
+Absorbs spec Phases 5b + 8 and the interception half of 7b. Syndicates and crises create
+located Atlas operations rather than abstract mission-menu entries. **Spec status:
+approved in `2026-07-13-decay-arc-emergent-antagonists-design.md`; plan after G0/M3
+foundations are ready.**
 
 ### M5 — RPG legs
 Non-combat XP sources wired (survey/found/trade/quest); Engineering + Piloting skill
 trees built (specced in 2026-04-05 plans, unbuilt); reward-economy Stage 2 (ships/Hangar)
 when it earns its place; levels 31-50 later. **Spec status: ready** (2026-04-05 docs).
 
-### M6 — Milestone D (galaxy scale) — horizon
-Multi-colony (cap 4) + galaxy map, campaign buffs from colony roster, emergent missions,
-Colony Planner React dashboard end-state (spec §I mockup), authored questlines. Sequenced
-after the sandbox core proves fun. **Spec status: ready in colony spec, sequence later.**
+### M6 — The Living Galaxy expands — horizon
+Multi-colony comparison + coarse distant simulation + strategic actors + campaign
+records + broader frontier reach + Colony Planner/governance dashboard. The Atlas and
+persistent current location already exist from G0; M6 deepens their scale instead of
+introducing the first galaxy map. **Spec status: skeleton approved; focused specs later.**
 
 ## Doc authority map
 
@@ -109,15 +142,17 @@ after the sandbox core proves fun. **Spec status: ready in colony spec, sequence
   during any nearby work).
 - `superpowers/specs/2026-07-14-living-galaxy-vision-design.md` — approved long-horizon
   direction for generations, Great Houses, galactic time, Fold eras, and world
-  continuity. It does not reorder M1–M6.
+  continuity.
 - `superpowers/specs/2026-07-15-civilization-frontier-design.md` — approved skeleton for
   political authority, autonomous colonies, recontact/exile, bounded governor
-  decisions, and the eventual non-linear logistics frontier. It decomposes into future
-  focused specs and does not authorize an immediate star-map rewrite.
+  decisions, and the continuing logistics frontier.
+- `superpowers/specs/2026-07-16-continuous-galaxy-atlas-design.md` — authoritative
+  replacement for numbered world progression: continuous coordinates, hierarchical
+  Atlas, unified operations, travel commitment, simulation fidelity, and G0 scope.
 
 ## Execution model
 
-Specs written decision-complete while Fable access lasts (M4's decay-arc spec is the
-priority); implementation runs subagent-driven per slice with independent gate
-verification (`tsc` + colony/engine/sprites tests + build + prod-build browser smoke) —
+Specs are written and independently reviewed before implementation. Implementation runs
+subagent-driven per slice with independent gate verification (`tsc` +
+colony/engine/sprites tests + build + prod-build browser smoke) —
 the pattern that shipped everything above.

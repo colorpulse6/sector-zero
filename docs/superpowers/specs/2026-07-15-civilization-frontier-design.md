@@ -3,10 +3,12 @@
 **Date:** 2026-07-15
 **Status:** APPROVED DIRECTION — records the long-horizon skeleton; exact systems remain
 separately specced before implementation
-**Planning horizon:** M3–M6 foundations, then post-M6 civilization and frontier eras
+**Planning horizon:** G0 Atlas foundation, M3–M6 systemic growth, then continuing
+civilization and frontier eras
 **Authority:** Extends `docs/ROADMAP.md` and
-`2026-07-14-living-galaxy-vision-design.md`. It does not reorder M1–M6 or authorize an
-immediate star-map rewrite.
+`2026-07-14-living-galaxy-vision-design.md`. The approved
+`2026-07-16-continuous-galaxy-atlas-design.md` supersedes this document's original
+navigation model and moves the minimal galaxy substrate forward as G0.
 
 ## 1. Purpose
 
@@ -16,8 +18,8 @@ Galaxy vision:
 - the captain can acquire and lose real political power;
 - colonies, towns, Houses, and fleets continue acting while the captain travels;
 - absence may produce prosperity, rebellion, forgotten history, extinction, or exile;
-- the existing space-battle campaign map eventually becomes a non-linear traversable
-  galaxy;
+- the existing mission content migrates from a numbered campaign wrapper into a
+  continuous, coordinate-based traversable galaxy;
 - colonies, outposts, relays, allies, and fleets create the logistics needed to push
   that frontier;
 - battles and multi-mode campaigns remain the player's primary means of changing
@@ -334,38 +336,42 @@ are part of the commitment.
 Both forms use the same deterministic interval-advancement foundation described in the
 Living Galaxy vision, with different commitment and interruption rules.
 
-## 10. The star map becomes the galaxy — DECIDED DIRECTION
+## 10. The star map becomes the galaxy — SUPERSEDED AND REVISED 2026-07-16
 
 ### 10.1 Migration from the current campaign map
 
-The current star map is a fixed arc of eight world nodes with a fixed list of levels.
-It should eventually become the actual navigation layer rather than coexist with a
-separate long-term galaxy screen.
+The current star map is a fixed arc of eight world nodes with fixed level lists. That
+wrapper is an implementation artifact and does not remain the structure of the new
+galaxy.
 
-- the Vanguard or current vessel has a persistent node or in-transit location;
-- W1–W8 remain the authored first corridor and retain their story content;
-- later map data is a seeded graph of systems, belts, nebulae, worlds, stations,
-  anomalies, corridors, and chokepoints;
-- important authored locations coexist with discovered and systemic nodes;
-- choosing a destination commits time, logistics, and risk rather than selecting a
+- the Vanguard or current vessel has a persistent coordinate or in-transit position;
+- the player navigates continuous projected galactic space through galaxy, sector,
+  system, and planetary-region zoom levels;
+- seeded spatial cells create stable systems, belts, nebulae, worlds, stations,
+  anomalies, threat volumes, and signals on contact;
+- important authored locations coexist with discovered and systemic contacts;
+- existing levels, bosses, side quests, planet missions, and special missions survive
+  as named operations attached to physical locations, not as W1–W8 gates;
+- choosing a coordinate commits time, logistics, and risk rather than selecting a
   disconnected level.
 
-The opening route may remain more constrained while core systems are introduced. The
-long-term graph is non-linear and expands through discovery, logistics, politics, and
-play rather than a permanent world-number ladder.
+A short authored prologue may introduce the Vanguard, crew, apparent alien threat, and
+first Tear event. After it, the numbered ladder disappears. The canonical design and G0
+vertical slice are specified in `2026-07-16-continuous-galaxy-atlas-design.md`.
 
 ### 10.2 Galaxy intel states
 
-The M1 region-map pattern repeats at galactic scale:
+The M1 region-map knowledge pattern repeats at galactic scale:
 
 1. **Unknown:** no actionable knowledge.
 2. **Signal:** a rumor, trace, coordinate fragment, distress call, or anomalous reading.
 3. **Charted:** position and partial route information are known.
-4. **Reachable:** current logistics and route conditions permit a travel commitment.
-5. **Contested:** travel is possible, but a military, political, environmental, or
-   anomalous threat controls the route or destination.
-6. **Secured:** the captain or another actor has established a currently reliable path.
-7. **Disrupted or lost:** a formerly useful route has changed and must be reassessed.
+4. **Visited:** the captain or a trusted source has directly resolved the contact.
+5. **Lost contact:** a formerly observed subject has become stale or unreachable enough
+   that its current condition is unknown.
+
+Reachable, contested, secured, and disrupted are separate current access assessments.
+A charted coordinate can move between them without being forgotten.
 
 Knowledge and access are separate. Discovering a planet does not make it reachable;
 securing a route does not make it permanently safe.
@@ -529,21 +535,26 @@ belief may change; objective event provenance does not.
 
 ## 17. Relationship to the active roadmap
 
-This skeleton influences foundations without pulling the galaxy rewrite forward:
+This skeleton now relies on an early minimal galaxy substrate while keeping the deep
+civilization systems incremental:
 
 - **M1 Region:** proves seeded graphs, intel progression, route costs, survey, travel,
   POIs, founding, and explicit threat/mode presentation at planetary scale.
 - **M2 Look:** improves the assets used when systemic conflicts become playable
   missions; it remains an independent art lane.
+- **G0 Atlas:** introduces continuous coordinates, seeded spatial cells, persistent
+  vessel location, signals, unified operations, route commitment, and a small local
+  sector before later systems depend on numbered world IDs.
 - **M3 Hubs:** establishes named leaders, Town Hall decisions, relationships, roles,
-  institutions, and the first expanded Planner information architecture.
+  institutions, and the first expanded Planner information architecture at persistent
+  galactic locations.
 - **M4 Decay:** proves telegraphed drift, autonomous local decisions, causal crisis
   chains, irreversible scars, and syndicates as world actors.
 - **M5 RPG legs:** adds delegation, diplomacy, governance, navigation, engineering, and
   command capabilities where consistent with the approved skill trees.
-- **M6 Galaxy:** may introduce a data-driven galaxy graph, persistent current location,
-  multi-colony comparison, routes, coarse distant simulation, and the first campaign
-  records. It does not need to deliver the complete infinite frontier.
+- **M6 Living Galaxy:** expands the atlas into multi-colony comparison, coarse distant
+  simulation, strategic actors, campaign records, and broader frontier reach. It no
+  longer introduces the first galaxy map.
 - **Post-M6:** expands frontier reach, generations, Great Houses, recontact, political
   loss, exile, deep stasis, cultural myth, and dynamic interstellar campaigns in proven
   slices.
@@ -554,7 +565,8 @@ Do not implement this document as one monolith. Expected focused designs include
 
 1. governance, authority grants, directives, and bounded governor decisions;
 2. immutable history, local belief, causal uniqueness, and recontact generation;
-3. data-driven galaxy nodes, routes, intel, threat, and frontier reach;
+3. continuous galaxy coordinates, atlas intel, threat, and frontier reach — G0 design
+   now recorded in `2026-07-16-continuous-galaxy-atlas-design.md`;
 4. travel commitments, transit stasis, interruptions, and deep stasis;
 5. strategic campaign records and multi-mode mission generation;
 6. expanded Planner/governance/campaign dashboard;
@@ -575,23 +587,21 @@ DevPanel fixtures, and player-facing acceptance criteria.
    escape states replace it?
 5. How are deep-stasis duration, discovery risk, equipment failure, and wake conditions
    selected and previewed?
-6. Which existing W1–W8 transitions become branches first, and when does the authored
-   corridor stop being linear?
-7. What are the exact galaxy threat bands, confidence rules, and route-capability
-   calculations?
-8. Which colony, outpost, relay, fleet, ally, and salvage capabilities contribute to
-   frontier reach in the first galaxy slice?
-9. How much fleet command occurs before a battle, and which role does the captain
+6. What are the exact post-G0 threat and route-capability calculations?
+7. Which colony, outpost, relay, fleet, ally, and salvage capabilities expand frontier
+   reach after G0?
+8. How much fleet command occurs before a battle, and which role does the captain
    personally play during the battle?
-10. How are long campaigns compressed, delegated, paused, lost, or resumed without
-    becoming mission spam?
-11. What is the first post-M6 vertical slice that proves one absence-and-recontact arc
+9. How are long campaigns compressed, delegated, paused, lost, or resumed without
+   becoming mission spam?
+10. What is the first post-M6 vertical slice that proves one absence-and-recontact arc
     feels unique and consequential?
 
 ## 20. Explicit non-goals
 
-- Do not replace the active W1–W8 campaign or star map during M1 merely because a future
-  galaxy graph is approved.
+- Do not expose numbered worlds as the canonical structure of the new galaxy.
+- Do not discard proven missions, modes, bosses, or story material merely because their
+  old progression wrapper is retired; adapt them into located operations.
 - Do not turn Sector Zero into a dashboard-first grand-strategy game.
 - Do not require a hosted API, paid service, WebGPU device, or downloaded language model
   for authoritative simulation.
@@ -607,4 +617,5 @@ DevPanel fixtures, and player-facing acceptance criteria.
 - Do not trigger total rebellion, capture, permanent exile, or loss of the Vanguard
   through one hidden offscreen roll.
 - Do not simulate the entire galaxy at frame-level or individual daily fidelity.
-- Do not allow long-horizon systems to block M1–M5 playable slices.
+- Do not make G0 implement generations, Houses, deep stasis, or the complete living
+  galaxy before its local exploration loop is fun.
