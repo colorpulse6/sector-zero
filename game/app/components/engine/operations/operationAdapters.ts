@@ -13,6 +13,7 @@ import {
   resolvePoiCompletion,
 } from "../../colony/region/poiRuntime";
 import { POI_CARGO } from "../../colony/region/poiOutcomes";
+import { isSupportedPoiNode, type PoiTemplateId } from "../../colony/region/poiCatalog";
 import {
   foundOutpost,
   type RegionActionBlockReason,
@@ -32,8 +33,9 @@ import {
   projectGalaxyRunToLegacySave,
   type GalaxyProjectionDelta,
 } from "../galaxy/galaxyProjection";
+import { stableHash } from "../galaxy/coordinates";
 import { getGalaxyRunAvailability } from "../galaxy/galaxyRun";
-import type { GalaxyRunState } from "../galaxy/galaxyTypes";
+import type { GalaxyRunState, HistoricalFact } from "../galaxy/galaxyTypes";
 import type {
   EnhancementId,
   GameScreen,
@@ -346,6 +348,8 @@ export type GalaxyRegionAdapterReason =
   | RegionActionBlockReason;
 
 export interface GalaxyPendingPoiResolution extends PendingPoiResolution {
+  /** Adapter-owned journal proof binding this exact canonical preparation. */
+  preparedFactId: string;
   /** Canonical galaxy parent after the completion cycle; never a projection. */
   baseSave: SaveData;
   /** Canonical alias retained for PoiOutcomeScreen's existing structural prop. */
@@ -503,28 +507,78 @@ function snapshotExpeditionRequest(value: RegionExpeditionRequest): RegionExpedi
   }
 }
 
-function snapshotActivePoi(value: ActivePoiDescriptor): ActivePoiDescriptor | null {
+interface StableActivePoiAuthority {
+  originColonyId: ColonyId;
+  nodeId: RegionNodeId;
+  engine: PoiSession["engine"];
+  rewardEligible: boolean;
+}
+
+interface CanonicalPoiAuthority extends StableActivePoiAuthority {
+  templateId: PoiTemplateId;
+  session: PoiSession;
+}
+
+function snapshotActivePoi(value: ActivePoiDescriptor): StableActivePoiAuthority | null {
   try {
     const active = exactOwnData(value, ["originColonyId", "session"]);
     const session = active === null
       ? null
       : exactOwnData(active.session, ["nodeId", "engine", "state", "rewardEligible"]);
     if (active === null || session === null || typeof active.originColonyId !== "string" ||
-      typeof session.nodeId !== "string" ||
+      active.originColonyId.length === 0 ||
+      typeof session.nodeId !== "string" || session.nodeId.length === 0 ||
       (session.engine !== "firstPerson" && session.engine !== "boarding" && session.engine !== "groundRun") ||
       typeof session.rewardEligible !== "boolean") return null;
-    return structuredClone(value);
+    // The live engine owns session.state and mutates it every frame. Completion
+    // authority deliberately snapshots only stable launch fields and never
+    // clones, compares, or later consumes that mutable gameplay object.
+    return {
+      originColonyId: active.originColonyId,
+      nodeId: session.nodeId,
+      engine: session.engine,
+      rewardEligible: session.rewardEligible,
+    };
   } catch {
     return null;
   }
 }
 
-function validPoiSession(
+function canonicalPoiAuthority(
   projection: SaveData,
-  active: ActivePoiDescriptor,
-): boolean {
-  const expected = dispatchPoi(projection, active.originColonyId, active.session.nodeId);
-  return expected.ok && samePlainData(expected.session, active.session);
+  originColonyId: ColonyId,
+  nodeId: RegionNodeId,
+): CanonicalPoiAuthority | null {
+  const expected = dispatchPoi(projection, originColonyId, nodeId);
+  if (!expected.ok) return null;
+  const colony = projection.colonies.find((entry) => entry.id === originColonyId);
+  const node = projection.planets.find((entry) => entry.id === colony?.planetId)
+    ?.regionMap.nodes.find((entry) => entry.id === nodeId);
+  if (node === undefined || !isSupportedPoiNode(node)) return null;
+  return {
+    originColonyId,
+    nodeId,
+    engine: expected.session.engine,
+    rewardEligible: expected.session.rewardEligible,
+    templateId: node.templateId,
+    session: expected.session,
+  };
+}
+
+function authorizedPoiSession(
+  projection: SaveData,
+  active: StableActivePoiAuthority,
+): CanonicalPoiAuthority | null {
+  const canonical = canonicalPoiAuthority(
+    projection,
+    active.originColonyId,
+    active.nodeId,
+  );
+  return canonical !== null &&
+    canonical.engine === active.engine &&
+    canonical.rewardEligible === active.rewardEligible
+    ? canonical
+    : null;
 }
 
 /**
@@ -604,6 +658,116 @@ export function foundGalaxyOutpost(
   }
 }
 
+type PreparedPoiOutcomePayload = readonly [
+  originColonyId: ColonyId,
+  nodeId: RegionNodeId,
+  cargo: ReadonlyArray<readonly [string, number]>,
+] | null;
+
+type PreparedPoiPayload = readonly [
+  version: 1,
+  originColonyId: ColonyId,
+  nodeId: RegionNodeId,
+  cycle: number,
+  templateId: PoiTemplateId,
+  engine: PoiSession["engine"],
+  rewardEligible: boolean,
+  outcome: PreparedPoiOutcomePayload,
+];
+
+function snapshotPreparedOutcome(
+  value: PendingPoiResolution["outcome"],
+  originColonyId: ColonyId,
+  nodeId: RegionNodeId,
+): { outcome: PendingPoiResolution["outcome"]; payload: PreparedPoiOutcomePayload } | null {
+  if (value === null) return { outcome: null, payload: null };
+  try {
+    const outcome = exactOwnData(value, ["originColonyId", "nodeId", "payload"]);
+    const cargoKeys = Object.keys(POI_CARGO).sort();
+    const payload = outcome === null ? null : exactOwnData(outcome.payload, cargoKeys);
+    if (outcome === null || payload === null ||
+      outcome.originColonyId !== originColonyId || outcome.nodeId !== nodeId ||
+      !cargoKeys.every((key) => payload[key] === POI_CARGO[key as keyof typeof POI_CARGO])) {
+      return null;
+    }
+    const cargo = cargoKeys.map((key) => [key, payload[key] as number] as const);
+    return {
+      outcome: {
+        originColonyId,
+        nodeId,
+        payload: Object.fromEntries(cargo),
+      },
+      payload: [originColonyId, nodeId, cargo],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function preparedPoiPayload(
+  authority: CanonicalPoiAuthority,
+  cycle: number,
+  outcome: PendingPoiResolution["outcome"],
+): { payload: PreparedPoiPayload; outcome: PendingPoiResolution["outcome"] } | null {
+  if (!Number.isSafeInteger(cycle) || cycle < 0) return null;
+  const canonicalOutcome = snapshotPreparedOutcome(
+    outcome,
+    authority.originColonyId,
+    authority.nodeId,
+  );
+  if (canonicalOutcome === null ||
+    authority.rewardEligible !== (canonicalOutcome.outcome !== null)) return null;
+  return {
+    payload: [
+      1,
+      authority.originColonyId,
+      authority.nodeId,
+      cycle,
+      authority.templateId,
+      authority.engine,
+      authority.rewardEligible,
+      canonicalOutcome.payload,
+    ],
+    outcome: canonicalOutcome.outcome,
+  };
+}
+
+function preparedFactId(payload: PreparedPoiPayload): string {
+  const canonical = JSON.stringify(payload);
+  const hash = stableHash(`poi-prepared:${canonical}`).toString(16).padStart(8, "0");
+  // The canonical payload suffix keeps identities collision-safe even if two
+  // distinct preparations share the compact 32-bit hash.
+  return `history:poi-prepared:${hash}:${encodeURIComponent(canonical)}`;
+}
+
+function journalPoiPreparation(
+  save: SaveData,
+  authority: CanonicalPoiAuthority,
+  outcome: PendingPoiResolution["outcome"],
+): { save: SaveData; preparedFactId: string; outcome: PendingPoiResolution["outcome"] } | null {
+  if (save.galaxyRun === null) return null;
+  const prepared = preparedPoiPayload(authority, save.galaxyRun.worldCycle, outcome);
+  if (prepared === null) return null;
+  const id = preparedFactId(prepared.payload);
+  if (save.galaxyRun.historyFacts.some((fact) => fact.id === id)) return null;
+  const fact: HistoricalFact = {
+    id,
+    kind: "poi_completion_prepared",
+    subjectId: authority.nodeId,
+    cycle: save.galaxyRun.worldCycle,
+    causeFactIds: [],
+  };
+  const candidate = structuredClone(save.galaxyRun);
+  candidate.historyFacts.push(fact);
+  const validated = mergeProjectionIntoGalaxy(candidate, {});
+  if (!validated.ok) return null;
+  return {
+    save: { ...save, activeExperience: "galaxy", galaxyRun: validated.galaxyRun },
+    preparedFactId: id,
+    outcome: prepared.outcome,
+  };
+}
+
 export function prepareGalaxyPoiCompletion(
   save: SaveData,
   contactId: string,
@@ -615,10 +779,14 @@ export function prepareGalaxyPoiCompletion(
   const opened = openAshfallProjection(save, contactId);
   if (isOpenFailure(opened)) return opened;
   try {
-    if (!validPoiSession(opened.projectedSave, safeActive)) {
+    const authority = authorizedPoiSession(opened.projectedSave, safeActive);
+    if (authority === null) {
       return { ok: false, reason: "invalid_poi_session" };
     }
-    const native = preparePoiCompletion(opened.projectedSave, safeActive, screen);
+    const native = preparePoiCompletion(opened.projectedSave, {
+      originColonyId: authority.originColonyId,
+      session: authority.session,
+    }, screen);
     if (native === null) return { ok: false, reason: "completion_not_ready" };
     const base = mergeProjectedRegion(opened, native.baseSave);
     if (!base.ok) return base;
@@ -626,57 +794,146 @@ export function prepareGalaxyPoiCompletion(
     // native base cycle. Resolution reconstructs a fresh projection later.
     const deferred = mergeProjectedRegion(opened, native.projectedSave);
     if (!deferred.ok) return deferred;
+    const journaled = journalPoiPreparation(base.save, authority, native.outcome);
+    if (journaled === null) return { ok: false, reason: "projected_result_invalid" };
     const pending: GalaxyPendingPoiResolution = {
       originColonyId: native.originColonyId,
       nodeId: native.nodeId,
-      baseSave: base.save,
-      projectedSave: base.save,
-      outcome: native.outcome === null ? null : structuredClone(native.outcome),
+      preparedFactId: journaled.preparedFactId,
+      baseSave: journaled.save,
+      projectedSave: journaled.save,
+      outcome: journaled.outcome,
     };
-    return { ok: true, save: base.save, pending };
+    return { ok: true, save: journaled.save, pending };
   } catch {
     return { ok: false, reason: "projected_result_invalid" };
   }
 }
 
+interface ValidatedGalaxyPending {
+  originColonyId: ColonyId;
+  nodeId: RegionNodeId;
+  preparedFactId: string;
+  baseSave: SaveData;
+  currentSave: SaveData;
+  outcome: PendingPoiResolution["outcome"];
+}
+
+function hasExactPreparedFact(
+  run: GalaxyRunState,
+  id: string,
+  nodeId: RegionNodeId,
+  cycle: number,
+): boolean {
+  const matches = run.historyFacts.filter((fact) =>
+    fact.kind === "poi_completion_prepared" &&
+    fact.subjectId === nodeId &&
+    fact.cycle === cycle);
+  return matches.length === 1 && samePlainData(matches[0], {
+    id,
+    kind: "poi_completion_prepared",
+    subjectId: nodeId,
+    cycle,
+    causeFactIds: [],
+  });
+}
+
 function snapshotGalaxyPending(
   save: SaveData,
   pending: GalaxyPendingPoiResolution,
-): GalaxyPendingPoiResolution | null {
+): ValidatedGalaxyPending | null {
   try {
     const snapshot = exactOwnData(
       pending,
-      ["originColonyId", "nodeId", "baseSave", "projectedSave", "outcome"],
+      ["originColonyId", "nodeId", "preparedFactId", "baseSave", "projectedSave", "outcome"],
     );
     if (snapshot === null || typeof snapshot.originColonyId !== "string" ||
-      typeof snapshot.nodeId !== "string") return null;
+      snapshot.originColonyId.length === 0 || typeof snapshot.nodeId !== "string" ||
+      snapshot.nodeId.length === 0 || typeof snapshot.preparedFactId !== "string" ||
+      snapshot.preparedFactId.length === 0) return null;
     const baseRoot = exactOwnData(snapshot.baseSave, SAVE_DATA_KEYS);
     const aliasRoot = exactOwnData(snapshot.projectedSave, SAVE_DATA_KEYS);
     const currentRoot = exactOwnData(save, SAVE_DATA_KEYS);
     if (baseRoot === null || aliasRoot === null || currentRoot === null ||
       baseRoot.activeExperience !== "galaxy" || baseRoot.galaxyRun === null ||
+      currentRoot.activeExperience !== "galaxy" || currentRoot.galaxyRun === null ||
       !samePlainData(baseRoot, aliasRoot) ||
       !SAVE_DATA_KEYS.filter((key) => key !== "galaxyRun").every((key) =>
         samePlainData(baseRoot[key], currentRoot[key]))) return null;
     const baseRun = mergeProjectionIntoGalaxy(baseRoot.galaxyRun as GalaxyRunState, {});
-    const currentRun = currentRoot.galaxyRun === null
-      ? null
-      : mergeProjectionIntoGalaxy(currentRoot.galaxyRun as GalaxyRunState, {});
-    if (!baseRun.ok || currentRun === null || !currentRun.ok ||
-      !samePlainData(baseRun.galaxyRun.identity, currentRun.galaxyRun.identity) ||
-      baseRun.galaxyRun.worldCycle !== currentRun.galaxyRun.worldCycle) return null;
-    if (snapshot.outcome !== null) {
-      const outcome = exactOwnData(snapshot.outcome, ["originColonyId", "nodeId", "payload"]);
-      const payload = outcome === null ? null : exactOwnData(outcome.payload, Object.keys(POI_CARGO));
-      if (outcome === null || payload === null ||
-        outcome.originColonyId !== snapshot.originColonyId ||
-        outcome.nodeId !== snapshot.nodeId ||
-        !samePlainData(payload, POI_CARGO)) return null;
-    }
-    return structuredClone(pending);
+    const currentRun = mergeProjectionIntoGalaxy(currentRoot.galaxyRun as GalaxyRunState, {});
+    if (!baseRun.ok || !currentRun.ok) return null;
+    const baseSave = {
+      ...(baseRoot as unknown as SaveData),
+      galaxyRun: baseRun.galaxyRun,
+    };
+    const currentSave = {
+      ...(currentRoot as unknown as SaveData),
+      galaxyRun: currentRun.galaxyRun,
+    };
+    const authority = canonicalPoiAuthority(
+      projectGalaxyRunToLegacySave(baseSave),
+      snapshot.originColonyId,
+      snapshot.nodeId,
+    );
+    if (authority === null) return null;
+    const prepared = preparedPoiPayload(
+      authority,
+      baseRun.galaxyRun.worldCycle,
+      snapshot.outcome as PendingPoiResolution["outcome"],
+    );
+    if (prepared === null) return null;
+    const expectedFactId = preparedFactId(prepared.payload);
+    if (snapshot.preparedFactId !== expectedFactId ||
+      !hasExactPreparedFact(
+        baseRun.galaxyRun,
+        expectedFactId,
+        authority.nodeId,
+        baseRun.galaxyRun.worldCycle,
+      ) ||
+      !hasExactPreparedFact(
+        currentRun.galaxyRun,
+        expectedFactId,
+        authority.nodeId,
+        baseRun.galaxyRun.worldCycle,
+      )) return null;
+    return {
+      originColonyId: authority.originColonyId,
+      nodeId: authority.nodeId,
+      preparedFactId: expectedFactId,
+      baseSave,
+      currentSave,
+      outcome: prepared.outcome,
+    };
   } catch {
     return null;
   }
+}
+
+function resolveValidatedGalaxyPending(
+  save: SaveData,
+  contactId: string,
+  pending: ValidatedGalaxyPending,
+  destinationColonyId: ColonyId | null,
+): GalaxyPoiResolutionResult {
+  const opened = openAshfallProjection(save, contactId);
+  if (isOpenFailure(opened)) return { ...opened, save };
+  const nativePending: PendingPoiResolution = {
+    originColonyId: pending.originColonyId,
+    nodeId: pending.nodeId,
+    baseSave: opened.projectedSave,
+    projectedSave: opened.projectedSave,
+    outcome: pending.outcome,
+  };
+  const native = resolvePoiCompletion(nativePending, destinationColonyId);
+  if (!native.ok) return { ok: false, save, reason: native.reason };
+  const merged = mergeProjectedRegion(opened, native.save);
+  if (!merged.ok) return { ok: false, save, reason: merged.reason };
+  return {
+    ok: true,
+    save: merged.save,
+    delivery: native.delivery === null ? null : structuredClone(native.delivery),
+  };
 }
 
 export function resolveGalaxyPoiCompletion(
@@ -691,25 +948,36 @@ export function resolveGalaxyPoiCompletion(
       (typeof destinationColonyId !== "string" || destinationColonyId.length === 0))) {
     return { ok: false, save, reason: "invalid_poi_session" };
   }
-  const opened = openAshfallProjection(save, contactId);
-  if (isOpenFailure(opened)) return { ...opened, save };
   try {
-    const nativePending: PendingPoiResolution = {
-      originColonyId: safePending.originColonyId,
-      nodeId: safePending.nodeId,
-      baseSave: opened.projectedSave,
-      projectedSave: opened.projectedSave,
-      outcome: safePending.outcome,
-    };
-    const native = resolvePoiCompletion(nativePending, destinationColonyId);
-    if (!native.ok) return { ok: false, save, reason: native.reason };
-    const merged = mergeProjectedRegion(opened, native.save);
-    if (!merged.ok) return { ok: false, save, reason: merged.reason };
-    return {
-      ok: true,
-      save: merged.save,
-      delivery: native.delivery === null ? null : structuredClone(native.delivery),
-    };
+    const atPreparedBase = samePlainData(safePending.baseSave, safePending.currentSave);
+    if (!atPreparedBase) {
+      const canonicalResolution = resolveValidatedGalaxyPending(
+        safePending.baseSave,
+        contactId,
+        safePending,
+        destinationColonyId,
+      );
+      if (!canonicalResolution.ok ||
+        !samePlainData(canonicalResolution.save, safePending.currentSave)) {
+        return { ok: false, save, reason: "invalid_poi_session" };
+      }
+      const stale = resolveValidatedGalaxyPending(
+        safePending.currentSave,
+        contactId,
+        safePending,
+        destinationColonyId,
+      );
+      return !stale.ok && stale.reason === "outcome_stale"
+        ? { ok: false, save, reason: "outcome_stale" }
+        : { ok: false, save, reason: "invalid_poi_session" };
+    }
+    const resolved = resolveValidatedGalaxyPending(
+      safePending.currentSave,
+      contactId,
+      safePending,
+      destinationColonyId,
+    );
+    return resolved.ok ? resolved : { ...resolved, save };
   } catch {
     return { ok: false, save, reason: "projected_result_invalid" };
   }

@@ -3,14 +3,20 @@ import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RegionMapScreen } from "../../app/components/colony/meta/RegionMapScreen";
+import { createPoiGameState } from "../../app/components/colony/region/poiRuntime";
+import { POI_CARGO } from "../../app/components/colony/region/poiOutcomes";
 import { OUTPOST_FOUNDING_COST } from "../../app/components/colony/region/siteEconomy";
 import { Events } from "../../app/components/colony/shared/colonyEvents";
 import { colonyReducer } from "../../app/components/colony/shared/colonyReducer";
 import { missionDeliveryEvent } from "../../app/components/colony/shared/missionDelivery";
+import { updateBoardingEngine } from "../../app/components/engine/boardingEngine";
+import { updateFirstPerson } from "../../app/components/engine/firstPersonEngine";
+import { updateGroundEngine } from "../../app/components/engine/groundEngine";
 import {
   createFreshGalaxyRun,
   startFreshGalaxy,
 } from "../../app/components/engine/galaxy/galaxyRun";
+import { stableHash } from "../../app/components/engine/galaxy/coordinates";
 import type { GalaxyRunState } from "../../app/components/engine/galaxy/galaxyTypes";
 import { planRoute } from "../../app/components/engine/galaxy/routePlanner";
 import {
@@ -26,7 +32,7 @@ import {
   startGalaxyRegionExpedition,
 } from "../../app/components/engine/operations/operationAdapters";
 import { migrateSave } from "../../app/components/engine/save";
-import { GameScreen, type SaveData } from "../../app/components/engine/types";
+import { GameScreen, type Keys, type SaveData } from "../../app/components/engine/types";
 
 function requireTravel<T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> {
   assert.equal(result.ok, true, "errors" in result ? JSON.stringify(result.errors) : undefined);
@@ -74,6 +80,60 @@ function requireRegion<T extends { ok: boolean }>(result: T): Extract<T, { ok: t
   assert.equal(result.ok, true, "reason" in result ? String(result.reason) : undefined);
   if (!result.ok) throw new Error("galaxy region transition failed");
   return result as Extract<T, { ok: true }>;
+}
+
+const NO_KEYS: Keys = {
+  left: false,
+  right: false,
+  up: false,
+  down: false,
+  strafeLeft: false,
+  strafeRight: false,
+  shoot: false,
+  bomb: false,
+  jump: false,
+};
+
+function launchSurveyedPoi(targetNodeId: string) {
+  const primaryId = "galaxy:ashfall-primary";
+  let save = parentFor();
+  let originColonyId = primaryId;
+
+  if (targetNodeId === "ashfall-glassknife-canyon") {
+    const funded = structuredClone(save);
+    const primary = funded.galaxyRun!.colonies.find((colony) => colony.id === primaryId)!;
+    primary.resources = { ...primary.resources, ...OUTPOST_FOUNDING_COST };
+    const surveyedSite = requireRegion(startGalaxyRegionExpedition(
+      funded,
+      "contact:ashfall",
+      { kind: "survey", originColonyId: primaryId, targetNodeId: "ashfall-basalt-basin" },
+      null,
+    ));
+    const founded = requireRegion(foundGalaxyOutpost(
+      surveyedSite.save,
+      "contact:ashfall",
+      primaryId,
+      "ashfall-basalt-basin",
+      "Basalt Basin",
+    ));
+    save = founded.save;
+    originColonyId = founded.colonyId;
+  }
+
+  const surveyed = requireRegion(startGalaxyRegionExpedition(
+    save,
+    "contact:ashfall",
+    { kind: "survey", originColonyId, targetNodeId },
+    null,
+  ));
+  const launched = requireRegion(startGalaxyRegionExpedition(
+    surveyed.save,
+    "contact:ashfall",
+    { kind: "poi", originColonyId, targetNodeId },
+    null,
+  ));
+  assert.ok(launched.session);
+  return { ...launched, originColonyId };
 }
 
 test("visited Ashfall opens the galaxy-owned origin through a disposable RegionMapScreen projection", () => {
@@ -203,6 +263,97 @@ test("founding deducts only galaxy-colony resources and claims the deterministic
   assert.deepEqual(legacySnapshot(founded.save), legacyBefore);
 });
 
+test("gameplay-mutated sessions for every native POI engine prepare from canonical dispatch authority", () => {
+  const fixtures = [
+    ["ashfall-cinder-relay", "firstPerson"],
+    ["ashfall-oathbreaker-wreck", "boarding"],
+    ["ashfall-glassknife-canyon", "groundRun"],
+  ] as const;
+
+  for (const [nodeId, engine] of fixtures) {
+    const launched = launchSurveyedPoi(nodeId);
+    const session = launched.session!;
+    assert.equal(session.engine, engine);
+    const initialNativeState = structuredClone(session.state);
+    const projection = requireRegion(openGalaxyRegion(launched.save, "contact:ashfall")).projectedSave;
+    const gameState = createPoiGameState(session, projection);
+
+    if (session.engine === "firstPerson") {
+      updateFirstPerson(gameState, { ...NO_KEYS, right: true });
+      assert.ok(gameState.firstPersonState);
+      session.state = gameState.firstPersonState!;
+    } else if (session.engine === "boarding") {
+      updateBoardingEngine(gameState, { ...NO_KEYS, jump: true });
+      assert.ok(gameState.boardingState);
+      session.state = gameState.boardingState!;
+    } else {
+      updateGroundEngine(gameState, { ...NO_KEYS, shoot: true });
+      assert.ok(gameState.groundState);
+      session.state = gameState.groundState!;
+    }
+    assert.notDeepEqual(session.state, initialNativeState, `${engine} update must mutate native session state`);
+    let mutableStateReads = 0;
+    (session as { state: object }).state = new Proxy(session.state, {
+      get() {
+        mutableStateReads += 1;
+        throw new Error(`${engine} mutable state read`);
+      },
+      ownKeys() {
+        mutableStateReads += 1;
+        throw new Error(`${engine} mutable state reflection`);
+      },
+    });
+
+    const prepared = prepareGalaxyPoiCompletion(
+      launched.save,
+      "contact:ashfall",
+      { originColonyId: launched.originColonyId, session },
+      GameScreen.LEVEL_COMPLETE,
+    );
+    assert.equal(prepared.ok, true, prepared.ok ? undefined : prepared.reason);
+    assert.equal(mutableStateReads, 0);
+  }
+});
+
+test("POI preparation journals collision-safe canonical authority without an extra cycle", () => {
+  const launched = launchSurveyedPoi("ashfall-cinder-relay");
+  const cycleBefore = launched.save.galaxyRun!.worldCycle;
+  const legacyBefore = legacySnapshot(launched.save);
+  const prepared = requireRegion(prepareGalaxyPoiCompletion(
+    launched.save,
+    "contact:ashfall",
+    { originColonyId: launched.originColonyId, session: launched.session! },
+    GameScreen.LEVEL_COMPLETE,
+  ));
+  const pending = prepared.pending as typeof prepared.pending & { preparedFactId: string };
+
+  assert.equal(prepared.save.galaxyRun!.worldCycle, cycleBefore + 1);
+  assert.deepEqual(legacySnapshot(prepared.save), legacyBefore);
+  assert.strictEqual(prepared.save, pending.baseSave);
+  assert.strictEqual(pending.baseSave, pending.projectedSave);
+  assert.match(pending.preparedFactId, /^history:poi-prepared:[0-9a-f]{8}:/);
+  const fact = prepared.save.galaxyRun!.historyFacts.find((entry) =>
+    entry.id === pending.preparedFactId);
+  assert.deepEqual(fact, {
+    id: pending.preparedFactId,
+    kind: "poi_completion_prepared",
+    subjectId: "ashfall-cinder-relay",
+    cycle: cycleBefore + 1,
+    causeFactIds: [],
+  });
+  const encodedPayload = pending.preparedFactId.split(":").slice(3).join(":");
+  assert.deepEqual(JSON.parse(decodeURIComponent(encodedPayload)), [
+    1,
+    "galaxy:ashfall-primary",
+    "ashfall-cinder-relay",
+    cycleBefore + 1,
+    "fp-ruin-cinder-relay",
+    "firstPerson",
+    true,
+    ["galaxy:ashfall-primary", "ashfall-cinder-relay", [["metal", 80]]],
+  ]);
+});
+
 test("POI travel, completion, and mission_delivery remain galaxy-only and idempotent", () => {
   const parent = parentFor();
   const legacyBefore = legacySnapshot(parent);
@@ -327,6 +478,119 @@ test("a cleared POI replay costs travel and completion cycles but cannot pay car
     replayResolved.save.galaxyRun!.colonies.find((entry) => entry.id === primaryId)?.resources.metal,
     80,
   );
+});
+
+test("forged pending outcomes for surveyed POIs and colony sites fail unchanged", () => {
+  const primaryId = "galaxy:ashfall-primary";
+  for (const nodeId of ["ashfall-cinder-relay", "ashfall-basalt-basin"]) {
+    const surveyed = requireRegion(startGalaxyRegionExpedition(
+      parentFor(),
+      "contact:ashfall",
+      { kind: "survey", originColonyId: primaryId, targetNodeId: nodeId },
+      null,
+    ));
+    const before = structuredClone(surveyed.save);
+    const forgedPending = {
+      originColonyId: primaryId,
+      nodeId,
+      preparedFactId: "history:poi-prepared:00000000:%5B%5D",
+      baseSave: surveyed.save,
+      projectedSave: surveyed.save,
+      outcome: { originColonyId: primaryId, nodeId, payload: { ...POI_CARGO } },
+    };
+
+    const result = resolveGalaxyPoiCompletion(
+      surveyed.save,
+      "contact:ashfall",
+      forgedPending as never,
+      primaryId,
+    );
+    assert.equal(result.ok, false, `${nodeId} forged pending must be rejected`);
+    if (!result.ok) {
+      assert.equal(result.reason, "invalid_poi_session");
+      assert.strictEqual(result.save, surveyed.save);
+    }
+    assert.deepEqual(surveyed.save, before);
+  }
+});
+
+test("same-cycle galaxy divergence invalidates an otherwise authentic pending completion", () => {
+  const launched = launchSurveyedPoi("ashfall-cinder-relay");
+  const prepared = requireRegion(prepareGalaxyPoiCompletion(
+    launched.save,
+    "contact:ashfall",
+    { originColonyId: launched.originColonyId, session: launched.session! },
+    GameScreen.LEVEL_COMPLETE,
+  ));
+  const divergent = structuredClone(prepared.save);
+  divergent.galaxyRun!.resources.supply += 1;
+  assert.equal(divergent.galaxyRun!.worldCycle, prepared.save.galaxyRun!.worldCycle);
+  const before = structuredClone(divergent);
+
+  const result = resolveGalaxyPoiCompletion(
+    divergent,
+    "contact:ashfall",
+    prepared.pending,
+    launched.originColonyId,
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.reason, "invalid_poi_session");
+    assert.strictEqual(result.save, divergent);
+  }
+  assert.deepEqual(divergent, before);
+});
+
+test("resolution validates every prepared journal field and its canonical payload", () => {
+  const launched = launchSurveyedPoi("ashfall-cinder-relay");
+  const prepared = requireRegion(prepareGalaxyPoiCompletion(
+    launched.save,
+    "contact:ashfall",
+    { originColonyId: launched.originColonyId, session: launched.session! },
+    GameScreen.LEVEL_COMPLETE,
+  ));
+  const mutations: Array<(save: SaveData, pending: typeof prepared.pending) => void> = [
+    (save) => {
+      save.galaxyRun!.historyFacts.at(-1)!.kind = "poi_completion_forged";
+    },
+    (save) => {
+      save.galaxyRun!.historyFacts.at(-1)!.subjectId = "ashfall-basalt-basin";
+    },
+    (save) => {
+      save.galaxyRun!.historyFacts.at(-1)!.cycle += 1;
+    },
+    (save, pending) => {
+      const encoded = pending.preparedFactId.split(":").slice(3).join(":");
+      const payload = JSON.parse(decodeURIComponent(encoded));
+      payload[5] = "boarding";
+      const canonical = JSON.stringify(payload);
+      const hash = stableHash(`poi-prepared:${canonical}`).toString(16).padStart(8, "0");
+      const forgedId = `history:poi-prepared:${hash}:${encodeURIComponent(canonical)}`;
+      save.galaxyRun!.historyFacts.at(-1)!.id = forgedId;
+      pending.preparedFactId = forgedId;
+    },
+  ];
+
+  for (const mutate of mutations) {
+    const forgedSave = structuredClone(prepared.save);
+    const forgedPending = structuredClone(prepared.pending);
+    mutate(forgedSave, forgedPending);
+    forgedPending.baseSave = forgedSave;
+    forgedPending.projectedSave = forgedSave;
+    const before = structuredClone(forgedSave);
+    const result = resolveGalaxyPoiCompletion(
+      forgedSave,
+      "contact:ashfall",
+      forgedPending,
+      launched.originColonyId,
+    );
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.reason, "invalid_poi_session");
+      assert.strictEqual(result.save, forgedSave);
+    }
+    assert.deepEqual(forgedSave, before);
+  }
 });
 
 test("unknown and forged region mutation inputs fail closed without changing canonical state", () => {
