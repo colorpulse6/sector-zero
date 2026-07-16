@@ -659,6 +659,55 @@ test("recordNegativeSurvey owns durable negative metadata and is idempotent", ()
   assert.equal(second, first);
 });
 
+test("recordNegativeSurvey recovers its same-subject lost-contact record", () => {
+  const fact = expectFact(G0_GENERATION_IDENTITY, coord(0, 0, 769, 1));
+  assert.equal(fact.kind, "empty");
+  const recordId = `knowledge:negative-survey:${JSON.stringify([
+    fact.cellKey,
+    fact.id,
+  ])}`;
+  const lostRecord: AtlasKnowledgeRecord = {
+    id: recordId,
+    subjectId: fact.id,
+    state: "lost_contact",
+    observedProperties: { staleSurvey: true },
+    confidence: "low",
+    source: "rumor",
+    observedCycle: 4,
+    expiresCycle: 5,
+  };
+  const prior: GalaxyAtlasState = {
+    ...emptyAtlasState(),
+    materializedFacts: { [fact.cellKey]: fact },
+    knowledge: { [recordId]: lostRecord },
+  };
+  const recovered = recordNegativeSurvey(prior, {
+    fact,
+    confidence: "high",
+    source: "direct_visit",
+    observedCycle: 31,
+  } as unknown as Parameters<typeof recordNegativeSurvey>[1]);
+
+  assert.notEqual(recovered, prior);
+  assert.deepEqual(recovered.knowledge[recordId], {
+    id: recordId,
+    subjectId: fact.id,
+    state: "charted",
+    observedProperties: {
+      negativeSurvey: true,
+      surveyResult: "no_contact",
+      cellKey: fact.cellKey,
+    },
+    confidence: "high",
+    source: "direct_visit",
+    observedCycle: 31,
+    expiresCycle: null,
+  });
+  assert.deepEqual(recovered.materializedFacts[fact.cellKey], fact);
+  assert.deepEqual(recovered.mappedCellKeys, [fact.cellKey]);
+  assert.equal(prior.knowledge[recordId], lostRecord);
+});
+
 test("recordNegativeSurvey rejects a non-empty fact without changing state", () => {
   const signalFact = expectFact(
     G0_GENERATION_IDENTITY,

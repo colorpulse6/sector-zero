@@ -352,9 +352,6 @@ export function recordNegativeSurvey(
     materializedFact.cellKey,
     materializedFact.id,
   ])}`;
-  if (ownDictionaryValue(state.knowledge, recordId) !== undefined) {
-    return state;
-  }
 
   return promoteKnowledge(
     state,
