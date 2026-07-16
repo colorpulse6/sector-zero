@@ -225,6 +225,31 @@ test("blind coordinate preview is explicitly uncertain and never secretly lethal
   assert.doesNotMatch(JSON.stringify(plan.threat), /severe/);
 });
 
+test("blind coordinates inside a known fixed cell reuse its saved threat and cause", () => {
+  const destination = coord(0, 0, 1281, 1024);
+  const plan = requirePlan(
+    planRoute(runAtVanguard(), {
+      kind: "coordinate",
+      coordinate: destination,
+    }),
+  );
+
+  assert.deepEqual(plan.destination, destination);
+  assert.deepEqual(plan.target, {
+    kind: "coordinate",
+    coordinate: destination,
+  });
+  assert.equal(plan.targetId, null);
+  assert.equal(plan.threat.dimensions.military.band, "high");
+  assert.equal(plan.threat.dimensions.military.confidence, "medium");
+  assert.deepEqual(plan.threat.dimensions.military.sources, ["authored"]);
+  assert.deepEqual(plan.threat.dimensions.military.unknownContributors, []);
+  assert.equal(
+    plan.legs[0]?.interruptionCauseId,
+    "fact:picket-patrol-active",
+  );
+});
+
 test("route output and identity are deterministic independent of observation order", () => {
   const firstRun = runAtVanguard();
   const secondRun = structuredClone(firstRun);

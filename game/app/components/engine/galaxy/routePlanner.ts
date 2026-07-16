@@ -1,5 +1,6 @@
 import { G0_SECTOR_BOUNDS, getGenerationAvailability } from "./atlas";
 import {
+  cellKey,
   coordinateKey,
   distanceUnits as measureDistanceUnits,
   sameCoordinate,
@@ -267,11 +268,12 @@ function factAtCoordinate(
   run: GalaxyRunState,
   coordinate: GalaxyCoordinate,
 ): AtlasCellFact | null {
+  const requestedCellKey = cellKey(coordinate);
   const matches = ownValues(run.atlas.materializedFacts)
     .filter(
       (fact) =>
         validateCoordinate(fact.coordinate).ok &&
-        sameCoordinate(fact.coordinate, coordinate) &&
+        cellKey(fact.coordinate) === requestedCellKey &&
         isKnownFact(run, fact),
     )
     .sort((left, right) => left.id.localeCompare(right.id));
