@@ -58,10 +58,49 @@ function contact(contactId: string): AtlasTarget {
 function migrateRun(run: GalaxyRunState): GalaxyRunState {
   const migrated = migrateSave({
     activeExperience: "galaxy",
-    galaxyRun: structuredClone(run),
+    galaxyRun: JSON.parse(JSON.stringify(run)),
   } as unknown as Record<string, unknown>);
   assert.ok(migrated.galaxyRun);
   return migrated.galaxyRun;
+}
+
+function rebindCanonicalPlan(run: GalaxyRunState): void {
+  const travel = run.activeTravel!;
+  const payloadText = travel.routePlanId.slice(
+    travel.routePlanId.indexOf(":", 6) + 1,
+  );
+  const payload = JSON.parse(payloadText) as unknown[];
+  payload[8] = travel.legs.map((leg) => [
+    leg.id,
+    [leg.from.sectorX, leg.from.sectorY, leg.from.localX, leg.from.localY],
+    [leg.to.sectorX, leg.to.sectorY, leg.to.localX, leg.to.localY],
+    leg.distanceUnits,
+    leg.cycles,
+    leg.supplyCost,
+    leg.interruptionCauseId,
+  ]);
+  const capability = payload[5] as number[];
+  payload[9] = [
+    travel.legs.reduce((total, leg) => total + leg.distanceUnits, 0),
+    travel.legs.reduce((total, leg) => total + leg.cycles, 0),
+    travel.supplyCost,
+    capability[1] - travel.supplyCost,
+  ];
+  const reboundPayload = JSON.stringify(payload);
+  const hash = stableHash(`route:${reboundPayload}`).toString(16).padStart(8, "0");
+  travel.routePlanId = `route:${hash}:${reboundPayload}`;
+  travel.transactionId = `travel:${travel.routePlanId}:${run.nextTransactionOrdinal - 1}`;
+  run.vessel.transitTransactionId = travel.transactionId;
+  travel.appliedCheckpointIds = travel.appliedCheckpointIds.map((checkpointId) => {
+    const suffix = checkpointId.includes(":leg:")
+      ? checkpointId.slice(checkpointId.lastIndexOf(":leg:"))
+      : checkpointId.includes(":interruption:")
+        ? checkpointId.slice(checkpointId.lastIndexOf(":interruption:"))
+        : checkpointId.endsWith(":emergency-retreat")
+          ? ":emergency-retreat"
+          : null;
+    return suffix === null ? checkpointId : `${travel.transactionId}${suffix}`;
+  });
 }
 
 function resolvedTo(run: GalaxyRunState, target: AtlasTarget) {
@@ -519,35 +558,6 @@ test("migrated commitments cannot tamper canonical route or transaction identity
     ).result.galaxyRun;
   }
 
-  function rebindTamperedPlan(run: GalaxyRunState): void {
-    const travel = run.activeTravel!;
-    const payloadText = travel.routePlanId.slice(
-      travel.routePlanId.indexOf(":", 6) + 1,
-    );
-    const payload = JSON.parse(payloadText) as unknown[];
-    payload[8] = travel.legs.map((leg) => [
-      leg.id,
-      [leg.from.sectorX, leg.from.sectorY, leg.from.localX, leg.from.localY],
-      [leg.to.sectorX, leg.to.sectorY, leg.to.localX, leg.to.localY],
-      leg.distanceUnits,
-      leg.cycles,
-      leg.supplyCost,
-      leg.interruptionCauseId,
-    ]);
-    const capability = payload[5] as number[];
-    payload[9] = [
-      travel.legs.reduce((total, leg) => total + leg.distanceUnits, 0),
-      travel.legs.reduce((total, leg) => total + leg.cycles, 0),
-      travel.supplyCost,
-      capability[1] - travel.supplyCost,
-    ];
-    const reboundPayload = JSON.stringify(payload);
-    const hash = stableHash(`route:${reboundPayload}`).toString(16).padStart(8, "0");
-    travel.routePlanId = `route:${hash}:${reboundPayload}`;
-    travel.transactionId = `travel:${travel.routePlanId}:1`;
-    run.vessel.transitTransactionId = travel.transactionId;
-  }
-
   const multiLeg = committed();
   multiLeg.activeTravel!.legs = [
     {
@@ -569,15 +579,15 @@ test("migrated commitments cannot tamper canonical route or transaction identity
       interruptionCauseId: null,
     },
   ];
-  rebindTamperedPlan(multiLeg);
+  rebindCanonicalPlan(multiLeg);
 
   const cheapCycle = committed();
   cheapCycle.activeTravel!.legs[0].cycles = 0;
-  rebindTamperedPlan(cheapCycle);
+  rebindCanonicalPlan(cheapCycle);
 
   const wrongLegId = committed();
   wrongLegId.activeTravel!.legs[0].id = "leg:caller-authored";
-  rebindTamperedPlan(wrongLegId);
+  rebindCanonicalPlan(wrongLegId);
 
   const wrongTransaction = committed();
   wrongTransaction.activeTravel!.transactionId = "travel:wrong:77";
@@ -712,4 +722,133 @@ test("saved destination fact outranks an unavailable generator during arrival", 
     result.galaxyRun.atlas.materializedFacts[cellKey(travel.destination)].id,
     "contact:ashfall",
   );
+});
+
+test("migrated canonical routes cannot move the picket cause to or from another subject", () => {
+  const foreignCause = commitTo(
+    createFreshGalaxyRun(),
+    contact("contact:ashfall"),
+  ).result.galaxyRun;
+  foreignCause.activeTravel!.legs[0].interruptionCauseId = "fact:picket-patrol-active";
+  rebindCanonicalPlan(foreignCause);
+
+  const missingCause = commitTo(
+    createFreshGalaxyRun(),
+    contact("contact:hostile-picket"),
+  ).result.galaxyRun;
+  missingCause.activeTravel!.legs[0].interruptionCauseId = null;
+  rebindCanonicalPlan(missingCause);
+
+  const movedContact = commitTo(
+    createFreshGalaxyRun(),
+    contact("contact:hostile-picket"),
+  ).result.galaxyRun;
+  const picketEntry = Object.entries(movedContact.atlas.materializedFacts).find(
+    ([, fact]) => fact.id === "contact:hostile-picket",
+  );
+  assert.ok(picketEntry);
+  delete movedContact.atlas.materializedFacts[picketEntry[0]];
+  const movedCoordinate = coord(0, 0, 1536, 1024);
+  movedContact.atlas.materializedFacts[cellKey(movedCoordinate)] = {
+    ...picketEntry[1],
+    cellKey: cellKey(movedCoordinate),
+    coordinate: movedCoordinate,
+  };
+
+  for (const [label, source] of [
+    ["foreign-ashfall-cause", foreignCause],
+    ["missing-picket-cause", missingCause],
+    ["moved-picket-contact", movedContact],
+  ] as const) {
+    const migrated = migrateRun(source);
+    assert.ok(migrated.activeTravel, `${label} must survive save migration`);
+    const before = structuredClone(migrated);
+    const result = resumeTravelToBoundary(migrated);
+    assert.equal(result.ok, false, `${label} must fail closed`);
+    if (!result.ok) assert.equal(result.errors[0]?.code, "malformed_travel");
+    assert.deepEqual(migrated, before);
+  }
+});
+
+test("cause validation uses the fixed target cell and plan-cycle access snapshot", () => {
+  const destination = coord(0, 0, 1281, 1024);
+  const committed = commitTo(createFreshGalaxyRun(), {
+    kind: "coordinate",
+    coordinate: destination,
+  }).result.galaxyRun;
+  committed.atlas.accessFacts.push({
+    id: "access:picket-secured-after-plan",
+    subjectId: "contact:hostile-picket",
+    assessment: "secured",
+    causeFactIds: ["fact:picket-patrol-active"],
+    cycle: 1,
+  });
+
+  const stopped = requireSuccess(resumeTravelToBoundary(migrateRun(committed)));
+  assert.equal(stopped.galaxyRun.activeTravel?.state, "interrupted");
+  assert.equal(
+    stopped.galaxyRun.activeTravel?.interruptionOperationId,
+    "op:hostile-picket",
+  );
+
+  const ambiguous = commitTo(createFreshGalaxyRun(), {
+    kind: "coordinate",
+    coordinate: destination,
+  }).result.galaxyRun;
+  const picket = Object.values(ambiguous.atlas.materializedFacts).find(
+    (fact) => fact.id === "contact:hostile-picket",
+  );
+  assert.ok(picket);
+  ambiguous.atlas.materializedFacts["duplicate:hostile-picket-cell"] = {
+    ...structuredClone(picket),
+    id: "contact:hostile-picket-duplicate",
+    contactId: "contact:hostile-picket-duplicate",
+  };
+  ambiguous.atlas.knowledge["knowledge:hostile-picket-duplicate"] = {
+    id: "knowledge:hostile-picket-duplicate",
+    subjectId: "contact:hostile-picket-duplicate",
+    state: "charted",
+    observedProperties: {},
+    confidence: "high",
+    source: "sensor",
+    observedCycle: 0,
+    expiresCycle: null,
+  };
+
+  const migratedAmbiguous = migrateRun(ambiguous);
+  const before = structuredClone(migratedAmbiguous);
+  const result = resumeTravelToBoundary(migratedAmbiguous);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.errors[0]?.code, "malformed_travel");
+  assert.deepEqual(migratedAmbiguous, before);
+});
+
+test("interruption replay validates operation identity before idempotency", () => {
+  function genuineInterruption(): GalaxyRunState {
+    const committed = commitTo(
+      createFreshGalaxyRun(),
+      contact("contact:hostile-picket"),
+    ).result.galaxyRun;
+    return requireSuccess(resumeTravelToBoundary(committed)).galaxyRun;
+  }
+
+  for (const result of ["cleared", "failed", "retreated"] as const) {
+    const closed = requireSuccess(
+      resolveTravelInterruption(
+        genuineInterruption(),
+        "op:hostile-picket",
+        result,
+      ),
+    ).galaxyRun;
+    const migrated = migrateRun(closed);
+    const before = structuredClone(migrated);
+    const replay = resolveTravelInterruption(
+      migrated,
+      "op:not-the-picket",
+      result,
+    );
+    assert.equal(replay.ok, false, `${result} replay must reject the wrong operation`);
+    if (!replay.ok) assert.equal(replay.errors[0]?.code, "invalid_interruption");
+    assert.deepEqual(migrated, before);
+  }
 });

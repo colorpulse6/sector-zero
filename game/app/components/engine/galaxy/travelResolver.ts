@@ -309,26 +309,34 @@ function serializedLeg(leg: RouteLeg): unknown[] {
   ];
 }
 
-function hasCanonicalPlanIdentity(
+interface CanonicalPlanSnapshot {
+  cycleSnapshot: number;
+  fixedCellKey: string;
+  target:
+    | { kind: "contact"; contactId: string }
+    | { kind: "coordinate"; coordinate: GalaxyCoordinate };
+}
+
+function canonicalPlanSnapshot(
   run: GalaxyRunState,
   travel: TravelCommitment,
-): boolean {
+): CanonicalPlanSnapshot | null {
   const match = /^route:([0-9a-f]{8}):(.*)$/.exec(travel.routePlanId);
-  if (match === null) return false;
+  if (match === null) return null;
   const payloadText = match[2];
   const expectedHash = stableHash(`route:${payloadText}`)
     .toString(16)
     .padStart(8, "0");
-  if (match[1] !== expectedHash) return false;
+  if (match[1] !== expectedHash) return null;
 
   let payload: unknown;
   try {
     payload = JSON.parse(payloadText);
   } catch {
-    return false;
+    return null;
   }
   if (!inspectPlainData(payload) || !Array.isArray(payload) || payload.length !== 11) {
-    return false;
+    return null;
   }
 
   const capability = payload[5];
@@ -367,11 +375,11 @@ function hasCanonicalPlanIdentity(
     !Number.isSafeInteger(cycleSnapshot) ||
     (cycleSnapshot as number) < 0 ||
     run.worldCycle < (cycleSnapshot as number) + travel.elapsedCycles
-  ) return false;
+  ) return null;
 
   const distance = travel.legs.reduce((total, leg) => total + leg.distanceUnits, 0);
   const cycles = travel.legs.reduce((total, leg) => total + leg.cycles, 0);
-  return (
+  if (!(
     Number.isSafeInteger(distance) &&
     Number.isSafeInteger(cycles) &&
     sameData(totals, [
@@ -380,7 +388,18 @@ function hasCanonicalPlanIdentity(
       travel.supplyCost,
       (capability[1] as number) - travel.supplyCost,
     ])
-  );
+  )) return null;
+
+  return {
+    cycleSnapshot: cycleSnapshot as number,
+    fixedCellKey: cellKey(travel.destination),
+    target: travel.targetId === null
+      ? {
+          kind: "coordinate",
+          coordinate: cloneCoordinate(travel.destination),
+        }
+      : { kind: "contact", contactId: travel.targetId },
+  };
 }
 
 function isRouteLeg(value: unknown): value is RouteLeg {
@@ -461,6 +480,188 @@ function contactAtCoordinate(run: GalaxyRunState, coordinate: GalaxyCoordinate):
     )
     .map((fact) => fact.contactId as string);
   return contacts.length === 1 ? contacts[0] : null;
+}
+
+type CauseSubjectResult =
+  | { ok: true; subjectId: string | null }
+  | { ok: false; message: string };
+
+function factKnownAtSnapshot(
+  run: GalaxyRunState,
+  fact: AtlasCellFact,
+  cycleSnapshot: number,
+): { ok: true; known: boolean } | { ok: false; message: string } {
+  let known = false;
+  for (const key of Object.keys(run.atlas.knowledge)) {
+    if (!hasOwn(run.atlas.knowledge, key)) continue;
+    const record = run.atlas.knowledge[key];
+    if (!isRecord(record) || record.subjectId !== fact.id) continue;
+    if (
+      typeof record.id !== "string" ||
+      typeof record.state !== "string" ||
+      !["unknown", "signal", "charted", "visited", "lost_contact"].includes(record.state) ||
+      !Number.isSafeInteger(record.observedCycle) ||
+      (record.observedCycle as number) < 0
+    ) {
+      return { ok: false, message: `Knowledge for ${fact.id} is malformed.` };
+    }
+    if (
+      (record.observedCycle as number) <= cycleSnapshot &&
+      record.state !== "unknown" &&
+      record.state !== "lost_contact"
+    ) known = true;
+  }
+  return { ok: true, known };
+}
+
+function resolveCauseSubject(
+  run: GalaxyRunState,
+  snapshot: CanonicalPlanSnapshot,
+): CauseSubjectResult {
+  const matches: AtlasCellFact[] = [];
+  for (const dictionaryKey of Object.keys(run.atlas.materializedFacts)) {
+    if (!hasOwn(run.atlas.materializedFacts, dictionaryKey)) continue;
+    const rawFact = run.atlas.materializedFacts[dictionaryKey];
+    const potentiallyRelevant = snapshot.target.kind === "contact"
+      ? isRecord(rawFact) && (
+          rawFact.id === snapshot.target.contactId ||
+          rawFact.contactId === snapshot.target.contactId
+        )
+      : dictionaryKey === snapshot.fixedCellKey || (
+          isRecord(rawFact) && (
+            rawFact.cellKey === snapshot.fixedCellKey ||
+            (validateCoordinate(rawFact.coordinate).ok &&
+              cellKey(rawFact.coordinate as GalaxyCoordinate) === snapshot.fixedCellKey)
+          )
+        );
+    if (!potentiallyRelevant) continue;
+    if (
+      !isRecord(rawFact) ||
+      typeof rawFact.cellKey !== "string" ||
+      dictionaryKey !== rawFact.cellKey ||
+      !cellFactIsCoherent(
+        rawFact as unknown as AtlasCellFact,
+        rawFact.cellKey,
+      )
+    ) {
+      return { ok: false, message: "Route target has a malformed saved Atlas fact." };
+    }
+    const fact = rawFact as unknown as AtlasCellFact;
+    if (fact.cellKey !== snapshot.fixedCellKey) {
+      return { ok: false, message: "Route contact moved outside its immutable target cell." };
+    }
+    const knowledge = factKnownAtSnapshot(run, fact, snapshot.cycleSnapshot);
+    if (!knowledge.ok) return knowledge;
+    if (knowledge.known) matches.push(fact);
+  }
+
+  if (matches.length > 1) {
+    return { ok: false, message: "Route target resolves to ambiguous saved Atlas facts." };
+  }
+  if (snapshot.target.kind === "contact" && matches.length !== 1) {
+    return { ok: false, message: "Route contact was not known at its plan-cycle snapshot." };
+  }
+  return { ok: true, subjectId: matches[0]?.id ?? null };
+}
+
+const ACCESS_ASSESSMENTS = new Set([
+  "reachable",
+  "contested",
+  "secured",
+  "denied",
+  "disrupted",
+]);
+
+function expectedCauseAtSnapshot(
+  run: GalaxyRunState,
+  subjectId: string | null,
+  cycleSnapshot: number,
+): { ok: true; causeId: string | null } | { ok: false; message: string } {
+  if (subjectId !== "contact:hostile-picket") {
+    return { ok: true, causeId: null };
+  }
+
+  const activeFacts = [] as GalaxyRunState["historyFacts"];
+  for (const fact of run.historyFacts) {
+    if (fact.id !== "fact:picket-patrol-active") continue;
+    if (
+      !Number.isSafeInteger(fact.cycle) ||
+      fact.cycle < 0
+    ) {
+      return { ok: false, message: "Hostile-picket cause history is malformed." };
+    }
+    if (fact.cycle > cycleSnapshot) continue;
+    if (fact.subjectId !== "contact:hostile-picket") {
+      return { ok: false, message: "Hostile-picket cause history is malformed." };
+    }
+    activeFacts.push(fact);
+  }
+  if (activeFacts.length > 1) {
+    return { ok: false, message: "Hostile-picket cause history is ambiguous." };
+  }
+
+  const access: GalaxyRunState["atlas"]["accessFacts"] = [];
+  const accessIds = new Set<string>();
+  for (const fact of run.atlas.accessFacts) {
+    if (fact.subjectId !== subjectId) continue;
+    if (
+      !Number.isSafeInteger(fact.cycle) ||
+      fact.cycle < 0
+    ) {
+      return { ok: false, message: "Hostile-picket access history is malformed." };
+    }
+    if (fact.cycle > cycleSnapshot) continue;
+    if (
+      typeof fact.id !== "string" ||
+      fact.id.length === 0 ||
+      !ACCESS_ASSESSMENTS.has(fact.assessment)
+    ) {
+      return { ok: false, message: "Hostile-picket access history is malformed." };
+    }
+    if (accessIds.has(fact.id)) {
+      return { ok: false, message: "Hostile-picket access history is ambiguous." };
+    }
+    accessIds.add(fact.id);
+    if (fact.cycle <= cycleSnapshot) access.push(fact);
+  }
+  const latestAccess = access
+    .sort(
+      (left, right) =>
+        left.cycle - right.cycle || left.id.localeCompare(right.id),
+    )
+    .at(-1);
+  const causeRequired = activeFacts.length === 1 &&
+    latestAccess?.assessment !== "secured";
+  return {
+    ok: true,
+    causeId: causeRequired ? "fact:picket-patrol-active" : null,
+  };
+}
+
+function validateCauseBinding(
+  run: GalaxyRunState,
+  travel: TravelCommitment,
+  snapshot: CanonicalPlanSnapshot,
+): TravelError | null {
+  const subject = resolveCauseSubject(run, snapshot);
+  if (!subject.ok) {
+    return { code: "malformed_travel", message: subject.message };
+  }
+  const expected = expectedCauseAtSnapshot(
+    run,
+    subject.subjectId,
+    snapshot.cycleSnapshot,
+  );
+  if (!expected.ok) {
+    return { code: "malformed_travel", message: expected.message };
+  }
+  if (travel.legs[0].interruptionCauseId !== expected.causeId) {
+    return {
+      code: "malformed_travel",
+      message: "Saved travel cause does not match its Atlas subject and plan-cycle facts.",
+    };
+  }
+  return null;
 }
 
 function validateTravel(run: GalaxyRunState): TravelError | null {
@@ -557,14 +758,17 @@ function validateTravel(run: GalaxyRunState): TravelError | null {
     return { code: "malformed_travel", message: "Active travel cost, time, or checkpoints are incoherent." };
   }
   const committedOrdinal = run.nextTransactionOrdinal - 1;
+  const planSnapshot = canonicalPlanSnapshot(run, travel);
   if (
     !Number.isSafeInteger(committedOrdinal) ||
     committedOrdinal < 1 ||
     travel.transactionId !== `travel:${travel.routePlanId}:${committedOrdinal}` ||
-    !hasCanonicalPlanIdentity(run, travel)
+    planSnapshot === null
   ) {
     return { code: "malformed_travel", message: "Active travel does not match its canonical plan and transaction identity." };
   }
+  const causeProblem = validateCauseBinding(run, travel, planSnapshot);
+  if (causeProblem !== null) return causeProblem;
 
   const progressCoordinate = travel.nextLegIndex === 0
     ? travel.origin
@@ -1057,18 +1261,27 @@ function resolveTravelInterruptionImpl(
   if (result !== "cleared" && result !== "failed" && result !== "retreated") {
     return failure("invalid_interruption", "Interruption outcome is not supported.", actionsFor(context.run));
   }
+  const expectedOperation = operationForCause(
+    travel.legs[travel.legs.length - 1]?.interruptionCauseId ?? null,
+  );
+  if (expectedOperation === null || operationId !== expectedOperation) {
+    return failure(
+      "invalid_interruption",
+      "Only the operation bound to the saved travel cause may resolve this travel.",
+      actionsFor(context.run),
+    );
+  }
   const checkpointId = `${travel.transactionId}:interruption:${result}`;
   if (travel.appliedCheckpointIds.includes(checkpointId)) {
     return success(context, context.run, false);
   }
   if (
     travel.state !== "interrupted" ||
-    operationId !== "op:hostile-picket" ||
-    travel.interruptionOperationId !== operationId ||
+    travel.interruptionOperationId !== expectedOperation ||
     travel.nextLegIndex === 0 ||
     operationForCause(
       travel.legs[travel.nextLegIndex - 1].interruptionCauseId,
-    ) !== operationId
+    ) !== expectedOperation
   ) {
     return failure(
       "invalid_interruption",
