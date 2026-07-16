@@ -11,6 +11,7 @@ import {
   panActionFromArrowKey,
   panActionFromTouchControl,
   screenToWorld,
+  selectedTargetIdFor,
   targetFromCoordinateForm,
   targetFromDomContact,
   targetFromKeyboardContact,
@@ -40,6 +41,12 @@ const VANGUARD: AtlasViewportContact = {
   targetId: "contact:vanguard",
   contactId: "contact:vanguard",
   coordinate: coord(0, 0, 512, 512),
+};
+
+const PROCEDURAL_SIGNAL: AtlasViewportContact = {
+  targetId: "target:signal:0:0:1536:1024",
+  contactId: "contact:signal:0:0:1536:1024",
+  coordinate: coord(0, 0, 1536, 1024),
 };
 
 function sectorState(
@@ -191,6 +198,26 @@ test("pointer, touch, DOM, and keyboard contact paths produce the same Atlas tar
   assert.deepEqual(
     targetFromKeyboardContact(VANGUARD.targetId, "next", contacts),
     expected,
+  );
+});
+
+test("keyboard contact navigation advances from the persisted contact identity", () => {
+  const state = sectorState();
+  const contacts = [VANGUARD, PROCEDURAL_SIGNAL, ASHFALL];
+  const point = worldToScreen(PROCEDURAL_SIGNAL.coordinate, state, SIZES[0]);
+  const pointerTarget = targetFromPointer(point, state, SIZES[0], contacts);
+  const domTarget = targetFromDomContact(PROCEDURAL_SIGNAL.targetId, contacts);
+
+  assert.deepEqual(pointerTarget, domTarget);
+  const selectedTargetId = selectedTargetIdFor(pointerTarget);
+  assert.equal(selectedTargetId, PROCEDURAL_SIGNAL.contactId);
+  assert.deepEqual(
+    targetFromKeyboardContact(selectedTargetId, "next", contacts),
+    { kind: "contact", contactId: ASHFALL.contactId },
+  );
+  assert.deepEqual(
+    targetFromKeyboardContact(selectedTargetId, "previous", contacts),
+    { kind: "contact", contactId: VANGUARD.contactId },
   );
 });
 

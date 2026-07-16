@@ -405,7 +405,7 @@ export function targetFromKeyboardContact(
   if (available.length === 0) return null;
 
   const currentIndex = available.findIndex(
-    (contact) => contact.targetId === currentTargetId,
+    (contact) => selectedTargetIdFor(contactTarget(contact)) === currentTargetId,
   );
   const offset = direction === "previous" ? -1 : 1;
   const baseIndex =
