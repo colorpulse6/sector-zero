@@ -451,6 +451,32 @@ test("hostile reflection proxies reject explicitly without escaping or mutation"
   }
 });
 
+test("a delayed reflection trap cannot escape during monotonic validation", () => {
+  const run = createFreshGalaxyRun();
+  const before = structuredClone(run);
+  let descriptorCalls = 0;
+  const delayed = new Proxy({}, {
+    getOwnPropertyDescriptor() {
+      descriptorCalls += 1;
+      // Shape validation performs four section checks and applyDelta performs
+      // nine top-level checks. The fourteenth is the first later reflection in
+      // validateMonotonicState.
+      if (descriptorCalls === 14) throw new Error("delayed descriptor trap");
+      return undefined;
+    },
+  });
+
+  const result = mergeProjectionIntoGalaxy(
+    run,
+    delayed as GalaxyProjectionDelta,
+  );
+
+  assert.equal(descriptorCalls, 14);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.errors[0]?.code, "unsafe_delta");
+  assert.deepEqual(run, before);
+});
+
 test("malformed or regressive authorized deltas fail closed", () => {
   const base = createFreshGalaxyRun();
   base.pilot.xp = 100;

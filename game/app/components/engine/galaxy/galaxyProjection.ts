@@ -716,40 +716,39 @@ export function mergeProjectionIntoGalaxy(
   run: GalaxyRunState,
   delta: GalaxyProjectionDelta,
 ): ProjectionMergeResult {
-  let shapeProblem: ProjectionError | null;
   try {
-    shapeProblem = validateDeltaShape(delta);
+    const shapeProblem = validateDeltaShape(delta);
+    if (shapeProblem !== null) return failed(shapeProblem);
+    const rawDelta = delta as Record<string, unknown>;
+    let candidate: GalaxyRunState;
+    let normalized: GalaxyRunState;
+    try {
+      candidate = applyDelta(run, rawDelta);
+      normalized = migrateGalaxyRun(candidate, candidate.identity);
+    } catch (cause) {
+      return failed(error(
+        "invalid_delta_value",
+        "delta",
+        cause instanceof Error ? cause.message : "Projection delta could not be applied.",
+      ));
+    }
+    if (!sameData(candidate, normalized)) {
+      return failed(error(
+        "invalid_delta_value",
+        "delta",
+        "Projection delta does not round-trip through the saved galaxy domain.",
+      ));
+    }
+    const monotonicProblem = validateMonotonicState(run, candidate, rawDelta);
+    if (monotonicProblem !== null) return failed(monotonicProblem);
+    return { ok: true, galaxyRun: candidate };
   } catch {
     return failed(error(
       "unsafe_delta",
       "delta",
-      "Projection delta reflection failed during validation.",
+      "Projection delta reflection failed during guarded merge validation.",
     ));
   }
-  if (shapeProblem !== null) return failed(shapeProblem);
-  const rawDelta = delta as Record<string, unknown>;
-  let candidate: GalaxyRunState;
-  let normalized: GalaxyRunState;
-  try {
-    candidate = applyDelta(run, rawDelta);
-    normalized = migrateGalaxyRun(candidate, candidate.identity);
-  } catch (cause) {
-    return failed(error(
-      "invalid_delta_value",
-      "delta",
-      cause instanceof Error ? cause.message : "Projection delta could not be applied.",
-    ));
-  }
-  if (!sameData(candidate, normalized)) {
-    return failed(error(
-      "invalid_delta_value",
-      "delta",
-      "Projection delta does not round-trip through the saved galaxy domain.",
-    ));
-  }
-  const monotonicProblem = validateMonotonicState(run, candidate, rawDelta);
-  if (monotonicProblem !== null) return failed(monotonicProblem);
-  return { ok: true, galaxyRun: candidate };
 }
 
 export function advanceGalaxyWorldCycles(
