@@ -5,6 +5,7 @@ import { type GameState, GameScreen } from "./engine/types";
 import { ALL_LEVELS, WORLD_NAMES } from "./engine/levels";
 import { PLANET_DEFS } from "./engine/planets";
 import { COLONY_FIXTURES } from "./colony/dev/seedColony";
+import { GALAXY_FIXTURES } from "./galaxy/devFixtures";
 import { setResolutionMode, getPerfStats, type FpPerfStats, type ResMode } from "./engine/fpRender";
 import { getGradeStats, setGradeEnabled, type GradeStats } from "./engine/postFx";
 
@@ -249,6 +250,23 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
               title={`Seed + descend into ${fx.label.toLowerCase()} colony`}
             >
               {fx.label.replace("SEED ", "")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Deterministic G0 Atlas/travel states. Game.tsx owns applying them. */}
+      <div className="space-y-1">
+        <div className="text-cyan-500 border-b border-cyan-900 pb-1">GALAXY SEEDS</div>
+        <div className="grid grid-cols-2 gap-1">
+          {GALAXY_FIXTURES.map((fixture) => (
+            <button
+              key={fixture.id}
+              onClick={() => onAction(`seed-galaxy:${fixture.id}`)}
+              className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
+              title={fixture.description}
+            >
+              {fixture.label}
             </button>
           ))}
         </div>
