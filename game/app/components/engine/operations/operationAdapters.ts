@@ -3,9 +3,40 @@ import {
   createPlanetGameState,
   createSpecialMissionGameState,
 } from "../gameEngine";
+import { dispatchPoi, startRegionExpedition } from "../../colony/region/poiDispatcher";
+import type {
+  ActivePoiDescriptor,
+  PendingPoiResolution,
+} from "../../colony/region/poiRuntime";
+import {
+  preparePoiCompletion,
+  resolvePoiCompletion,
+} from "../../colony/region/poiRuntime";
+import { POI_CARGO } from "../../colony/region/poiOutcomes";
+import {
+  foundOutpost,
+  type RegionActionBlockReason,
+} from "../../colony/region/siteEconomy";
+import type {
+  PoiSession,
+  RegionExpeditionRequest,
+} from "../../colony/region/poiDispatcher";
+import type {
+  ColonyId,
+  ColonyState,
+  RegionNodeId,
+} from "../../colony/shared/colonyTypes";
+import type { MissionDelivery } from "../../colony/shared/missionDelivery";
+import {
+  mergeProjectionIntoGalaxy,
+  projectGalaxyRunToLegacySave,
+  type GalaxyProjectionDelta,
+} from "../galaxy/galaxyProjection";
+import { getGalaxyRunAvailability } from "../galaxy/galaxyRun";
 import type { GalaxyRunState } from "../galaxy/galaxyTypes";
 import type {
   EnhancementId,
+  GameScreen,
   SaveData,
   ShipUpgrades,
   SkillNodeId,
@@ -293,5 +324,393 @@ export function launchOperation(
     return { ok: true, context: structuredClone(authorization.context), gameState };
   } catch {
     return fail(safeContext, "malformed_run");
+  }
+}
+
+export type GalaxyRegionAdapterReason =
+  | "missing_galaxy_run"
+  | "unsupported_contact"
+  | "contact_not_visited"
+  | "generation_unavailable"
+  | "ashfall_origin_missing"
+  | "malformed_save"
+  | "malformed_request"
+  | "invalid_poi_session"
+  | "completion_not_ready"
+  | "projection_merge_failed"
+  | "projected_result_invalid"
+  | "unsupported_poi_type"
+  | "expedition_in_flight"
+  | "destination_missing"
+  | "outcome_stale"
+  | RegionActionBlockReason;
+
+export interface GalaxyPendingPoiResolution extends PendingPoiResolution {
+  /** Canonical galaxy parent after the completion cycle; never a projection. */
+  baseSave: SaveData;
+  /** Canonical alias retained for PoiOutcomeScreen's existing structural prop. */
+  projectedSave: SaveData;
+}
+
+export type GalaxyRegionOpenResult =
+  | {
+      ok: true;
+      originColony: ColonyState;
+      projectedSave: SaveData;
+    }
+  | { ok: false; reason: GalaxyRegionAdapterReason };
+
+type GalaxyRegionOpenFailure = Extract<GalaxyRegionOpenResult, { ok: false }>;
+
+export type GalaxyRegionExpeditionResult =
+  | {
+      ok: true;
+      save: SaveData;
+      requestId: string;
+      session: PoiSession | null;
+    }
+  | { ok: false; save: SaveData; reason: GalaxyRegionAdapterReason };
+
+export type GalaxyOutpostResult =
+  | { ok: true; save: SaveData; colonyId: ColonyId }
+  | { ok: false; save: SaveData; reason: GalaxyRegionAdapterReason };
+
+export type GalaxyPoiPreparationResult =
+  | {
+      ok: true;
+      save: SaveData;
+      pending: GalaxyPendingPoiResolution;
+    }
+  | { ok: false; reason: GalaxyRegionAdapterReason };
+
+export type GalaxyPoiResolutionResult =
+  | { ok: true; save: SaveData; delivery: MissionDelivery | null }
+  | { ok: false; save: SaveData; reason: GalaxyRegionAdapterReason };
+
+interface OpenAshfallProjection {
+  parent: SaveData;
+  run: GalaxyRunState;
+  originColony: ColonyState;
+  projectedSave: SaveData;
+}
+
+function samePlainData(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (
+    typeof left !== "object" || left === null ||
+    typeof right !== "object" || right === null
+  ) return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    return left.every((entry, index) => samePlainData(entry, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
+    key === rightKeys[index] && Object.prototype.hasOwnProperty.call(rightRecord, key) &&
+    samePlainData(leftRecord[key], rightRecord[key]));
+}
+
+function openAshfallProjection(
+  save: SaveData,
+  contactId: string,
+): OpenAshfallProjection | GalaxyRegionOpenFailure {
+  if (contactId !== "contact:ashfall") {
+    return { ok: false, reason: "unsupported_contact" };
+  }
+  try {
+    const root = exactOwnData(save, SAVE_DATA_KEYS);
+    if (root === null) return { ok: false, reason: "malformed_save" };
+    const parent = root as unknown as SaveData;
+    if (parent.activeExperience !== "galaxy" || parent.galaxyRun === null) {
+      return { ok: false, reason: "missing_galaxy_run" };
+    }
+    const validated = mergeProjectionIntoGalaxy(parent.galaxyRun, {});
+    if (!validated.ok) return { ok: false, reason: "malformed_save" };
+    const run = validated.galaxyRun;
+    if (getGalaxyRunAvailability(run).status !== "available") {
+      return { ok: false, reason: "generation_unavailable" };
+    }
+    const visited = Object.values(run.atlas.knowledge).some((record) =>
+      record.subjectId === "contact:ashfall" && record.state === "visited");
+    if (!visited) return { ok: false, reason: "contact_not_visited" };
+    const originColony = run.colonies.find((colony) =>
+      colony.id === "galaxy:ashfall-primary" &&
+      colony.planetId === "ashfall" &&
+      colony.regionNodeId === "ashfall-forward-camp");
+    if (originColony === undefined ||
+      !run.planets.some((planet) => planet.id === "ashfall")) {
+      return { ok: false, reason: "ashfall_origin_missing" };
+    }
+    const canonical = { ...parent, galaxyRun: run };
+    return {
+      parent: canonical,
+      run,
+      originColony,
+      projectedSave: projectGalaxyRunToLegacySave(canonical),
+    };
+  } catch {
+    return { ok: false, reason: "malformed_save" };
+  }
+}
+
+function isOpenFailure(
+  result: OpenAshfallProjection | GalaxyRegionOpenFailure,
+): result is GalaxyRegionOpenFailure {
+  return "ok" in result && result.ok === false;
+}
+
+function mergeProjectedRegion(
+  opened: OpenAshfallProjection,
+  projected: SaveData,
+): { ok: true; save: SaveData } | { ok: false; reason: GalaxyRegionAdapterReason } {
+  try {
+    const projection = exactOwnData(projected, SAVE_DATA_KEYS);
+    if (projection === null || projection.activeExperience !== "legacy" || projection.galaxyRun !== null) {
+      return { ok: false, reason: "projected_result_invalid" };
+    }
+    const delta: GalaxyProjectionDelta = {
+      colonies: projection.colonies as SaveData["colonies"],
+      planets: projection.planets as SaveData["planets"],
+      missionsSinceStart: projection.missionsSinceStart as number,
+    };
+    const merged = mergeProjectionIntoGalaxy(opened.run, delta);
+    if (!merged.ok) return { ok: false, reason: "projection_merge_failed" };
+    return {
+      ok: true,
+      save: { ...opened.parent, activeExperience: "galaxy", galaxyRun: merged.galaxyRun },
+    };
+  } catch {
+    return { ok: false, reason: "projected_result_invalid" };
+  }
+}
+
+function snapshotExpeditionRequest(value: RegionExpeditionRequest): RegionExpeditionRequest | null {
+  try {
+    const snapshot = exactOwnData(value, ["kind", "originColonyId", "targetNodeId"]);
+    if (snapshot === null || (snapshot.kind !== "survey" && snapshot.kind !== "poi") ||
+      typeof snapshot.originColonyId !== "string" || snapshot.originColonyId.length === 0 ||
+      typeof snapshot.targetNodeId !== "string" || snapshot.targetNodeId.length === 0) return null;
+    return {
+      kind: snapshot.kind,
+      originColonyId: snapshot.originColonyId,
+      targetNodeId: snapshot.targetNodeId,
+    } as RegionExpeditionRequest;
+  } catch {
+    return null;
+  }
+}
+
+function snapshotActivePoi(value: ActivePoiDescriptor): ActivePoiDescriptor | null {
+  try {
+    const active = exactOwnData(value, ["originColonyId", "session"]);
+    const session = active === null
+      ? null
+      : exactOwnData(active.session, ["nodeId", "engine", "state", "rewardEligible"]);
+    if (active === null || session === null || typeof active.originColonyId !== "string" ||
+      typeof session.nodeId !== "string" ||
+      (session.engine !== "firstPerson" && session.engine !== "boarding" && session.engine !== "groundRun") ||
+      typeof session.rewardEligible !== "boolean") return null;
+    return structuredClone(value);
+  } catch {
+    return null;
+  }
+}
+
+function validPoiSession(
+  projection: SaveData,
+  active: ActivePoiDescriptor,
+): boolean {
+  const expected = dispatchPoi(projection, active.originColonyId, active.session.nodeId);
+  return expected.ok && samePlainData(expected.session, active.session);
+}
+
+/**
+ * Open the already-visited Ashfall contact as a disposable M1 compatibility
+ * view. The returned projection deliberately has no galaxy namespace and must
+ * never be persisted.
+ */
+export function openGalaxyRegion(
+  save: SaveData,
+  contactId: string,
+): GalaxyRegionOpenResult {
+  const opened = openAshfallProjection(save, contactId);
+  if (isOpenFailure(opened)) return opened;
+  return {
+    ok: true,
+    originColony: structuredClone(opened.originColony),
+    projectedSave: opened.projectedSave,
+  };
+}
+
+export function startGalaxyRegionExpedition(
+  save: SaveData,
+  contactId: string,
+  request: RegionExpeditionRequest,
+  activeRequestId: string | null,
+): GalaxyRegionExpeditionResult {
+  const safeRequest = snapshotExpeditionRequest(request);
+  if (safeRequest === null ||
+    (activeRequestId !== null && (typeof activeRequestId !== "string" || activeRequestId.length === 0))) {
+    return { ok: false, save, reason: "malformed_request" };
+  }
+  const opened = openAshfallProjection(save, contactId);
+  if (isOpenFailure(opened)) return { ...opened, save };
+  try {
+    const result = startRegionExpedition(opened.projectedSave, safeRequest, activeRequestId);
+    if (!result.ok) return { ok: false, save, reason: result.reason };
+    const merged = mergeProjectedRegion(opened, result.save);
+    if (!merged.ok) return { ok: false, save, reason: merged.reason };
+    return {
+      ok: true,
+      save: merged.save,
+      requestId: result.requestId,
+      session: result.session === null ? null : structuredClone(result.session),
+    };
+  } catch {
+    return { ok: false, save, reason: "projected_result_invalid" };
+  }
+}
+
+export function foundGalaxyOutpost(
+  save: SaveData,
+  contactId: string,
+  originColonyId: ColonyId,
+  targetNodeId: RegionNodeId,
+  name: string,
+): GalaxyOutpostResult {
+  if (typeof originColonyId !== "string" || originColonyId.length === 0 ||
+    typeof targetNodeId !== "string" || targetNodeId.length === 0 ||
+    typeof name !== "string" || name.trim().length === 0) {
+    return { ok: false, save, reason: "malformed_request" };
+  }
+  const opened = openAshfallProjection(save, contactId);
+  if (isOpenFailure(opened)) return { ...opened, save };
+  try {
+    const result = foundOutpost(
+      opened.projectedSave,
+      originColonyId,
+      targetNodeId,
+      name,
+    );
+    if (!result.ok) return { ok: false, save, reason: result.reason };
+    const merged = mergeProjectedRegion(opened, result.save);
+    if (!merged.ok) return { ok: false, save, reason: merged.reason };
+    return { ok: true, save: merged.save, colonyId: result.colonyId };
+  } catch {
+    return { ok: false, save, reason: "projected_result_invalid" };
+  }
+}
+
+export function prepareGalaxyPoiCompletion(
+  save: SaveData,
+  contactId: string,
+  activePoi: ActivePoiDescriptor,
+  screen: GameScreen,
+): GalaxyPoiPreparationResult {
+  const safeActive = snapshotActivePoi(activePoi);
+  if (safeActive === null) return { ok: false, reason: "invalid_poi_session" };
+  const opened = openAshfallProjection(save, contactId);
+  if (isOpenFailure(opened)) return opened;
+  try {
+    if (!validPoiSession(opened.projectedSave, safeActive)) {
+      return { ok: false, reason: "invalid_poi_session" };
+    }
+    const native = preparePoiCompletion(opened.projectedSave, safeActive, screen);
+    if (native === null) return { ok: false, reason: "completion_not_ready" };
+    const base = mergeProjectedRegion(opened, native.baseSave);
+    if (!base.ok) return base;
+    // Validate the deferred clear/delivery candidate now, but commit only the
+    // native base cycle. Resolution reconstructs a fresh projection later.
+    const deferred = mergeProjectedRegion(opened, native.projectedSave);
+    if (!deferred.ok) return deferred;
+    const pending: GalaxyPendingPoiResolution = {
+      originColonyId: native.originColonyId,
+      nodeId: native.nodeId,
+      baseSave: base.save,
+      projectedSave: base.save,
+      outcome: native.outcome === null ? null : structuredClone(native.outcome),
+    };
+    return { ok: true, save: base.save, pending };
+  } catch {
+    return { ok: false, reason: "projected_result_invalid" };
+  }
+}
+
+function snapshotGalaxyPending(
+  save: SaveData,
+  pending: GalaxyPendingPoiResolution,
+): GalaxyPendingPoiResolution | null {
+  try {
+    const snapshot = exactOwnData(
+      pending,
+      ["originColonyId", "nodeId", "baseSave", "projectedSave", "outcome"],
+    );
+    if (snapshot === null || typeof snapshot.originColonyId !== "string" ||
+      typeof snapshot.nodeId !== "string") return null;
+    const baseRoot = exactOwnData(snapshot.baseSave, SAVE_DATA_KEYS);
+    const aliasRoot = exactOwnData(snapshot.projectedSave, SAVE_DATA_KEYS);
+    const currentRoot = exactOwnData(save, SAVE_DATA_KEYS);
+    if (baseRoot === null || aliasRoot === null || currentRoot === null ||
+      baseRoot.activeExperience !== "galaxy" || baseRoot.galaxyRun === null ||
+      !samePlainData(baseRoot, aliasRoot) ||
+      !SAVE_DATA_KEYS.filter((key) => key !== "galaxyRun").every((key) =>
+        samePlainData(baseRoot[key], currentRoot[key]))) return null;
+    const baseRun = mergeProjectionIntoGalaxy(baseRoot.galaxyRun as GalaxyRunState, {});
+    const currentRun = currentRoot.galaxyRun === null
+      ? null
+      : mergeProjectionIntoGalaxy(currentRoot.galaxyRun as GalaxyRunState, {});
+    if (!baseRun.ok || currentRun === null || !currentRun.ok ||
+      !samePlainData(baseRun.galaxyRun.identity, currentRun.galaxyRun.identity) ||
+      baseRun.galaxyRun.worldCycle !== currentRun.galaxyRun.worldCycle) return null;
+    if (snapshot.outcome !== null) {
+      const outcome = exactOwnData(snapshot.outcome, ["originColonyId", "nodeId", "payload"]);
+      const payload = outcome === null ? null : exactOwnData(outcome.payload, Object.keys(POI_CARGO));
+      if (outcome === null || payload === null ||
+        outcome.originColonyId !== snapshot.originColonyId ||
+        outcome.nodeId !== snapshot.nodeId ||
+        !samePlainData(payload, POI_CARGO)) return null;
+    }
+    return structuredClone(pending);
+  } catch {
+    return null;
+  }
+}
+
+export function resolveGalaxyPoiCompletion(
+  save: SaveData,
+  contactId: string,
+  pending: GalaxyPendingPoiResolution,
+  destinationColonyId: ColonyId | null,
+): GalaxyPoiResolutionResult {
+  const safePending = snapshotGalaxyPending(save, pending);
+  if (safePending === null ||
+    (destinationColonyId !== null &&
+      (typeof destinationColonyId !== "string" || destinationColonyId.length === 0))) {
+    return { ok: false, save, reason: "invalid_poi_session" };
+  }
+  const opened = openAshfallProjection(save, contactId);
+  if (isOpenFailure(opened)) return { ...opened, save };
+  try {
+    const nativePending: PendingPoiResolution = {
+      originColonyId: safePending.originColonyId,
+      nodeId: safePending.nodeId,
+      baseSave: opened.projectedSave,
+      projectedSave: opened.projectedSave,
+      outcome: safePending.outcome,
+    };
+    const native = resolvePoiCompletion(nativePending, destinationColonyId);
+    if (!native.ok) return { ok: false, save, reason: native.reason };
+    const merged = mergeProjectedRegion(opened, native.save);
+    if (!merged.ok) return { ok: false, save, reason: merged.reason };
+    return {
+      ok: true,
+      save: merged.save,
+      delivery: native.delivery === null ? null : structuredClone(native.delivery),
+    };
+  } catch {
+    return { ok: false, save, reason: "projected_result_invalid" };
   }
 }
