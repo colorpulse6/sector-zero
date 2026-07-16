@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { defaultFactionStandings } from "../../app/components/colony/shared/factionLedger";
-import { G0_GENERATION_IDENTITY } from "../../app/components/engine/galaxy/atlas";
+import {
+  G0_GENERATION_IDENTITY,
+  resolveCell,
+} from "../../app/components/engine/galaxy/atlas";
 import {
   G0_STARTING_SUPPLY,
   createFreshGalaxyRun,
@@ -10,6 +13,7 @@ import {
   startFreshGalaxy,
 } from "../../app/components/engine/galaxy/galaxyRun";
 import { DEFAULT_UPGRADES, EnemyType } from "../../app/components/engine/types";
+import { MAX_PILOT_LEVEL } from "../../app/components/engine/pilotLevel";
 import { migrateSave } from "../../app/components/engine/save";
 
 const COMPLETE_IDENTITY = {
@@ -36,6 +40,34 @@ function validOperation(state = "available") {
     acceptedCycle: null,
     resolvedCycle: null,
     completionIds: [],
+  };
+}
+
+const TRAVEL_ORIGIN = { sectorX: 0, sectorY: 0, localX: 512, localY: 512 };
+const TRAVEL_DESTINATION = { sectorX: 0, sectorY: 0, localX: 1024, localY: 512 };
+
+function validTravel(state: string = "advancing") {
+  return {
+    transactionId: "travel:quality",
+    state,
+    routePlanId: "route:quality",
+    origin: { ...TRAVEL_ORIGIN },
+    destination: { ...TRAVEL_DESTINATION },
+    targetId: "contact:ashfall",
+    legs: [{
+      id: "leg:quality",
+      from: { ...TRAVEL_ORIGIN },
+      to: { ...TRAVEL_DESTINATION },
+      distanceUnits: 512,
+      cycles: 2,
+      supplyCost: 2,
+      interruptionCauseId: null,
+    }],
+    nextLegIndex: state === "arrived" ? 1 : 0,
+    appliedCheckpointIds: ["checkpoint:departed"],
+    supplyCost: 2,
+    elapsedCycles: 0,
+    interruptionOperationId: null,
   };
 }
 
@@ -375,13 +407,19 @@ test("corrupt nested fields fall back independently to fresh values", () => {
   assert.deepEqual(migrated.resources, fresh.resources);
   assert.deepEqual(migrated.ship, fresh.ship);
   assert.deepEqual(migrated.pilot, fresh.pilot);
-  assert.deepEqual(migrated.codex, fresh.codex);
+  assert.deepEqual(migrated.codex, { unlocked: ["valid"], viewed: [] });
   assert.deepEqual(migrated.storyItems, fresh.storyItems);
   assert.deepEqual(migrated.vessel, fresh.vessel);
-  assert.deepEqual(migrated.operations["op:hostile-picket"], fresh.operations["op:hostile-picket"]);
-  assert.deepEqual(migrated.historyFacts[0], fresh.historyFacts[0]);
-  assert.deepEqual(migrated.appliedOutcomeIds, fresh.appliedOutcomeIds);
-  assert.deepEqual(migrated.colonies, fresh.colonies);
+  assert.deepEqual(migrated.operations["op:hostile-picket"], {
+    ...fresh.operations["op:hostile-picket"],
+    completionIds: ["ok"],
+  });
+  assert.deepEqual(migrated.historyFacts[0], {
+    ...fresh.historyFacts[0],
+    causeFactIds: ["ok"],
+  });
+  assert.deepEqual(migrated.appliedOutcomeIds, ["ok"]);
+  assert.deepEqual(migrated.colonies, []);
   assert.deepEqual(migrated.planets, fresh.planets);
   assert.deepEqual(migrated.factionStandings, fresh.factionStandings);
 });
@@ -608,7 +646,7 @@ test("invalid enum members fall back at field scope", () => {
   assert.deepEqual(migrated.atlas.accessFacts, fresh.atlas.accessFacts);
   assert.deepEqual(migrated.atlas.threatObservations[0], fresh.atlas.threatObservations[0]);
   assert.equal(migrated.operations["op:hostile-picket"].state, "available");
-  assert.equal(migrated.activeTravel?.state, "committed");
+  assert.equal(migrated.activeTravel, null);
 });
 
 test("unsafe and fractional coordinates fall back predictably without throwing", () => {
@@ -647,10 +685,7 @@ test("unsafe and fractional coordinates fall back predictably without throwing",
     migrated.atlas.materializedFacts[factKey].coordinate,
     fresh.atlas.materializedFacts[factKey].coordinate,
   );
-  assert.deepEqual(migrated.activeTravel?.origin, fresh.vessel.coordinate);
-  assert.deepEqual(migrated.activeTravel?.destination, fresh.vessel.coordinate);
-  assert.deepEqual(migrated.activeTravel?.legs[0].from, fresh.vessel.coordinate);
-  assert.deepEqual(migrated.activeTravel?.legs[0].to, fresh.vessel.coordinate);
+  assert.equal(migrated.activeTravel, null);
 });
 
 test("travel checkpoints and record arrays reject malformed serialized members", () => {
@@ -673,9 +708,8 @@ test("travel checkpoints and record arrays reject malformed serialized members",
 
   const migrated = migrateGalaxyRun(raw);
 
-  assert.deepEqual(migrated.activeTravel?.legs, []);
-  assert.deepEqual(migrated.activeTravel?.appliedCheckpointIds, []);
-  assert.deepEqual(migrated.atlas.mappedCellKeys, createFreshGalaxyRun(COMPLETE_IDENTITY).atlas.mappedCellKeys);
+  assert.equal(migrated.activeTravel, null);
+  assert.deepEqual(migrated.atlas.mappedCellKeys, ["0:0:2:2"]);
 });
 
 test("malformed prototype-key map entries use own type-correct fallbacks", () => {
@@ -854,4 +888,560 @@ test("JSON roundtrip and repeated migration are deterministic and alias-free", (
   assert.notEqual(second.resources, first.resources);
   assert.notEqual(second.atlas.knowledge, first.atlas.knowledge);
   assert.notEqual(second.colonies[0], first.colonies[0]);
+});
+
+test("quality group 1 preserves valid siblings in mixed-corrupt collections", () => {
+  const raw = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  raw.codex = {
+    unlocked: ["codex:a", 7, "codex:b", "codex:a"],
+    viewed: [false, "codex:b", "codex:c", "codex:b"],
+  };
+  raw.atlas.mappedCellKeys = ["cell:a", null, "cell:b", "cell:a"];
+  raw.atlas.accessFacts = [{
+    id: "access:a",
+    subjectId: "contact:vanguard",
+    assessment: "reachable",
+    causeFactIds: ["fact:a", false, "fact:b", "fact:a"],
+    cycle: 1,
+  }, null, {
+    id: "access:b",
+    subjectId: "contact:ashfall",
+    assessment: "contested",
+    causeFactIds: [],
+    cycle: 2,
+  }];
+  raw.atlas.threatObservations = [{
+    id: "observation:a",
+    subjectId: "contact:vanguard",
+    dimension: "military",
+    band: "low",
+    confidence: "high",
+    source: "report",
+    observedCycle: 1,
+  }, null, {
+    id: "observation:b",
+    subjectId: "contact:ashfall",
+    dimension: "environmental",
+    band: "moderate",
+    confidence: "medium",
+    source: "sensor",
+    observedCycle: 2,
+  }];
+  raw.operations["op:hostile-picket"].completionIds = [
+    "completion:a", 2, "completion:b", "completion:a",
+  ];
+  raw.historyFacts = [{
+    id: "history:a",
+    kind: "test",
+    subjectId: "subject:a",
+    cycle: 1,
+    causeFactIds: ["cause:a", {}, "cause:b", "cause:a"],
+  }, null, {
+    id: "history:b",
+    kind: "test",
+    subjectId: "subject:b",
+    cycle: 2,
+    causeFactIds: [],
+  }];
+  raw.appliedOutcomeIds = ["outcome:a", 9, "outcome:b", "outcome:a"];
+  raw.ship.consumableInventory = {
+    "hull-repair": 2,
+    "scanner-pulse": -1,
+    "cryo-charge": 3,
+  };
+
+  raw.vessel = {
+    status: "in_transit",
+    coordinate: { ...TRAVEL_ORIGIN },
+    contactId: null,
+    transitTransactionId: "travel:quality",
+  };
+  raw.activeTravel = validTravel();
+  raw.activeTravel.appliedCheckpointIds = [
+    "checkpoint:a", 3, "checkpoint:b", "checkpoint:a",
+  ];
+
+  const colony = raw.colonies[0];
+  colony.namedNpcs = ["npc:a", 4, "npc:b", "npc:a"];
+  colony.activeQuestlines = ["quest:a", null, "quest:b", "quest:a"];
+  colony.discoveredPoiIds = ["poi:a", {}, "poi:b", "poi:a"];
+  colony.population.recentDeaths = [{
+    npcId: "npc:a",
+    cyclesAgo: 1,
+    cause: "natural",
+    colonyId: colony.id,
+  }, null, {
+    npcId: null,
+    cyclesAgo: 2,
+    cause: "raid",
+    colonyId: colony.id,
+  }];
+  colony.buildings = [{
+    id: "building:a",
+    type: "farm",
+    tier: 1,
+    status: "operational",
+    buildProgressCycles: 0,
+    hp: 10,
+    maxHp: 10,
+    interiorTemplateId: null,
+    assignedNpcIds: ["npc:a", 1, "npc:b", "npc:a"],
+    districtId: null,
+  }, null, {
+    id: "building:b",
+    type: "habitat_module",
+    tier: 1,
+    status: "operational",
+    buildProgressCycles: 0,
+    hp: 8,
+    maxHp: 8,
+    interiorTemplateId: null,
+    assignedNpcIds: [],
+    districtId: null,
+  }];
+  colony.districts = [{
+    id: "district:a",
+    colonyId: colony.id,
+    kind: "residential",
+    tiles: [[0, 0]],
+    travelAnchorId: null,
+  }, null, {
+    id: "district:b",
+    colonyId: colony.id,
+    kind: "industrial",
+    tiles: [[1, 1]],
+    travelAnchorId: null,
+  }];
+  colony.activeThreats = [{
+    id: "colony-threat:a",
+    kind: "raid_incoming",
+    cyclesUntilResolve: 2,
+    severity: "minor",
+    targetBuildingId: null,
+    payload: { retained: true },
+  }, null, {
+    id: "colony-threat:b",
+    kind: "supply_disruption",
+    cyclesUntilResolve: 4,
+    severity: "major",
+    targetBuildingId: null,
+    payload: null,
+  }];
+  const before = jsonClone(raw);
+
+  const migrated = migrateGalaxyRun(raw);
+
+  assert.deepEqual(migrated.codex.unlocked, ["codex:a", "codex:b"]);
+  assert.deepEqual(migrated.codex.viewed, ["codex:b", "codex:c"]);
+  assert.deepEqual(migrated.atlas.mappedCellKeys, ["cell:a", "cell:b"]);
+  assert.deepEqual(migrated.atlas.accessFacts.map((entry) => entry.id), ["access:a", "access:b"]);
+  assert.deepEqual(migrated.atlas.accessFacts[0].causeFactIds, ["fact:a", "fact:b"]);
+  assert.deepEqual(
+    migrated.atlas.threatObservations.map((entry) => entry.id),
+    ["observation:a", "observation:b"],
+  );
+  assert.deepEqual(
+    migrated.operations["op:hostile-picket"].completionIds,
+    ["completion:a", "completion:b"],
+  );
+  assert.deepEqual(migrated.historyFacts.map((entry) => entry.id), ["history:a", "history:b"]);
+  assert.deepEqual(migrated.historyFacts[0].causeFactIds, ["cause:a", "cause:b"]);
+  assert.deepEqual(migrated.appliedOutcomeIds, ["outcome:a", "outcome:b"]);
+  assert.deepEqual(migrated.ship.consumableInventory, {
+    "hull-repair": 2,
+    "cryo-charge": 3,
+  });
+  assert.deepEqual(migrated.activeTravel?.appliedCheckpointIds, [
+    "checkpoint:a", "checkpoint:b",
+  ]);
+  assert.deepEqual(migrated.colonies[0].namedNpcs, ["npc:a", "npc:b"]);
+  assert.deepEqual(migrated.colonies[0].activeQuestlines, ["quest:a", "quest:b"]);
+  assert.deepEqual(migrated.colonies[0].discoveredPoiIds, ["poi:a", "poi:b"]);
+  assert.deepEqual(
+    migrated.colonies[0].population.recentDeaths.map((entry) => entry.npcId),
+    ["npc:a", null],
+  );
+  assert.deepEqual(migrated.colonies[0].buildings.map((entry) => entry.id), [
+    "building:a", "building:b",
+  ]);
+  assert.deepEqual(migrated.colonies[0].buildings[0].assignedNpcIds, ["npc:a", "npc:b"]);
+  assert.deepEqual(migrated.colonies[0].districts.map((entry) => entry.id), [
+    "district:a", "district:b",
+  ]);
+  assert.deepEqual(migrated.colonies[0].activeThreats.map((entry) => entry.id), [
+    "colony-threat:a", "colony-threat:b",
+  ]);
+  assert.deepEqual(raw, before);
+  assert.notEqual(migrated.codex.unlocked, raw.codex.unlocked);
+
+  const malformed = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  malformed.codex.unlocked = { not: "an array" };
+  const left = migrateGalaxyRun(malformed);
+  const right = migrateGalaxyRun(malformed);
+  assert.deepEqual(left.codex.unlocked, []);
+  assert.notEqual(left.codex.unlocked, right.codex.unlocked);
+});
+
+test("quality group 2 isolates keyed records and de-duplicates the first valid ID", () => {
+  const fresh = createFreshGalaxyRun(COMPLETE_IDENTITY);
+  const raw = jsonClone(fresh) as Record<string, any>;
+
+  const customColony = jsonClone(fresh.colonies[0]) as Record<string, any>;
+  customColony.id = "colony:verdania";
+  customColony.name = "Verdania Relay";
+  customColony.planetId = "verdania";
+  customColony.regionNodeId = "verdania-relay";
+  const duplicateColony = { ...jsonClone(customColony), name: "Duplicate Colony" };
+  raw.colonies = [{ id: "colony:incomplete" }, customColony, null, duplicateColony];
+
+  const customPlanet = jsonClone(fresh.planets[0]) as Record<string, any>;
+  customPlanet.id = "verdania";
+  customPlanet.biome = "jungle";
+  const firstNode = jsonClone(customPlanet.regionMap.nodes[0]) as Record<string, any>;
+  firstNode.id = "verdania-relay";
+  firstNode.name = "Verdania Relay";
+  const secondNode = { ...jsonClone(firstNode), id: "verdania-grove", name: "Verdania Grove" };
+  customPlanet.regionMap.nodes = [
+    firstNode,
+    { id: "node:incomplete" },
+    secondNode,
+    null,
+    { ...jsonClone(secondNode), name: "Duplicate Grove" },
+  ];
+  customPlanet.regionMap.edges = [
+    [firstNode.id, secondNode.id],
+    null,
+    [secondNode.id, firstNode.id],
+    [firstNode.id, secondNode.id],
+  ];
+  raw.planets = [
+    { id: "verdania" },
+    customPlanet,
+    null,
+    { ...jsonClone(customPlanet), biome: "ice" },
+  ];
+
+  raw.factionStandings = [
+    { factionId: "future_faction" },
+    { factionId: "future_faction", standing: 150, rank: "hostile", permissions: ["trade"] },
+    null,
+    { factionId: "future_faction", standing: -100, rank: "hostile", permissions: [] },
+  ];
+
+  const migrated = migrateGalaxyRun(raw);
+
+  assert.deepEqual(migrated.colonies.map((entry) => entry.id), ["colony:verdania"]);
+  assert.equal(migrated.colonies[0].name, "Verdania Relay");
+  assert.deepEqual(migrated.planets.map((entry) => entry.id), ["verdania"]);
+  assert.equal(migrated.planets[0].biome, "jungle");
+  assert.deepEqual(migrated.planets[0].regionMap.nodes.map((entry) => entry.id), [
+    "verdania-relay", "verdania-grove",
+  ]);
+  assert.equal(migrated.planets[0].regionMap.nodes[1].name, "Verdania Grove");
+  assert.deepEqual(migrated.planets[0].regionMap.edges, [
+    ["verdania-relay", "verdania-grove"],
+    ["verdania-grove", "verdania-relay"],
+  ]);
+  assert.deepEqual(migrated.factionStandings, [{
+    factionId: "future_faction",
+    standing: 100,
+    rank: "allied",
+    permissions: ["trade"],
+  }]);
+});
+
+test("quality group 3 validates travel atomically across every valid state", () => {
+  for (const state of [
+    "committed", "advancing", "interrupted", "diverted", "arrived", "resolved",
+  ]) {
+    const raw = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+    raw.activeTravel = validTravel(state);
+    if (state === "diverted") {
+      raw.vessel = {
+        status: "stranded",
+        coordinate: { ...TRAVEL_ORIGIN },
+        contactId: null,
+        transitTransactionId: "travel:quality",
+      };
+    } else if (state === "arrived") {
+      raw.vessel = {
+        status: "stationary",
+        coordinate: { ...TRAVEL_DESTINATION },
+        contactId: "contact:ashfall",
+        transitTransactionId: null,
+      };
+    } else if (state === "resolved") {
+      raw.vessel = {
+        status: "stationary",
+        coordinate: { ...TRAVEL_ORIGIN },
+        contactId: "contact:vanguard",
+        transitTransactionId: null,
+      };
+    } else {
+      raw.vessel = {
+        status: "in_transit",
+        coordinate: { ...TRAVEL_ORIGIN },
+        contactId: null,
+        transitTransactionId: "travel:quality",
+      };
+    }
+
+    const migrated = migrateGalaxyRun(raw);
+    assert.deepEqual(migrated.activeTravel, raw.activeTravel, `${state} travel must survive`);
+    assert.deepEqual(migrated.vessel, raw.vessel, `${state} vessel must survive`);
+  }
+
+  const corrupt = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  corrupt.activeTravel = validTravel("advancing");
+  corrupt.activeTravel.nextLegIndex = 99;
+  corrupt.activeTravel.legs.push({
+    ...jsonClone(corrupt.activeTravel.legs[0]),
+    from: { ...TRAVEL_DESTINATION },
+    to: { sectorX: 0, sectorY: 0, localX: 1536, localY: 512 },
+  });
+  corrupt.activeTravel.appliedCheckpointIds = ["checkpoint:a", "checkpoint:a"];
+  corrupt.activeTravel.supplyCost = 999;
+  corrupt.vessel = {
+    status: "in_transit",
+    coordinate: { ...TRAVEL_DESTINATION },
+    contactId: null,
+    transitTransactionId: "travel:quality",
+  };
+  const recovered = migrateGalaxyRun(corrupt);
+  assert.equal(recovered.activeTravel, null);
+  assert.deepEqual(recovered.vessel, {
+    status: "stationary",
+    coordinate: TRAVEL_ORIGIN,
+    contactId: null,
+    transitTransactionId: null,
+  });
+
+  const incoherentArrival = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  incoherentArrival.activeTravel = validTravel("arrived");
+  incoherentArrival.vessel = {
+    status: "stationary",
+    coordinate: { ...TRAVEL_ORIGIN },
+    contactId: "contact:vanguard",
+    transitTransactionId: null,
+  };
+  const arrivalRecovery = migrateGalaxyRun(incoherentArrival);
+  assert.equal(arrivalRecovery.activeTravel, null);
+  assert.deepEqual(arrivalRecovery.vessel, incoherentArrival.vessel);
+
+  const invalidNumeric = jsonClone(createFreshGalaxyRun(COMPLETE_IDENTITY)) as Record<string, any>;
+  invalidNumeric.activeTravel = validTravel("advancing");
+  invalidNumeric.activeTravel.nextLegIndex = -1;
+  invalidNumeric.activeTravel.legs[0].supplyCost = 0.5;
+  invalidNumeric.activeTravel.supplyCost = 0;
+  invalidNumeric.vessel = {
+    status: "in_transit",
+    coordinate: { ...TRAVEL_DESTINATION },
+    contactId: null,
+    transitTransactionId: "travel:quality",
+  };
+  const numericRecovery = migrateGalaxyRun(invalidNumeric);
+  assert.equal(numericRecovery.activeTravel, null);
+  assert.deepEqual(numericRecovery.vessel, {
+    ...invalidNumeric.vessel,
+    status: "stationary",
+    coordinate: TRAVEL_ORIGIN,
+    transitTransactionId: null,
+  });
+});
+
+test("quality group 4 enforces numeric domains and accepts exact boundaries", () => {
+  const fresh = createFreshGalaxyRun(COMPLETE_IDENTITY);
+  const invalid = jsonClone(fresh) as Record<string, any>;
+  invalid.resources = { supply: 1.5, credits: Number.MAX_SAFE_INTEGER + 1, materials: [] };
+  invalid.ship.upgrades = {
+    hullPlating: -1,
+    engineBoost: 6,
+    weaponCore: 2.5,
+    munitionsBay: Number.MAX_SAFE_INTEGER,
+    fireControl: Number.POSITIVE_INFINITY,
+    shieldGenerator: "5",
+  };
+  invalid.pilot.xp = 0.5;
+  invalid.pilot.level = MAX_PILOT_LEVEL + 1;
+  invalid.pilot.skillPoints = Number.MAX_SAFE_INTEGER + 1;
+  invalid.colonies[0].lastGameClock = {
+    day: 0.5,
+    hour: 24,
+    minute: 60,
+    realtimeMsPerGameMinute: 0,
+    season: "standard",
+  };
+  invalid.colonies[0].siteStats = {
+    oreDensity: -1,
+    waterTable: 101,
+    buildableSlots: 7,
+    threat: Number.NaN,
+  };
+  invalid.colonies[0].backgroundColonistDensity = 1.1;
+  invalid.colonies[0].happiness = 101;
+  invalid.factionStandings = [
+    { factionId: "earth_command", standing: 150, rank: "hostile", permissions: [] },
+    { factionId: "ashfall_camp", standing: -150, rank: "allied", permissions: [] },
+    { factionId: "free_traders", standing: 50, rank: "hostile", permissions: [] },
+  ];
+
+  const recovered = migrateGalaxyRun(invalid);
+  assert.deepEqual(recovered.resources, fresh.resources);
+  assert.deepEqual(recovered.ship.upgrades, DEFAULT_UPGRADES);
+  assert.deepEqual(recovered.pilot, fresh.pilot);
+  assert.deepEqual(recovered.colonies[0].lastGameClock, fresh.colonies[0].lastGameClock);
+  assert.deepEqual(recovered.colonies[0].siteStats, fresh.colonies[0].siteStats);
+  assert.equal(
+    recovered.colonies[0].backgroundColonistDensity,
+    fresh.colonies[0].backgroundColonistDensity,
+  );
+  assert.equal(recovered.colonies[0].happiness, fresh.colonies[0].happiness);
+  assert.deepEqual(recovered.factionStandings.map(({ standing, rank }) => ({ standing, rank })), [
+    { standing: 100, rank: "allied" },
+    { standing: -100, rank: "hostile" },
+    { standing: 50, rank: "liked" },
+  ]);
+
+  const boundary = jsonClone(fresh) as Record<string, any>;
+  boundary.resources = { supply: 0, credits: Number.MAX_SAFE_INTEGER, materials: [] };
+  boundary.ship.upgrades = {
+    hullPlating: 0,
+    engineBoost: 5,
+    weaponCore: 0,
+    munitionsBay: 5,
+    fireControl: 0,
+    shieldGenerator: 5,
+  };
+  boundary.pilot = {
+    ...boundary.pilot,
+    xp: Number.MAX_SAFE_INTEGER,
+    level: MAX_PILOT_LEVEL,
+    skillPoints: 0,
+  };
+  boundary.colonies[0].lastGameClock = {
+    day: 0,
+    hour: 23,
+    minute: 59,
+    realtimeMsPerGameMinute: 0.01,
+    season: "standard",
+  };
+  boundary.colonies[0].siteStats = {
+    oreDensity: 0,
+    waterTable: 100,
+    buildableSlots: 0,
+    threat: 100,
+  };
+  boundary.colonies[0].backgroundColonistDensity = 1;
+  boundary.colonies[0].happiness = 0;
+  boundary.factionStandings = [
+    { factionId: "lower", standing: -100, rank: "allied", permissions: [] },
+    { factionId: "upper", standing: 100, rank: "hostile", permissions: [] },
+  ];
+
+  const preserved = migrateGalaxyRun(boundary);
+  assert.deepEqual(preserved.resources, boundary.resources);
+  assert.deepEqual(preserved.ship.upgrades, boundary.ship.upgrades);
+  assert.equal(preserved.pilot.xp, Number.MAX_SAFE_INTEGER);
+  assert.equal(preserved.pilot.level, MAX_PILOT_LEVEL);
+  assert.equal(preserved.pilot.skillPoints, 0);
+  assert.deepEqual(preserved.colonies[0].lastGameClock, boundary.colonies[0].lastGameClock);
+  assert.deepEqual(preserved.colonies[0].siteStats, boundary.colonies[0].siteStats);
+  assert.equal(preserved.colonies[0].backgroundColonistDensity, 1);
+  assert.equal(preserved.colonies[0].happiness, 0);
+  assert.deepEqual(preserved.factionStandings.map(({ standing, rank }) => ({ standing, rank })), [
+    { standing: -100, rank: "hostile" },
+    { standing: 100, rank: "allied" },
+  ]);
+});
+
+test("quality group 5 keeps the save selector coherent with a recovered run", () => {
+  const missing = migrateSave({ activeExperience: "galaxy", galaxyRun: null });
+  const malformed = migrateSave({ activeExperience: "galaxy", galaxyRun: [] });
+  const invalidObject = migrateSave({ activeExperience: "galaxy", galaxyRun: {} });
+  assert.equal(missing.activeExperience, "legacy");
+  assert.equal(missing.galaxyRun, null);
+  assert.equal(malformed.activeExperience, "legacy");
+  assert.equal(malformed.galaxyRun, null);
+  assert.equal(invalidObject.activeExperience, "legacy");
+  assert.equal(invalidObject.galaxyRun, null);
+
+  const stored = createFreshGalaxyRun(COMPLETE_IDENTITY);
+  const legacy = migrateSave({ activeExperience: "legacy", galaxyRun: stored });
+  assert.equal(legacy.activeExperience, "legacy");
+  assert.deepEqual(legacy.galaxyRun, stored);
+});
+
+test("quality group 6 uses supplied identities and neutral unsupported recovery", () => {
+  const alternateIdentity = {
+    galaxySeed: "alternate-supported-seed",
+    generationVersion: 1,
+    authoredAnchorRegistryVersion: 1,
+  };
+  const first = createFreshGalaxyRun(alternateIdentity);
+  const second = createFreshGalaxyRun(alternateIdentity);
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.identity, alternateIdentity);
+  for (const fact of Object.values(first.atlas.materializedFacts)) {
+    const resolved = resolveCell(alternateIdentity, fact.coordinate);
+    assert.equal(resolved.ok, true);
+    if (resolved.ok) assert.deepEqual(fact, resolved.fact);
+  }
+
+  const unsupportedGeneration = {
+    galaxySeed: "future-generation",
+    generationVersion: 999,
+    authoredAnchorRegistryVersion: 1,
+  };
+  const unsupportedRegistry = {
+    galaxySeed: "future-registry",
+    generationVersion: 1,
+    authoredAnchorRegistryVersion: 999,
+  };
+  assert.throws(
+    () => createFreshGalaxyRun(unsupportedGeneration),
+    { name: "RangeError", message: "Cannot create fresh galaxy run: unsupported_generation_version" },
+  );
+  assert.throws(
+    () => createFreshGalaxyRun(unsupportedRegistry),
+    { name: "RangeError", message: "Cannot create fresh galaxy run: unsupported_registry_version" },
+  );
+  const legacySave = migrateSave({ credits: 17 });
+  const before = jsonClone(legacySave);
+  assert.throws(
+    () => startFreshGalaxy(legacySave, unsupportedGeneration),
+    { name: "RangeError", message: "Cannot create fresh galaxy run: unsupported_generation_version" },
+  );
+  assert.deepEqual(legacySave, before);
+
+  const migrated = migrateGalaxyRun({
+    identity: unsupportedGeneration,
+    operations: {
+      "op:future": {
+        state: "active",
+        acceptedCycle: 4,
+        resolvedCycle: null,
+        completionIds: ["future:completion"],
+      },
+    },
+  });
+  assert.deepEqual(migrated.identity, unsupportedGeneration);
+  assert.deepEqual(getGalaxyRunAvailability(migrated), {
+    status: "unavailable",
+    recoverable: true,
+    reason: "unsupported_generation_version",
+  });
+  assert.deepEqual(migrated.atlas, {
+    materializedFacts: {},
+    knowledge: {},
+    mappedCellKeys: [],
+    accessFacts: [],
+    threatObservations: [],
+  });
+  assert.deepEqual(Object.keys(migrated.operations), ["op:future"]);
+  assert.deepEqual(migrated.resources, { supply: 0, credits: 0, materials: [] });
+  assert.deepEqual(migrated.colonies, []);
+  assert.deepEqual(migrated.planets, []);
+  assert.deepEqual(migrated.factionStandings, []);
+  assert.deepEqual(migrated.historyFacts, []);
+  assert.deepEqual(migrated.appliedOutcomeIds, []);
 });

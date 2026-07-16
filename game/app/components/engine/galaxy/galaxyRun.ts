@@ -1,6 +1,10 @@
 import { Events } from "../../colony/shared/colonyEvents";
 import { colonyReducer } from "../../colony/shared/colonyReducer";
-import { defaultFactionStandings } from "../../colony/shared/factionLedger";
+import {
+  clampStanding,
+  defaultFactionStandings,
+  rankFromStanding,
+} from "../../colony/shared/factionLedger";
 import {
   ASHFALL_REGION_SEED,
   createPlanetRegionState,
@@ -18,6 +22,7 @@ import type {
   Threat,
 } from "../../colony/shared/colonyTypes";
 import { DEFAULT_UPGRADES, EnemyType } from "../types";
+import { MAX_PILOT_LEVEL } from "../pilotLevel";
 import type {
   BestiaryEntry,
   ConsumableId,
@@ -39,7 +44,7 @@ import {
   resolveCell,
   visitFact,
 } from "./atlas";
-import { coord, validateCoordinate } from "./coordinates";
+import { coord, sameCoordinate, validateCoordinate } from "./coordinates";
 import type {
   AccessFact,
   AtlasCellFact,
@@ -281,13 +286,6 @@ const PLANET_BIOMES: readonly PlanetState["biome"][] = [
   "barren",
   "toxic",
 ];
-const FACTION_RANKS: readonly FactionStanding["rank"][] = [
-  "hostile",
-  "hated",
-  "neutral",
-  "liked",
-  "allied",
-];
 const SEASONS: readonly GameClock["season"][] = [
   "standard",
   "storm",
@@ -405,7 +403,7 @@ const STARTING_THREAT_BANDS: Readonly<
   }),
 });
 
-function startingAtlas(): GalaxyAtlasState {
+function startingAtlas(identity: AtlasGenerationIdentity): GalaxyAtlasState {
   let atlas: GalaxyAtlasState = {
     materializedFacts: {},
     knowledge: {},
@@ -415,7 +413,7 @@ function startingAtlas(): GalaxyAtlasState {
   };
 
   for (const contact of STARTING_CONTACTS) {
-    const resolved = resolveCell(G0_GENERATION_IDENTITY, contact.coordinate);
+    const resolved = resolveCell(identity, contact.coordinate);
     if (!resolved.ok || resolved.fact.id !== contact.subjectId) {
       throw new Error(`Unable to materialize authored G0 anchor ${contact.subjectId}`);
     }
@@ -593,6 +591,10 @@ function initialHistoryFacts(): HistoricalFact[] {
 export function createFreshGalaxyRun(
   identity: AtlasGenerationIdentity = G0_GENERATION_IDENTITY,
 ): GalaxyRunState {
+  const availability = getGalaxyRunAvailability(identity);
+  if (availability.status === "unavailable") {
+    throw new RangeError(`Cannot create fresh galaxy run: ${availability.reason}`);
+  }
   const colonyState = startingColoniesAndPlanets();
   return {
     identity: { ...identity },
@@ -621,7 +623,7 @@ export function createFreshGalaxyRun(
       contactId: "contact:vanguard",
       transitTransactionId: null,
     },
-    atlas: startingAtlas(),
+    atlas: startingAtlas(identity),
     operations: initialOperations(),
     activeTravel: null,
     colonies: colonyState.colonies,
@@ -666,6 +668,53 @@ export function getGalaxyRunAvailability(
     };
   }
   return { status: "available" };
+}
+
+function createGenerationNeutralRecoverySkeleton(
+  identity: AtlasGenerationIdentity,
+): GalaxyRunState {
+  return {
+    identity: { ...identity },
+    worldCycle: 0,
+    nextTransactionOrdinal: 1,
+    resources: { supply: 0, credits: 0, materials: [] },
+    ship: {
+      upgrades: { ...DEFAULT_UPGRADES },
+      unlockedEnhancements: [],
+      equippedWeaponType: "kinetic",
+      consumableInventory: {},
+      equippedConsumables: [],
+    },
+    pilot: {
+      xp: 0,
+      level: 1,
+      skillPoints: 0,
+      allocatedSkills: [],
+      bestiary: {},
+    },
+    codex: { unlocked: [], viewed: [] },
+    storyItems: [],
+    vessel: {
+      status: "stationary",
+      coordinate: coord(0, 0, 0, 0),
+      contactId: null,
+      transitTransactionId: null,
+    },
+    atlas: {
+      materializedFacts: {},
+      knowledge: {},
+      mappedCellKeys: [],
+      accessFacts: [],
+      threatObservations: [],
+    },
+    operations: {},
+    activeTravel: null,
+    colonies: [],
+    planets: [],
+    factionStandings: [],
+    historyFacts: [],
+    appliedOutcomeIds: [],
+  };
 }
 
 function record(value: unknown): UnknownRecord | null {
@@ -721,6 +770,26 @@ function nonnegativeFinite(value: unknown, fallback: number): number {
     : fallback;
 }
 
+function finiteInRange(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+): number {
+  return typeof value === "number"
+      && Number.isFinite(value)
+      && value >= minimum
+      && value <= maximum
+    ? value
+    : fallback;
+}
+
+function positiveFinite(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : fallback;
+}
+
 function nonnegativeSafeInteger(value: unknown, fallback: number): number {
   return Number.isSafeInteger(value) && (value as number) >= 0
     ? value as number
@@ -729,6 +798,19 @@ function nonnegativeSafeInteger(value: unknown, fallback: number): number {
 
 function positiveSafeInteger(value: unknown, fallback: number): number {
   return Number.isSafeInteger(value) && (value as number) >= 1
+    ? value as number
+    : fallback;
+}
+
+function safeIntegerInRange(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+): number {
+  return Number.isSafeInteger(value)
+      && (value as number) >= minimum
+      && (value as number) <= maximum
     ? value as number
     : fallback;
 }
@@ -754,10 +836,15 @@ function nullableNonnegativeSafeInteger(
 }
 
 function stringArray(value: unknown, fallback: readonly string[]): string[] {
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-    return [...fallback];
+  const source = Array.isArray(value) ? value : fallback;
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of source) {
+    if (typeof entry !== "string" || seen.has(entry)) continue;
+    seen.add(entry);
+    result.push(entry);
   }
-  return [...value];
+  return result;
 }
 
 function enumArray<T extends string>(
@@ -871,13 +958,15 @@ function migrateIdentity(
 function migrateUpgrades(value: unknown, fallback: ShipUpgrades): ShipUpgrades {
   const source = record(value);
   return {
-    hullPlating: nonnegativeSafeInteger(own(source, "hullPlating"), fallback.hullPlating),
-    engineBoost: nonnegativeSafeInteger(own(source, "engineBoost"), fallback.engineBoost),
-    weaponCore: nonnegativeSafeInteger(own(source, "weaponCore"), fallback.weaponCore),
-    munitionsBay: nonnegativeSafeInteger(own(source, "munitionsBay"), fallback.munitionsBay),
-    fireControl: nonnegativeSafeInteger(own(source, "fireControl"), fallback.fireControl),
-    shieldGenerator: nonnegativeSafeInteger(
+    hullPlating: safeIntegerInRange(own(source, "hullPlating"), 0, 5, fallback.hullPlating),
+    engineBoost: safeIntegerInRange(own(source, "engineBoost"), 0, 5, fallback.engineBoost),
+    weaponCore: safeIntegerInRange(own(source, "weaponCore"), 0, 5, fallback.weaponCore),
+    munitionsBay: safeIntegerInRange(own(source, "munitionsBay"), 0, 5, fallback.munitionsBay),
+    fireControl: safeIntegerInRange(own(source, "fireControl"), 0, 5, fallback.fireControl),
+    shieldGenerator: safeIntegerInRange(
       own(source, "shieldGenerator"),
+      0,
+      5,
       fallback.shieldGenerator,
     ),
   };
@@ -893,9 +982,7 @@ function migrateConsumableInventory(
   for (const id of CONSUMABLE_IDS) {
     const entry = own(source, id);
     if (entry === undefined) continue;
-    if (!Number.isSafeInteger(entry) || (entry as number) < 0) {
-      return { ...fallback };
-    }
+    if (!Number.isSafeInteger(entry) || (entry as number) < 0) continue;
     result[id] = entry as number;
   }
   return result;
@@ -979,7 +1066,7 @@ function migratePilot(value: unknown, fallback: GalaxyPilotState): GalaxyPilotSt
   const source = record(value);
   return {
     xp: nonnegativeSafeInteger(own(source, "xp"), fallback.xp),
-    level: positiveSafeInteger(own(source, "level"), fallback.level),
+    level: safeIntegerInRange(own(source, "level"), 1, MAX_PILOT_LEVEL, fallback.level),
     skillPoints: nonnegativeSafeInteger(own(source, "skillPoints"), fallback.skillPoints),
     allocatedSkills: enumArray(
       own(source, "allocatedSkills"),
@@ -1043,13 +1130,27 @@ function migrateRouteLeg(
 ): RouteLeg | null {
   const source = record(value);
   if (source === null || typeof own(source, "id") !== "string") return null;
+  const distanceUnits = own(source, "distanceUnits");
+  const cycles = own(source, "cycles");
+  const supplyCost = own(source, "supplyCost");
+  if (
+    !validateCoordinate(own(source, "from")).ok
+    || !validateCoordinate(own(source, "to")).ok
+    || typeof distanceUnits !== "number"
+    || !Number.isFinite(distanceUnits)
+    || distanceUnits < 0
+    || !Number.isSafeInteger(cycles)
+    || (cycles as number) < 0
+    || !Number.isSafeInteger(supplyCost)
+    || (supplyCost as number) < 0
+  ) return null;
   return {
     id: own(source, "id") as string,
     from: migrateCoordinate(own(source, "from"), coordinateFallback),
     to: migrateCoordinate(own(source, "to"), coordinateFallback),
-    distanceUnits: nonnegativeFinite(own(source, "distanceUnits"), 0),
-    cycles: nonnegativeSafeInteger(own(source, "cycles"), 0),
-    supplyCost: nonnegativeFinite(own(source, "supplyCost"), 0),
+    distanceUnits,
+    cycles: cycles as number,
+    supplyCost: supplyCost as number,
     interruptionCauseId: nullableString(own(source, "interruptionCauseId"), null),
   };
 }
@@ -1061,6 +1162,21 @@ function migrateTravel(
   if (value === null) return null;
   const source = record(value);
   if (source === null) return null;
+  const state = enumMatch(own(source, "state"), TRAVEL_STATES);
+  if (state === undefined) return null;
+  const nextLegIndex = own(source, "nextLegIndex");
+  const supplyCost = own(source, "supplyCost");
+  const elapsedCycles = own(source, "elapsedCycles");
+  if (
+    !validateCoordinate(own(source, "origin")).ok
+    || !validateCoordinate(own(source, "destination")).ok
+    || !Number.isSafeInteger(nextLegIndex)
+    || (nextLegIndex as number) < 0
+    || !Number.isSafeInteger(supplyCost)
+    || (supplyCost as number) < 0
+    || !Number.isSafeInteger(elapsedCycles)
+    || (elapsedCycles as number) < 0
+  ) return null;
   const rawLegs = own(source, "legs");
   const legs = Array.isArray(rawLegs)
     ? rawLegs.flatMap((entry) => {
@@ -1069,22 +1185,108 @@ function migrateTravel(
       })
     : [];
   return {
-    transactionId: stringValue(own(source, "transactionId"), "travel:recovered"),
-    state: enumValue(own(source, "state"), TRAVEL_STATES, "committed"),
-    routePlanId: stringValue(own(source, "routePlanId"), "route:recovered"),
+    transactionId: stringValue(own(source, "transactionId"), ""),
+    state,
+    routePlanId: stringValue(own(source, "routePlanId"), ""),
     origin: migrateCoordinate(own(source, "origin"), coordinateFallback),
     destination: migrateCoordinate(own(source, "destination"), coordinateFallback),
     targetId: nullableString(own(source, "targetId"), null),
     legs,
-    nextLegIndex: nonnegativeSafeInteger(own(source, "nextLegIndex"), 0),
+    nextLegIndex: nextLegIndex as number,
     appliedCheckpointIds: stringArray(own(source, "appliedCheckpointIds"), []),
-    supplyCost: nonnegativeFinite(own(source, "supplyCost"), 0),
-    elapsedCycles: nonnegativeSafeInteger(own(source, "elapsedCycles"), 0),
+    supplyCost: supplyCost as number,
+    elapsedCycles: elapsedCycles as number,
     interruptionOperationId: nullableString(
       own(source, "interruptionOperationId"),
       null,
     ),
   };
+}
+
+function travelCommitmentIsCoherent(
+  travel: TravelCommitment,
+  vessel: GalaxyRunState["vessel"],
+): boolean {
+  if (travel.transactionId.length === 0 || travel.routePlanId.length === 0) return false;
+  if (
+    travel.legs.length === 0
+    || travel.nextLegIndex < 0
+    || travel.nextLegIndex > travel.legs.length
+  ) return false;
+  if (!sameCoordinate(travel.legs[0].from, travel.origin)) return false;
+  if (!sameCoordinate(travel.legs[travel.legs.length - 1].to, travel.destination)) {
+    return false;
+  }
+
+  const legIds = new Set<string>();
+  let totalSupply = 0;
+  for (let index = 0; index < travel.legs.length; index++) {
+    const leg = travel.legs[index];
+    if (leg.id.length === 0 || legIds.has(leg.id)) return false;
+    legIds.add(leg.id);
+    totalSupply += leg.supplyCost;
+    if (!Number.isSafeInteger(totalSupply)) return false;
+    if (index > 0 && !sameCoordinate(travel.legs[index - 1].to, leg.from)) return false;
+  }
+  if (totalSupply !== travel.supplyCost) return false;
+
+  if (
+    travel.state === "committed"
+    || travel.state === "advancing"
+    || travel.state === "interrupted"
+  ) {
+    return vessel.status === "in_transit"
+      && vessel.transitTransactionId === travel.transactionId;
+  }
+  if (travel.state === "diverted") {
+    return vessel.status === "stranded"
+      && vessel.transitTransactionId === travel.transactionId;
+  }
+  if (travel.state === "arrived") {
+    return vessel.status === "stationary"
+      && vessel.transitTransactionId === null
+      && travel.nextLegIndex === travel.legs.length
+      && sameCoordinate(vessel.coordinate, travel.destination);
+  }
+  return vessel.status === "stationary"
+    && vessel.transitTransactionId === null
+    && (
+      sameCoordinate(vessel.coordinate, travel.origin)
+      || sameCoordinate(vessel.coordinate, travel.destination)
+    );
+}
+
+function reconcileTravel(
+  travel: TravelCommitment | null,
+  vessel: GalaxyRunState["vessel"],
+  recoveryOrigin: GalaxyRunState["vessel"]["coordinate"] | null,
+): Pick<GalaxyRunState, "activeTravel" | "vessel"> {
+  if (travel !== null && travelCommitmentIsCoherent(travel, vessel)) {
+    return { activeTravel: travel, vessel };
+  }
+  if (travel === null && vessel.status === "stationary") {
+    return { activeTravel: null, vessel };
+  }
+  return {
+    activeTravel: null,
+    vessel: {
+      ...vessel,
+      status: "stationary",
+      coordinate: vessel.status === "stationary"
+        ? { ...vessel.coordinate }
+        : { ...(travel?.origin ?? recoveryOrigin ?? vessel.coordinate) },
+      transitTransactionId: null,
+    },
+  };
+}
+
+function travelRecoveryOrigin(
+  value: unknown,
+): GalaxyRunState["vessel"]["coordinate"] | null {
+  const source = record(value);
+  const origin = own(source, "origin");
+  if (!validateCoordinate(origin).ok) return null;
+  return migrateCoordinate(origin, coord(0, 0, 0, 0));
 }
 
 function cloneCellFact(fact: AtlasCellFact): AtlasCellFact {
@@ -1221,6 +1423,10 @@ function migrateAccessFact(
   const assessment = enumMatch(own(source, "assessment"), ACCESS_ASSESSMENTS)
     ?? fallback?.assessment;
   if (assessment === undefined) return null;
+  if (fallback === undefined && (
+    typeof own(source, "id") !== "string"
+    || typeof own(source, "subjectId") !== "string"
+  )) return null;
   return {
     id: stringValue(own(source, "id"), fallback?.id ?? "access:recovered"),
     subjectId: stringValue(
@@ -1241,17 +1447,19 @@ function migrateAccessFacts(
     return fallback.map((fact) => ({ ...fact, causeFactIds: [...fact.causeFactIds] }));
   }
   const fallbackById = new Map(fallback.map((fact) => [fact.id, fact]));
-  return value.flatMap((entry, index) => {
+  const result: AccessFact[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
     const entrySource = record(entry);
     const id = typeof own(entrySource, "id") === "string"
       ? own(entrySource, "id") as string
       : undefined;
-    const migrated = migrateAccessFact(
-      entry,
-      id === undefined ? fallback[index] : fallbackById.get(id) ?? fallback[index],
-    );
-    return migrated === null ? [] : [migrated];
-  });
+    const migrated = migrateAccessFact(entry, id === undefined ? undefined : fallbackById.get(id));
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
+    result.push(migrated);
+  }
+  return result;
 }
 
 function migrateThreatObservation(
@@ -1275,6 +1483,10 @@ function migrateThreatObservation(
   ) {
     return null;
   }
+  if (fallback === undefined && (
+    typeof own(source, "id") !== "string"
+    || typeof own(source, "subjectId") !== "string"
+  )) return null;
   return {
     id: stringValue(own(source, "id"), fallback?.id ?? "threat:recovered"),
     subjectId: stringValue(
@@ -1298,22 +1510,30 @@ function migrateThreatObservations(
 ): ThreatObservation[] {
   if (!Array.isArray(value)) return fallback.map((observation) => ({ ...observation }));
   const fallbackById = new Map(fallback.map((observation) => [observation.id, observation]));
-  return value.flatMap((entry, index) => {
+  const result: ThreatObservation[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
     const entrySource = record(entry);
     const id = typeof own(entrySource, "id") === "string"
       ? own(entrySource, "id") as string
       : undefined;
     const migrated = migrateThreatObservation(
       entry,
-      id === undefined ? fallback[index] : fallbackById.get(id) ?? fallback[index],
+      id === undefined ? undefined : fallbackById.get(id),
     );
-    return migrated === null ? [] : [migrated];
-  });
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
+    result.push(migrated);
+  }
+  return result;
 }
 
-function migrateAtlas(value: unknown, fallback: GalaxyAtlasState): GalaxyAtlasState {
+function migrateAtlas(
+  value: unknown,
+  fallback: GalaxyAtlasState,
+  coordinateFallback: GalaxyRunState["vessel"]["coordinate"],
+): GalaxyAtlasState {
   const source = record(value);
-  const coordinateFallback = coord(0, 0, 512, 512);
   return {
     materializedFacts: migrateCellFactMap(
       own(source, "materializedFacts"),
@@ -1370,17 +1590,19 @@ function migrateHistoryFacts(
     return fallback.map((fact) => ({ ...fact, causeFactIds: [...fact.causeFactIds] }));
   }
   const fallbackById = new Map(fallback.map((fact) => [fact.id, fact]));
-  return value.flatMap((entry, index) => {
+  const result: HistoricalFact[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
     const source = record(entry);
     const id = typeof own(source, "id") === "string"
       ? own(source, "id") as string
       : undefined;
-    const migrated = migrateHistoryFact(
-      entry,
-      id === undefined ? fallback[index] : fallbackById.get(id) ?? fallback[index],
-    );
-    return migrated === null ? [] : [migrated];
-  });
+    const migrated = migrateHistoryFact(entry, id === undefined ? undefined : fallbackById.get(id));
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
+    result.push(migrated);
+  }
+  return result;
 }
 
 function numberEnumMatch<T extends number>(
@@ -1394,9 +1616,9 @@ function migrateGameClock(value: unknown, fallback: GameClock): GameClock {
   const source = record(value);
   return {
     day: nonnegativeSafeInteger(own(source, "day"), fallback.day),
-    hour: nonnegativeSafeInteger(own(source, "hour"), fallback.hour),
-    minute: nonnegativeSafeInteger(own(source, "minute"), fallback.minute),
-    realtimeMsPerGameMinute: nonnegativeFinite(
+    hour: safeIntegerInRange(own(source, "hour"), 0, 23, fallback.hour),
+    minute: safeIntegerInRange(own(source, "minute"), 0, 59, fallback.minute),
+    realtimeMsPerGameMinute: positiveFinite(
       own(source, "realtimeMsPerGameMinute"),
       fallback.realtimeMsPerGameMinute,
     ),
@@ -1407,13 +1629,15 @@ function migrateGameClock(value: unknown, fallback: GameClock): GameClock {
 function migrateSiteStats(value: unknown, fallback: SiteStats): SiteStats {
   const source = record(value);
   return {
-    oreDensity: nonnegativeFinite(own(source, "oreDensity"), fallback.oreDensity),
-    waterTable: nonnegativeFinite(own(source, "waterTable"), fallback.waterTable),
-    buildableSlots: nonnegativeSafeInteger(
+    oreDensity: finiteInRange(own(source, "oreDensity"), 0, 100, fallback.oreDensity),
+    waterTable: finiteInRange(own(source, "waterTable"), 0, 100, fallback.waterTable),
+    buildableSlots: safeIntegerInRange(
       own(source, "buildableSlots"),
+      0,
+      6,
       fallback.buildableSlots,
     ),
-    threat: nonnegativeFinite(own(source, "threat"), fallback.threat),
+    threat: finiteInRange(own(source, "threat"), 0, 100, fallback.threat),
   };
 }
 
@@ -1440,10 +1664,9 @@ function migrateDeathRecords(
 ): DeathRecord[] {
   if (!Array.isArray(value)) return fallback.map((entry) => ({ ...entry }));
   const result: DeathRecord[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const migrated = migrateDeathRecord(value[index], fallback[index]);
-    if (migrated === null) return fallback.map((entry) => ({ ...entry }));
-    result.push(migrated);
+  for (const entry of value) {
+    const migrated = migrateDeathRecord(entry, undefined);
+    if (migrated !== null) result.push(migrated);
   }
   return result;
 }
@@ -1496,10 +1719,15 @@ function migrateBuildings(
       assignedNpcIds: [...building.assignedNpcIds],
     }));
   }
+  const fallbackById = new Map(fallback.map((building) => [building.id, building]));
   const result: ColonyBuilding[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const migrated = migrateBuilding(value[index], fallback[index]);
-    if (migrated === null) return migrateBuildings(undefined, fallback);
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const source = record(entry);
+    const id = typeof own(source, "id") === "string" ? own(source, "id") as string : undefined;
+    const migrated = migrateBuilding(entry, id === undefined ? undefined : fallbackById.get(id));
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
     result.push(migrated);
   }
   return result;
@@ -1563,10 +1791,15 @@ function migrateDistricts(value: unknown, fallback: readonly District[]): Distri
       tiles: district.tiles.map(([x, y]) => [x, y]),
     }));
   }
+  const fallbackById = new Map(fallback.map((district) => [district.id, district]));
   const result: District[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const migrated = migrateDistrict(value[index], fallback[index]);
-    if (migrated === null) return migrateDistricts(undefined, fallback);
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const source = record(entry);
+    const id = typeof own(source, "id") === "string" ? own(source, "id") as string : undefined;
+    const migrated = migrateDistrict(entry, id === undefined ? undefined : fallbackById.get(id));
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
     result.push(migrated);
   }
   return result;
@@ -1607,10 +1840,18 @@ function migrateColonyThreats(value: unknown, fallback: readonly Threat[]): Thre
   if (!Array.isArray(value)) {
     return fallback.map((entry) => ({ ...entry, payload: cloneSerializable(entry.payload) }));
   }
+  const fallbackById = new Map(fallback.map((threat) => [threat.id, threat]));
   const result: Threat[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const migrated = migrateColonyThreat(value[index], fallback[index]);
-    if (migrated === null) return migrateColonyThreats(undefined, fallback);
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const source = record(entry);
+    const id = typeof own(source, "id") === "string" ? own(source, "id") as string : undefined;
+    const migrated = migrateColonyThreat(
+      entry,
+      id === undefined ? undefined : fallbackById.get(id),
+    );
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
     result.push(migrated);
   }
   return result;
@@ -1693,11 +1934,18 @@ function migrateColony(
     buildings: migrateBuildings(own(source, "buildings"), fallback?.buildings ?? []),
     districts: migrateDistricts(own(source, "districts"), fallback?.districts ?? []),
     namedNpcs: stringArray(own(source, "namedNpcs"), fallback?.namedNpcs ?? []),
-    backgroundColonistDensity: nonnegativeFinite(
+    backgroundColonistDensity: finiteInRange(
       own(source, "backgroundColonistDensity"),
+      0,
+      1,
       fallback?.backgroundColonistDensity ?? 0,
     ),
-    happiness: nonnegativeFinite(own(source, "happiness"), fallback?.happiness ?? 50),
+    happiness: finiteInRange(
+      own(source, "happiness"),
+      0,
+      100,
+      fallback?.happiness ?? 50,
+    ),
     selfSufficient: booleanValue(
       own(source, "selfSufficient"),
       fallback?.selfSufficient ?? false,
@@ -1745,14 +1993,13 @@ function migrateColonies(value: unknown, fallback: readonly ColonyState[]): Colo
   if (!Array.isArray(value)) return cloneColonies(fallback);
   const fallbackById = new Map(fallback.map((colony) => [colony.id, colony]));
   const result: ColonyState[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const source = record(value[index]);
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const source = record(entry);
     const id = typeof own(source, "id") === "string" ? own(source, "id") as string : undefined;
-    const migrated = migrateColony(
-      value[index],
-      id === undefined ? fallback[index] : fallbackById.get(id) ?? fallback[index],
-    );
-    if (migrated === null) return cloneColonies(fallback);
+    const migrated = migrateColony(entry, id === undefined ? undefined : fallbackById.get(id));
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
     result.push(migrated);
   }
   return result;
@@ -1873,14 +2120,13 @@ function migrateRegionNodes(
   }
   const fallbackById = new Map(fallback.map((node) => [node.id, node]));
   const result: RegionNode[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const source = record(value[index]);
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const source = record(entry);
     const id = typeof own(source, "id") === "string" ? own(source, "id") as string : undefined;
-    const migrated = migrateRegionNode(
-      value[index],
-      id === undefined ? fallback[index] : fallbackById.get(id) ?? fallback[index],
-    );
-    if (migrated === null) return migrateRegionNodes(undefined, fallback);
+    const migrated = migrateRegionNode(entry, id === undefined ? undefined : fallbackById.get(id));
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
     result.push(migrated);
   }
   return result;
@@ -1892,6 +2138,7 @@ function migrateEdges(
 ): Array<[string, string]> {
   if (!Array.isArray(value)) return fallback.map(([from, to]) => [from, to]);
   const result: Array<[string, string]> = [];
+  const seen = new Set<string>();
   for (const edge of value) {
     if (
       !Array.isArray(edge) ||
@@ -1899,8 +2146,11 @@ function migrateEdges(
       typeof edge[0] !== "string" ||
       typeof edge[1] !== "string"
     ) {
-      return fallback.map(([from, to]) => [from, to]);
+      continue;
     }
+    const key = `${edge[0]}\u0000${edge[1]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     result.push([edge[0], edge[1]]);
   }
   return result;
@@ -1945,14 +2195,13 @@ function migratePlanets(value: unknown, fallback: readonly PlanetState[]): Plane
   if (!Array.isArray(value)) return clonePlanets(fallback);
   const fallbackById = new Map(fallback.map((planet) => [planet.id, planet]));
   const result: PlanetState[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const source = record(value[index]);
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const source = record(entry);
     const id = enumMatch(own(source, "id"), PLANET_IDS);
-    const migrated = migratePlanet(
-      value[index],
-      id === undefined ? fallback[index] : fallbackById.get(id) ?? fallback[index],
-    );
-    if (migrated === null) return clonePlanets(fallback);
+    const migrated = migratePlanet(entry, id === undefined ? undefined : fallbackById.get(id));
+    if (migrated === null || seen.has(migrated.id)) continue;
+    seen.add(migrated.id);
     result.push(migrated);
   }
   return result;
@@ -1968,22 +2217,33 @@ function migrateFactionStanding(
       ? null
       : { ...fallback, permissions: [...fallback.permissions] };
   }
-  const rank = enumMatch(own(source, "rank"), FACTION_RANKS) ?? fallback?.rank;
-  if (rank === undefined) return null;
-  if (fallback === undefined && typeof own(source, "factionId") !== "string") return null;
+  if (fallback === undefined && (
+    typeof own(source, "factionId") !== "string"
+    || typeof own(source, "standing") !== "number"
+    || !Number.isFinite(own(source, "standing"))
+  )) return null;
+  const standing = clampStanding(finiteValue(own(source, "standing"), fallback?.standing ?? 0));
   return {
     factionId: stringValue(
       own(source, "factionId"),
       fallback?.factionId ?? "faction:unknown",
     ),
-    standing: finiteValue(own(source, "standing"), fallback?.standing ?? 0),
-    rank,
+    standing,
+    rank: rankFromStanding(standing),
     permissions: stringArray(own(source, "permissions"), fallback?.permissions ?? []),
   };
 }
 
 function cloneFactionStandings(fallback: readonly FactionStanding[]): FactionStanding[] {
-  return fallback.map((standing) => ({ ...standing, permissions: [...standing.permissions] }));
+  return fallback.map((entry) => {
+    const standing = clampStanding(entry.standing);
+    return {
+      ...entry,
+      standing,
+      rank: rankFromStanding(standing),
+      permissions: stringArray(entry.permissions, []),
+    };
+  });
 }
 
 function migrateFactionStandings(
@@ -1993,16 +2253,18 @@ function migrateFactionStandings(
   if (!Array.isArray(value)) return cloneFactionStandings(fallback);
   const fallbackById = new Map(fallback.map((standing) => [standing.factionId, standing]));
   const result: FactionStanding[] = [];
-  for (let index = 0; index < value.length; index++) {
-    const source = record(value[index]);
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const source = record(entry);
     const id = typeof own(source, "factionId") === "string"
       ? own(source, "factionId") as string
       : undefined;
     const migrated = migrateFactionStanding(
-      value[index],
-      id === undefined ? fallback[index] : fallbackById.get(id) ?? fallback[index],
+      entry,
+      id === undefined ? undefined : fallbackById.get(id),
     );
-    if (migrated === null) return cloneFactionStandings(fallback);
+    if (migrated === null || seen.has(migrated.factionId)) continue;
+    seen.add(migrated.factionId);
     result.push(migrated);
   }
   return result;
@@ -2014,10 +2276,38 @@ export function migrateGalaxyRun(
 ): GalaxyRunState {
   const source = record(raw);
   const identity = migrateIdentity(own(source, "identity"), fallbackIdentity);
-  const fallback = createFreshGalaxyRun(identity);
+  const availability = getGalaxyRunAvailability(identity);
+  const fallback = availability.status === "available"
+    ? createFreshGalaxyRun(identity)
+    : createGenerationNeutralRecoverySkeleton(identity);
   const resourcesSource = record(own(source, "resources"));
   const codexSource = record(own(source, "codex"));
   const vesselSource = record(own(source, "vessel"));
+  const rawTravel = own(source, "activeTravel");
+  const vessel: GalaxyRunState["vessel"] = {
+    status: enumValue(
+      own(vesselSource, "status"),
+      VESSEL_STATUSES,
+      fallback.vessel.status,
+    ),
+    coordinate: migrateCoordinate(
+      own(vesselSource, "coordinate"),
+      fallback.vessel.coordinate,
+    ),
+    contactId: nullableString(
+      own(vesselSource, "contactId"),
+      fallback.vessel.contactId,
+    ),
+    transitTransactionId: nullableString(
+      own(vesselSource, "transitTransactionId"),
+      fallback.vessel.transitTransactionId,
+    ),
+  };
+  const travel = reconcileTravel(
+    migrateTravel(rawTravel, fallback.vessel.coordinate),
+    vessel,
+    travelRecoveryOrigin(rawTravel),
+  );
 
   return {
     identity,
@@ -2027,11 +2317,11 @@ export function migrateGalaxyRun(
       fallback.nextTransactionOrdinal,
     ),
     resources: {
-      supply: nonnegativeFinite(
+      supply: nonnegativeSafeInteger(
         own(resourcesSource, "supply"),
         fallback.resources.supply,
       ),
-      credits: nonnegativeFinite(
+      credits: nonnegativeSafeInteger(
         own(resourcesSource, "credits"),
         fallback.resources.credits,
       ),
@@ -2052,28 +2342,10 @@ export function migrateGalaxyRun(
       STORY_ITEM_IDS,
       fallback.storyItems,
     ),
-    vessel: {
-      status: enumValue(
-        own(vesselSource, "status"),
-        VESSEL_STATUSES,
-        fallback.vessel.status,
-      ),
-      coordinate: migrateCoordinate(
-        own(vesselSource, "coordinate"),
-        fallback.vessel.coordinate,
-      ),
-      contactId: nullableString(
-        own(vesselSource, "contactId"),
-        fallback.vessel.contactId,
-      ),
-      transitTransactionId: nullableString(
-        own(vesselSource, "transitTransactionId"),
-        fallback.vessel.transitTransactionId,
-      ),
-    },
-    atlas: migrateAtlas(own(source, "atlas"), fallback.atlas),
+    vessel: travel.vessel,
+    atlas: migrateAtlas(own(source, "atlas"), fallback.atlas, fallback.vessel.coordinate),
     operations: migrateOperationMap(own(source, "operations"), fallback.operations),
-    activeTravel: migrateTravel(own(source, "activeTravel"), fallback.vessel.coordinate),
+    activeTravel: travel.activeTravel,
     colonies: migrateColonies(own(source, "colonies"), fallback.colonies),
     planets: migratePlanets(own(source, "planets"), fallback.planets),
     factionStandings: migrateFactionStandings(

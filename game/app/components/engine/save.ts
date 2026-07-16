@@ -83,6 +83,18 @@ function createDefaultSave(): SaveData {
 export function migrateSave(raw: Record<string, unknown>): SaveData {
   const colonies = migrateColonies(raw.colonies);
   const planets = migratePlanets(raw.planets, colonies);
+  const rawGalaxyRun = raw.galaxyRun;
+  const rawGalaxyIdentity = rawGalaxyRun !== null
+      && typeof rawGalaxyRun === "object"
+      && !Array.isArray(rawGalaxyRun)
+      && Object.prototype.hasOwnProperty.call(rawGalaxyRun, "identity")
+    ? (rawGalaxyRun as Record<string, unknown>).identity
+    : null;
+  const galaxyRun = rawGalaxyIdentity !== null
+      && typeof rawGalaxyIdentity === "object"
+      && !Array.isArray(rawGalaxyIdentity)
+    ? migrateGalaxyRun(rawGalaxyRun)
+    : null;
   return {
     currentWorld: (raw.currentWorld as number) ?? 1,
     levels: (raw.levels as SaveData["levels"]) ?? {},
@@ -123,14 +135,10 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       realtimeMsPerGameMinute: 1000,
       season: "standard",
     },
-    activeExperience: raw.activeExperience === "galaxy" || raw.activeExperience === "legacy"
-      ? raw.activeExperience
+    activeExperience: raw.activeExperience === "galaxy" && galaxyRun !== null
+      ? "galaxy"
       : "legacy",
-    galaxyRun: raw.galaxyRun !== null
-      && typeof raw.galaxyRun === "object"
-      && !Array.isArray(raw.galaxyRun)
-      ? migrateGalaxyRun(raw.galaxyRun)
-      : null,
+    galaxyRun,
   };
 }
 
