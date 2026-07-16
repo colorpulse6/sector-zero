@@ -485,6 +485,157 @@ function duplicateUniqueProblem(
       fact.kind === kind && fact.subjectId === outcome.operationId));
 }
 
+type CompletionJournalStatus =
+  | { kind: "new" }
+  | { kind: "replay" }
+  | { kind: "error"; message: string };
+
+function completionJournalStatus(
+  run: GalaxyRunState,
+  outcome: NormalizedOperationOutcome,
+): CompletionJournalStatus {
+  if (!Array.isArray(run.appliedOutcomeIds)) {
+    return { kind: "error", message: "The global completion journal is malformed." };
+  }
+  const globalOccurrences = run.appliedOutcomeIds.filter((id) => id === outcome.completionId).length;
+  const owners: Array<{ operationId: string; occurrences: number }> = [];
+  for (const [operationId, rawRecord] of Object.entries(run.operations)) {
+    if (!isPlainRecord(rawRecord) || !Array.isArray(rawRecord.completionIds) ||
+      !rawRecord.completionIds.every((id) => typeof id === "string")) {
+      return { kind: "error", message: "An operation completion journal is malformed." };
+    }
+    const occurrences = rawRecord.completionIds.filter((id) => id === outcome.completionId).length;
+    if (occurrences > 0) owners.push({ operationId, occurrences });
+  }
+  if (globalOccurrences === 0 && owners.length === 0) return { kind: "new" };
+  if (
+    globalOccurrences !== 1 ||
+    owners.length !== 1 ||
+    owners[0].operationId !== outcome.operationId ||
+    owners[0].occurrences !== 1
+  ) {
+    return {
+      kind: "error",
+      message: "Completion ID does not have one coherent global and operation owner.",
+    };
+  }
+  return { kind: "replay" };
+}
+
+function incoherentReplay(message: string): OperationOutcomeError {
+  return { code: "incoherent_completion_journal", message };
+}
+
+function replayArtifactProblem(
+  run: GalaxyRunState,
+  operation: Operation,
+  outcome: NormalizedOperationOutcome,
+  record: GalaxyRunState["operations"][string],
+): OperationOutcomeError | null {
+  const expectedState = outcome.result === "success" ? "complete" : "failed";
+  const expectedResolvedCycle = outcome.authorizedCycle + operation.costs.worldCycles;
+  if (
+    record.state !== expectedState ||
+    record.acceptedCycle === null ||
+    record.acceptedCycle > outcome.authorizedCycle ||
+    !Number.isSafeInteger(expectedResolvedCycle) ||
+    record.resolvedCycle !== expectedResolvedCycle
+  ) {
+    return incoherentReplay("Resolved operation state does not match the submitted completion.");
+  }
+
+  const historyPrefix = `history:outcome:${outcome.completionId}:`;
+  const completionHistory = run.historyFacts.filter((fact) => fact.id.startsWith(historyPrefix));
+  if (completionHistory.length !== outcome.rewards.historyKinds.length) {
+    return incoherentReplay("Completion history does not match the catalog outcome.");
+  }
+  for (let index = 0; index < outcome.rewards.historyKinds.length; index += 1) {
+    const id = `${historyPrefix}${index}`;
+    const matches = completionHistory.filter((fact) => fact.id === id);
+    if (
+      matches.length !== 1 ||
+      matches[0].kind !== outcome.rewards.historyKinds[index] ||
+      matches[0].subjectId !== outcome.operationId ||
+      matches[0].cycle !== record.resolvedCycle ||
+      !sameData(matches[0].causeFactIds, outcome.causeFactIds)
+    ) {
+      return incoherentReplay(`History artifact ${id} does not match the submitted completion.`);
+    }
+  }
+
+  const knowledgePrefix = `knowledge:outcome:${outcome.completionId}:`;
+  const completionKnowledge = Object.entries(run.atlas.knowledge).filter(([, knowledge]) =>
+    knowledge.id.startsWith(knowledgePrefix) ||
+    knowledge.observedProperties?.completionId === outcome.completionId);
+  if (completionKnowledge.length !== outcome.rewards.knowledge.length) {
+    return incoherentReplay("Completion knowledge does not match the catalog outcome.");
+  }
+  for (let index = 0; index < outcome.rewards.knowledge.length; index += 1) {
+    const id = `${knowledgePrefix}${index}`;
+    const reward = outcome.rewards.knowledge[index];
+    const matches = completionKnowledge.filter(([dictionaryKey, knowledge]) =>
+      dictionaryKey === id && knowledge.id === id);
+    if (
+      matches.length !== 1 ||
+      matches[0][1].subjectId !== reward.subjectId ||
+      matches[0][1].state !== reward.state ||
+      matches[0][1].confidence !== reward.confidence ||
+      matches[0][1].source !== "direct_visit" ||
+      matches[0][1].observedCycle !== record.resolvedCycle ||
+      matches[0][1].expiresCycle !== null ||
+      !sameData(matches[0][1].observedProperties, {
+        operationId: outcome.operationId,
+        completionId: outcome.completionId,
+      })
+    ) {
+      return incoherentReplay(`Knowledge artifact ${id} does not match the submitted completion.`);
+    }
+  }
+
+  for (const accessId of outcome.rewards.accessFactIds) {
+    const matches = run.atlas.accessFacts.filter((fact) => fact.id === accessId);
+    if (
+      matches.length !== 1 ||
+      matches[0].subjectId !== outcome.contactId ||
+      matches[0].assessment !== "secured" ||
+      matches[0].cycle !== record.resolvedCycle ||
+      !sameData(matches[0].causeFactIds, outcome.causeFactIds)
+    ) {
+      return incoherentReplay(`Access artifact ${accessId} does not match the submitted completion.`);
+    }
+  }
+
+  for (const storyItemId of outcome.rewards.storyItemIds) {
+    if (run.storyItems.filter((item) => item === storyItemId).length !== 1) {
+      return incoherentReplay(`Story artifact ${storyItemId} does not match the submitted completion.`);
+    }
+  }
+
+  if (outcome.rewards.travelResolution !== "none" && run.activeTravel !== null) {
+    if (
+      outcome.travelTransactionId === null ||
+      run.activeTravel.transactionId !== outcome.travelTransactionId
+    ) {
+      return incoherentReplay("Retained travel does not own the operation completion.");
+    }
+    const sharedCheckpoint = `${outcome.travelTransactionId}:operation-outcome:${outcome.completionId}`;
+    const completionSuffix = `:operation-outcome:${outcome.completionId}`;
+    const sharedMatches = run.activeTravel.appliedCheckpointIds.filter((id) => id === sharedCheckpoint);
+    const completionMatches = run.activeTravel.appliedCheckpointIds.filter((id) =>
+      id.endsWith(completionSuffix));
+    const interruptionCheckpoint = `${outcome.travelTransactionId}:interruption:${outcome.rewards.travelResolution}`;
+    if (
+      sharedMatches.length !== 1 ||
+      completionMatches.length !== 1 ||
+      !run.activeTravel.appliedCheckpointIds.includes(interruptionCheckpoint)
+    ) {
+      return incoherentReplay("Retained travel is missing its exact shared operation-outcome checkpoint.");
+    }
+  }
+
+  return null;
+}
+
 function applyOutcomeImpl(
   parent: SaveData,
   submitted: NormalizedOperationOutcome,
@@ -526,23 +677,15 @@ function applyOutcomeImpl(
   if (outcome.authorizedCycle > run.worldCycle) {
     return failed("invalid_outcome", "Operation authorization cycle is in the future.");
   }
-  if (outcome.operationId === "op:hostile-picket") {
-    if (outcome.travelTransactionId === null || run.activeTravel?.transactionId !== outcome.travelTransactionId) {
-      return failed("context_mismatch", "Picket outcome is not bound to its travel interruption.");
-    }
-  } else if (outcome.travelTransactionId !== null &&
-    run.activeTravel?.transactionId !== outcome.travelTransactionId) {
-    return failed("context_mismatch", "Operation outcome travel journal no longer matches launch authority.");
-  }
-
   const record = run.operations[outcome.operationId];
   if (record === undefined) return failed("malformed_run", "Operation record is missing.");
-  const globallyApplied = run.appliedOutcomeIds.includes(outcome.completionId);
-  const locallyApplied = record.completionIds.includes(outcome.completionId);
-  if (globallyApplied || locallyApplied) {
-    if (!globallyApplied || !locallyApplied) {
-      return failed("incoherent_completion_journal", "Completion ID is only partially journaled.");
-    }
+  const journal = completionJournalStatus(run, outcome);
+  if (journal.kind === "error") {
+    return failed("incoherent_completion_journal", journal.message);
+  }
+  if (journal.kind === "replay") {
+    const replayProblem = replayArtifactProblem(run, operation, outcome, record);
+    if (replayProblem !== null) return failed(replayProblem.code, replayProblem.message);
     return {
       ok: true,
       changed: false,
@@ -551,9 +694,13 @@ function applyOutcomeImpl(
       delivery: null,
     };
   }
-  if (run.appliedOutcomeIds.includes(outcome.completionId) ||
-    Object.values(run.operations).some((entry) => entry.completionIds.includes(outcome.completionId))) {
-    return failed("incoherent_completion_journal", "Completion ID belongs to another operation journal.");
+  if (outcome.operationId === "op:hostile-picket") {
+    if (outcome.travelTransactionId === null || run.activeTravel?.transactionId !== outcome.travelTransactionId) {
+      return failed("context_mismatch", "Picket outcome is not bound to its travel interruption.");
+    }
+  } else if (outcome.travelTransactionId !== null &&
+    run.activeTravel?.transactionId !== outcome.travelTransactionId) {
+    return failed("context_mismatch", "Operation outcome travel journal no longer matches launch authority.");
   }
   if (duplicateUniqueProblem(run, outcome)) {
     return failed("duplicate_unique_fact", "Operation would duplicate a unique galaxy fact or reward.");

@@ -373,3 +373,109 @@ test("a caller cannot forge a declared modifier reward after normalization", () 
   if (!result.ok) assert.equal(result.errors[0]?.code, "unknown_modifier");
   assert.deepEqual(parent, before);
 });
+
+test("matching global and local completion IDs do not resolve an unjournaled Kepler operation", () => {
+  const run = atContact("contact:kepler");
+  const outcome = normalize(
+    run,
+    requireContext(run, "op:kepler-black-box"),
+    "completion:kepler:forged-journal",
+    "success",
+  );
+  const forged = parentFor(run);
+  forged.galaxyRun!.operations["op:kepler-black-box"].completionIds.push(outcome.completionId);
+  forged.galaxyRun!.appliedOutcomeIds.push(outcome.completionId);
+  const before = structuredClone(forged);
+
+  const result = applyOperationOutcome(forged, outcome);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.errors[0]?.code, "incoherent_completion_journal");
+  assert.deepEqual(forged, before);
+});
+
+test("one completion ID cannot be owned by a second operation", () => {
+  const run = atContact("contact:kepler");
+  const outcome = normalize(
+    run,
+    requireContext(run, "op:kepler-black-box"),
+    "completion:kepler:shared-owner",
+    "success",
+  );
+  const first = requireOutcomeSuccess(applyOperationOutcome(parentFor(run), outcome));
+  const forged = structuredClone(first.save);
+  forged.galaxyRun!.operations["op:ashfall-sortie"].completionIds.push(outcome.completionId);
+  const before = structuredClone(forged);
+
+  const replay = applyOperationOutcome(forged, outcome);
+
+  assert.equal(replay.ok, false);
+  if (!replay.ok) assert.equal(replay.errors[0]?.code, "incoherent_completion_journal");
+  assert.deepEqual(forged, before);
+});
+
+test("a hostile success completion cannot be replayed as a failure", () => {
+  const run = atHostileInterruption();
+  const context = requireContext(run, "op:hostile-picket");
+  const completionId = "completion:picket:result-binding";
+  const success = normalize(run, context, completionId, "success");
+  const failure = normalize(run, context, completionId, "failure");
+  const first = requireOutcomeSuccess(applyOperationOutcome(parentFor(run), success));
+  const before = structuredClone(first.save);
+
+  const replay = applyOperationOutcome(first.save, failure);
+
+  assert.equal(replay.ok, false);
+  if (!replay.ok) assert.equal(replay.errors[0]?.code, "incoherent_completion_journal");
+  assert.deepEqual(first.save, before);
+});
+
+test("hostile replay requires a coherent shared operation-outcome travel checkpoint while travel is retained", () => {
+  for (const checkpointKind of ["missing", "contradictory"] as const) {
+    const run = atHostileInterruption();
+    const outcome = normalize(
+      run,
+      requireContext(run, "op:hostile-picket"),
+      `completion:picket:checkpoint:${checkpointKind}`,
+      "success",
+    );
+    const first = requireOutcomeSuccess(applyOperationOutcome(parentFor(run), outcome));
+    const forged = structuredClone(first.save);
+    const travel = forged.galaxyRun!.activeTravel!;
+    const expected = `${travel.transactionId}:operation-outcome:${outcome.completionId}`;
+    travel.appliedCheckpointIds = travel.appliedCheckpointIds.filter((id) => id !== expected);
+    if (checkpointKind === "contradictory") {
+      travel.appliedCheckpointIds.push(`travel:contradictory:operation-outcome:${outcome.completionId}`);
+    }
+    const before = structuredClone(forged);
+
+    const replay = applyOperationOutcome(forged, outcome);
+
+    assert.equal(replay.ok, false, checkpointKind);
+    if (!replay.ok) {
+      assert.equal(replay.errors[0]?.code, "incoherent_completion_journal", checkpointKind);
+    }
+    assert.deepEqual(forged, before, checkpointKind);
+  }
+});
+
+test("a finalized hostile travel retains enough operation history for exact replay", () => {
+  const run = atHostileInterruption();
+  const outcome = normalize(
+    run,
+    requireContext(run, "op:hostile-picket"),
+    "completion:picket:finalized-replay",
+    "success",
+  );
+  const first = requireOutcomeSuccess(applyOperationOutcome(parentFor(run), outcome));
+  const finalizedRun = requireTravelSuccess(finalizeTravel(first.galaxyRun)).galaxyRun;
+  const finalized = migrateSave(JSON.parse(JSON.stringify({
+    ...first.save,
+    galaxyRun: finalizedRun,
+  })) as Partial<SaveData>);
+
+  const replay = requireOutcomeSuccess(applyOperationOutcome(finalized, outcome));
+
+  assert.equal(replay.changed, false);
+  assert.deepEqual(replay.save, finalized);
+});
