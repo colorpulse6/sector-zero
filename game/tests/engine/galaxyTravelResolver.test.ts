@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BLIND_FIXTURE_COORDINATE } from "../../app/components/engine/galaxy/authoredAnchors";
-import { cellKey, coord } from "../../app/components/engine/galaxy/coordinates";
+import {
+  cellKey,
+  coord,
+  stableHash,
+} from "../../app/components/engine/galaxy/coordinates";
 import { resolveCell } from "../../app/components/engine/galaxy/atlas";
 import {
   createFreshGalaxyRun,
@@ -505,4 +509,207 @@ test("every public transition contains reflection, accessor, and clone failures"
   const cloneFailure = commitTravel(cloneTrap, plan);
   assert.equal(cloneFailure.ok, false);
   if (!cloneFailure.ok) assert.equal(cloneFailure.errors[0]?.code, "unsafe_input");
+});
+
+test("migrated commitments cannot tamper canonical route or transaction identity", () => {
+  function committed(): GalaxyRunState {
+    return commitTo(
+      createFreshGalaxyRun(),
+      contact("contact:ashfall"),
+    ).result.galaxyRun;
+  }
+
+  function rebindTamperedPlan(run: GalaxyRunState): void {
+    const travel = run.activeTravel!;
+    const payloadText = travel.routePlanId.slice(
+      travel.routePlanId.indexOf(":", 6) + 1,
+    );
+    const payload = JSON.parse(payloadText) as unknown[];
+    payload[8] = travel.legs.map((leg) => [
+      leg.id,
+      [leg.from.sectorX, leg.from.sectorY, leg.from.localX, leg.from.localY],
+      [leg.to.sectorX, leg.to.sectorY, leg.to.localX, leg.to.localY],
+      leg.distanceUnits,
+      leg.cycles,
+      leg.supplyCost,
+      leg.interruptionCauseId,
+    ]);
+    const capability = payload[5] as number[];
+    payload[9] = [
+      travel.legs.reduce((total, leg) => total + leg.distanceUnits, 0),
+      travel.legs.reduce((total, leg) => total + leg.cycles, 0),
+      travel.supplyCost,
+      capability[1] - travel.supplyCost,
+    ];
+    const reboundPayload = JSON.stringify(payload);
+    const hash = stableHash(`route:${reboundPayload}`).toString(16).padStart(8, "0");
+    travel.routePlanId = `route:${hash}:${reboundPayload}`;
+    travel.transactionId = `travel:${travel.routePlanId}:1`;
+    run.vessel.transitTransactionId = travel.transactionId;
+  }
+
+  const multiLeg = committed();
+  multiLeg.activeTravel!.legs = [
+    {
+      id: "leg:tampered:first",
+      from: coord(0, 0, 512, 512),
+      to: coord(0, 0, 768, 512),
+      distanceUnits: 256,
+      cycles: 1,
+      supplyCost: 1,
+      interruptionCauseId: null,
+    },
+    {
+      id: "leg:tampered:second",
+      from: coord(0, 0, 768, 512),
+      to: coord(0, 0, 1024, 512),
+      distanceUnits: 256,
+      cycles: 1,
+      supplyCost: 1,
+      interruptionCauseId: null,
+    },
+  ];
+  rebindTamperedPlan(multiLeg);
+
+  const cheapCycle = committed();
+  cheapCycle.activeTravel!.legs[0].cycles = 0;
+  rebindTamperedPlan(cheapCycle);
+
+  const wrongLegId = committed();
+  wrongLegId.activeTravel!.legs[0].id = "leg:caller-authored";
+  rebindTamperedPlan(wrongLegId);
+
+  const wrongTransaction = committed();
+  wrongTransaction.activeTravel!.transactionId = "travel:wrong:77";
+  wrongTransaction.vessel.transitTransactionId = "travel:wrong:77";
+
+  const corruptPlanHash = committed();
+  corruptPlanHash.activeTravel!.routePlanId = `${corruptPlanHash.activeTravel!.routePlanId}:tampered`;
+  corruptPlanHash.activeTravel!.transactionId = `travel:${corruptPlanHash.activeTravel!.routePlanId}:1`;
+  corruptPlanHash.vessel.transitTransactionId = corruptPlanHash.activeTravel!.transactionId;
+
+  for (const [label, source] of [
+    ["multi-leg", multiLeg],
+    ["cheap-cycle", cheapCycle],
+    ["wrong-leg-id", wrongLegId],
+    ["wrong-transaction", wrongTransaction],
+    ["corrupt-plan-hash", corruptPlanHash],
+  ] as const) {
+    const migrated = migrateRun(source);
+    assert.ok(migrated.activeTravel, `${label} fixture must reach resolver validation`);
+    const before = structuredClone(migrated);
+    const result = resumeTravelToBoundary(migrated);
+    assert.equal(result.ok, false, `${label} must fail closed`);
+    if (!result.ok) assert.equal(result.errors[0]?.code, "malformed_travel");
+    assert.deepEqual(migrated, before);
+  }
+});
+
+test("migrated travel states stay bound to the exact picket cause and closure", () => {
+  function interrupted(): GalaxyRunState {
+    const committed = commitTo(
+      createFreshGalaxyRun(),
+      contact("contact:hostile-picket"),
+    ).result.galaxyRun;
+    return requireSuccess(resumeTravelToBoundary(committed)).galaxyRun;
+  }
+
+  const nullOperation = interrupted();
+  nullOperation.activeTravel!.interruptionOperationId = null;
+
+  const interruptedCleared = interrupted();
+  interruptedCleared.activeTravel!.appliedCheckpointIds.push(
+    `${interruptedCleared.activeTravel!.transactionId}:interruption:cleared`,
+  );
+
+  const divertedWithoutFailure = interrupted();
+  divertedWithoutFailure.activeTravel!.state = "diverted";
+  divertedWithoutFailure.vessel.status = "stranded";
+
+  const completedCommitted = interrupted();
+  completedCommitted.activeTravel!.state = "committed";
+  completedCommitted.activeTravel!.interruptionOperationId = null;
+
+  const completedAdvancing = structuredClone(completedCommitted);
+  completedAdvancing.activeTravel!.state = "advancing";
+
+  const safeArrivedWithFailure = resolvedTo(
+    createFreshGalaxyRun(),
+    contact("contact:ashfall"),
+  ).result.galaxyRun;
+  safeArrivedWithFailure.activeTravel!.appliedCheckpointIds.push(
+    `${safeArrivedWithFailure.activeTravel!.transactionId}:interruption:failed`,
+  );
+
+  const causedResolvedWithCleared = interrupted();
+  causedResolvedWithCleared.activeTravel!.state = "resolved";
+  causedResolvedWithCleared.activeTravel!.interruptionOperationId = null;
+  causedResolvedWithCleared.activeTravel!.appliedCheckpointIds.push(
+    `${causedResolvedWithCleared.activeTravel!.transactionId}:interruption:cleared`,
+  );
+  causedResolvedWithCleared.vessel = {
+    status: "stationary",
+    coordinate: structuredClone(causedResolvedWithCleared.activeTravel!.origin),
+    contactId: "contact:vanguard",
+    transitTransactionId: null,
+  };
+
+  for (const [label, source] of [
+    ["interrupted-null-op", nullOperation],
+    ["interrupted-cleared", interruptedCleared],
+    ["diverted-without-failed", divertedWithoutFailure],
+    ["committed-completed-cause", completedCommitted],
+    ["advancing-completed-cause", completedAdvancing],
+    ["safe-arrived-failed", safeArrivedWithFailure],
+    ["caused-resolved-cleared", causedResolvedWithCleared],
+  ] as const) {
+    const migrated = migrateRun(source);
+    assert.ok(migrated.activeTravel, `${label} fixture must reach resolver validation`);
+    const result = resumeTravelToBoundary(migrated);
+    assert.equal(result.ok, false, `${label} must fail explicitly`);
+    if (!result.ok) assert.equal(result.errors[0]?.code, "malformed_travel");
+  }
+});
+
+test("saved destination fact outranks an unavailable generator during arrival", () => {
+  const run = commitTo(
+    createFreshGalaxyRun(),
+    contact("contact:ashfall"),
+  ).result.galaxyRun;
+  const travel = run.activeTravel!;
+  const oldPlanId = travel.routePlanId;
+  const payloadText = oldPlanId.slice(oldPlanId.indexOf(":", 6) + 1);
+  const payload = JSON.parse(payloadText) as unknown[];
+  (payload[7] as unknown[])[1] = 999;
+  const unsupportedPayload = JSON.stringify(payload);
+  const hash = stableHash(`route:${unsupportedPayload}`).toString(16).padStart(8, "0");
+  const unsupportedPlanId = `route:${hash}:${unsupportedPayload}`;
+  const transactionId = `travel:${unsupportedPlanId}:1`;
+
+  run.identity.generationVersion = 999;
+  run.worldCycle = travel.legs[0].cycles;
+  travel.routePlanId = unsupportedPlanId;
+  travel.transactionId = transactionId;
+  travel.state = "advancing";
+  travel.nextLegIndex = 1;
+  travel.elapsedCycles = travel.legs[0].cycles;
+  travel.appliedCheckpointIds = [`${transactionId}:leg:0`];
+  run.vessel = {
+    status: "in_transit",
+    coordinate: structuredClone(travel.destination),
+    contactId: null,
+    transitTransactionId: transactionId,
+  };
+
+  const migrated = migrateRun(run);
+  assert.equal(migrated.identity.generationVersion, 999);
+  assert.ok(migrated.atlas.materializedFacts[cellKey(travel.destination)]);
+  const result = resumeTravelToBoundary(migrated);
+  assert.equal(result.ok, true, result.ok ? undefined : result.errors[0]?.message);
+  if (!result.ok) return;
+  assert.equal(result.galaxyRun.activeTravel?.state, "arrived");
+  assert.equal(
+    result.galaxyRun.atlas.materializedFacts[cellKey(travel.destination)].id,
+    "contact:ashfall",
+  );
 });

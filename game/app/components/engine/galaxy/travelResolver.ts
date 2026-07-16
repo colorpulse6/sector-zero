@@ -1,6 +1,6 @@
 import type { SaveData } from "../types";
 import {
-  materializeCell,
+  G0_SECTOR_BOUNDS,
   observeFact,
   recordNegativeSurvey,
   resolveCell,
@@ -8,7 +8,10 @@ import {
 } from "./atlas";
 import {
   cellKey,
+  coordinateKey,
+  distanceUnits as measureDistanceUnits,
   sameCoordinate,
+  stableHash,
   validateCoordinate,
 } from "./coordinates";
 import { advanceGalaxyWorldCycles } from "./galaxyProjection";
@@ -20,7 +23,13 @@ import type {
   RouteLeg,
   TravelCommitment,
 } from "./galaxyTypes";
-import { planRoute, type RoutePlan } from "./routePlanner";
+import {
+  G0_CYCLE_DISTANCE,
+  G0_MAX_LEG_DISTANCE,
+  G0_SUPPLY_DISTANCE,
+  planRoute,
+  type RoutePlan,
+} from "./routePlanner";
 
 export type TravelInterruptionResult = "cleared" | "failed" | "retreated";
 
@@ -279,6 +288,101 @@ function operationForCause(causeFactId: string | null): "op:hostile-picket" | nu
     : null;
 }
 
+function coordinateTuple(coordinate: GalaxyCoordinate): number[] {
+  return [
+    coordinate.sectorX,
+    coordinate.sectorY,
+    coordinate.localX,
+    coordinate.localY,
+  ];
+}
+
+function serializedLeg(leg: RouteLeg): unknown[] {
+  return [
+    leg.id,
+    coordinateTuple(leg.from),
+    coordinateTuple(leg.to),
+    leg.distanceUnits,
+    leg.cycles,
+    leg.supplyCost,
+    leg.interruptionCauseId,
+  ];
+}
+
+function hasCanonicalPlanIdentity(
+  run: GalaxyRunState,
+  travel: TravelCommitment,
+): boolean {
+  const match = /^route:([0-9a-f]{8}):(.*)$/.exec(travel.routePlanId);
+  if (match === null) return false;
+  const payloadText = match[2];
+  const expectedHash = stableHash(`route:${payloadText}`)
+    .toString(16)
+    .padStart(8, "0");
+  if (match[1] !== expectedHash) return false;
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(payloadText);
+  } catch {
+    return false;
+  }
+  if (!inspectPlainData(payload) || !Array.isArray(payload) || payload.length !== 11) {
+    return false;
+  }
+
+  const capability = payload[5];
+  const policy = payload[6];
+  const totals = payload[9];
+  const cycleSnapshot = payload[10];
+  const target = travel.targetId === null
+    ? ["coordinate", ...coordinateTuple(travel.destination)]
+    : ["contact", travel.targetId];
+  if (
+    payload[0] !== "route-plan-v1" ||
+    !sameData(payload[1], coordinateTuple(travel.origin)) ||
+    !sameData(payload[2], coordinateTuple(travel.destination)) ||
+    !sameData(payload[3], target) ||
+    payload[4] !== travel.targetId ||
+    !Array.isArray(capability) ||
+    capability.length !== 3 ||
+    capability[0] !== G0_MAX_LEG_DISTANCE ||
+    !Number.isSafeInteger(capability[1]) ||
+    (capability[1] as number) < travel.supplyCost ||
+    !Number.isSafeInteger(capability[2]) ||
+    (capability[2] as number) < 0 ||
+    capability[2] !== run.ship.upgrades.engineBoost ||
+    !Array.isArray(policy) ||
+    policy.length !== 2 ||
+    policy[0] !== "direct_only" ||
+    typeof policy[1] !== "boolean" ||
+    !sameData(payload[7], [
+      run.identity.galaxySeed,
+      run.identity.generationVersion,
+      run.identity.authoredAnchorRegistryVersion,
+    ]) ||
+    !sameData(payload[8], travel.legs.map(serializedLeg)) ||
+    !Array.isArray(totals) ||
+    totals.length !== 4 ||
+    !Number.isSafeInteger(cycleSnapshot) ||
+    (cycleSnapshot as number) < 0 ||
+    run.worldCycle < (cycleSnapshot as number) + travel.elapsedCycles
+  ) return false;
+
+  const distance = travel.legs.reduce((total, leg) => total + leg.distanceUnits, 0);
+  const cycles = travel.legs.reduce((total, leg) => total + leg.cycles, 0);
+  return (
+    Number.isSafeInteger(distance) &&
+    Number.isSafeInteger(cycles) &&
+    sameData(totals, [
+      distance,
+      cycles,
+      travel.supplyCost,
+      (capability[1] as number) - travel.supplyCost,
+    ])
+  );
+}
+
 function isRouteLeg(value: unknown): value is RouteLeg {
   if (!isRecord(value)) return false;
   return (
@@ -371,7 +475,7 @@ function validateTravel(run: GalaxyRunState): TravelError | null {
     !validateCoordinate(travel.origin).ok ||
     !validateCoordinate(travel.destination).ok ||
     !Array.isArray(travel.legs) ||
-    travel.legs.length === 0 ||
+    travel.legs.length !== 1 ||
     !Number.isSafeInteger(travel.nextLegIndex) ||
     travel.nextLegIndex < 0 ||
     travel.nextLegIndex > travel.legs.length ||
@@ -379,7 +483,11 @@ function validateTravel(run: GalaxyRunState): TravelError | null {
     travel.supplyCost < 0 ||
     !Number.isSafeInteger(travel.elapsedCycles) ||
     travel.elapsedCycles < 0 ||
-    (travel.targetId !== null && typeof travel.targetId !== "string")
+    (travel.targetId !== null && (
+      typeof travel.targetId !== "string" || travel.targetId.length === 0
+    )) ||
+    !Number.isSafeInteger(run.worldCycle) ||
+    run.worldCycle < 0
   ) {
     return { code: "malformed_travel", message: "Active travel identity or progress is malformed." };
   }
@@ -392,6 +500,22 @@ function validateTravel(run: GalaxyRunState): TravelError | null {
   if (!sameCoordinate(travel.legs[travel.legs.length - 1].to, travel.destination)) {
     return { code: "malformed_travel", message: "Active travel does not end at its saved destination." };
   }
+  if (
+    travel.origin.sectorX !== 0 ||
+    travel.origin.sectorY !== 0 ||
+    travel.destination.sectorX !== 0 ||
+    travel.destination.sectorY !== 0 ||
+    travel.origin.localX < G0_SECTOR_BOUNDS.min ||
+    travel.origin.localX > G0_SECTOR_BOUNDS.max ||
+    travel.origin.localY < G0_SECTOR_BOUNDS.min ||
+    travel.origin.localY > G0_SECTOR_BOUNDS.max ||
+    travel.destination.localX < G0_SECTOR_BOUNDS.min ||
+    travel.destination.localX > G0_SECTOR_BOUNDS.max ||
+    travel.destination.localY < G0_SECTOR_BOUNDS.min ||
+    travel.destination.localY > G0_SECTOR_BOUNDS.max
+  ) {
+    return { code: "malformed_travel", message: "Active travel leaves the version-1 G0 sector bounds." };
+  }
 
   let supplyCost = 0;
   let elapsedCycles = 0;
@@ -402,6 +526,21 @@ function validateTravel(run: GalaxyRunState): TravelError | null {
       return { code: "malformed_travel", message: "Active travel route leg IDs are not unique." };
     }
     legIds.add(leg.id);
+    const exactDistance = Math.round(measureDistanceUnits(leg.from, leg.to));
+    const exactCycles = Math.max(
+      1,
+      Math.min(3, Math.ceil(exactDistance / G0_CYCLE_DISTANCE)),
+    );
+    const exactSupply = Math.ceil(exactDistance / G0_SUPPLY_DISTANCE);
+    if (
+      leg.id !== `leg:direct:${coordinateKey(leg.from)}:${coordinateKey(leg.to)}` ||
+      exactDistance > G0_MAX_LEG_DISTANCE ||
+      leg.distanceUnits !== exactDistance ||
+      leg.cycles !== exactCycles ||
+      leg.supplyCost !== exactSupply
+    ) {
+      return { code: "malformed_travel", message: "Active travel route is not the canonical direct G0 leg." };
+    }
     supplyCost += leg.supplyCost;
     if (index < travel.nextLegIndex) elapsedCycles += leg.cycles;
     if (index > 0 && !sameCoordinate(travel.legs[index - 1].to, leg.from)) {
@@ -417,6 +556,15 @@ function validateTravel(run: GalaxyRunState): TravelError | null {
   ) {
     return { code: "malformed_travel", message: "Active travel cost, time, or checkpoints are incoherent." };
   }
+  const committedOrdinal = run.nextTransactionOrdinal - 1;
+  if (
+    !Number.isSafeInteger(committedOrdinal) ||
+    committedOrdinal < 1 ||
+    travel.transactionId !== `travel:${travel.routePlanId}:${committedOrdinal}` ||
+    !hasCanonicalPlanIdentity(run, travel)
+  ) {
+    return { code: "malformed_travel", message: "Active travel does not match its canonical plan and transaction identity." };
+  }
 
   const progressCoordinate = travel.nextLegIndex === 0
     ? travel.origin
@@ -425,29 +573,56 @@ function validateTravel(run: GalaxyRunState): TravelError | null {
     travel.appliedCheckpointIds.includes(
       `${travel.transactionId}:interruption:${result}`,
     );
+  const hasCleared = checkpoint("cleared");
+  const hasFailed = checkpoint("failed");
+  const hasRetreated = checkpoint("retreated");
+  const hasEmergency = travel.appliedCheckpointIds.includes(
+    `${travel.transactionId}:emergency-retreat`,
+  );
+  const hasClosure = hasCleared || hasFailed || hasRetreated || hasEmergency;
+  const latestCompletedLeg = travel.nextLegIndex === 0
+    ? null
+    : travel.legs[travel.nextLegIndex - 1];
+  const latestCauseOperation = operationForCause(
+    latestCompletedLeg?.interruptionCauseId ?? null,
+  );
   if (travel.state === "committed" || travel.state === "advancing") {
     if (
+      travel.interruptionOperationId !== null ||
+      hasClosure ||
+      latestCauseOperation !== null ||
       run.vessel.status !== "in_transit" ||
       run.vessel.transitTransactionId !== travel.transactionId ||
       !sameCoordinate(run.vessel.coordinate, progressCoordinate)
     ) return { code: "malformed_travel", message: "In-transit vessel and route progress disagree." };
   } else if (travel.state === "interrupted") {
     if (
+      latestCauseOperation !== "op:hostile-picket" ||
+      travel.interruptionOperationId !== latestCauseOperation ||
+      hasClosure ||
       run.vessel.status !== "in_transit" ||
       run.vessel.transitTransactionId !== travel.transactionId ||
       !sameCoordinate(run.vessel.coordinate, progressCoordinate)
     ) return { code: "malformed_travel", message: "Interrupted travel lacks its saved active cause." };
   } else if (travel.state === "arrived") {
     const finalLeg = travel.legs[travel.legs.length - 1];
+    const finalCauseOperation = operationForCause(finalLeg.interruptionCauseId);
+    const closureMatchesArrival = finalCauseOperation === null
+      ? !hasClosure
+      : hasCleared && !hasFailed && !hasRetreated && !hasEmergency;
     if (
       travel.nextLegIndex !== travel.legs.length ||
-      (finalLeg.interruptionCauseId !== null && !checkpoint("cleared")) ||
+      travel.interruptionOperationId !== null ||
+      !closureMatchesArrival ||
       run.vessel.status !== "stationary" ||
       run.vessel.transitTransactionId !== null ||
       !sameCoordinate(run.vessel.coordinate, travel.destination)
     ) return { code: "malformed_travel", message: "Arrived travel and vessel destination disagree." };
   } else if (travel.state === "diverted") {
     if (
+      latestCauseOperation !== "op:hostile-picket" ||
+      travel.interruptionOperationId !== latestCauseOperation ||
+      !hasFailed || hasCleared || hasRetreated || hasEmergency ||
       run.vessel.status !== "stranded" ||
       run.vessel.transitTransactionId !== travel.transactionId ||
       !sameCoordinate(run.vessel.coordinate, progressCoordinate)
@@ -457,10 +632,23 @@ function validateTravel(run: GalaxyRunState): TravelError | null {
     const resolvedAtDestination =
       travel.nextLegIndex === travel.legs.length &&
       sameCoordinate(run.vessel.coordinate, travel.destination);
+    const routeHasCause = travel.legs.some(
+      (leg) => leg.interruptionCauseId !== null,
+    );
+    const resolvedSafeLegacy = !routeHasCause && !hasClosure;
+    const resolvedRuntimeCause = latestCauseOperation === "op:hostile-picket" && (
+      (hasRetreated && !hasCleared && !hasFailed && !hasEmergency) ||
+      (hasFailed && hasEmergency && !hasCleared && !hasRetreated)
+    );
+    const closureMatchesPosition = resolvedAtDestination
+      ? resolvedSafeLegacy
+      : resolvedSafeLegacy || resolvedRuntimeCause;
     if (
+      travel.interruptionOperationId !== null ||
       run.vessel.status !== "stationary" ||
       run.vessel.transitTransactionId !== null ||
-      (!resolvedAtOrigin && !resolvedAtDestination)
+      (!resolvedAtOrigin && !resolvedAtDestination) ||
+      !closureMatchesPosition
     ) return { code: "malformed_travel", message: "Resolved travel lacks a valid closure checkpoint." };
   }
   return null;
@@ -545,14 +733,19 @@ function materializeArrival(
   const key = cellKey(travel.destination);
   const saved = savedFactAtCell(run, key);
   if (saved !== null && "code" in saved) return saved;
-  const regenerated = resolveCell(run.identity, travel.destination);
-  if (!regenerated.ok) {
-    return {
-      code: "generation_unavailable",
-      message: `Arrival generation is unavailable: ${regenerated.reason}.`,
-    };
+  let fact: AtlasCellFact;
+  if (saved !== null) {
+    fact = saved;
+  } else {
+    const regenerated = resolveCell(run.identity, travel.destination);
+    if (!regenerated.ok) {
+      return {
+        code: "generation_unavailable",
+        message: `Arrival generation is unavailable: ${regenerated.reason}.`,
+      };
+    }
+    fact = regenerated.fact;
   }
-  const fact = materializeCell(saved, regenerated.fact);
   if (!cellFactIsCoherent(fact, key)) {
     return { code: "arrival_conflict", message: "Arrival fact is not stable for its fixed cell." };
   }
