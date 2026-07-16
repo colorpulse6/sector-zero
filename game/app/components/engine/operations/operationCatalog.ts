@@ -1,5 +1,10 @@
 import { SIDE_QUESTS } from "../sideQuests";
-import { coord, sameCoordinate, validateCoordinate } from "../galaxy/coordinates";
+import {
+  cellKey,
+  coord,
+  sameCoordinate,
+  validateCoordinate,
+} from "../galaxy/coordinates";
 import type {
   AtlasCellFact,
   AtlasKnowledgeRecord,
@@ -428,15 +433,33 @@ function stateAvailability(
   if (template.id === "op:hostile-picket") {
     if (activeTravel === null || activeTravel.state !== "interrupted") {
       reasons.push("missing_active_interruption");
-    } else if (
-      activeTravel.interruptionOperationId !== template.id ||
-      run.vessel.status !== "in_transit" ||
-      run.vessel.transitTransactionId !== activeTravel.transactionId ||
-      !sameCoordinate(run.vessel.coordinate, template.location) ||
-      activeTravel.nextLegIndex < 1 ||
-      activeTravel.legs[activeTravel.nextLegIndex - 1]?.interruptionCauseId !== template.causeFactIds[0]
-    ) {
-      reasons.push("interruption_mismatch");
+    } else {
+      const finalLeg = activeTravel.legs[activeTravel.legs.length - 1];
+      const targetMatches = activeTravel.targetId === template.contactId
+        ? sameCoordinate(activeTravel.destination, template.location)
+        : activeTravel.targetId === null;
+      const picketCell = cellKey(template.location);
+      const destinationInPicketCell = cellKey(activeTravel.destination) === picketCell;
+      const vesselAtDestination = sameCoordinate(
+        run.vessel.coordinate,
+        activeTravel.destination,
+      );
+      const finalLegBound = finalLeg !== undefined &&
+        sameCoordinate(finalLeg.to, activeTravel.destination) &&
+        cellKey(finalLeg.to) === picketCell &&
+        finalLeg.interruptionCauseId === template.causeFactIds[0];
+      if (
+        !targetMatches ||
+        !destinationInPicketCell ||
+        !finalLegBound ||
+        activeTravel.interruptionOperationId !== template.id ||
+        activeTravel.nextLegIndex !== activeTravel.legs.length ||
+        run.vessel.status !== "in_transit" ||
+        run.vessel.transitTransactionId !== activeTravel.transactionId ||
+        !vesselAtDestination
+      ) {
+        reasons.push("interruption_mismatch");
+      }
     }
   } else {
     const matchingContacts = materialized.filter((fact) =>
@@ -474,28 +497,41 @@ function malformedCopy(template: OperationTemplate): Operation {
   return operationFrom(template, "available", unavailable("malformed_run"));
 }
 
-export function getOperation(run: GalaxyRunState, operationId: unknown): OperationLookupResult {
-  const template = templateFor(operationId);
-  if (template === null) {
-    return { ok: false, operation: null, availability: unavailable("unknown_operation") };
-  }
-  try {
-    const operations = dataProperty(run, "operations");
-    if (isPlainRecord(operations) && !hasOwn(operations, template.id)) {
-      const availability = unavailable("missing_operation_record");
-      return {
-        ok: false,
-        operation: operationFrom(template, "available", availability),
-        availability,
-      };
-    }
-  } catch {
-    // The full safety pass below returns a malformed recoverable copy.
+function failedLookup(
+  template: OperationTemplate,
+  reason: OperationUnavailableReason,
+): OperationLookupResult {
+  const availability = unavailable(reason);
+  return {
+    ok: false,
+    operation: operationFrom(template, "available", availability),
+    availability,
+  };
+}
+
+function failedAuthorization(
+  template: OperationTemplate,
+  reason: OperationUnavailableReason,
+): Extract<OperationAuthorizationResult, { ok: false }> {
+  const availability = unavailable(reason);
+  return {
+    ok: false,
+    operation: operationFrom(template, "available", availability),
+    availability,
+  };
+}
+
+function getOperationFromSafeRun(
+  run: GalaxyRunState,
+  template: OperationTemplate,
+): OperationLookupResult {
+  const operations = dataProperty(run, "operations");
+  if (isPlainRecord(operations) && !hasOwn(operations, template.id)) {
+    return failedLookup(template, "missing_operation_record");
   }
   const relevant = safeRelevantState(run, template.id);
   if (relevant === null) {
-    const operation = malformedCopy(template);
-    return { ok: false, operation, availability: operation.availability as Extract<OperationAvailability, { status: "unavailable" }> };
+    return failedLookup(template, "malformed_run");
   }
   return {
     ok: true,
@@ -503,22 +539,43 @@ export function getOperation(run: GalaxyRunState, operationId: unknown): Operati
   };
 }
 
-export function listG0Operations(run: GalaxyRunState): OperationCatalogResult {
-  const operations: Operation[] = [];
-  for (const id of G0_OPERATION_IDS) {
-    const result = getOperation(run, id);
-    if (!result.ok) {
-      const copies = G0_OPERATION_IDS.map((operationId) => {
-        const template = templateFor(operationId)!;
-        return operationId === id && result.operation !== null
-          ? result.operation
-          : malformedCopy(template);
-      });
-      return { ok: false, operations: copies, availability: result.availability };
-    }
-    operations.push(result.operation);
+export function getOperation(run: GalaxyRunState, operationId: unknown): OperationLookupResult {
+  const template = templateFor(operationId);
+  if (template === null) {
+    return { ok: false, operation: null, availability: unavailable("unknown_operation") };
   }
-  return { ok: true, operations };
+  try {
+    return getOperationFromSafeRun(clone(run), template);
+  } catch {
+    return failedLookup(template, "malformed_run");
+  }
+}
+
+export function listG0Operations(run: GalaxyRunState): OperationCatalogResult {
+  try {
+    const safeRun = clone(run);
+    const operations: Operation[] = [];
+    for (const id of G0_OPERATION_IDS) {
+      const result = getOperationFromSafeRun(safeRun, templateFor(id)!);
+      if (!result.ok) {
+        const copies = G0_OPERATION_IDS.map((operationId) => {
+          const template = templateFor(operationId)!;
+          return operationId === id && result.operation !== null
+            ? result.operation
+            : malformedCopy(template);
+        });
+        return { ok: false, operations: copies, availability: result.availability };
+      }
+      operations.push(result.operation);
+    }
+    return { ok: true, operations };
+  } catch {
+    return {
+      ok: false,
+      operations: G0_OPERATION_IDS.map((id) => malformedCopy(templateFor(id)!)),
+      availability: unavailable("malformed_run"),
+    };
+  }
 }
 
 function launchContext(operation: Operation, run: GalaxyRunState): OperationLaunchContext {
@@ -541,28 +598,37 @@ export function authorizeOperationLaunch(
   run: GalaxyRunState,
   operationId: unknown,
 ): OperationAuthorizationResult {
-  const result = getOperation(run, operationId);
-  if (!result.ok) return result;
-  if (result.operation.availability.status === "unavailable") {
+  const template = templateFor(operationId);
+  if (template === null) {
+    return { ok: false, operation: null, availability: unavailable("unknown_operation") };
+  }
+  try {
+    const safeRun = clone(run);
+    const result = getOperationFromSafeRun(safeRun, template);
+    if (!result.ok) return result;
+    if (result.operation.availability.status === "unavailable") {
+      return {
+        ok: false,
+        operation: result.operation,
+        availability: result.operation.availability,
+      };
+    }
+    if (result.operation.phases.length !== 1 || result.operation.phases[0]?.adapter === undefined) {
+      const availability = unavailable("missing_adapter");
+      return {
+        ok: false,
+        operation: { ...result.operation, availability },
+        availability,
+      };
+    }
     return {
-      ok: false,
+      ok: true,
       operation: result.operation,
-      availability: result.operation.availability,
+      context: launchContext(result.operation, safeRun),
     };
+  } catch {
+    return failedAuthorization(template, "malformed_run");
   }
-  if (result.operation.phases.length !== 1 || result.operation.phases[0]?.adapter === undefined) {
-    const availability = unavailable("missing_adapter");
-    return {
-      ok: false,
-      operation: { ...result.operation, availability },
-      availability,
-    };
-  }
-  return {
-    ok: true,
-    operation: result.operation,
-    context: launchContext(result.operation, run),
-  };
 }
 
 export function sameOperationLaunchContext(

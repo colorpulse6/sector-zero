@@ -422,6 +422,72 @@ test("unknown, malformed, accessor, and prototype inputs return recoverable unav
   assert.equal(launchOperation(run, projection, badContext).ok, false);
 });
 
+test("public availability paths contain delayed Proxy reads after descriptor validation", () => {
+  const source = atHostileInterruption();
+  const before = structuredClone(source);
+  function trappedRun(): GalaxyRunState {
+    const reads = new Map<PropertyKey, number>();
+    return new Proxy(source, {
+      get(target, key, receiver) {
+        const count = (reads.get(key) ?? 0) + 1;
+        reads.set(key, count);
+        if ((key === "atlas" || key === "vessel") && count >= 2) {
+          throw new Error(`delayed ${String(key)} trap`);
+        }
+        return Reflect.get(target, key, receiver);
+      },
+    });
+  }
+
+  let getResult!: ReturnType<typeof getOperation>;
+  assert.doesNotThrow(() => {
+    getResult = getOperation(trappedRun(), "op:hostile-picket");
+  });
+  assert.equal(getResult.ok, false);
+  if (!getResult.ok) assert.deepEqual(getResult.availability.reasons, ["malformed_run"]);
+
+  let listResult!: ReturnType<typeof listG0Operations>;
+  assert.doesNotThrow(() => {
+    listResult = listG0Operations(trappedRun());
+  });
+  assert.equal(listResult.ok, false);
+  if (!listResult.ok) assert.deepEqual(listResult.availability.reasons, ["malformed_run"]);
+
+  let authorizeResult!: ReturnType<typeof authorizeOperationLaunch>;
+  assert.doesNotThrow(() => {
+    authorizeResult = authorizeOperationLaunch(trappedRun(), "op:hostile-picket");
+  });
+  assert.equal(authorizeResult.ok, false);
+  if (!authorizeResult.ok) {
+    assert.equal(authorizeResult.operation?.id, "op:hostile-picket");
+    assert.deepEqual(authorizeResult.availability.reasons, ["malformed_run"]);
+  }
+  assert.deepEqual(source, before);
+});
+
+test("hostile launch binds the saved target and destination but permits its exact fixed cell", () => {
+  const rebound = atHostileInterruption();
+  rebound.activeTravel!.targetId = "contact:ashfall";
+  rebound.activeTravel!.destination = coord(0, 0, 1024, 512);
+  rebound.activeTravel!.legs[rebound.activeTravel!.legs.length - 1].to = coord(0, 0, 1024, 512);
+  const reboundBefore = structuredClone(rebound);
+  const rejected = authorizeOperationLaunch(rebound, "op:hostile-picket");
+  assert.equal(rejected.ok, false);
+  assert.deepEqual(rebound, reboundBefore);
+
+  const sameCellRun = createFreshGalaxyRun();
+  const target = coord(0, 0, 1281, 1025);
+  const preview = planRoute(sameCellRun, { kind: "coordinate", coordinate: target });
+  assert.equal(preview.ok, true, preview.ok ? undefined : preview.reasons.join("; "));
+  if (!preview.ok) return;
+  const committed = requireTravelSuccess(commitTravel(sameCellRun, preview.plan));
+  const interrupted = requireTravelSuccess(resumeTravelToBoundary(committed.galaxyRun));
+  assert.equal(interrupted.galaxyRun.activeTravel?.state, "interrupted");
+  assert.equal(interrupted.galaxyRun.activeTravel?.targetId, null);
+  assert.deepEqual(interrupted.galaxyRun.vessel.coordinate, target);
+  assert.equal(authorizeOperationLaunch(interrupted.galaxyRun, "op:hostile-picket").ok, true);
+});
+
 test("contexts and adapter payloads are stable, exhaustive, non-mutating authority", () => {
   const fixtures: Array<[OperationId, GalaxyRunState]> = [
     ["op:hostile-picket", atHostileInterruption()],
