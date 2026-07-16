@@ -1030,9 +1030,21 @@ Foreground throttling was ruled out before the final trusted-input checks:
 Both traces had the exact expected key/code pairs (`Enter`/`Enter` and
 ` `/`Space`), `isTrusted=true`, active rAF sampling, and no console error. No
 game code was changed to bypass the failure. Per the stop condition, live Echo
-detail was not attempted after the confirmed Wraith blocker. Task 6 therefore
-remains incomplete only for live Wraith and Echo Bestiary-detail verification;
-the final Task 7 gate, push, and draft PR were not performed.
+detail was not attempted after the confirmed Wraith blocker.
+
+On 2026-07-16 the user explicitly directed the tranche to continue with this
+automation limitation documented. That direction waives Wraith/Echo live-detail
+automation as a delivery gate; it does not convert either unverified check into
+a pass. The retained production sprites and their committed baseline Bestiary
+captures remain the review evidence for those two entries.
+
+The complete Task 7 local gate then passed sequentially: `npx tsc --noEmit`,
+colony `268/268`, engine `66/66`, sprites `4/4`, `yarn build`, and
+`NEXT_PUBLIC_DEVTOOLS=1 yarn build`. The restricted sandbox initially blocked
+the `tsx` IPC sockets and Google Fonts network fetches; rerunning the identical
+commands with the required local IPC/network permissions passed without source
+or configuration changes. Corepack's tool-only package metadata drift was
+restored after every Yarn command.
 
 The Bestiary session reported zero errors and the same two unchanged Next.js
 font-preload warnings for `fc727f226c737876-s.p.woff2` and
