@@ -197,6 +197,18 @@ export function projectGalaxyRunToLegacySave(parent: SaveData): SaveData {
   return projectionFromRun(parent.galaxyRun);
 }
 
+function isOptionalUndefinedBestiaryPath(path: string): boolean {
+  const parts = path.split(".");
+  return (
+    parts.length === 5 &&
+    parts[0] === "delta" &&
+    parts[1] === "pilot" &&
+    parts[2] === "bestiary" &&
+    parts[3].length > 0 &&
+    (parts[4] === "firstSeenPlanet" || parts[4] === "firstSeenWorld")
+  );
+}
+
 function inspectPlainData(
   value: unknown,
   path: string,
@@ -213,6 +225,15 @@ function inspectPlainData(
     return Number.isFinite(value)
       ? null
       : error("unsafe_delta", path, "Delta numbers must be finite.");
+  }
+  if (value === undefined) {
+    return isOptionalUndefinedBestiaryPath(path)
+      ? null
+      : error(
+          "unsafe_delta",
+          path,
+          "Undefined is accepted only for optional Bestiary context fields.",
+        );
   }
   if (typeof value !== "object") {
     return error(
@@ -355,11 +376,20 @@ function mergeBestiary(
 ): GalaxyPilotState["bestiary"] {
   const merged = clone(current);
   for (const key of Object.keys(patch as Record<string, unknown>)) {
+    const entry = clone((patch as Record<string, BestiaryEntry>)[key]);
+    if (isRecord(entry)) {
+      if (hasOwn(entry, "firstSeenPlanet") && entry.firstSeenPlanet === undefined) {
+        delete entry.firstSeenPlanet;
+      }
+      if (hasOwn(entry, "firstSeenWorld") && entry.firstSeenWorld === undefined) {
+        delete entry.firstSeenWorld;
+      }
+    }
     Object.defineProperty(merged, key, {
       configurable: true,
       enumerable: true,
       writable: true,
-      value: clone((patch as Record<string, BestiaryEntry>)[key]),
+      value: entry,
     });
   }
   return merged;

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { advanceWorldCycle } from "../../app/components/colony/shared/cycleProcessor";
 import { rankFromStanding } from "../../app/components/colony/shared/factionLedger";
+import { recordKill } from "../../app/components/engine/bestiary";
 import {
   advanceGalaxyWorldCycles,
   mergeProjectionIntoGalaxy,
@@ -345,6 +346,42 @@ test("allowlisted merge covers every authorized projection delta", () => {
   assert.notEqual(next.ship, delta.ship);
 });
 
+test("world-only recordKill Bestiary output crosses the projection boundary", () => {
+  const run = createFreshGalaxyRun();
+  const recorded = recordKill(
+    run.pilot.bestiary,
+    EnemyType.DRONE,
+    "tech-drone",
+    { world: 1 },
+  );
+  const recordedEntry = recorded.DRONE!;
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(recordedEntry, "firstSeenPlanet"),
+    true,
+  );
+  assert.equal(recordedEntry.firstSeenPlanet, undefined);
+
+  const result = mergeProjectionIntoGalaxy(run, {
+    pilot: { bestiary: recorded },
+  });
+
+  assert.equal(result.ok, true, result.ok ? undefined : JSON.stringify(result.errors));
+  if (!result.ok) return;
+  assert.deepEqual(result.galaxyRun.pilot.bestiary.DRONE, {
+    enemyType: EnemyType.DRONE,
+    classId: "tech-drone",
+    killCount: 1,
+    firstSeenWorld: 1,
+  });
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      result.galaxyRun.pilot.bestiary.DRONE!,
+      "firstSeenPlanet",
+    ),
+    false,
+  );
+});
+
 test("unknown, inherited, prototype, accessor, and nested delta keys reject atomically", () => {
   const cases: Array<{ name: string; delta: unknown }> = [
     { name: "legacy levels", delta: { levels: { "1-1": true } } },
@@ -446,6 +483,10 @@ test("malformed or regressive authorized deltas fail closed", () => {
     {
       name: "null bestiary patch",
       delta: { pilot: { bestiary: null as never } },
+    },
+    {
+      name: "undefined outside an optional Bestiary field",
+      delta: { codex: { unlocked: undefined as never } },
     },
     {
       name: "impossible pilot totals",
