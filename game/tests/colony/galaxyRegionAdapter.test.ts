@@ -26,6 +26,7 @@ import {
 } from "../../app/components/engine/galaxy/travelResolver";
 import {
   foundGalaxyOutpost,
+  isGalaxyPoiPreparationFact,
   openGalaxyRegion,
   prepareGalaxyPoiCompletion,
   recoverGalaxyPoiCompletion,
@@ -468,6 +469,16 @@ test("prepared POI recovery rejects malformed and ambiguous unresolved journals"
     fact.id === prepared.pending.preparedFactId)!.causeFactIds = ["fact:forged"];
   const malformedResult = recoverGalaxyPoiCompletion(malformed, "contact:ashfall");
   assert.deepEqual(malformedResult, { ok: false, reason: "invalid_poi_session" });
+
+  const wrongKind = structuredClone(prepared.save);
+  const disguised = wrongKind.galaxyRun!.historyFacts.find((fact) =>
+    fact.id === prepared.pending.preparedFactId)!;
+  disguised.kind = "forged_preparation";
+  assert.equal(isGalaxyPoiPreparationFact(disguised), true);
+  assert.deepEqual(
+    recoverGalaxyPoiCompletion(wrongKind, "contact:ashfall"),
+    { ok: false, reason: "invalid_poi_session" },
+  );
 
   const secondSurvey = requireRegion(startGalaxyRegionExpedition(
     prepared.save,
