@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   attemptCanonicalPersistence,
   beginGalaxyExperience,
+  galaxyPoiRecoverySurface,
   isInteractiveKeyboardTarget,
   legacyProgressionSnapshot,
   mapSurfaceForExperience,
@@ -109,4 +110,10 @@ test("canonical persistence reports failure without consuming a later retry", ()
   assert.deepEqual(attemptCanonicalPersistence(value, persist), { ok: false });
   assert.deepEqual(attemptCanonicalPersistence(value, persist), { ok: true });
   assert.equal(attempts, 2);
+});
+
+test("POI recovery exposes Atlas only when no unresolved or rejected journal exists", () => {
+  assert.equal(galaxyPoiRecoverySurface({ ok: true, pending: null }), "atlas");
+  assert.equal(galaxyPoiRecoverySurface({ ok: true, pending: { preparedFactId: "history:prepared" } }), "poi_outcome");
+  assert.equal(galaxyPoiRecoverySurface({ ok: false }), "blocked");
 });

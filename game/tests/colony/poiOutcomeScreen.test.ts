@@ -23,3 +23,19 @@ test("replay outcome promises no duplicate cargo", () => {
   const html = renderToStaticMarkup(React.createElement(PoiOutcomeScreen, { pending, colonies: [colony], resolving: false, error: null, onConfirm() {}, onHub() {} }));
   assert.match(html, /ALREADY RECOVERED/);
 });
+
+test("a locked delivery retry cannot expose a hub escape", () => {
+  const colony = makeTestColony({ id: "home", name: "Home" });
+  const base = makeTestSave({ colonies: [colony] });
+  const pending = { originColonyId: "home", nodeId: "ruin", baseSave: base, projectedSave: base, outcome: { originColonyId: "home", nodeId: "ruin", payload: { metal: 80 } } };
+  const html = renderToStaticMarkup(React.createElement(PoiOutcomeScreen, {
+    pending,
+    colonies: [colony],
+    resolving: false,
+    error: "SAVE FAILED — RETRY DELIVERY",
+    onConfirm() {},
+  }));
+
+  assert.match(html, /CONFIRM DELIVERY/);
+  assert.doesNotMatch(html, /RETURN TO HUB/);
+});

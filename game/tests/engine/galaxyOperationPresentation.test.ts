@@ -64,3 +64,15 @@ test("galaxy shooter dashboard presents operation identity while legacy remains 
   drawDashboard(legacy.ctx, legacyGame);
   assert.ok(legacy.text.includes("SECTOR 1-1"), JSON.stringify(legacy.text));
 });
+
+test("galaxy operation completion banner never presents a legacy level result", () => {
+  const operation = recordingCanvas();
+  const state = operationState();
+  state.screen = GameScreen.PLAYING;
+  state.levelCompleteTimer = 300;
+
+  drawGame(operation.ctx, state);
+
+  assert.ok(operation.text.includes("OPERATION COMPLETE"), JSON.stringify(operation.text));
+  assert.equal(operation.text.includes("LEVEL COMPLETE"), false, JSON.stringify(operation.text));
+});

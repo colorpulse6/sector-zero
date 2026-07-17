@@ -309,6 +309,11 @@ test("explicit canonical launch contexts bypass all locked legacy availability f
     assert.equal(launched.gameState.currentWorld, world);
     assert.equal(launched.gameState.currentLevel, level);
     assert.deepEqual(launched.gameState.galaxyOperation, { id: operationId, label });
+    if (operationId === "op:hostile-picket") {
+      assert.deepEqual(launched.gameState.dialogTriggers, []);
+      assert.equal(launched.gameState.dialog.currentLine, null);
+      assert.deepEqual(launched.gameState.dialog.queue, []);
+    }
     if (operationId === "op:ashfall-sortie") assert.equal(launched.gameState.planetId, "ashfall");
   }
 });
