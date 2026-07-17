@@ -7,7 +7,6 @@ export interface GalaxyExperienceGateProps {
   onGalaxy: () => void;
   onLegacy: () => void;
 }
-
 const BUTTON_STYLE: React.CSSProperties = {
   minHeight: 48,
   padding: "12px 18px",
@@ -57,4 +56,3 @@ export function GalaxyExperienceGate({
     </section>
   );
 }
-

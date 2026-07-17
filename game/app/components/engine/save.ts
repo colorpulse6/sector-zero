@@ -79,6 +79,11 @@ function createDefaultSave(): SaveData {
   };
 }
 
+/** Stable server/client seed; browser persistence is loaded only after hydration. */
+export function createHydrationSafeSave(): SaveData {
+  return createDefaultSave();
+}
+
 /** Migrate old saves that lack new fields */
 export function migrateSave(raw: Record<string, unknown>): SaveData {
   const colonies = migrateColonies(raw.colonies);

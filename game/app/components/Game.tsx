@@ -24,6 +24,7 @@ import {
   updateLevelResult,
   recalcPilotLevel,
   calculateCreditsEarned,
+  createHydrationSafeSave,
   getPlayerName,
   updateSectorZeroProfile,
   type SaveData,
@@ -146,7 +147,7 @@ export default function Game() {
   const [atlasSelectedTarget, setAtlasSelectedTarget] = useState<AtlasTarget | undefined>();
   const [atlasStatusMessage, setAtlasStatusMessage] = useState<string | null>(null);
   const [starMapState, setStarMapState] = useState<StarMapState>(createStarMapState());
-  const [saveData, setSaveData] = useState<SaveData>(loadSave());
+  const [saveData, setSaveData] = useState<SaveData>(createHydrationSafeSave);
   const [endingPhase, setEndingPhase] = useState<"off" | "pre-choice" | "choice" | "ending" | "credits">("off");
   const [endingChoice, setEndingChoice] = useState<EndingChoice>(null);
   const [choiceHover, setChoiceHover] = useState(0);
@@ -176,6 +177,12 @@ export default function Game() {
   const atlasShouldRestoreFocusRef = useRef(true);
 
   useEffect(() => { saveDataRef.current = saveData; }, [saveData]);
+
+  useEffect(() => {
+    const loaded = loadSave();
+    saveDataRef.current = loaded;
+    setSaveData(loaded);
+  }, []);
 
   const persistCanonicalSave = useCallback((next: SaveData) => {
     saveSave(next);
