@@ -115,6 +115,7 @@ import type {
 } from "./engine/operations/operationTypes";
 import {
   foundGalaxyOutpost,
+  isGalaxyPoiPreparationFact,
   launchOperation,
   openGalaxyRegion,
   prepareGalaxyPoiCompletion,
@@ -288,8 +289,7 @@ export default function Game() {
 
   const beginGalaxy = useCallback(() => {
     const begun = beginGalaxyExperience(saveDataRef.current);
-    const recovered = begun.galaxyRun?.historyFacts.some((fact) =>
-      fact.kind === "poi_completion_prepared")
+    const recovered = begun.galaxyRun?.historyFacts.some(isGalaxyPoiPreparationFact)
       ? recoverGalaxyPoiCompletion(begun, "contact:ashfall")
       : { ok: true as const, save: begun, pending: null };
     const recoverySurface = galaxyPoiRecoverySurface(recovered);

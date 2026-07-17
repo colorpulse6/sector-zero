@@ -407,6 +407,14 @@ export type GalaxyPoiResolutionResult =
   | { ok: true; save: SaveData; delivery: MissionDelivery | null }
   | { ok: false; save: SaveData; reason: GalaxyRegionAdapterReason };
 
+/** Reserved preparation IDs remain recovery authority even if their kind is tampered. */
+export function isGalaxyPoiPreparationFact(
+  fact: Pick<HistoricalFact, "id" | "kind">,
+): boolean {
+  return fact.kind === "poi_completion_prepared" ||
+    (typeof fact.id === "string" && fact.id.startsWith("history:poi-prepared:"));
+}
+
 interface OpenAshfallProjection {
   parent: SaveData;
   run: GalaxyRunState;
@@ -920,8 +928,7 @@ export function recoverGalaxyPoiCompletion(
   const opened = openAshfallProjection(save, contactId);
   if (isOpenFailure(opened)) return opened;
   try {
-    const preparedFacts = opened.run.historyFacts.filter((fact) =>
-      fact.kind === "poi_completion_prepared");
+    const preparedFacts = opened.run.historyFacts.filter(isGalaxyPoiPreparationFact);
     const unresolved: Array<{
       payload: PreparedPoiPayload;
       outcome: PendingPoiResolution["outcome"];
