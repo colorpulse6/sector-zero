@@ -265,7 +265,7 @@ test("founding deducts only galaxy-colony resources and claims the deterministic
   assert.deepEqual(legacySnapshot(founded.save), legacyBefore);
 });
 
-test("gameplay-mutated sessions for every native POI engine prepare from canonical dispatch authority", () => {
+test("galaxy POI sessions carry canonical presentation identity through every native engine", () => {
   const fixtures = [
     ["ashfall-cinder-relay", "firstPerson"],
     ["ashfall-oathbreaker-wreck", "boarding"],
@@ -278,7 +278,14 @@ test("gameplay-mutated sessions for every native POI engine prepare from canonic
     assert.equal(session.engine, engine);
     const initialNativeState = structuredClone(session.state);
     const projection = requireRegion(openGalaxyRegion(launched.save, "contact:ashfall")).projectedSave;
-    const gameState = createPoiGameState(session, projection);
+    const gameState = createPoiGameState(session, projection, "galaxy");
+    const nodeName = projection.planets
+      .flatMap((planet) => planet.regionMap.nodes)
+      .find((node) => node.id === nodeId)?.name;
+    assert.deepEqual(gameState.galaxyOperation, {
+      id: `poi:${nodeId}`,
+      label: nodeName,
+    });
 
     if (session.engine === "firstPerson") {
       updateFirstPerson(gameState, { ...NO_KEYS, right: true });

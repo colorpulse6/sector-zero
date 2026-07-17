@@ -92,6 +92,7 @@ test("experience gate exposes focusable galaxy and legacy entry choices", () => 
   const begin = renderToStaticMarkup(
     React.createElement(GalaxyExperienceGate, {
       hasGalaxyRun: false,
+      ready: true,
       onGalaxy() {},
       onLegacy() {},
     }),
@@ -103,11 +104,28 @@ test("experience gate exposes focusable galaxy and legacy entry choices", () => 
   const resume = renderToStaticMarkup(
     React.createElement(GalaxyExperienceGate, {
       hasGalaxyRun: true,
+      ready: true,
       onGalaxy() {},
       onLegacy() {},
     }),
   );
   assert.match(resume, /CONTINUE GALAXY/);
+});
+
+test("experience gate blocks every entry action until persisted save hydration completes", () => {
+  const loading = renderToStaticMarkup(
+    React.createElement(GalaxyExperienceGate, {
+      hasGalaxyRun: false,
+      ready: false,
+      onGalaxy() {},
+      onLegacy() {},
+    }),
+  );
+
+  assert.match(loading, /aria-busy="true"/);
+  assert.match(loading, /LOADING SAVE/);
+  assert.equal(loading.match(/disabled/g)?.length, 2);
+  assert.doesNotMatch(loading, />BEGIN GALAXY<|>CONTINUE GALAXY</);
 });
 
 test("insufficient supply names the block and disables commitment", () => {
