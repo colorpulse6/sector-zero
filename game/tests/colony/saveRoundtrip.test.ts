@@ -171,6 +171,8 @@ test("the hydration seed is deterministic and defers browser storage until mount
     assert.equal(hydration.currentWorld, 1);
     assert.equal(hydration.activeExperience, "legacy");
     assert.equal(hydration.galaxyRun, null);
+    assert.equal(Object.prototype.hasOwnProperty.call(hydration, "introSeen"), true);
+    assert.equal(hydration.introSeen, undefined);
 
     assert.equal(loadSave().currentWorld, 7);
     assert.equal(reads, 1);
