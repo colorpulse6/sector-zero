@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   attemptCanonicalPersistence,
   beginGalaxyExperience,
+  experienceReturnLabel,
   galaxyPoiRecoverySurface,
   isInteractiveKeyboardTarget,
   legacyProgressionSnapshot,
@@ -96,6 +97,11 @@ test("operation surface labels override compatibility coordinates without changi
     "HOSTILE PICKET",
   );
   assert.equal(operationSurfaceLabel({}, "Aurelia Belt — Level 1"), "Aurelia Belt — Level 1");
+});
+
+test("galaxy operation and POI exits consistently name the Atlas destination", () => {
+  assert.equal(experienceReturnLabel(true), "RETURN TO ATLAS");
+  assert.equal(experienceReturnLabel(false), "RETURN TO HUB");
 });
 
 test("canonical persistence reports failure without consuming a later retry", () => {
