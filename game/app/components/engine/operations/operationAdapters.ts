@@ -297,6 +297,9 @@ export function launchOperation(
         if (payload.kind !== "legacy_level" || payload.world !== 1 || payload.level !== 1 ||
           safeContext.operationId !== "op:hostile-picket") return fail(safeContext, "context_mismatch");
         gameState = createGameState(payload.world, payload.level, ...common);
+        // W1-L1 is a gameplay compatibility shell only. Its authored Aurelia
+        // campaign dialogue must never become Galaxy operation narrative.
+        gameState.dialogTriggers = [];
         break;
       }
       case "special_mission": {

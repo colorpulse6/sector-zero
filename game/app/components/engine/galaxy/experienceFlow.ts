@@ -122,3 +122,13 @@ export function attemptCanonicalPersistence<T>(
     return { ok: false };
   }
 }
+
+export type GalaxyPoiRecoverySurface = "atlas" | "poi_outcome" | "blocked";
+
+/** Rejected or unresolved delivery authority must never expose an actionable Atlas. */
+export function galaxyPoiRecoverySurface(
+  recovery: { ok: true; pending: unknown | null } | { ok: false },
+): GalaxyPoiRecoverySurface {
+  if (!recovery.ok) return "blocked";
+  return recovery.pending === null ? "atlas" : "poi_outcome";
+}

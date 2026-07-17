@@ -88,6 +88,7 @@ import { GalaxyAtlasScreen, GalaxyExperienceGate } from "./galaxy";
 import {
   attemptCanonicalPersistence,
   beginGalaxyExperience,
+  galaxyPoiRecoverySurface,
   isInteractiveKeyboardTarget,
   mapSurfaceForExperience,
   operationSurfaceLabel,
@@ -155,6 +156,7 @@ export default function Game() {
   const [activeOperationId, setActiveOperationId] = useState<OperationId | null>(null);
   const [activeOperationContext, setActiveOperationContext] = useState<OperationLaunchContext | null>(null);
   const [operationOutcomeError, setOperationOutcomeError] = useState<string | null>(null);
+  const [galaxyRecoveryError, setGalaxyRecoveryError] = useState<string | null>(null);
   const [specialPromptChoice, setSpecialPromptChoice] = useState(0);
   const [sceneStack, setSceneStack] = useState<SceneStack | null>(null);
   const [exitMenuOpen, setExitMenuOpen] = useState(false);
@@ -290,6 +292,7 @@ export default function Game() {
       fact.kind === "poi_completion_prepared")
       ? recoverGalaxyPoiCompletion(begun, "contact:ashfall")
       : { ok: true as const, save: begun, pending: null };
+    const recoverySurface = galaxyPoiRecoverySurface(recovered);
     const canonical = recovered.ok ? recovered.save : begun;
     persistCanonicalSave(canonical);
     ensureAudio().switchMusic("menu");
@@ -303,13 +306,18 @@ export default function Game() {
     setActiveOperationId(null);
     setActiveOperationContext(null);
     setOperationOutcomeError(null);
+    setGalaxyRecoveryError(
+      recoverySurface === "blocked"
+        ? "ASHFALL OUTCOME JOURNAL COULD NOT BE VERIFIED. THE GALAXY RUN IS LOCKED TO PREVENT LOST CARGO OR DUPLICATE REWARDS."
+        : null,
+    );
     setActivePoi(null);
-    setActivePoiExperience(recovered.ok && recovered.pending ? "galaxy" : null);
+    setActivePoiExperience(recoverySurface === "poi_outcome" ? "galaxy" : null);
     setPendingPoiResolution(recovered.ok ? recovered.pending : null);
     setPoiOutcomeResolving(false);
     setPoiOutcomeError(null);
     setRegionMapSurface(null);
-    setShowGalaxyAtlas(!(recovered.ok && recovered.pending));
+    setShowGalaxyAtlas(recoverySurface === "atlas");
     setAtlasStatusMessage(
       !recovered.ok
         ? "ASHFALL OUTCOME RECOVERY FAILED · JOURNAL REJECTED"
@@ -322,6 +330,7 @@ export default function Game() {
   const beginLegacy = useCallback(() => {
     const legacy = { ...saveDataRef.current, activeExperience: "legacy" as const };
     persistCanonicalSave(legacy);
+    setGalaxyRecoveryError(null);
     setShowGalaxyAtlas(false);
     openMap();
   }, [openMap, persistCanonicalSave]);
@@ -538,6 +547,10 @@ export default function Game() {
   }, []);
 
   const returnGalaxyPoiToAtlas = useCallback(() => {
+    if (activePoiExperience === "galaxy" && pendingPoiResolution !== null) {
+      setPoiOutcomeError("DELIVERY MUST BE RESOLVED BEFORE RETURNING TO THE ATLAS");
+      return;
+    }
     setGameState(null);
     setActivePoi(null);
     setActivePoiExperience(null);
@@ -553,7 +566,7 @@ export default function Game() {
     poiCompletionHandledRef.current = false;
     poiResolutionRef.current = false;
     audioRef.current?.switchMusic("menu");
-  }, []);
+  }, [activePoiExperience, pendingPoiResolution]);
 
   const startLevel = useCallback(
     (world: number, level: number) => {
@@ -791,7 +804,13 @@ export default function Game() {
       ? resolveGalaxyPoiCompletion(saveDataRef.current, "contact:ashfall", galaxyPending, destinationColonyId)
       : resolvePoiCompletion(pending, destinationColonyId);
     if (!resolved.ok) {
-      setPoiOutcomeError(resolved.reason === "destination_missing" ? "DESTINATION UNAVAILABLE" : "OUTCOME CHANGED — RETURN TO HUB");
+      setPoiOutcomeError(
+        resolved.reason === "destination_missing"
+          ? "DESTINATION UNAVAILABLE"
+          : galaxyPending
+            ? "OUTCOME VALIDATION FAILED — RETRY OR RELOAD"
+            : "OUTCOME CHANGED — RETURN TO HUB",
+      );
       poiResolutionRef.current = false; setPoiOutcomeResolving(false); return;
     }
     try {
@@ -1118,6 +1137,7 @@ export default function Game() {
         setActiveSpecialMissionId(null);
         setActiveOperationId(null);
         setActiveOperationContext(null);
+        setGalaxyRecoveryError(null);
         setActivePoi(null);
         setActivePoiExperience(null);
         setPendingPoiResolution(null);
@@ -2844,7 +2864,7 @@ export default function Game() {
           resolving={poiOutcomeResolving}
           error={poiOutcomeError}
           onConfirm={handlePoiOutcomeConfirm}
-          onHub={activePoiExperience === "galaxy" ? returnGalaxyPoiToAtlas : returnToCockpit}
+          onHub={activePoiExperience === "galaxy" ? undefined : returnToCockpit}
         />
       )}
       {activePoi && gameState?.screen === GameScreen.LEVEL_COMPLETE && !pendingPoiResolution && poiOutcomeError && (
@@ -2853,6 +2873,25 @@ export default function Game() {
             <h2 className="mb-4 text-xl text-red-400">OUTCOME LOCKED</h2>
             <p className="mb-6 text-sm">{poiOutcomeError}</p>
             <button onClick={activePoiExperience === "galaxy" ? returnGalaxyPoiToAtlas : returnToCockpit} className="border border-cyan-400 px-6 py-3 text-cyan-300">RETURN TO HUB</button>
+          </div>
+        </div>
+      )}
+      {galaxyRecoveryError && (
+        <div role="dialog" aria-modal="true" aria-label="Galaxy recovery locked" className="fixed inset-0 z-[1400] flex items-center justify-center bg-black/95 px-6 text-white">
+          <div className="max-w-lg border border-red-500 bg-slate-950 p-8 text-center">
+            <h2 className="mb-4 text-2xl tracking-wider text-red-400">GALAXY RUN LOCKED</h2>
+            <p className="mb-3 text-sm text-gray-200">{galaxyRecoveryError}</p>
+            <p className="mb-6 text-xs text-gray-500">Reload or restore a valid save before continuing this Galaxy run.</p>
+            <button
+              onClick={() => {
+                setGalaxyRecoveryError(null);
+                setShowGalaxyAtlas(false);
+                setShowStartScreen(true);
+              }}
+              className="border border-cyan-400 px-6 py-3 text-cyan-300"
+            >
+              RETURN TO EXPERIENCE SELECTOR
+            </button>
           </div>
         </div>
       )}

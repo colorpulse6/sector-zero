@@ -779,12 +779,16 @@ function drawLevelCompleteBanner(
   ctx.fillRect(0, bannerY, CANVAS_WIDTH, 2);
   ctx.fillRect(0, bannerY + bannerH - 2, CANVAS_WIDTH, 2);
 
-  // "LEVEL COMPLETE" text
+  // Canonical result identity; Galaxy operations only borrow the engine.
   ctx.fillStyle = "#FFD700";
   ctx.font = "bold 28px monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("LEVEL COMPLETE", CANVAS_WIDTH / 2, centerY - 12);
+  ctx.fillText(
+    state.galaxyOperation ? "OPERATION COMPLETE" : "LEVEL COMPLETE",
+    CANVAS_WIDTH / 2,
+    centerY - 12,
+  );
 
   // Score line
   ctx.fillStyle = "#aaaaaa";
