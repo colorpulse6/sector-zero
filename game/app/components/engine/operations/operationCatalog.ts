@@ -38,6 +38,16 @@ export const G0_OPERATION_IDS: readonly OperationId[] = Object.freeze([
   "op:ashfall-sortie",
 ]);
 
+const G0_OPERATION_LABELS: Readonly<Record<OperationId, string>> = Object.freeze({
+  "op:hostile-picket": "HOSTILE PICKET",
+  "op:kepler-black-box": "KEPLER BLACK BOX",
+  "op:ashfall-sortie": "ASHFALL SORTIE",
+});
+
+export function operationDisplayLabel(operationId: OperationId): string {
+  return G0_OPERATION_LABELS[operationId];
+}
+
 const OPERATION_STATES: readonly GalaxyOperationRecord["state"][] = [
   "available",
   "accepted",

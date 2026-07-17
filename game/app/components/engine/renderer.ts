@@ -29,6 +29,7 @@ import { drawGroundGame } from "./groundRenderer";
 import { drawBoardingGame } from "./boardingRenderer";
 import { drawFirstPerson } from "./firstPersonRenderer";
 import { drawTurretGame } from "./turretRenderer";
+import { operationSurfaceLabel } from "./galaxy/experienceFlow";
 
 export function drawGame(
   ctx: CanvasRenderingContext2D,
@@ -626,6 +627,26 @@ function drawBriefing(
   const fadeIn = Math.min(1, elapsed / 30);
   const fadeOut = Math.min(1, state.briefingTimer / 30);
   ctx.globalAlpha = Math.min(fadeIn, fadeOut);
+
+  if (state.galaxyOperation) {
+    ctx.fillStyle = "#44ccff";
+    ctx.font = "bold 16px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("GALAXY OPERATION", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 70);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 28px monospace";
+    ctx.fillText(
+      operationSurfaceLabel(state, levelData.name),
+      CANVAS_WIDTH / 2,
+      CANVAS_HEIGHT / 2 - 30,
+    );
+    ctx.fillStyle = "#555555";
+    ctx.font = "11px monospace";
+    ctx.fillText("PRESS ENTER OR TAP TO SKIP", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 100);
+    ctx.restore();
+    return;
+  }
 
   if (hasWorldIntro && state.briefingTimer > 300) {
     // World intro phase

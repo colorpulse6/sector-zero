@@ -508,6 +508,8 @@ export interface DialogTrigger {
 // ─── Full Game State ─────────────────────────────────────────────────
 export interface GameState {
   screen: GameScreen;
+  /** Ephemeral Atlas identity for an authorized galaxy operation. Never saved. */
+  galaxyOperation?: { id: string; label: string };
   player: Player;
   playerBullets: Bullet[];
   enemyBullets: Bullet[];

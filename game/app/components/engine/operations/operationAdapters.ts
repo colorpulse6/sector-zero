@@ -45,6 +45,7 @@ import type {
 } from "../types";
 import {
   authorizeOperationLaunch,
+  operationDisplayLabel,
   sameOperationLaunchContext,
   snapshotOperationLaunchContext,
 } from "./operationCatalog";
@@ -323,6 +324,10 @@ export function launchOperation(
         return fail(safeContext, exhaustive);
       }
     }
+    gameState.galaxyOperation = {
+      id: authorization.operation.id,
+      label: operationDisplayLabel(authorization.operation.id),
+    };
     return { ok: true, context: structuredClone(authorization.context), gameState };
   } catch {
     return fail(safeContext, "malformed_run");
@@ -384,6 +389,14 @@ export type GalaxyPoiPreparationResult =
       ok: true;
       save: SaveData;
       pending: GalaxyPendingPoiResolution;
+    }
+  | { ok: false; reason: GalaxyRegionAdapterReason };
+
+export type GalaxyPoiRecoveryResult =
+  | {
+      ok: true;
+      save: SaveData;
+      pending: GalaxyPendingPoiResolution | null;
     }
   | { ok: false; reason: GalaxyRegionAdapterReason };
 
@@ -768,6 +781,88 @@ function journalPoiPreparation(
   };
 }
 
+function decodePreparedOutcomePayload(
+  value: unknown,
+  originColonyId: ColonyId,
+  nodeId: RegionNodeId,
+): { outcome: PendingPoiResolution["outcome"]; payload: PreparedPoiOutcomePayload } | null {
+  if (value === null) return { outcome: null, payload: null };
+  const tuple = arraySnapshot(value);
+  if (tuple === null || tuple.length !== 3 || tuple[0] !== originColonyId || tuple[1] !== nodeId) {
+    return null;
+  }
+  const cargoEntries = arraySnapshot(tuple[2]);
+  if (cargoEntries === null) return null;
+  const cargo: Record<string, number> = {};
+  for (const rawEntry of cargoEntries) {
+    const entry = arraySnapshot(rawEntry);
+    if (entry === null || entry.length !== 2 || typeof entry[0] !== "string" ||
+      typeof entry[1] !== "number" || !Number.isFinite(entry[1]) ||
+      Object.prototype.hasOwnProperty.call(cargo, entry[0])) return null;
+    cargo[entry[0]] = entry[1];
+  }
+  const canonical = snapshotPreparedOutcome(
+    { originColonyId, nodeId, payload: cargo },
+    originColonyId,
+    nodeId,
+  );
+  return canonical !== null && samePlainData(canonical.payload, value)
+    ? canonical
+    : null;
+}
+
+function decodePreparedFact(
+  fact: HistoricalFact,
+): { payload: PreparedPoiPayload; outcome: PendingPoiResolution["outcome"] } | null {
+  try {
+    const snapshot = exactOwnData(
+      fact,
+      ["id", "kind", "subjectId", "cycle", "causeFactIds"],
+    );
+    if (snapshot === null || snapshot.kind !== "poi_completion_prepared" ||
+      typeof snapshot.id !== "string" || typeof snapshot.subjectId !== "string" ||
+      !Number.isSafeInteger(snapshot.cycle) || (snapshot.cycle as number) < 0) return null;
+    const match = /^history:poi-prepared:([0-9a-f]{8}):(.*)$/.exec(snapshot.id);
+    if (match === null) return null;
+    const decoded = arraySnapshot(JSON.parse(decodeURIComponent(match[2])));
+    if (decoded === null || decoded.length !== 8 || decoded[0] !== 1 ||
+      typeof decoded[1] !== "string" || decoded[1].length === 0 ||
+      typeof decoded[2] !== "string" || decoded[2].length === 0 ||
+      !Number.isSafeInteger(decoded[3]) || (decoded[3] as number) < 0 ||
+      typeof decoded[4] !== "string" || decoded[4].length === 0 ||
+      (decoded[5] !== "firstPerson" && decoded[5] !== "boarding" && decoded[5] !== "groundRun") ||
+      typeof decoded[6] !== "boolean") return null;
+    const outcome = decodePreparedOutcomePayload(
+      decoded[7],
+      decoded[1] as ColonyId,
+      decoded[2] as RegionNodeId,
+    );
+    if (outcome === null || decoded[6] !== (outcome.outcome !== null)) return null;
+    const payload: PreparedPoiPayload = [
+      1,
+      decoded[1] as ColonyId,
+      decoded[2] as RegionNodeId,
+      decoded[3] as number,
+      decoded[4] as PoiTemplateId,
+      decoded[5],
+      decoded[6],
+      outcome.payload,
+    ];
+    const expectedId = preparedFactId(payload);
+    return samePlainData(snapshot, {
+      id: expectedId,
+      kind: "poi_completion_prepared",
+      subjectId: payload[2],
+      cycle: payload[3],
+      causeFactIds: [],
+    })
+      ? { payload, outcome: outcome.outcome }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function prepareGalaxyPoiCompletion(
   save: SaveData,
   contactId: string,
@@ -807,6 +902,68 @@ export function prepareGalaxyPoiCompletion(
     return { ok: true, save: journaled.save, pending };
   } catch {
     return { ok: false, reason: "projected_result_invalid" };
+  }
+}
+
+/**
+ * Rebuild the one deferred Ashfall outcome that survived a page reload. The
+ * journal is treated as hostile serialized input: every embedded field is
+ * rebound to the current canonical projection before a pending result exists.
+ */
+export function recoverGalaxyPoiCompletion(
+  save: SaveData,
+  contactId: string,
+): GalaxyPoiRecoveryResult {
+  const opened = openAshfallProjection(save, contactId);
+  if (isOpenFailure(opened)) return opened;
+  try {
+    const preparedFacts = opened.run.historyFacts.filter((fact) =>
+      fact.kind === "poi_completion_prepared");
+    const unresolved: Array<{
+      payload: PreparedPoiPayload;
+      outcome: PendingPoiResolution["outcome"];
+    }> = [];
+    for (const fact of preparedFacts) {
+      const decoded = decodePreparedFact(fact);
+      if (decoded === null) return { ok: false, reason: "invalid_poi_session" };
+      const [, originColonyId, nodeId, cycle, templateId, engine, rewardEligible] = decoded.payload;
+      const colony = opened.projectedSave.colonies.find((entry) => entry.id === originColonyId);
+      const node = opened.projectedSave.planets.find((entry) => entry.id === colony?.planetId)
+        ?.regionMap.nodes.find((entry) => entry.id === nodeId);
+      if (node === undefined || node.templateId !== templateId) {
+        return { ok: false, reason: "invalid_poi_session" };
+      }
+      if (node.intel === "cleared") continue;
+      const authority = canonicalPoiAuthority(opened.projectedSave, originColonyId, nodeId);
+      const rebound = authority === null
+        ? null
+        : preparedPoiPayload(authority, cycle, decoded.outcome);
+      if (authority === null || rebound === null || authority.templateId !== templateId ||
+        authority.engine !== engine || authority.rewardEligible !== rewardEligible ||
+        !samePlainData(rebound.payload, decoded.payload)) {
+        return { ok: false, reason: "invalid_poi_session" };
+      }
+      unresolved.push(decoded);
+    }
+    if (unresolved.length === 0) {
+      return { ok: true, save: opened.parent, pending: null };
+    }
+    if (unresolved.length !== 1 || unresolved[0].payload[3] !== opened.run.worldCycle) {
+      return { ok: false, reason: "invalid_poi_session" };
+    }
+    const [, originColonyId, nodeId] = unresolved[0].payload;
+    const preparedId = preparedFactId(unresolved[0].payload);
+    const pending: GalaxyPendingPoiResolution = {
+      originColonyId,
+      nodeId,
+      preparedFactId: preparedId,
+      baseSave: opened.parent,
+      projectedSave: opened.parent,
+      outcome: unresolved[0].outcome,
+    };
+    return { ok: true, save: opened.parent, pending };
+  } catch {
+    return { ok: false, reason: "invalid_poi_session" };
   }
 }
 

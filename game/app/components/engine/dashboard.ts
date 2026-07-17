@@ -9,6 +9,7 @@ import {
   type GameState,
 } from "./types";
 import { getSprite, SPRITES } from "./sprites";
+import { operationSurfaceLabel } from "./galaxy/experienceFlow";
 
 // ─── Power-up sprite frame indices ─────────────────────────────────
 const POWERUP_FRAME_MAP: Record<string, number> = {
@@ -287,7 +288,7 @@ function drawDialogZone(
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText(
-      `SECTOR ${state.currentWorld}-${state.currentLevel}`,
+      operationSurfaceLabel(state, `SECTOR ${state.currentWorld}-${state.currentLevel}`),
       PAD_X,
       DIALOG_Y + 10
     );

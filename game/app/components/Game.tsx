@@ -86,8 +86,11 @@ import { createGradePass } from "./engine/postFx";
 import { selectPreset, type GradeScene } from "./engine/postFx/presets";
 import { GalaxyAtlasScreen, GalaxyExperienceGate } from "./galaxy";
 import {
+  attemptCanonicalPersistence,
   beginGalaxyExperience,
+  isInteractiveKeyboardTarget,
   mapSurfaceForExperience,
+  operationSurfaceLabel,
   returnSurfaceForOperation,
 } from "./engine/galaxy/experienceFlow";
 import type { ExperienceMode } from "./engine/galaxy/galaxyTypes";
@@ -114,6 +117,7 @@ import {
   launchOperation,
   openGalaxyRegion,
   prepareGalaxyPoiCompletion,
+  recoverGalaxyPoiCompletion,
   resolveGalaxyPoiCompletion,
   startGalaxyRegionExpedition,
   type GalaxyPendingPoiResolution,
@@ -150,6 +154,7 @@ export default function Game() {
   const [activeSpecialMissionId, setActiveSpecialMissionId] = useState<SpecialMissionId | null>(null);
   const [activeOperationId, setActiveOperationId] = useState<OperationId | null>(null);
   const [activeOperationContext, setActiveOperationContext] = useState<OperationLaunchContext | null>(null);
+  const [operationOutcomeError, setOperationOutcomeError] = useState<string | null>(null);
   const [specialPromptChoice, setSpecialPromptChoice] = useState(0);
   const [sceneStack, setSceneStack] = useState<SceneStack | null>(null);
   const [exitMenuOpen, setExitMenuOpen] = useState(false);
@@ -281,7 +286,12 @@ export default function Game() {
 
   const beginGalaxy = useCallback(() => {
     const begun = beginGalaxyExperience(saveDataRef.current);
-    persistCanonicalSave(begun);
+    const recovered = begun.galaxyRun?.historyFacts.some((fact) =>
+      fact.kind === "poi_completion_prepared")
+      ? recoverGalaxyPoiCompletion(begun, "contact:ashfall")
+      : { ok: true as const, save: begun, pending: null };
+    const canonical = recovered.ok ? recovered.save : begun;
+    persistCanonicalSave(canonical);
     ensureAudio().switchMusic("menu");
     setShowStartScreen(false);
     setShowIntro(false);
@@ -292,12 +302,21 @@ export default function Game() {
     setActiveSpecialMissionId(null);
     setActiveOperationId(null);
     setActiveOperationContext(null);
+    setOperationOutcomeError(null);
     setActivePoi(null);
-    setActivePoiExperience(null);
-    setPendingPoiResolution(null);
+    setActivePoiExperience(recovered.ok && recovered.pending ? "galaxy" : null);
+    setPendingPoiResolution(recovered.ok ? recovered.pending : null);
+    setPoiOutcomeResolving(false);
+    setPoiOutcomeError(null);
     setRegionMapSurface(null);
-    setShowGalaxyAtlas(true);
-    setAtlasStatusMessage(null);
+    setShowGalaxyAtlas(!(recovered.ok && recovered.pending));
+    setAtlasStatusMessage(
+      !recovered.ok
+        ? "ASHFALL OUTCOME RECOVERY FAILED · JOURNAL REJECTED"
+        : recovered.pending
+          ? "ASHFALL OUTCOME RECOVERED · DELIVERY STILL PENDING"
+          : null,
+    );
   }, [ensureAudio, persistCanonicalSave]);
 
   const beginLegacy = useCallback(() => {
@@ -387,6 +406,7 @@ export default function Game() {
       operationOutcomeHandledRef.current = false;
       setActiveOperationId(launched.context.operationId);
       setActiveOperationContext(launched.context);
+      setOperationOutcomeError(null);
       setActivePlanetId(null);
       setActiveSpecialMissionId(null);
       setActivePoi(null);
@@ -428,7 +448,9 @@ export default function Game() {
     if (operationOutcomeHandledRef.current) return false;
     const current = saveDataRef.current;
     if (current.galaxyRun === null) {
-      setAtlasStatusMessage("OPERATION OUTCOME LOST ITS GALAXY RUN");
+      const message = "OPERATION OUTCOME LOST ITS GALAXY RUN";
+      setOperationOutcomeError(message);
+      setAtlasStatusMessage(message);
       return false;
     }
     operationOutcomeHandledRef.current = true;
@@ -448,16 +470,27 @@ export default function Game() {
     });
     if (!normalized.ok) {
       operationOutcomeHandledRef.current = false;
-      setAtlasStatusMessage(normalized.errors.map((entry) => entry.message).join(" · "));
+      const message = normalized.errors.map((entry) => entry.message).join(" · ");
+      setOperationOutcomeError(message);
+      setAtlasStatusMessage(message);
       return false;
     }
     const applied = applyOperationOutcome(current, normalized.outcome);
     if (!applied.ok) {
       operationOutcomeHandledRef.current = false;
-      setAtlasStatusMessage(applied.errors.map((entry) => entry.message).join(" · "));
+      const message = applied.errors.map((entry) => entry.message).join(" · ");
+      setOperationOutcomeError(message);
+      setAtlasStatusMessage(message);
       return false;
     }
-    if (applied.changed) persistCanonicalSave(applied.save);
+    if (applied.changed && !attemptCanonicalPersistence(applied.save, persistCanonicalSave).ok) {
+      operationOutcomeHandledRef.current = false;
+      const message = "OUTCOME SAVE FAILED · FREE SPACE AND RETRY";
+      setOperationOutcomeError(message);
+      setAtlasStatusMessage(message);
+      return false;
+    }
+    setOperationOutcomeError(null);
     returnSurfaceForOperation(applied.save);
     setGameState(null);
     setActiveOperationId(null);
@@ -495,6 +528,7 @@ export default function Game() {
     setGameState(null);
     setActiveOperationId(null);
     setActiveOperationContext(null);
+    setOperationOutcomeError(null);
     setShowCockpit(false);
     setShowMap(false);
     setShowGalaxyAtlas(true);
@@ -1370,6 +1404,7 @@ export default function Game() {
   // Keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isInteractiveKeyboardTarget(e.target)) return;
       if (showGalaxyAtlas) return;
       // Colonies screen uses a DOM overlay for input — let the overlay handle keys.
       if (showCockpit && cockpitState.screen === "colonies") return;
@@ -2396,7 +2431,10 @@ export default function Game() {
           <div className="text-center">
             <h2 className="text-4xl font-bold mb-4 tracking-wider">PAUSED</h2>
             <p className="text-gray-500 text-sm mb-6">
-              {WORLD_NAMES[gameState.currentWorld - 1]} &mdash; Level {gameState.currentLevel}
+              {operationSurfaceLabel(
+                gameState,
+                `${WORLD_NAMES[gameState.currentWorld - 1]} — Level ${gameState.currentLevel}`,
+              )}
             </p>
             <div className="flex flex-col gap-3 items-center">
               <button
@@ -2447,10 +2485,15 @@ export default function Game() {
                 {activeSpecialMission.name}
               </p>
             )}
+            {activeOperationId && (
+              <p className="text-cyan-300 text-lg mb-2">
+                {operationSurfaceLabel(gameState, "GALAXY OPERATION")}
+              </p>
+            )}
             <p className="text-2xl">
               Score: <span className="text-yellow-400 font-bold">{gameState.score}</span>
             </p>
-            {(() => {
+            {!activeOperationId && (() => {
               const killPct = gameState.totalEnemies > 0
                 ? Math.floor((gameState.kills / gameState.totalEnemies) * 100)
                 : 0;
@@ -2485,7 +2528,7 @@ export default function Game() {
             {gameState.maxCombo >= 3 && (
               <p className="text-yellow-500">Max Combo: {gameState.maxCombo}x</p>
             )}
-            {!activePlanetId && !activeSpecialMissionId && (
+            {!activePlanetId && !activeSpecialMissionId && !activeOperationId && (
               <div className="flex justify-center gap-2 mt-2">
                 {[1, 2, 3].map((star) => {
                   const earned =
@@ -2527,16 +2570,27 @@ export default function Game() {
                 <p className="text-sm text-cyan-300">+ REYES RECORDER LOG</p>
               </div>
             )}
-            <p className="text-lg mt-3" style={{ color: "#44ff88" }}>
-              +{calculateCreditsEarned(
-                gameState.score,
-                activeSpecialMissionId
-                  ? 1
-                  : gameState.deaths === 0 && gameState.kills / Math.max(1, gameState.totalEnemies) >= 0.8 ? 3 :
-                    gameState.deaths === 0 ? 2 : 1,
-                gameState.currentWorld
-              )} CREDITS
-            </p>
+            {activeOperationId ? (
+              <p className="text-sm text-cyan-300 mt-3 tracking-wider">
+                CATALOG REWARDS APPLY WHEN THE OUTCOME IS JOURNALED
+              </p>
+            ) : (
+              <p className="text-lg mt-3" style={{ color: "#44ff88" }}>
+                +{calculateCreditsEarned(
+                  gameState.score,
+                  activeSpecialMissionId
+                    ? 1
+                    : gameState.deaths === 0 && gameState.kills / Math.max(1, gameState.totalEnemies) >= 0.8 ? 3 :
+                      gameState.deaths === 0 ? 2 : 1,
+                  gameState.currentWorld
+                )} CREDITS
+              </p>
+            )}
+            {activeOperationId && operationOutcomeError && (
+              <p role="alert" className="max-w-md text-sm text-red-400 mt-3">
+                {operationOutcomeError}
+              </p>
+            )}
             {shouldPromptKeplerMission && (
               <div className="mt-4 max-w-md space-y-3 border border-amber-500/40 bg-amber-950/20 px-4 py-4">
                 <p className="text-sm text-amber-300 font-bold tracking-wider">REYES</p>
@@ -2550,6 +2604,7 @@ export default function Game() {
               </div>
             )}
             {(() => {
+              if (activeOperationId) return null;
               const mpData = getMultiPhaseLevelData(gameState.currentWorld, gameState.currentLevel);
               if (!mpData?.completionRewards?.length) return null;
               if (gameState.currentPhase < gameState.totalPhases - 1) return null;
@@ -2628,11 +2683,19 @@ export default function Game() {
               Score: <span className="text-yellow-400 font-bold">{gameState.score}</span>
             </p>
             <p className="text-gray-400">
-              {WORLD_NAMES[gameState.currentWorld - 1]} &mdash; Level {gameState.currentLevel}
+              {operationSurfaceLabel(
+                gameState,
+                `${WORLD_NAMES[gameState.currentWorld - 1]} — Level ${gameState.currentLevel}`,
+              )}
             </p>
             <p className="text-gray-500 text-sm">
               Kills: {gameState.kills} &middot; Max Combo: {gameState.maxCombo}x
             </p>
+            {activeOperationId && operationOutcomeError && (
+              <p role="alert" className="max-w-md text-sm text-red-400 mt-3">
+                {operationOutcomeError}
+              </p>
+            )}
           </div>
           <div className="flex gap-4">
             <button

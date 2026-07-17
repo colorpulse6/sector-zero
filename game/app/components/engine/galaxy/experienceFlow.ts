@@ -4,6 +4,39 @@ import type { ExperienceMode } from "./galaxyTypes";
 
 export type ExperienceMapSurface = "legacy_star_map" | "galaxy_atlas";
 
+interface KeyboardTargetLike {
+  tagName?: unknown;
+  isContentEditable?: unknown;
+  getAttribute?: (name: string) => unknown;
+  closest?: (selector: string) => unknown;
+}
+
+interface OperationSurfaceState {
+  galaxyOperation?: { id: string; label: string };
+}
+
+const INTERACTIVE_SELECTOR = [
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "a[href]",
+  "[contenteditable]",
+  "[role='button']",
+  "[role='link']",
+  "[role='checkbox']",
+  "[role='radio']",
+  "[role='menuitem']",
+  "[role='option']",
+  "[role='switch']",
+  "[role='tab']",
+  "[role='textbox']",
+  "[role='combobox']",
+  "[role='listbox']",
+  "[role='slider']",
+  "[role='spinbutton']",
+].join(",");
+
 export type LegacyProgressionSnapshot = Omit<
   SaveData,
   "activeExperience" | "galaxyRun"
@@ -43,4 +76,49 @@ export function legacyProgressionSnapshot(
     ...legacy
   } = save;
   return structuredClone(legacy);
+}
+
+/** Global shortcuts must not preempt native actions owned by focused controls. */
+export function isInteractiveKeyboardTarget(target: unknown): boolean {
+  if (typeof target !== "object" || target === null) return false;
+  try {
+    const candidate = target as KeyboardTargetLike;
+    const tagName = typeof candidate.tagName === "string"
+      ? candidate.tagName.toUpperCase()
+      : "";
+    if (["BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(tagName)) return true;
+    const href = candidate.getAttribute?.("href");
+    if (tagName === "A" && href !== null && href !== undefined) return true;
+    const contentEditable = candidate.getAttribute?.("contenteditable");
+    if (candidate.isContentEditable === true || contentEditable === "true") return true;
+    const role = candidate.getAttribute?.("role");
+    if (typeof role === "string" && [
+      "button", "link", "checkbox", "radio", "menuitem", "option", "switch",
+      "tab", "textbox", "combobox", "listbox", "slider", "spinbutton",
+    ].includes(role.toLowerCase())) return true;
+    return typeof candidate.closest === "function" && candidate.closest(INTERACTIVE_SELECTOR) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Atlas operations replace compatibility coordinates with canonical identity. */
+export function operationSurfaceLabel(
+  state: OperationSurfaceState,
+  legacyLabel: string,
+): string {
+  return state.galaxyOperation?.label.toUpperCase() ?? legacyLabel;
+}
+
+/** One persistence attempt is isolated so a caller can safely offer a retry. */
+export function attemptCanonicalPersistence<T>(
+  value: T,
+  persist: (value: T) => void,
+): { ok: true } | { ok: false } {
+  try {
+    persist(value);
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
