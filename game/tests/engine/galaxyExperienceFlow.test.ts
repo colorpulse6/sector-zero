@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  attemptCanonicalPersistence,
   beginGalaxyExperience,
+  isInteractiveKeyboardTarget,
   legacyProgressionSnapshot,
   mapSurfaceForExperience,
+  operationSurfaceLabel,
   returnSurfaceForOperation,
 } from "../../app/components/engine/galaxy/experienceFlow";
 import { migrateSave } from "../../app/components/engine/save";
@@ -71,4 +74,39 @@ test("a galaxy operation returns to the Atlas without changing legacy progressio
 
   assert.equal(returnSurfaceForOperation(completed), "galaxy_atlas");
   assert.deepEqual(legacyProgressionSnapshot(completed), legacyBefore);
+});
+
+test("global game shortcuts yield to interactive controls and their descendants", () => {
+  assert.equal(isInteractiveKeyboardTarget({ tagName: "BUTTON" }), true);
+  assert.equal(isInteractiveKeyboardTarget({ tagName: "A", getAttribute: (name: string) => name === "href" ? "/atlas" : null }), true);
+  assert.equal(isInteractiveKeyboardTarget({ tagName: "DIV", isContentEditable: true }), true);
+  assert.equal(isInteractiveKeyboardTarget({ tagName: "DIV", getAttribute: (name: string) => name === "role" ? "button" : null }), true);
+  assert.equal(isInteractiveKeyboardTarget({
+    tagName: "SPAN",
+    closest: (selector: string) => selector.includes("button") ? { tagName: "BUTTON" } : null,
+  }), true);
+  assert.equal(isInteractiveKeyboardTarget({ tagName: "CANVAS" }), false);
+  assert.equal(isInteractiveKeyboardTarget(null), false);
+});
+
+test("operation surface labels override compatibility coordinates without changing legacy labels", () => {
+  assert.equal(
+    operationSurfaceLabel({ galaxyOperation: { id: "op:hostile-picket", label: "HOSTILE PICKET" } }, "Aurelia Belt — Level 1"),
+    "HOSTILE PICKET",
+  );
+  assert.equal(operationSurfaceLabel({}, "Aurelia Belt — Level 1"), "Aurelia Belt — Level 1");
+});
+
+test("canonical persistence reports failure without consuming a later retry", () => {
+  const value = { cycle: 7 };
+  let attempts = 0;
+  const persist = (candidate: typeof value) => {
+    attempts += 1;
+    assert.strictEqual(candidate, value);
+    if (attempts === 1) throw new Error("quota exceeded");
+  };
+
+  assert.deepEqual(attemptCanonicalPersistence(value, persist), { ok: false });
+  assert.deepEqual(attemptCanonicalPersistence(value, persist), { ok: true });
+  assert.equal(attempts, 2);
 });

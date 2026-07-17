@@ -28,6 +28,7 @@ import {
   foundGalaxyOutpost,
   openGalaxyRegion,
   prepareGalaxyPoiCompletion,
+  recoverGalaxyPoiCompletion,
   resolveGalaxyPoiCompletion,
   startGalaxyRegionExpedition,
 } from "../../app/components/engine/operations/operationAdapters";
@@ -422,6 +423,72 @@ test("POI travel, completion, and mission_delivery remain galaxy-only and idempo
     assert.strictEqual(duplicate.save, resolved.save);
   }
   assert.deepEqual(resolved.save, beforeDuplicate);
+});
+
+test("a migrated reload recovers one prepared POI outcome and resolves its cycle and cargo exactly once", () => {
+  const launched = launchSurveyedPoi("ashfall-cinder-relay");
+  const prepared = requireRegion(prepareGalaxyPoiCompletion(
+    launched.save,
+    "contact:ashfall",
+    { originColonyId: launched.originColonyId, session: launched.session! },
+    GameScreen.LEVEL_COMPLETE,
+  ));
+  const preparedCycle = prepared.save.galaxyRun!.worldCycle;
+  const reloaded = migrateSave(JSON.parse(JSON.stringify(prepared.save)));
+
+  const recovered = requireRegion(recoverGalaxyPoiCompletion(reloaded, "contact:ashfall"));
+  assert.ok(recovered.pending);
+  assert.strictEqual(recovered.pending?.baseSave, recovered.pending?.projectedSave);
+  assert.strictEqual(recovered.pending?.baseSave, recovered.save);
+  const resolved = requireRegion(resolveGalaxyPoiCompletion(
+    recovered.save,
+    "contact:ashfall",
+    recovered.pending!,
+    launched.originColonyId,
+  ));
+  assert.equal(resolved.save.galaxyRun!.worldCycle, preparedCycle);
+  assert.equal(
+    resolved.save.galaxyRun!.colonies.find((colony) => colony.id === launched.originColonyId)?.resources.metal,
+    80,
+  );
+  const afterResolution = requireRegion(recoverGalaxyPoiCompletion(resolved.save, "contact:ashfall"));
+  assert.equal(afterResolution.pending, null);
+});
+
+test("prepared POI recovery rejects malformed and ambiguous unresolved journals", () => {
+  const launched = launchSurveyedPoi("ashfall-cinder-relay");
+  const prepared = requireRegion(prepareGalaxyPoiCompletion(
+    launched.save,
+    "contact:ashfall",
+    { originColonyId: launched.originColonyId, session: launched.session! },
+    GameScreen.LEVEL_COMPLETE,
+  ));
+  const malformed = structuredClone(prepared.save);
+  malformed.galaxyRun!.historyFacts.find((fact) =>
+    fact.id === prepared.pending.preparedFactId)!.causeFactIds = ["fact:forged"];
+  const malformedResult = recoverGalaxyPoiCompletion(malformed, "contact:ashfall");
+  assert.deepEqual(malformedResult, { ok: false, reason: "invalid_poi_session" });
+
+  const secondSurvey = requireRegion(startGalaxyRegionExpedition(
+    prepared.save,
+    "contact:ashfall",
+    { kind: "survey", originColonyId: launched.originColonyId, targetNodeId: "ashfall-oathbreaker-wreck" },
+    null,
+  ));
+  const secondLaunch = requireRegion(startGalaxyRegionExpedition(
+    secondSurvey.save,
+    "contact:ashfall",
+    { kind: "poi", originColonyId: launched.originColonyId, targetNodeId: "ashfall-oathbreaker-wreck" },
+    null,
+  ));
+  const ambiguous = requireRegion(prepareGalaxyPoiCompletion(
+    secondLaunch.save,
+    "contact:ashfall",
+    { originColonyId: launched.originColonyId, session: secondLaunch.session! },
+    GameScreen.LEVEL_COMPLETE,
+  ));
+  const ambiguousResult = recoverGalaxyPoiCompletion(ambiguous.save, "contact:ashfall");
+  assert.deepEqual(ambiguousResult, { ok: false, reason: "invalid_poi_session" });
 });
 
 test("a cleared POI replay costs travel and completion cycles but cannot pay cargo twice", () => {

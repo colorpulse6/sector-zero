@@ -286,13 +286,13 @@ test("projection validation cannot be bypassed by live upgrades or toJSON", () =
 });
 
 test("explicit canonical launch contexts bypass all locked legacy availability fields", () => {
-  const fixtures: Array<[OperationId, GalaxyRunState, string, number, number]> = [
-    ["op:hostile-picket", atHostileInterruption(), "shooter", 1, 1],
-    ["op:kepler-black-box", atContact("contact:kepler"), "first-person", 4, 2],
-    ["op:ashfall-sortie", atContact("contact:ashfall", true), "shooter", 6, 1],
+  const fixtures: Array<[OperationId, GalaxyRunState, string, number, number, string]> = [
+    ["op:hostile-picket", atHostileInterruption(), "shooter", 1, 1, "HOSTILE PICKET"],
+    ["op:kepler-black-box", atContact("contact:kepler"), "first-person", 4, 2, "KEPLER BLACK BOX"],
+    ["op:ashfall-sortie", atContact("contact:ashfall", true), "shooter", 6, 1, "ASHFALL SORTIE"],
   ];
 
-  for (const [operationId, run, mode, world, level] of fixtures) {
+  for (const [operationId, run, mode, world, level, label] of fixtures) {
     const projection = projectGalaxyRunToLegacySave(richParent(run));
     assert.deepEqual(projection.levels, {});
     assert.deepEqual(projection.completedPlanets, []);
@@ -308,6 +308,7 @@ test("explicit canonical launch contexts bypass all locked legacy availability f
     assert.equal(launched.gameState.currentMode, mode);
     assert.equal(launched.gameState.currentWorld, world);
     assert.equal(launched.gameState.currentLevel, level);
+    assert.deepEqual(launched.gameState.galaxyOperation, { id: operationId, label });
     if (operationId === "op:ashfall-sortie") assert.equal(launched.gameState.planetId, "ashfall");
   }
 });
