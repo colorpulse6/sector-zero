@@ -89,6 +89,7 @@ import { GalaxyAtlasScreen, GalaxyExperienceGate } from "./galaxy";
 import {
   attemptCanonicalPersistence,
   beginGalaxyExperience,
+  experienceReturnLabel,
   galaxyPoiRecoverySurface,
   isInteractiveKeyboardTarget,
   mapSurfaceForExperience,
@@ -148,6 +149,7 @@ export default function Game() {
   const [atlasStatusMessage, setAtlasStatusMessage] = useState<string | null>(null);
   const [starMapState, setStarMapState] = useState<StarMapState>(createStarMapState());
   const [saveData, setSaveData] = useState<SaveData>(createHydrationSafeSave);
+  const [saveHydrated, setSaveHydrated] = useState(false);
   const [endingPhase, setEndingPhase] = useState<"off" | "pre-choice" | "choice" | "ending" | "credits">("off");
   const [endingChoice, setEndingChoice] = useState<EndingChoice>(null);
   const [choiceHover, setChoiceHover] = useState(0);
@@ -182,6 +184,7 @@ export default function Game() {
     const loaded = loadSave();
     saveDataRef.current = loaded;
     setSaveData(loaded);
+    setSaveHydrated(true);
   }, []);
 
   const persistCanonicalSave = useCallback((next: SaveData) => {
@@ -295,6 +298,7 @@ export default function Game() {
   }, []);
 
   const beginGalaxy = useCallback(() => {
+    if (!saveHydrated) return;
     const begun = beginGalaxyExperience(saveDataRef.current);
     const recovered = begun.galaxyRun?.historyFacts.some(isGalaxyPoiPreparationFact)
       ? recoverGalaxyPoiCompletion(begun, "contact:ashfall")
@@ -332,15 +336,16 @@ export default function Game() {
           ? "ASHFALL OUTCOME RECOVERED · DELIVERY STILL PENDING"
           : null,
     );
-  }, [ensureAudio, persistCanonicalSave]);
+  }, [ensureAudio, persistCanonicalSave, saveHydrated]);
 
   const beginLegacy = useCallback(() => {
+    if (!saveHydrated) return;
     const legacy = { ...saveDataRef.current, activeExperience: "legacy" as const };
     persistCanonicalSave(legacy);
     setGalaxyRecoveryError(null);
     setShowGalaxyAtlas(false);
     openMap();
-  }, [openMap, persistCanonicalSave]);
+  }, [openMap, persistCanonicalSave, saveHydrated]);
 
   const restoreAtlasInvokerFocus = useCallback(() => {
     if (!atlasShouldRestoreFocusRef.current) {
@@ -703,7 +708,7 @@ export default function Game() {
             })()
           : result.save;
         if (engineSave === null) throw new Error("Galaxy region projection unavailable");
-        poiState = createPoiGameState(result.session, engineSave);
+        poiState = createPoiGameState(result.session, engineSave, surface.experience);
       }
       catch { expeditionRequestRef.current = null; return; }
     }
@@ -906,7 +911,7 @@ export default function Game() {
         setActivePoi({ originColonyId: activePoi.originColonyId, session: dispatched.session });
         poiCompletionHandledRef.current = false;
         setPendingPoiResolution(null);
-        setGameState(createPoiGameState(dispatched.session, poiSave));
+        setGameState(createPoiGameState(dispatched.session, poiSave, activePoiExperience ?? "legacy"));
       }
       return;
     }
@@ -2446,6 +2451,7 @@ export default function Game() {
 
           <GalaxyExperienceGate
             hasGalaxyRun={saveData.galaxyRun !== null}
+            ready={saveHydrated}
             onGalaxy={beginGalaxy}
             onLegacy={beginLegacy}
           />
@@ -2478,10 +2484,12 @@ export default function Game() {
                     : returnToCockpit}
                 className="px-8 py-3 border-2 border-gray-600 text-gray-400 text-lg hover:bg-gray-600 hover:text-white transition-colors tracking-wider w-56"
               >
-                {activeOperationId || activePoiExperience === "galaxy" ? "RETURN TO ATLAS" : "RETURN TO HUB"}
+                {experienceReturnLabel(Boolean(activeOperationId || activePoiExperience === "galaxy"))}
               </button>
             </div>
-            <p className="text-gray-600 text-xs mt-4">ESC to return to hub</p>
+            <p className="text-gray-600 text-xs mt-4">
+              ESC · {experienceReturnLabel(Boolean(activeOperationId || activePoiExperience === "galaxy"))}
+            </p>
           </div>
         </div>
       )}
@@ -2879,7 +2887,9 @@ export default function Game() {
           <div className="max-w-md border border-red-500 p-8 text-center">
             <h2 className="mb-4 text-xl text-red-400">OUTCOME LOCKED</h2>
             <p className="mb-6 text-sm">{poiOutcomeError}</p>
-            <button onClick={activePoiExperience === "galaxy" ? returnGalaxyPoiToAtlas : returnToCockpit} className="border border-cyan-400 px-6 py-3 text-cyan-300">RETURN TO HUB</button>
+            <button onClick={activePoiExperience === "galaxy" ? returnGalaxyPoiToAtlas : returnToCockpit} className="border border-cyan-400 px-6 py-3 text-cyan-300">
+              {experienceReturnLabel(activePoiExperience === "galaxy")}
+            </button>
           </div>
         </div>
       )}

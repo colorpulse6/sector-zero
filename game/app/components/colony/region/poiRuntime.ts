@@ -9,6 +9,7 @@ import type { PoiSession } from "./poiDispatcher";
 import { createPoiOutcome, confirmPoiOutcome, type PendingPoiOutcome } from "./poiOutcomes";
 
 export interface ActivePoiDescriptor { originColonyId: ColonyId; session: PoiSession }
+export type PoiExperience = "legacy" | "galaxy";
 export interface PendingPoiResolution {
   originColonyId: ColonyId;
   nodeId: string;
@@ -17,15 +18,27 @@ export interface PendingPoiResolution {
   outcome: PendingPoiOutcome | null;
 }
 
-export function createPoiGameState(session: PoiSession, save: SaveData): GameState {
+export function createPoiGameState(
+  session: PoiSession,
+  save: SaveData,
+  experience: PoiExperience = "legacy",
+): GameState {
   const base = createGameState(1, 1, save.upgrades, save.unlockedEnhancements, save.pilotLevel, save.allocatedSkills);
-  if (session.engine === "firstPerson") return { ...base, screen: GameScreen.PLAYING, currentMode: "first-person", currentPhase: 0, totalPhases: 1, firstPersonState: session.state, briefingTimer: 0 };
+  const nodeName = experience === "galaxy"
+    ? save.planets
+        .flatMap((planet) => planet.regionMap.nodes)
+        .find((node) => node.id === session.nodeId)?.name
+    : undefined;
+  const galaxyPresentation = experience === "galaxy"
+    ? { galaxyOperation: { id: `poi:${session.nodeId}`, label: nodeName ?? "ASHFALL EXPEDITION" } }
+    : {};
+  if (session.engine === "firstPerson") return { ...base, ...galaxyPresentation, screen: GameScreen.PLAYING, currentMode: "first-person", currentPhase: 0, totalPhases: 1, firstPersonState: session.state, briefingTimer: 0 };
   if (session.engine === "boarding") {
     const spawn = getBoardingSpawn(session.state.map);
-    return { ...base, screen: GameScreen.PLAYING, currentMode: "boarding", currentPhase: 0, totalPhases: 1, boardingState: session.state, player: { ...base.player, x: spawn.x, y: spawn.y }, briefingTimer: 0 };
+    return { ...base, ...galaxyPresentation, screen: GameScreen.PLAYING, currentMode: "boarding", currentPhase: 0, totalPhases: 1, boardingState: session.state, player: { ...base.player, x: spawn.x, y: spawn.y }, briefingTimer: 0 };
   }
   const spawn = getGroundSpawn(session.state.tileMap);
-  return { ...base, screen: GameScreen.PLAYING, currentMode: "ground-run", currentPhase: 0, totalPhases: 1, groundState: session.state, player: { ...base.player, x: spawn.x, y: spawn.y }, briefingTimer: 0 };
+  return { ...base, ...galaxyPresentation, screen: GameScreen.PLAYING, currentMode: "ground-run", currentPhase: 0, totalPhases: 1, groundState: session.state, player: { ...base.player, x: spawn.x, y: spawn.y }, briefingTimer: 0 };
 }
 
 export function preparePoiCompletion(save: SaveData, activePoi: ActivePoiDescriptor | null, screen: GameScreen): PendingPoiResolution | null {

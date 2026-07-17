@@ -4,6 +4,7 @@ import React from "react";
 
 export interface GalaxyExperienceGateProps {
   hasGalaxyRun: boolean;
+  ready: boolean;
   onGalaxy: () => void;
   onLegacy: () => void;
 }
@@ -20,12 +21,14 @@ const BUTTON_STYLE: React.CSSProperties = {
 
 export function GalaxyExperienceGate({
   hasGalaxyRun,
+  ready,
   onGalaxy,
   onLegacy,
 }: GalaxyExperienceGateProps) {
   return (
     <section
       aria-labelledby="experience-gate-title"
+      aria-busy={!ready}
       style={{
         width: "min(560px, calc(100% - 32px))",
         margin: "24px auto",
@@ -46,10 +49,10 @@ export function GalaxyExperienceGate({
         Begin a fresh continuous-galaxy expedition or preserve the numbered legacy campaign.
       </p>
       <div style={{ display: "grid", gap: 12 }}>
-        <button type="button" onClick={onGalaxy} style={BUTTON_STYLE}>
-          {hasGalaxyRun ? "CONTINUE GALAXY" : "BEGIN GALAXY"}
+        <button type="button" disabled={!ready} onClick={onGalaxy} style={BUTTON_STYLE}>
+          {ready ? (hasGalaxyRun ? "CONTINUE GALAXY" : "BEGIN GALAXY") : "LOADING SAVE"}
         </button>
-        <button type="button" onClick={onLegacy} style={BUTTON_STYLE}>
+        <button type="button" disabled={!ready} onClick={onLegacy} style={BUTTON_STYLE}>
           LEGACY CAMPAIGN
         </button>
       </div>

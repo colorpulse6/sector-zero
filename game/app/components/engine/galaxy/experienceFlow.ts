@@ -110,6 +110,10 @@ export function operationSurfaceLabel(
   return state.galaxyOperation?.label.toUpperCase() ?? legacyLabel;
 }
 
+export function experienceReturnLabel(galaxyExperience: boolean): "RETURN TO ATLAS" | "RETURN TO HUB" {
+  return galaxyExperience ? "RETURN TO ATLAS" : "RETURN TO HUB";
+}
+
 /** One persistence attempt is isolated so a caller can safely offer a retry. */
 export function attemptCanonicalPersistence<T>(
   value: T,
