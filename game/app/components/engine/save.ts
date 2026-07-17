@@ -42,6 +42,7 @@ function createDefaultSave(): SaveData {
   totalStars: 0,
   totalScore: 0,
   xp: 0,
+  introSeen: undefined,
   upgrades: { ...DEFAULT_UPGRADES },
   unlockedCodex: [],
   viewedCodex: [],
