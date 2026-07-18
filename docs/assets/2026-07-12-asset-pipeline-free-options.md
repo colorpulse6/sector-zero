@@ -1,11 +1,18 @@
 # Asset Pipeline — Free Options (Decision Doc)
 
-**Date:** 2026-07-12 · **Status:** RECOMMENDED, awaiting user sign-off
+**Date:** 2026-07-12 · **Status:** ACCEPTED AND OPERATIONAL (roadmap authority updated 2026-07-18)
 **Question:** "Currently I make my own assets and import them — is there a better way? Can we source or generate them? Free options only (I have Claude Max + Codex/ChatGPT max-tier subs)."
 
 Research method: 5 parallel research agents (one per lane, ~200 live page fetches), then an
 adversarial verification pass re-checking the 10 load-bearing claims against primary sources
 (GitHub repos, HuggingFace model cards, official pricing pages). Verified July 12, 2026.
+
+The recommendation has since been proven in production on the quartermaster identity/walk
+frames, the mine wall, and the first M2 shooter-enemy tranche; the second-tranche work also
+proved the rejection/evidence discipline without shipping weak candidates. M3 uses the same
+pipeline for hub environments and NPC identity pairs. Generated images are build-time source
+material: the browser loads only reviewed static derivatives from `game/public/sprites/`; it
+never calls an image model at runtime.
 
 ---
 

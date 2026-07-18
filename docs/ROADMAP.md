@@ -1,6 +1,6 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-07-17** (G0 Atlas implemented; final manual closure playtest pending).
+**Updated 2026-07-18** (G0 Atlas merged; final manual closure playtest pending; M3 asset lane specified).
 This is the single entry point. Every other doc is either DONE, absorbed here, or linked
 below with its authority noted.
 
@@ -79,7 +79,12 @@ DOOM Phase 1-2 regen at scale via the proven pipeline, in visibility order: 13 s
 enemies → 8 bosses → FP/boarding billboards (8-yaw via TRELLIS.2→headless Blender + the
 engine yaw-selector enabler, spec 2026-07-05 §5.4) → hub interior tilesets/props (feeds
 M3) → backgrounds. Style LoRA once ~30 accepted. Runs alongside systemic work —
-different lane, no file conflicts. **Spec status: ready** (pipeline doc + style guide).
+different lane, no file conflicts. Each systemic slice declares its asset slots, exact
+runtime paths/dimensions, fallback, and visual acceptance evidence before generation;
+art is produced in parallel, reviewed at intended renderer size, and registered only when a
+real consumer exists.
+There is no runtime AI asset generation. **Spec status: operational** (pipeline doc,
+master style guide, and `assets/prompts/m3-hubs/`).
 
 ### G0 — The Atlas (continuous-galaxy substrate) — IMPLEMENTED, FINAL LIVE CLOSURES PENDING
 Fresh canonical galaxy run + persistent vessel coordinate + continuous local-sector map
@@ -95,15 +100,20 @@ launch, and all three operation presentations were exercised in the production e
 The remaining acceptance work is the hands-on touch pass plus manually finishing the
 hostile success/failure/emergency closures, Kepler, Ashfall sortie, and a Region POI;
 their exact outcomes and idempotency are already covered by deterministic tests. See
-`playtests/2026-07-16-g0-atlas.md`. **Spec status: implementation complete on the feature
-branch; do not mark DONE until those final live closure paths are recorded.**
+`playtests/2026-07-16-g0-atlas.md`. **Spec status: merged via PR #16; do not mark DONE
+until those final live closure paths are recorded.**
 
 ### M3 — Phase 3: Hubs (places worth entering, now located)
 Cantina, Marketplace, Town Hall hand-authored interiors + interior NPCs w/ schedules +
 faction dialog depth + **bulletin board v1**: operations from the spec's §F Quest
-types (typed, unused, waiting in colonyTypes.ts 454-466; cycleProcessor step8 stub
+types (typed, unused, waiting in colonyTypes.ts 469-482; cycleProcessor step8 stub
 exists). Marketplace generalizes `marketContext`. **Spec status: ready** (colony spec
-Phase 3 + §F).
+Phase 3 + §F). Asset production is part of this milestone, not a polish pass: three
+reusable hub environment kits (wall/floor/ceiling plus facade/props) and eight paired NPC
+portrait/billboard identities ship alongside the code. The first art vertical slice is
+the Cantina, then Marketplace, then Town Hall; see
+`superpowers/plans/2026-07-18-m3-hub-asset-production.md`. General tier promotion and
+district growth remain outside this asset plan and must not be invented while producing art.
 
 ### M4 — The Decay Arc & Emergent Antagonists
 The user's stakes decision, formalized. Colony health drives a staged arc over many cycles:
