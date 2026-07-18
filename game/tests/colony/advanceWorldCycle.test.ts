@@ -16,6 +16,7 @@ function makeSaveWith(colonies: SaveData["colonies"]): SaveData {
     colonies, planets: [], earthShipments: [], factionStandings: [], bounties: [],
     missionsSinceStart: 0,
     gameClock: { day: 0, hour: 7, minute: 0, realtimeMsPerGameMinute: 1000, season: "standard" },
+    activeExperience: "legacy", galaxyRun: null,
   };
 }
 

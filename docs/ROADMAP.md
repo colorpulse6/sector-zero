@@ -1,6 +1,6 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-07-16** (continuous-galaxy reframe and G0 Atlas inserted).
+**Updated 2026-07-17** (G0 Atlas implemented; final manual closure playtest pending).
 This is the single entry point. Every other doc is either DONE, absorbed here, or linked
 below with its authority noted.
 
@@ -81,15 +81,22 @@ engine yaw-selector enabler, spec 2026-07-05 §5.4) → hub interior tilesets/pr
 M3) → backgrounds. Style LoRA once ~30 accepted. Runs alongside systemic work —
 different lane, no file conflicts. **Spec status: ready** (pipeline doc + style guide).
 
-### G0 — The Atlas (continuous-galaxy substrate) — NEXT SYSTEMIC SLICE
+### G0 — The Atlas (continuous-galaxy substrate) — IMPLEMENTED, FINAL LIVE CLOSURES PENDING
 Fresh canonical galaxy run + persistent vessel coordinate + continuous local-sector map
 with galaxy/sector/system/region zoom model + seeded spatial cells + known signals and
 blind-coordinate plotting + atlas knowledge/confidence + pure route preview + abstract
 supply/time commitment + bounded caused interruption + unified located operations.
 Prove the loop with Ashfall, Kepler, one shooter interception, one unresolved signal,
 and one deterministic blind discovery. Hybrid UI: Canvas 2D spatial field with
-focusable React/DOM controls and route panels. **Spec status: approved design in
-`2026-07-16-continuous-galaxy-atlas-design.md`; implementation plan next after review.**
+focusable React/DOM controls and route panels. Implementation gates are green at 284
+colony tests, 282 engine tests, 4 sprite checks, TypeScript, and both static exports.
+Fresh/mobile/desktop entry, legacy isolation, safe/blind/hostile/reload travel, Region
+launch, and all three operation presentations were exercised in the production export.
+The remaining acceptance work is the hands-on touch pass plus manually finishing the
+hostile success/failure/emergency closures, Kepler, Ashfall sortie, and a Region POI;
+their exact outcomes and idempotency are already covered by deterministic tests. See
+`playtests/2026-07-16-g0-atlas.md`. **Spec status: implementation complete on the feature
+branch; do not mark DONE until those final live closure paths are recorded.**
 
 ### M3 — Phase 3: Hubs (places worth entering, now located)
 Cantina, Marketplace, Town Hall hand-authored interiors + interior NPCs w/ schedules +

@@ -7,6 +7,12 @@ import type {
   GameClock,
 } from "../colony/shared/colonyTypes";
 import type { ColonyContext } from "../colony/exploration/colonyContext";
+import type {
+  ExperienceMode,
+  GalaxyRunState,
+} from "./galaxy/galaxyTypes";
+
+export type { ExperienceMode, GalaxyRunState } from "./galaxy/galaxyTypes";
 
 // ─── Canvas ──────────────────────────────────────────────────────────
 export const CANVAS_WIDTH = 480;
@@ -502,6 +508,8 @@ export interface DialogTrigger {
 // ─── Full Game State ─────────────────────────────────────────────────
 export interface GameState {
   screen: GameScreen;
+  /** Ephemeral Atlas identity for an authorized galaxy operation. Never saved. */
+  galaxyOperation?: { id: string; label: string };
   player: Player;
   playerBullets: Bullet[];
   enemyBullets: Bullet[];
@@ -1099,4 +1107,6 @@ export interface SaveData {
   bounties: Bounty[];
   missionsSinceStart: number;
   gameClock: GameClock;
+  activeExperience: ExperienceMode;
+  galaxyRun: GalaxyRunState | null;
 }

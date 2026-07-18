@@ -29,6 +29,7 @@ import {
   neutralSiteStats,
 } from "../colony/region/regionMap";
 import type { RegionIntelState, RegionNode, SiteStats } from "../colony/shared/colonyTypes";
+import { migrateGalaxyRun } from "./galaxy/galaxyRun";
 export type { SaveData };
 
 const SAVE_KEY = "sector-zero-save";
@@ -41,6 +42,7 @@ function createDefaultSave(): SaveData {
   totalStars: 0,
   totalScore: 0,
   xp: 0,
+  introSeen: undefined,
   upgrades: { ...DEFAULT_UPGRADES },
   unlockedCodex: [],
   viewedCodex: [],
@@ -73,13 +75,45 @@ function createDefaultSave(): SaveData {
     realtimeMsPerGameMinute: 1000,
     season: "standard",
   },
+  activeExperience: "legacy",
+  galaxyRun: null,
   };
+}
+
+/** Stable server/client seed; browser persistence is loaded only after hydration. */
+export function createHydrationSafeSave(): SaveData {
+  return createDefaultSave();
 }
 
 /** Migrate old saves that lack new fields */
 export function migrateSave(raw: Record<string, unknown>): SaveData {
   const colonies = migrateColonies(raw.colonies);
   const planets = migratePlanets(raw.planets, colonies);
+  const rawGalaxyRun = raw.galaxyRun;
+  const rawGalaxyIdentity = rawGalaxyRun !== null
+      && typeof rawGalaxyRun === "object"
+      && !Array.isArray(rawGalaxyRun)
+      && Object.prototype.hasOwnProperty.call(rawGalaxyRun, "identity")
+    ? (rawGalaxyRun as Record<string, unknown>).identity
+    : null;
+  const identitySource = rawGalaxyIdentity !== null
+      && typeof rawGalaxyIdentity === "object"
+      && !Array.isArray(rawGalaxyIdentity)
+    ? rawGalaxyIdentity as Record<string, unknown>
+    : null;
+  const identityIsComplete = identitySource !== null
+    && Object.prototype.hasOwnProperty.call(identitySource, "galaxySeed")
+    && typeof identitySource.galaxySeed === "string"
+    && Object.prototype.hasOwnProperty.call(identitySource, "generationVersion")
+    && Number.isSafeInteger(identitySource.generationVersion)
+    && (identitySource.generationVersion as number) >= 0
+    && Object.prototype.hasOwnProperty.call(
+      identitySource,
+      "authoredAnchorRegistryVersion",
+    )
+    && Number.isSafeInteger(identitySource.authoredAnchorRegistryVersion)
+    && (identitySource.authoredAnchorRegistryVersion as number) >= 0;
+  const galaxyRun = identityIsComplete ? migrateGalaxyRun(rawGalaxyRun) : null;
   return {
     currentWorld: (raw.currentWorld as number) ?? 1,
     levels: (raw.levels as SaveData["levels"]) ?? {},
@@ -120,6 +154,10 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       realtimeMsPerGameMinute: 1000,
       season: "standard",
     },
+    activeExperience: raw.activeExperience === "galaxy" && galaxyRun !== null
+      ? "galaxy"
+      : "legacy",
+    galaxyRun,
   };
 }
 

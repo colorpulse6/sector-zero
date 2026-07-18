@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadSave, migrateSave } from "../../app/components/engine/save";
+import { createHydrationSafeSave, loadSave, migrateSave } from "../../app/components/engine/save";
 import { defaultFactionStandings } from "../../app/components/colony/shared/factionLedger";
 import { colonyReducer } from "../../app/components/colony/shared/colonyReducer";
 import { Events } from "../../app/components/colony/shared/colonyEvents";
@@ -148,4 +148,38 @@ test("loadSave fallback creates isolated nested region state", () => {
 
   first.planets[0].regionMap.nodes[0].intel = "claimed";
   assert.equal(second.planets[0].regionMap.nodes[0].intel, "surveyed");
+});
+
+test("the hydration seed is deterministic and defers browser storage until mount", () => {
+  const root = globalThis as unknown as Record<string, unknown>;
+  const priorWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const priorStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  let reads = 0;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem() {
+        reads += 1;
+        return JSON.stringify({ currentWorld: 7 });
+      },
+    },
+  });
+  try {
+    const hydration = createHydrationSafeSave();
+    assert.equal(reads, 0);
+    assert.equal(hydration.currentWorld, 1);
+    assert.equal(hydration.activeExperience, "legacy");
+    assert.equal(hydration.galaxyRun, null);
+    assert.equal(Object.prototype.hasOwnProperty.call(hydration, "introSeen"), true);
+    assert.equal(hydration.introSeen, undefined);
+
+    assert.equal(loadSave().currentWorld, 7);
+    assert.equal(reads, 1);
+  } finally {
+    if (priorWindow) Object.defineProperty(globalThis, "window", priorWindow);
+    else delete root.window;
+    if (priorStorage) Object.defineProperty(globalThis, "localStorage", priorStorage);
+    else delete root.localStorage;
+  }
 });
