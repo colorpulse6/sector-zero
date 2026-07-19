@@ -43,32 +43,44 @@ type PreparedTuple = readonly [
 ];
 
 function ownData(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return null;
-  const actual = Reflect.ownKeys(value);
-  if (actual.length !== keys.length || actual.some((key) => typeof key !== "string" || !keys.includes(key))) return null;
-  const snapshot: Record<string, unknown> = {};
-  for (const key of keys) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (descriptor === undefined || !("value" in descriptor)) return null;
-    snapshot[key] = descriptor.value;
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const actual = Reflect.ownKeys(value);
+    if (actual.length !== keys.length || actual.some((key) => typeof key !== "string" || !keys.includes(key))) return null;
+    const snapshot: Record<string, unknown> = {};
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
   }
-  return snapshot;
 }
 
 function denseTuple(value: unknown): unknown[] | null {
-  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
-  const keys = Reflect.ownKeys(value);
-  if (keys.length !== value.length + 1 || keys.some((key) => key !== "length" &&
-    (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length))) return null;
-  const snapshot: unknown[] = [];
-  for (let index = 0; index < value.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    if (descriptor === undefined || !("value" in descriptor)) return null;
-    snapshot.push(descriptor.value);
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    if (lengthDescriptor === undefined || !("value" in lengthDescriptor) ||
+      !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) return null;
+    const length = lengthDescriptor.value as number;
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== length + 1 || keys.some((key) => key !== "length" &&
+      (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length))) return null;
+    const snapshot: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      snapshot.push(descriptor.value);
+    }
+    return snapshot;
+  } catch {
+    return null;
   }
-  return snapshot;
 }
 
 function preparedTuple(identity: PoiIdentity, binding: GalaxyPoiPreparedBinding): PreparedTuple | null {
@@ -180,15 +192,19 @@ export function createGalaxyPoiPreparedFact(
 export function recoverGalaxyPoiPreparation(
   submittedRun: GalaxyRunState,
 ): RecoveredGalaxyPoiPreparation | null {
-  const validated = mergeProjectionIntoGalaxy(submittedRun, {});
-  if (!validated.ok) return null;
-  const reserved = validated.galaxyRun.historyFacts.filter(isGalaxyPoiPreparedAuthorityFact);
-  if (reserved.length !== 1) return null;
-  const recovered = decodePreparedFact(reserved[0]);
-  return recovered !== null && recovered.cycle === validated.galaxyRun.worldCycle &&
-    canonicalIdentity(validated.galaxyRun, recovered.identity)
-    ? recovered
-    : null;
+  try {
+    const validated = mergeProjectionIntoGalaxy(submittedRun, {});
+    if (!validated.ok) return null;
+    const reserved = validated.galaxyRun.historyFacts.filter(isGalaxyPoiPreparedAuthorityFact);
+    if (reserved.length !== 1) return null;
+    const recovered = decodePreparedFact(reserved[0]);
+    return recovered !== null && recovered.cycle === validated.galaxyRun.worldCycle &&
+      canonicalIdentity(validated.galaxyRun, recovered.identity)
+      ? recovered
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export function resolveGalaxyPoiOutcomeFromRun(

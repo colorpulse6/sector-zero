@@ -16,6 +16,7 @@ import {
   operationDisplayLabel,
 } from "./operations/operationCatalog";
 import type { OperationId } from "./operations/operationTypes";
+import { dispatchPoi } from "../colony/region/poiDispatcher";
 
 export type MissionKind = "campaign" | "planet" | "special" | "operation" | "colony";
 export type ControlsProfileId =
@@ -519,6 +520,45 @@ export function outcomeAuthorityReturnMatches(
     (authority === "galaxy" &&
       (returnTarget === "galaxy-atlas" || returnTarget === "galaxy-colony-exterior" ||
         returnTarget === "galaxy-landing-pad"));
+}
+
+export type DynamicOutcomeAuthorityPhase = "new" | "applied";
+
+/** Validate dynamic route identity against the selected latest save namespace. */
+export function dynamicOutcomeRouteIdentityIsCanonical(
+  save: SaveData,
+  identity: OutcomeRouteIdentity,
+  authority: PersistenceAuthority,
+  phase: DynamicOutcomeAuthorityPhase,
+): boolean {
+  try {
+    const run = authority === "galaxy" ? save.galaxyRun : null;
+    const colonies = authority === "galaxy" ? run?.colonies : save.colonies;
+    const planets = authority === "galaxy" ? run?.planets : save.planets;
+    if (!Array.isArray(colonies) || !Array.isArray(planets)) return false;
+    if (identity.kind === "colony") {
+      const colony = colonies.find((entry) => entry.id === identity.colonyId);
+      if (colony === undefined) return false;
+      return identity.mode === "exterior"
+        ? identity.buildingId === null
+        : typeof identity.buildingId === "string" && identity.buildingId.length > 0 &&
+          colony.buildings.some((building) => building.id === identity.buildingId);
+    }
+    if (identity.kind !== "poi") return true;
+    const surface = authority === "legacy"
+      ? save
+      : { colonies, planets } as SaveData;
+    const dispatched = dispatchPoi(surface, identity.originColonyId, identity.nodeId);
+    if (!dispatched.ok || dispatched.session.engine !== identity.engine) return false;
+    const colony = colonies.find((entry) => entry.id === identity.originColonyId);
+    const node = planets.find((entry) => entry.id === colony?.planetId)
+      ?.regionMap.nodes.find((entry) => entry.id === identity.nodeId);
+    if (node === undefined || node.templateId !== identity.templateId) return false;
+    if (phase === "new") return dispatched.session.rewardEligible === identity.rewardEligible;
+    return node.intel === "cleared" || identity.rewardEligible === dispatched.session.rewardEligible;
+  } catch {
+    return false;
+  }
 }
 
 export function routeIdentityMatchesMissionId(

@@ -53,6 +53,10 @@ import type {
 } from "../types";
 import { GameScreen } from "../types";
 import {
+  snapshotOutcomeIdJournal,
+  snapshotOutcomeRootAuthority,
+} from "../missionOutcome";
+import {
   launchContextFromPilotLoadout,
   operationMissionDescriptor,
   poiMissionDescriptor,
@@ -1063,35 +1067,51 @@ export function prepareGalaxyPoiCompletion(
 }
 
 /** Stage immutable Galaxy POI authority without advancing cycle or deriving rewards. */
-export function stageGalaxyPoiOutcomeAuthority(
+function stageGalaxyPoiOutcomeAuthorityImpl(
   save: SaveData,
   activePoi: ActivePoiDescriptor,
   screen: GameScreen,
   attempt: OutcomeAttempt,
 ): GalaxyPoiAuthorityPreparationResult {
   const active = snapshotActivePoi(activePoi);
-  if (screen !== GameScreen.LEVEL_COMPLETE || active === null || save.galaxyRun === null ||
+  const root = snapshotOutcomeRootAuthority(save);
+  const saveData = requiredOwnData(save, ["activeExperience", "galaxyRun"]);
+  const submittedRun = saveData?.galaxyRun as GalaxyRunState | null | undefined;
+  const runData = requiredOwnData(submittedRun, ["appliedOutcomeIds"]);
+  const nestedJournal = runData === null ? null : snapshotOutcomeIdJournal(runData.appliedOutcomeIds);
+  const outcomeId = `${attempt.launchId}:success`;
+  const rootOccurrences = root?.appliedOutcomeIds.filter((id) => id === outcomeId).length ?? -1;
+  const nestedOccurrences = nestedJournal?.filter((id) => id === outcomeId).length ?? -1;
+  if (screen !== GameScreen.LEVEL_COMPLETE || active === null || root === null || root.locked ||
+    saveData === null || saveData.activeExperience !== "galaxy" || submittedRun === null || submittedRun === undefined ||
+    nestedJournal === null || rootOccurrences !== 0 || nestedOccurrences !== 0 ||
     attempt.routeKind !== "poi" || attempt.routeIdentity.kind !== "poi" ||
     attempt.persistenceAuthority !== "galaxy" || attempt.returnTarget !== "galaxy-region" ||
-    attempt.expectedRevision !== save.saveRevision || attempt.launchId.length === 0 ||
+    attempt.expectedRevision !== root.saveRevision || attempt.launchId.length === 0 ||
     attempt.declaredFields.length !== 1 || attempt.declaredFields[0] !== "galaxyRun" ||
-    !samePlainData(attempt.launchSnapshot.galaxyRun, save.galaxyRun) ||
+    !samePlainData(attempt.launchSnapshot.galaxyRun, submittedRun) ||
     active.originColonyId !== attempt.routeIdentity.originColonyId ||
     active.nodeId !== attempt.routeIdentity.nodeId || active.engine !== attempt.routeIdentity.engine ||
     active.rewardEligible !== attempt.routeIdentity.rewardEligible) {
     return { ok: false, reason: "invalid_poi_session" };
   }
-  const preparedRevision = save.saveRevision + 1;
+  const preparedRevision = root.saveRevision + 1;
   if (!Number.isSafeInteger(preparedRevision)) return { ok: false, reason: "invalid_poi_session" };
-  const fact = createGalaxyPoiPreparedFact(save.galaxyRun, attempt.routeIdentity, {
+  const fact = createGalaxyPoiPreparedFact(submittedRun, attempt.routeIdentity, {
     launchId: attempt.launchId,
-    outcomeId: `${attempt.launchId}:success`,
+    outcomeId,
     preparedRevision,
   });
   if (fact === null) return { ok: false, reason: "invalid_poi_session" };
-  const galaxyRun = structuredClone(save.galaxyRun);
+  const galaxyRun = structuredClone(submittedRun);
   galaxyRun.historyFacts.push(fact);
-  const stagedSave = { ...save, saveRevision: preparedRevision, galaxyRun };
+  const stagedSave = {
+    ...save,
+    saveRevision: preparedRevision,
+    appliedOutcomeIds: root.appliedOutcomeIds,
+    outcomeRecoveryRecords: root.outcomeRecoveryRecords,
+    galaxyRun,
+  };
   return {
     ok: true,
     save: stagedSave,
@@ -1103,24 +1123,47 @@ export function stageGalaxyPoiOutcomeAuthority(
   };
 }
 
+export function stageGalaxyPoiOutcomeAuthority(
+  save: SaveData,
+  activePoi: ActivePoiDescriptor,
+  screen: GameScreen,
+  attempt: OutcomeAttempt,
+): GalaxyPoiAuthorityPreparationResult {
+  try { return stageGalaxyPoiOutcomeAuthorityImpl(save, activePoi, screen, attempt); }
+  catch { return { ok: false, reason: "invalid_poi_session" }; }
+}
+
 /** Rebuild the exact final Galaxy POI attempt from its durable v2 authority fact. */
 export function recoverGalaxyPoiOutcomeAuthority(save: SaveData): OutcomeAttempt | null {
-  if (save.activeExperience !== "galaxy" || save.galaxyRun === null) return null;
-  const recovered = recoverGalaxyPoiPreparation(save.galaxyRun);
-  if (recovered === null || recovered.preparedRevision !== save.saveRevision) return null;
-  const mission = poiMissionDescriptor(recovered.identity.nodeId, recovered.identity.engine);
-  return {
-    version: 1,
-    routeKind: "poi",
-    missionId: mission.id,
-    routeIdentity: recovered.identity,
-    launchId: recovered.launchId,
-    expectedRevision: recovered.preparedRevision,
-    persistenceAuthority: "galaxy",
-    returnTarget: "galaxy-region",
-    declaredFields: ["galaxyRun"],
-    launchSnapshot: { galaxyRun: structuredClone(save.galaxyRun) },
-  };
+  try {
+    const root = snapshotOutcomeRootAuthority(save);
+    const saveData = requiredOwnData(save, ["activeExperience", "galaxyRun"]);
+    const submittedRun = saveData?.galaxyRun as GalaxyRunState | null | undefined;
+    const runData = requiredOwnData(submittedRun, ["appliedOutcomeIds"]);
+    const nestedJournal = runData === null ? null : snapshotOutcomeIdJournal(runData.appliedOutcomeIds);
+    if (root === null || root.locked || saveData === null || saveData.activeExperience !== "galaxy" ||
+      submittedRun === null || submittedRun === undefined || nestedJournal === null) return null;
+    const validated = mergeProjectionIntoGalaxy(submittedRun, {});
+    if (!validated.ok) return null;
+    const recovered = recoverGalaxyPoiPreparation(validated.galaxyRun);
+    if (recovered === null || recovered.preparedRevision !== root.saveRevision ||
+      root.appliedOutcomeIds.includes(recovered.outcomeId) || nestedJournal.includes(recovered.outcomeId)) return null;
+    const mission = poiMissionDescriptor(recovered.identity.nodeId, recovered.identity.engine);
+    return {
+      version: 1,
+      routeKind: "poi",
+      missionId: mission.id,
+      routeIdentity: recovered.identity,
+      launchId: recovered.launchId,
+      expectedRevision: recovered.preparedRevision,
+      persistenceAuthority: "galaxy",
+      returnTarget: "galaxy-region",
+      declaredFields: ["galaxyRun"],
+      launchSnapshot: { galaxyRun: structuredClone(validated.galaxyRun) },
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

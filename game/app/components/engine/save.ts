@@ -13,6 +13,7 @@ import {
   type WeaponType,
 } from "./types";
 import {
+  dynamicOutcomeRouteIdentityIsCanonical,
   outcomeAuthorityReturnMatches,
   snapshotOutcomeRouteIdentity,
 } from "./missionContext";
@@ -42,12 +43,35 @@ const SAVE_KEY = "sector-zero-save";
 export const OUTCOME_JOURNAL_LIMIT = 256;
 export const OUTCOME_RECOVERY_LIMIT = 32;
 
+function snapshotDenseArray(value: unknown): unknown[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    if (lengthDescriptor === undefined || !("value" in lengthDescriptor) ||
+      !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) return null;
+    const length = lengthDescriptor.value as number;
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== length + 1 || keys.some((key) => key !== "length" &&
+      (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length))) return null;
+    const snapshot: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      snapshot.push(descriptor.value);
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
 function migrateStringJournal(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+  const entries = snapshotDenseArray(value);
+  if (entries === null) return [];
   const newestFirst: string[] = [];
   const seen = new Set<string>();
-  for (let index = value.length - 1; index >= 0; index -= 1) {
-    const entry = value[index];
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
     if (typeof entry !== "string" || entry.length === 0 || seen.has(entry)) continue;
     seen.add(entry);
     newestFirst.push(entry);
@@ -107,17 +131,40 @@ function isPlainSerializable(value: unknown, ancestors = new Set<object>()): boo
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
-      if (Object.getPrototypeOf(value) !== Array.prototype || Object.keys(value).length !== value.length) return false;
-      for (let index = 0; index < value.length; index += 1) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-        if (descriptor === undefined || !("value" in descriptor) || !isPlainSerializable(descriptor.value, ancestors)) return false;
-      }
-      return true;
+      const snapshot = snapshotDenseArray(value);
+      return snapshot !== null && snapshot.every((entry) => isPlainSerializable(entry, ancestors));
     }
     const snapshot = ownDataRecord(value);
     return snapshot !== null && Object.values(snapshot).every((entry) => isPlainSerializable(entry, ancestors));
+  } catch {
+    return false;
   } finally {
     ancestors.delete(value);
+  }
+}
+
+function sameData(left: unknown, right: unknown): boolean {
+  try {
+    if (Object.is(left, right)) return true;
+    if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return false;
+    const leftIsArray = Array.isArray(left);
+    const rightIsArray = Array.isArray(right);
+    if (leftIsArray || rightIsArray) {
+      if (!leftIsArray || !rightIsArray) return false;
+      const leftArray = snapshotDenseArray(left);
+      const rightArray = snapshotDenseArray(right);
+      return leftArray !== null && rightArray !== null && leftArray.length === rightArray.length &&
+        leftArray.every((entry, index) => sameData(entry, rightArray[index]));
+    }
+    const leftRecord = ownDataRecord(left);
+    const rightRecord = ownDataRecord(right);
+    if (leftRecord === null || rightRecord === null) return false;
+    const leftKeys = Object.keys(leftRecord).sort();
+    const rightKeys = Object.keys(rightRecord).sort();
+    return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
+      key === rightKeys[index] && sameData(leftRecord[key], rightRecord[key]));
+  } catch {
+    return false;
   }
 }
 
@@ -131,9 +178,10 @@ function snapshotOutcomeEnvelope(value: unknown): Record<string, unknown> | null
     typeof envelope.launchId !== "string" || envelope.launchId.length === 0 ||
     !Number.isSafeInteger(envelope.expectedRevision) || (envelope.expectedRevision as number) < 0 ||
     envelope.persistenceAuthority !== "legacy" || envelope.returnTarget !== "legacy-colony-exterior" ||
-    envelope.terminalKind !== "success" || envelope.outcomeId !== `${envelope.launchId}:success` ||
-    !Array.isArray(envelope.declaredFields)) return null;
-  const fields = envelope.declaredFields as string[];
+    envelope.terminalKind !== "success" || envelope.outcomeId !== `${envelope.launchId}:success`) return null;
+  const rawFields = snapshotDenseArray(envelope.declaredFields);
+  if (rawFields === null || rawFields.some((field) => typeof field !== "string")) return null;
+  const fields = rawFields as string[];
   const expectedFields = [
     "colonies", "planets", "missionsSinceStart",
   ];
@@ -157,7 +205,9 @@ function snapshotOutcomeEnvelope(value: unknown): Record<string, unknown> | null
   if (origin === undefined || node === undefined || node.templateId !== routeIdentity.templateId ||
     (node.intel !== "surveyed" && node.intel !== "cleared") ||
     routeIdentity.rewardEligible !== (node.intel === "surveyed")) return null;
-  return isPlainSerializable(envelope) ? envelope : null;
+  if (!isPlainSerializable(envelope)) return null;
+  try { return structuredClone(envelope) as Record<string, unknown>; }
+  catch { return null; }
 }
 
 function snapshotAppliedReturn(value: unknown): OutcomeRecoveryRecord | null {
@@ -185,7 +235,8 @@ function snapshotAppliedReturn(value: unknown): OutcomeRecoveryRecord | null {
     ) ||
     !Number.isSafeInteger(source.appliedRevision) || (source.appliedRevision as number) < 0 ||
     typeof source.returnPending !== "boolean") return null;
-  return structuredClone(source) as unknown as OutcomeRecoveryRecord;
+  try { return structuredClone(source) as unknown as OutcomeRecoveryRecord; }
+  catch { return null; }
 }
 
 function snapshotReconciliation(value: unknown): OutcomeRecoveryRecord | null {
@@ -197,9 +248,8 @@ function snapshotReconciliation(value: unknown): OutcomeRecoveryRecord | null {
   if (source === null || (source.version !== 1 && source.version !== 2) || source.kind !== "reconciliation_required" ||
     (source.reason !== "recovery_capacity_exceeded" && source.reason !== "prepared_outcome_invalid" &&
       source.reason !== "outcome_authority_invalid") ||
-    !Array.isArray(source.protectedOutcomeIds) ||
-    source.protectedOutcomeIds.some((id) => typeof id !== "string" || id.length === 0) ||
-    new Set(source.protectedOutcomeIds).size !== source.protectedOutcomeIds.length) return null;
+    migrateStringJournal(source.protectedOutcomeIds).length !== (snapshotDenseArray(source.protectedOutcomeIds)?.length ?? -1)) return null;
+  const protectedOutcomeIds = migrateStringJournal(source.protectedOutcomeIds);
   const priorQuarantine = source.version === 2 && Number.isSafeInteger(source.quarantinedOutcomeCount) &&
     (source.quarantinedOutcomeCount as number) >= 0
     ? source.quarantinedOutcomeCount as number
@@ -207,7 +257,7 @@ function snapshotReconciliation(value: unknown): OutcomeRecoveryRecord | null {
   if (priorQuarantine < 0) return null;
   return reconciliationLock(
     source.reason as OutcomeReconciliationReason,
-    source.protectedOutcomeIds as string[],
+    protectedOutcomeIds,
     priorQuarantine,
   );
 }
@@ -236,15 +286,17 @@ function migrateOutcomeRecoveryRecords(
   value: unknown,
   rootRevision: number,
   rootJournal: readonly string[],
+  authorityView: Pick<SaveData, "colonies" | "planets" | "missionsSinceStart" | "galaxyRun">,
 ): OutcomeRecoveryRecord[] {
-  if (!Array.isArray(value)) return [];
+  const entries = snapshotDenseArray(value);
+  if (entries === null) return [];
   const newestFirst: OutcomeRecoveryRecord[] = [];
   const seen = new Set<string>();
   const invalidPreparedIds: string[] = [];
   let invalidPrepared = false;
   const invalidAuthorityIds: string[] = [];
-  for (let index = value.length - 1; index >= 0; index -= 1) {
-    const entry = value[index];
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
     const source = ownDataRecord(entry);
     if (source === null) continue;
     if (source.kind === "reconciliation_required") {
@@ -268,6 +320,17 @@ function migrateOutcomeRecoveryRecords(
         invalidAuthorityIds.push(record.outcomeId);
         continue;
       }
+      if (record?.kind === "applied_return" &&
+        (record.routeKind === "poi" || record.routeKind === "colony") &&
+        !dynamicOutcomeRouteIdentityIsCanonical(
+          authorityView as SaveData,
+          record.routeIdentity,
+          record.persistenceAuthority,
+          "applied",
+        )) {
+        invalidAuthorityIds.push(record.outcomeId);
+        continue;
+      }
     } else if (source.kind === "legacy_poi_prepared") {
       const wrapped = exactOwnData(entry, ["version", "kind", "envelope"]);
       const envelope = wrapped === null ? null : snapshotOutcomeEnvelope(wrapped.envelope);
@@ -281,12 +344,30 @@ function migrateOutcomeRecoveryRecords(
         }
         continue;
       }
-      record = structuredClone(entry) as OutcomeRecoveryRecord;
+      record = { version: 2, kind: "legacy_poi_prepared", envelope } as unknown as OutcomeRecoveryRecord;
       identity = envelope.outcomeId;
+      const launchSnapshot = ownDataRecord(envelope.launchSnapshot);
+      if ((envelope.expectedRevision as number) > rootRevision || launchSnapshot === null ||
+        !sameData(launchSnapshot.colonies, authorityView.colonies) ||
+        !sameData(launchSnapshot.planets, authorityView.planets) ||
+        !sameData(launchSnapshot.missionsSinceStart, authorityView.missionsSinceStart)) {
+        invalidPrepared = true;
+        invalidPreparedIds.push(envelope.outcomeId as string);
+        continue;
+      }
     } else {
       continue;
     }
-    if (typeof identity !== "string" || identity.length === 0 || seen.has(identity)) continue;
+    if (typeof identity !== "string" || identity.length === 0) continue;
+    if (seen.has(identity)) {
+      if (record?.kind === "legacy_poi_prepared") {
+        invalidPrepared = true;
+        invalidPreparedIds.push(identity);
+      } else {
+        invalidAuthorityIds.push(identity);
+      }
+      continue;
+    }
     if (record === null) continue;
     seen.add(identity);
     newestFirst.push(record);
@@ -404,12 +485,38 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
   const saveRevision = Number.isSafeInteger(raw.saveRevision) && (raw.saveRevision as number) >= 0
     ? raw.saveRevision as number
     : 0;
-  const rawOutcomeJournal = migrateStringJournal(raw.appliedOutcomeIds);
-  const outcomeRecoveryRecords = migrateOutcomeRecoveryRecords(
-    raw.outcomeRecoveryRecords,
+  const missionsSinceStart = (raw.missionsSinceStart as number) ?? 0;
+  const rawJournalContainer = raw.appliedOutcomeIds;
+  const rawRecoveryContainer = raw.outcomeRecoveryRecords;
+  const journalSnapshot = snapshotDenseArray(rawJournalContainer);
+  const recoverySnapshot = snapshotDenseArray(rawRecoveryContainer);
+  const malformedJournalContainer = rawJournalContainer !== undefined && rawJournalContainer !== null &&
+    journalSnapshot === null;
+  const malformedRecoveryContainer = rawRecoveryContainer !== undefined && rawRecoveryContainer !== null &&
+    recoverySnapshot === null;
+  const rawOutcomeJournal = migrateStringJournal(journalSnapshot ?? []);
+  let outcomeRecoveryRecords = migrateOutcomeRecoveryRecords(
+    recoverySnapshot ?? [],
     saveRevision,
     rawOutcomeJournal,
+    { colonies, planets, missionsSinceStart, galaxyRun },
   );
+  const opaqueAuthorityCount = Number(malformedJournalContainer) + Number(malformedRecoveryContainer);
+  if (opaqueAuthorityCount > 0) {
+    const knownProtectedIds = outcomeRecoveryRecords.flatMap((record) =>
+      record.kind === "applied_return"
+        ? record.returnPending ? [record.outcomeId] : []
+        : record.kind === "legacy_poi_prepared"
+          ? [record.envelope.outcomeId]
+          : record.protectedOutcomeIds);
+    const priorQuarantine = outcomeRecoveryRecords.reduce((total, record) =>
+      total + (record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0), 0);
+    outcomeRecoveryRecords = [reconciliationLock(
+      "outcome_authority_invalid",
+      knownProtectedIds,
+      priorQuarantine + opaqueAuthorityCount,
+    )];
+  }
   const protectedOutcomeIds = outcomeRecoveryRecords.flatMap((record) =>
     record.kind === "applied_return"
       ? record.returnPending ? [record.outcomeId] : []
@@ -451,7 +558,7 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
     earthShipments: (raw.earthShipments as EarthShipment[]) ?? [],
     factionStandings: (raw.factionStandings as FactionStanding[]) ?? defaultFactionStandings(),
     bounties: (raw.bounties as Bounty[]) ?? [],
-    missionsSinceStart: (raw.missionsSinceStart as number) ?? 0,
+    missionsSinceStart,
     gameClock: (raw.gameClock as GameClock) ?? {
       day: 0,
       hour: 7,

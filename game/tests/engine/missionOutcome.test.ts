@@ -217,6 +217,70 @@ function memoryStore(initial: SaveData) {
   };
 }
 
+type HostileArrayMode = "static" | "delayed" | "revoked";
+
+function hostileArray<T>(entries: readonly T[], mode: HostileArrayMode): T[] {
+  const target = [...entries];
+  if (mode === "revoked") {
+    const revocable = Proxy.revocable(target, {});
+    revocable.revoke();
+    return revocable.proxy;
+  }
+  let armed = mode === "static";
+  return new Proxy(target, {
+    ownKeys(inner) {
+      if (mode === "delayed") armed = true;
+      return Reflect.ownKeys(inner);
+    },
+    get(inner, property, receiver) {
+      if (armed) throw new Error(`${mode} hostile indexed read: ${String(property)}`);
+      return Reflect.get(inner, property, receiver);
+    },
+  });
+}
+
+function totalCall<T>(label: string, call: () => T): T {
+  let value!: T;
+  assert.doesNotThrow(() => { value = call(); }, label);
+  return value;
+}
+
+function hostileMigrationContainer(mode: HostileArrayMode): unknown[] {
+  const target: unknown[] = ["opaque-authority"];
+  if (mode === "revoked") {
+    const revocable = Proxy.revocable(target, {});
+    revocable.revoke();
+    return revocable.proxy;
+  }
+  let armed = mode === "static";
+  return new Proxy(target, {
+    ownKeys(inner) {
+      if (armed) throw new Error(`${mode} hostile authority enumeration`);
+      armed = true;
+      return Reflect.ownKeys(inner);
+    },
+    getOwnPropertyDescriptor(inner, property) {
+      if (armed) throw new Error(`${mode} hostile authority descriptor: ${String(property)}`);
+      return Reflect.getOwnPropertyDescriptor(inner, property);
+    },
+  });
+}
+
+function readyGalaxyPoi(): SaveData {
+  const save = atAshfall();
+  const run = structuredClone(save.galaxyRun!);
+  run.planets = run.planets.map((planet) => ({
+    ...planet,
+    regionMap: {
+      ...planet.regionMap,
+      nodes: planet.regionMap.nodes.map((node) => node.id === "ashfall-cinder-relay"
+        ? { ...node, intel: "surveyed" as const }
+        : node),
+    },
+  }));
+  return { ...save, galaxyRun: run };
+}
+
 function recoveryRecords(save: SaveData): OutcomeRecoveryRecord[] {
   return save.outcomeRecoveryRecords;
 }
@@ -282,6 +346,7 @@ test("recovery migration accepts only exact own-data records and never invokes a
   ];
 
   const accepted = migrateSave({
+    ...prepared.envelope.launchSnapshot,
     saveRevision: 2,
     appliedOutcomeIds: [applied.outcomeId],
     outcomeRecoveryRecords: [applied, prepared, accessor, inherited],
@@ -290,6 +355,7 @@ test("recovery migration accepts only exact own-data records and never invokes a
   assert.equal(accessorReads, 0);
   assert.deepEqual(accepted.outcomeRecoveryRecords, [applied, prepared]);
   const migrated = migrateSave({
+    ...prepared.envelope.launchSnapshot,
     saveRevision: 2,
     appliedOutcomeIds: [applied.outcomeId],
     outcomeRecoveryRecords: [applied, prepared, ...hostile],
@@ -401,7 +467,10 @@ test("generated reconciliation locks bound hundreds of invalid receipts and prep
       outcomeId: `valid-prepared:${index}:success`,
     },
   }));
-  const validPreparedSave = migrateSave({ outcomeRecoveryRecords: validPrepared });
+  const validPreparedSave = migrateSave({
+    ...template.envelope.launchSnapshot,
+    outcomeRecoveryRecords: validPrepared,
+  });
   const capacityLock = validPreparedSave.outcomeRecoveryRecords[0];
   assert.equal(capacityLock?.kind, "reconciliation_required");
   if (capacityLock?.kind === "reconciliation_required") {
@@ -420,7 +489,10 @@ test("an invalid durable Legacy preparation migrates to a reconciliation lock", 
     envelope: { ...valid.envelope, payload: () => 1 },
   };
 
-  const migrated = migrateSave({ outcomeRecoveryRecords: [valid, invalid] });
+  const migrated = migrateSave({
+    ...valid.envelope.launchSnapshot,
+    outcomeRecoveryRecords: [valid, invalid],
+  });
 
   assert.deepEqual(migrated.outcomeRecoveryRecords, [{
     version: 2,
@@ -434,9 +506,12 @@ test("an invalid durable Legacy preparation migrates to a reconciliation lock", 
 test("recovery migration locks reconciliation instead of truncating unresolved authority", () => {
   const base = migrateSave({ missionsSinceStart: 1 });
   const unresolved = Array.from({ length: 33 }, (_, index) =>
-    preparedLegacyRecord(base, `prepared-${index}`, index + 2));
+    preparedLegacyRecord(base, `prepared-${index}`, 2));
 
-  const migrated = migrateSave({ outcomeRecoveryRecords: unresolved });
+  const migrated = migrateSave({
+    ...unresolved[0].envelope.launchSnapshot,
+    outcomeRecoveryRecords: unresolved,
+  });
 
   assert.equal(migrated.outcomeRecoveryRecords.length, 1);
   assert.deepEqual(migrated.outcomeRecoveryRecords[0], {
@@ -518,13 +593,14 @@ test("code-owned route folds derive campaign, planet, and special effects", () =
 
 test("every route class can journal an authorized no-op failure without invented dependencies", () => {
   const legacy = migrateSave({});
+  const dynamicLegacy = readyLegacyPoi(legacy);
   const galaxy = beginGalaxyExperience(legacy);
   const routes: Array<[OutcomeRouteKind, SaveData, "legacy" | "galaxy", OutcomeAttempt["returnTarget"]]> = [
     ["campaign", legacy, "legacy", "legacy-star-map"],
     ["planet", legacy, "legacy", "legacy-cockpit"],
     ["special", legacy, "legacy", "legacy-cockpit"],
-    ["colony", legacy, "legacy", "legacy-cockpit"],
-    ["poi", legacy, "legacy", "legacy-colony-exterior"],
+    ["colony", dynamicLegacy, "legacy", "legacy-cockpit"],
+    ["poi", dynamicLegacy, "legacy", "legacy-colony-exterior"],
   ];
 
   for (const [routeKind, save, authority, returnTarget] of routes) {
@@ -765,11 +841,32 @@ test("Legacy POI success requires and atomically consumes one matching staged pr
   assert.deepEqual(recoverOutcomeReturn(committed.save)?.routeIdentity, poiAttempt.routeIdentity);
   assert.equal(committed.save.outcomeRecoveryRecords.some((record) =>
     record.kind === "legacy_poi_prepared"), false);
+  const reloadedCommitted = migrateSave(JSON.parse(JSON.stringify(committed.save)));
+  assert.equal(reloadedCommitted.outcomeRecoveryRecords[0]?.kind, "applied_return");
+  assert.deepEqual(recoverOutcomeReturn(reloadedCommitted)?.routeIdentity, poiAttempt.routeIdentity);
   assert.equal(commitOutcome(memory.store, finalEnvelope).status, "already_applied");
 });
 
 test("v2 return receipts preserve exact Colony mount identity and old locator-free receipts lock", () => {
-  const save = migrateSave({});
+  const founded = readyLegacyPoi(migrateSave({}));
+  const save: SaveData = {
+    ...founded,
+    colonies: founded.colonies.map((colony) => colony.id === "home" ? {
+      ...colony,
+      buildings: [...colony.buildings, {
+        id: "lab",
+        type: "med_bay" as const,
+        tier: 1 as const,
+        status: "operational" as const,
+        buildProgressCycles: 0,
+        hp: 100,
+        maxHp: 100,
+        interiorTemplateId: null,
+        assignedNpcIds: [],
+        districtId: null,
+      }],
+    } : colony),
+  };
   const base = attempt(save, "colony", "colony-interior-return", "legacy", "legacy-landing-pad", []);
   const interiorAttempt: OutcomeAttempt = {
     ...base,
@@ -1063,6 +1160,9 @@ test("Galaxy POI preparation binds the exact root outcome, consumes its fact, an
   const replay = commitOutcome(memory.store, terminal);
   assert.equal(replay.status, "already_applied");
   if (replay.status === "already_applied") assert.equal(replay.save.galaxyRun?.worldCycle, stagedCycle + 1);
+  const reloadedCommitted = migrateSave(JSON.parse(JSON.stringify(committed.save)));
+  assert.equal(reloadedCommitted.outcomeRecoveryRecords[0]?.kind, "applied_return");
+  assert.deepEqual(recoverOutcomeReturn(reloadedCommitted)?.routeIdentity, identity);
 
   const intervening = { ...staged, saveRevision: 2 };
   assert.equal(commitOutcome(memoryStore(intervening).store, terminal).status, "conflict");
@@ -1263,4 +1363,456 @@ test("reload return acknowledgement is a fresh canonical write", () => {
   postWrite.setWriteMode("after");
   assert.equal(acknowledgeOutcomeReturn(postWrite.store, terminal.outcomeId).status, "already_applied");
   assert.equal(recoverOutcomeReturn(postWrite.current()), null);
+});
+
+test("durable outcome APIs are total over static, delayed, and revoked root and nested array proxies", () => {
+  const base = readyLegacyPoi(migrateSave({}));
+  const campaign = campaignEnvelope(base, "proxy-root-commit");
+  const committed = commitOutcome(memoryStore(base).store, campaign);
+  assert.equal(committed.status, "committed");
+  if (committed.status !== "committed") return;
+
+  const poiAttempt = attempt(base, "poi", "proxy-root-prepared", "legacy", "legacy-colony-exterior", [
+    ...LEGACY_POI_FIELDS,
+  ]);
+  const preparedEnvelope = envelope(poiAttempt, { version: 2, kind: "poi_prepared_v2" });
+  const staged = stageLegacyPreparedOutcome(base, preparedEnvelope);
+  assert.ok(staged);
+  if (staged === null) return;
+
+  for (const mode of ["static", "delayed", "revoked"] as const) {
+    const hostileJournal: SaveData = {
+      ...committed.save,
+      appliedOutcomeIds: hostileArray(committed.save.appliedOutcomeIds, mode),
+    };
+    const recoveredReturn: ReturnType<typeof recoverOutcomeReturn> = totalCall(
+      `recover return ${mode}`,
+      () => recoverOutcomeReturn(hostileJournal),
+    );
+    const acknowledged = totalCall(`ack ${mode}`, () =>
+      acknowledgeOutcomeReturn(memoryStore(hostileJournal).store, campaign.outcomeId));
+    const recommit = totalCall(`commit root journal ${mode}`, () =>
+      commitOutcome(memoryStore(hostileJournal).store, campaign));
+
+    const hostileRecords: SaveData = {
+      ...staged,
+      outcomeRecoveryRecords: hostileArray(staged.outcomeRecoveryRecords, mode),
+    };
+    const recoveredPrepared: ReturnType<typeof recoverLegacyPreparedOutcome> = totalCall(
+      `recover prepared ${mode}`,
+      () => recoverLegacyPreparedOutcome(hostileRecords),
+    );
+    const emptyHostileRecords = {
+      ...base,
+      outcomeRecoveryRecords: hostileArray(base.outcomeRecoveryRecords, mode),
+    };
+    const restaged = totalCall(`stage prepared ${mode}`, () =>
+      stageLegacyPreparedOutcome(emptyHostileRecords, preparedEnvelope));
+
+    if (mode === "revoked") {
+      assert.equal(recoveredReturn, null);
+      assert.equal(acknowledged?.status, "conflict");
+      assert.equal(recommit?.status, "conflict");
+      assert.equal(recoveredPrepared, null);
+      assert.equal(restaged, null);
+    }
+  }
+
+  const galaxy = atAshfall();
+  const operation = envelope(
+    attempt(galaxy, "operation", "proxy-nested-operation", "galaxy", "galaxy-atlas", ["galaxyRun"]),
+    { version: 1, kind: "operation_result_v1", result: "failure", metrics: null },
+    "failure",
+  );
+  for (const mode of ["static", "delayed", "revoked"] as const) {
+    const hostileNested = {
+      ...galaxy,
+      galaxyRun: {
+        ...galaxy.galaxyRun!,
+        appliedOutcomeIds: hostileArray(galaxy.galaxyRun!.appliedOutcomeIds, mode),
+      },
+    };
+    const result = totalCall(`nested journal ${mode}`, () =>
+      commitOutcome(memoryStore(hostileNested).store, operation));
+    assert.equal(result.status, "conflict");
+
+    const hostileFacts = {
+      ...galaxy,
+      galaxyRun: {
+        ...galaxy.galaxyRun!,
+        historyFacts: hostileArray(galaxy.galaxyRun!.historyFacts, mode),
+      },
+    };
+    const recovered = totalCall(`Galaxy POI recovery ${mode}`, () =>
+      recoverGalaxyPoiOutcomeAuthority(hostileFacts));
+    assert.equal(recovered, null);
+  }
+});
+
+test("present malformed migration authority containers lock instead of erasing idempotency proof", () => {
+  const containers: ReadonlyArray<readonly [string, unknown]> = [
+    ...(["static", "delayed", "revoked"] as const).map((mode) => [mode, hostileMigrationContainer(mode)] as const),
+    ["non-array", { opaque: true }],
+  ];
+  for (const [label, container] of containers) {
+    for (const field of ["appliedOutcomeIds", "outcomeRecoveryRecords"] as const) {
+      const migrated = totalCall(`${field} ${label}`, () => migrateSave({ [field]: container }));
+      const lock = migrated.outcomeRecoveryRecords[0];
+      assert.equal(lock?.kind, "reconciliation_required", `${field} ${label}`);
+      if (lock?.kind === "reconciliation_required") {
+        assert.equal(lock.reason, "outcome_authority_invalid", `${field} ${label}`);
+        assert.ok(lock.protectedOutcomeIds.length <= 256, `${field} ${label}`);
+        assert.ok(lock.quarantinedOutcomeCount >= 1, `${field} ${label}`);
+      }
+      assert.equal(
+        commitOutcome(memoryStore(migrated).store, campaignEnvelope(migrated, `blocked-${field}-${label}`)).status,
+        "conflict",
+        `${field} ${label}`,
+      );
+    }
+  }
+
+  for (const missing of [undefined, null]) {
+    const migrated = migrateSave({ appliedOutcomeIds: missing, outcomeRecoveryRecords: missing });
+    assert.deepEqual(migrated.appliedOutcomeIds, []);
+    assert.deepEqual(migrated.outcomeRecoveryRecords, []);
+  }
+});
+
+test("new dynamic POI and Colony terminals require exact latest inherited authority", () => {
+  const legacy = readyLegacyPoi(migrateSave({}));
+  const forged = [
+    {
+      label: "ghost POI",
+      terminal: envelope({
+        ...attempt(legacy, "poi", "legacy-ghost-poi", "legacy", "legacy-colony-exterior", []),
+        routeIdentity: {
+          kind: "poi" as const,
+          originColonyId: "ghost",
+          nodeId: "ashfall-cinder-relay",
+          engine: "firstPerson" as const,
+          templateId: "fp-ruin-cinder-relay",
+          rewardEligible: true,
+        },
+      }, { version: 1, kind: "terminal_noop_v1" }, "failure"),
+    },
+    {
+      label: "ghost Colony building",
+      terminal: envelope({
+        ...attempt(legacy, "colony", "legacy-ghost-building", "legacy", "legacy-landing-pad", []),
+        missionId: "colony:4:home:interior:5:ghost",
+        routeIdentity: { kind: "colony" as const, colonyId: "home", mode: "interior" as const, buildingId: "ghost" },
+      }, { version: 1, kind: "terminal_noop_v1" }, "failure"),
+    },
+  ];
+  for (const probe of forged) {
+    assert.equal(commitOutcome(memoryStore(legacy).store, probe.terminal).status, "conflict", probe.label);
+  }
+
+  const crossLegacy = colonyReducer(legacy, Events.founded({
+    colonyId: "cross-origin",
+    name: "Cross Origin",
+    planetId: "ashfall",
+    foundingType: "outpost",
+    regionNodeId: "ashfall-basalt-basin",
+    missionCount: 0,
+    layoutSeed: 44,
+  }));
+  const crossLegacyTerminal = envelope({
+    ...attempt(crossLegacy, "poi", "legacy-cross-origin", "legacy", "legacy-colony-exterior", []),
+    routeIdentity: {
+      kind: "poi",
+      originColonyId: "cross-origin",
+      nodeId: "ashfall-cinder-relay",
+      engine: "firstPerson",
+      templateId: "fp-ruin-cinder-relay",
+      rewardEligible: true,
+    },
+  }, { version: 1, kind: "terminal_noop_v1" }, "failure");
+  assert.equal(commitOutcome(memoryStore(crossLegacy).store, crossLegacyTerminal).status, "conflict");
+
+  const galaxy = readyGalaxyPoi();
+  const galaxyGhost = envelope({
+    ...attempt(galaxy, "poi", "galaxy-ghost-poi", "galaxy", "galaxy-region", []),
+    routeIdentity: {
+      kind: "poi",
+      originColonyId: "galaxy:ghost",
+      nodeId: "ashfall-cinder-relay",
+      engine: "firstPerson",
+      templateId: "fp-ruin-cinder-relay",
+      rewardEligible: true,
+    },
+  }, { version: 1, kind: "terminal_noop_v1" }, "failure");
+  assert.equal(commitOutcome(memoryStore(galaxy).store, galaxyGhost).status, "conflict");
+
+  let projected = projectGalaxyRunToLegacyState(galaxy.galaxyRun!);
+  projected = colonyReducer(projected, Events.founded({
+    colonyId: "galaxy:cross-origin",
+    name: "Galaxy Cross Origin",
+    planetId: "ashfall",
+    foundingType: "outpost",
+    regionNodeId: "ashfall-basalt-basin",
+    missionCount: 0,
+    layoutSeed: 45,
+  }));
+  const merged = mergeProjectionIntoGalaxy(galaxy.galaxyRun!, {
+    colonies: projected.colonies,
+    planets: projected.planets,
+  });
+  assert.equal(merged.ok, true);
+  if (!merged.ok) return;
+  const galaxyCross = { ...galaxy, galaxyRun: merged.galaxyRun };
+  const galaxyCrossTerminal = envelope({
+    ...attempt(galaxyCross, "poi", "galaxy-cross-origin", "galaxy", "galaxy-region", []),
+    routeIdentity: {
+      kind: "poi",
+      originColonyId: "galaxy:cross-origin",
+      nodeId: "ashfall-cinder-relay",
+      engine: "firstPerson",
+      templateId: "fp-ruin-cinder-relay",
+      rewardEligible: true,
+    },
+  }, { version: 1, kind: "terminal_noop_v1" }, "failure");
+  assert.equal(commitOutcome(memoryStore(galaxyCross).store, galaxyCrossTerminal).status, "conflict");
+
+  const ghostReceipt = {
+    version: 2,
+    kind: "applied_return",
+    outcomeId: "ghost-receipt:failure",
+    launchId: "ghost-receipt",
+    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    routeKind: "poi",
+    routeIdentity: galaxyGhost.routeIdentity,
+    terminalKind: "failure",
+    persistenceAuthority: "legacy",
+    returnTarget: "legacy-colony-exterior",
+    appliedRevision: 1,
+    returnPending: true,
+  } as const;
+  const migrated = migrateSave({
+    ...legacy,
+    saveRevision: 1,
+    appliedOutcomeIds: [ghostReceipt.outcomeId],
+    outcomeRecoveryRecords: [ghostReceipt],
+  });
+  assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+});
+
+test("every Galaxy terminal owns exact root and nested journal parity", () => {
+  for (const terminalKind of ["failure", "retreat"] as const) {
+    const save = readyGalaxyPoi();
+    const terminal = envelope({
+      ...attempt(save, "poi", `galaxy-poi-${terminalKind}`, "galaxy", "galaxy-region", []),
+      routeIdentity: {
+        kind: "poi",
+        originColonyId: "galaxy:ashfall-primary",
+        nodeId: "ashfall-cinder-relay",
+        engine: "firstPerson",
+        templateId: "fp-ruin-cinder-relay",
+        rewardEligible: true,
+      },
+    }, { version: 1, kind: "terminal_noop_v1" }, terminalKind);
+    const memory = memoryStore(save);
+    const committed = commitOutcome(memory.store, terminal);
+    assert.equal(committed.status, "committed", terminalKind);
+    if (committed.status !== "committed" || committed.save.galaxyRun === null) continue;
+    assert.equal(committed.save.appliedOutcomeIds.filter((id) => id === terminal.outcomeId).length, 1);
+    assert.equal(committed.save.galaxyRun.appliedOutcomeIds.filter((id) => id === terminal.outcomeId).length, 1);
+    assert.equal(commitOutcome(memory.store, terminal).status, "already_applied");
+    const rootOnly = structuredClone(committed.save);
+    rootOnly.galaxyRun!.appliedOutcomeIds = rootOnly.galaxyRun!.appliedOutcomeIds.filter(
+      (id) => id !== terminal.outcomeId,
+    );
+    assert.equal(commitOutcome(memoryStore(rootOnly).store, terminal).status, "conflict");
+    const nestedOnly = structuredClone(committed.save);
+    nestedOnly.appliedOutcomeIds = nestedOnly.appliedOutcomeIds.filter((id) => id !== terminal.outcomeId);
+    nestedOnly.outcomeRecoveryRecords = [];
+    assert.equal(commitOutcome(memoryStore(nestedOnly).store, terminal).status, "conflict");
+  }
+
+  const colonySave = atAshfall();
+  const colonyTerminal = envelope({
+    ...attempt(colonySave, "colony", "galaxy-colony-noop", "galaxy", "galaxy-atlas", []),
+    missionId: colonyMissionDescriptor("galaxy:ashfall-primary", "exterior").id,
+    routeIdentity: {
+      kind: "colony",
+      colonyId: "galaxy:ashfall-primary",
+      mode: "exterior",
+      buildingId: null,
+    },
+  }, { version: 1, kind: "terminal_noop_v1" }, "failure");
+  const colonyCommitted = commitOutcome(memoryStore(colonySave).store, colonyTerminal);
+  assert.equal(colonyCommitted.status, "committed");
+  if (colonyCommitted.status === "committed" && colonyCommitted.save.galaxyRun !== null) {
+    assert.ok(colonyCommitted.save.appliedOutcomeIds.includes(colonyTerminal.outcomeId));
+    assert.ok(colonyCommitted.save.galaxyRun.appliedOutcomeIds.includes(colonyTerminal.outcomeId));
+  }
+});
+
+test("root validation rejects incoherent and duplicate durable recovery authority", () => {
+  const base = migrateSave({});
+  const terminal = campaignEnvelope(base, "coherent-receipt");
+  const committed = commitOutcome(memoryStore(base).store, terminal);
+  assert.equal(committed.status, "committed");
+  if (committed.status !== "committed") return;
+  const receipt = committed.save.outcomeRecoveryRecords.find((record) => record.kind === "applied_return");
+  assert.ok(receipt?.kind === "applied_return");
+  if (receipt?.kind !== "applied_return") return;
+
+  const missingJournal = { ...committed.save, appliedOutcomeIds: [] };
+  const futureReceipt = {
+    ...committed.save,
+    outcomeRecoveryRecords: [{ ...receipt, appliedRevision: committed.save.saveRevision + 1 }],
+  };
+  const duplicate = {
+    ...committed.save,
+    outcomeRecoveryRecords: [structuredClone(receipt), structuredClone(receipt)],
+  };
+  for (const [label, save] of [
+    ["missing journal", missingJournal],
+    ["future receipt", futureReceipt],
+    ["duplicate receipt", duplicate],
+  ] as const) {
+    assert.equal(recoverOutcomeReturn(save), null, label);
+    assert.equal(acknowledgeOutcomeReturn(memoryStore(save).store, terminal.outcomeId).status, "conflict", label);
+    assert.equal(commitOutcome(memoryStore(save).store, campaignEnvelope(save, `blocked-${label}`)).status, "conflict", label);
+  }
+
+  const migratedDuplicate = migrateSave(duplicate as unknown as Record<string, unknown>);
+  assert.equal(migratedDuplicate.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+
+  const legacyPoi = readyLegacyPoi(migrateSave({}));
+  const preparedEnvelope = envelope(
+    attempt(legacyPoi, "poi", "duplicate-prepared", "legacy", "legacy-colony-exterior", [...LEGACY_POI_FIELDS]),
+    { version: 2, kind: "poi_prepared_v2" },
+  );
+  const preparedRecord = { version: 2 as const, kind: "legacy_poi_prepared" as const, envelope: preparedEnvelope };
+  const duplicatePrepared = {
+    ...legacyPoi,
+    outcomeRecoveryRecords: [preparedRecord, structuredClone(preparedRecord)],
+  };
+  assert.equal(recoverLegacyPreparedOutcome(duplicatePrepared), null);
+  assert.equal(migrateSave(duplicatePrepared as unknown as Record<string, unknown>)
+    .outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+});
+
+test("Legacy prepared authority locks when its revision is future or canonical fields drift", () => {
+  const base = readyLegacyPoi(migrateSave({ saveRevision: 2, missionsSinceStart: 4 }));
+  const record = {
+    version: 2 as const,
+    kind: "legacy_poi_prepared" as const,
+    envelope: envelope(
+      attempt(base, "poi", "migration-prepared", "legacy", "legacy-colony-exterior", [...LEGACY_POI_FIELDS]),
+      { version: 2, kind: "poi_prepared_v2" },
+    ),
+  };
+  const future = structuredClone(record);
+  future.envelope.expectedRevision = base.saveRevision + 1;
+  const drifted = structuredClone(record);
+  drifted.envelope.launchSnapshot.missionsSinceStart = base.missionsSinceStart - 1;
+
+  for (const [label, candidate] of [["future", future], ["drift", drifted]] as const) {
+    const runtime = { ...base, outcomeRecoveryRecords: [candidate] };
+    assert.equal(recoverLegacyPreparedOutcome(runtime), null, label);
+    assert.equal(commitOutcome(memoryStore(runtime).store, campaignEnvelope(runtime, `blocked-prep-${label}`)).status, "conflict");
+    const migrated = migrateSave(runtime as unknown as Record<string, unknown>);
+    assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required", label);
+  }
+});
+
+test("Galaxy POI v2 staging requires coherent unlocked root and nested authority", () => {
+  const save = readyGalaxyPoi();
+  const projection = projectGalaxyRunToLegacyState(save.galaxyRun!);
+  const dispatched = dispatchPoi(projection, "galaxy:ashfall-primary", "ashfall-cinder-relay");
+  assert.equal(dispatched.ok, true);
+  if (!dispatched.ok) return;
+  const routeIdentity = {
+    kind: "poi" as const,
+    originColonyId: "galaxy:ashfall-primary",
+    nodeId: "ashfall-cinder-relay",
+    engine: "firstPerson" as const,
+    templateId: "fp-ruin-cinder-relay",
+    rewardEligible: true,
+  };
+  const initialAttempt: OutcomeAttempt = {
+    version: 1,
+    routeKind: "poi",
+    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    routeIdentity,
+    launchId: "galaxy-stage-coherence",
+    expectedRevision: save.saveRevision,
+    persistenceAuthority: "galaxy",
+    returnTarget: "galaxy-region",
+    declaredFields: ["galaxyRun"],
+    launchSnapshot: { galaxyRun: structuredClone(save.galaxyRun) },
+  };
+  const active = { originColonyId: routeIdentity.originColonyId, session: dispatched.session };
+  const valid = stageGalaxyPoiOutcomeAuthority(save, active, GameScreen.LEVEL_COMPLETE, initialAttempt);
+  assert.equal(valid.ok, true);
+  if (valid.ok) assert.deepEqual(recoverGalaxyPoiOutcomeAuthority(valid.save), valid.attempt);
+
+  const lock: OutcomeRecoveryRecord = {
+    version: 2,
+    kind: "reconciliation_required",
+    reason: "outcome_authority_invalid",
+    protectedOutcomeIds: [],
+    quarantinedOutcomeCount: 1,
+  };
+  const outcomeId = `${initialAttempt.launchId}:success`;
+  const probes: Array<[string, SaveData]> = [
+    ["wrong experience", { ...save, activeExperience: "legacy" }],
+    ["reconciliation lock", { ...save, outcomeRecoveryRecords: [lock] }],
+    ["root-only outcome", { ...save, appliedOutcomeIds: [outcomeId] }],
+    ["nested-only outcome", {
+      ...save,
+      galaxyRun: { ...save.galaxyRun!, appliedOutcomeIds: [outcomeId] },
+    }],
+    ["incoherent pending receipt", {
+      ...save,
+      outcomeRecoveryRecords: [{
+        version: 2,
+        kind: "applied_return",
+        outcomeId,
+        launchId: initialAttempt.launchId,
+        missionId: initialAttempt.missionId,
+        routeKind: "poi",
+        routeIdentity,
+        terminalKind: "success",
+        persistenceAuthority: "galaxy",
+        returnTarget: "galaxy-region",
+        appliedRevision: save.saveRevision + 1,
+        returnPending: true,
+      }],
+    }],
+    ["old v1 preparation gate", {
+      ...save,
+      galaxyRun: {
+        ...save.galaxyRun!,
+        historyFacts: [...save.galaxyRun!.historyFacts, {
+          id: "history:poi-prepared:00000000:%5B%5D",
+          kind: "poi_completion_prepared",
+          subjectId: routeIdentity.nodeId,
+          cycle: save.galaxyRun!.worldCycle,
+          causeFactIds: [],
+        }],
+      },
+    }],
+  ];
+  for (const [label, candidate] of probes) {
+    const result = totalCall(label, () =>
+      stageGalaxyPoiOutcomeAuthority(candidate, active, GameScreen.LEVEL_COMPLETE, initialAttempt));
+    assert.equal(result.ok, false, label);
+    assert.equal(recoverGalaxyPoiOutcomeAuthority(candidate), null, label);
+  }
+
+  for (const mode of ["static", "delayed", "revoked"] as const) {
+    const hostileRoot = {
+      ...save,
+      appliedOutcomeIds: hostileArray(save.appliedOutcomeIds, mode),
+      outcomeRecoveryRecords: hostileArray(save.outcomeRecoveryRecords, mode),
+    };
+    assert.doesNotThrow(() => {
+      stageGalaxyPoiOutcomeAuthority(hostileRoot, active, GameScreen.LEVEL_COMPLETE, initialAttempt);
+    }, `hostile Galaxy stage ${mode}`);
+  }
 });
