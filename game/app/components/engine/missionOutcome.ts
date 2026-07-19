@@ -479,6 +479,20 @@ function appendJournal(journal: readonly string[], outcomeId: string, protectedI
   return next.length <= OUTCOME_JOURNAL_LIMIT ? next : null;
 }
 
+function activeGalaxyCheckpointOutcomeIds(galaxyRun: unknown): string[] | null {
+  const run = requiredOwnData(galaxyRun, ["activeTravel"]);
+  if (run === null) return null;
+  if (run.activeTravel === null) return [];
+  const travel = requiredOwnData(run.activeTravel, ["transactionId", "appliedCheckpointIds"]);
+  const checkpointIds = travel === null ? null : snapshotStringJournal(travel.appliedCheckpointIds);
+  if (travel === null || typeof travel.transactionId !== "string" || travel.transactionId.length === 0 ||
+    checkpointIds === null) return null;
+  const prefix = `${travel.transactionId}:operation-outcome:`;
+  return checkpointIds.flatMap((checkpointId) => checkpointId.startsWith(prefix) && checkpointId.length > prefix.length
+    ? [checkpointId.slice(prefix.length)]
+    : []);
+}
+
 function appendRecoveryRecord(
   records: readonly OutcomeRecoveryRecord[],
   receipt: AppliedOutcomeReturnRecord,
@@ -758,7 +772,14 @@ function commitOutcomeImpl(
   };
   const records = appendRecoveryRecord(root.outcomeRecoveryRecords, receipt, outcome.outcomeId);
   if (records === null) return { status: "conflict", latest };
-  const protectedIds = records.flatMap((record) => snapshotRecoveryRecord(record)?.protectedIds ?? []);
+  const checkpointOutcomeIds = outcome.persistenceAuthority === "galaxy"
+    ? activeGalaxyCheckpointOutcomeIds(latestData.galaxyRun)
+    : [];
+  if (checkpointOutcomeIds === null) return { status: "conflict", latest };
+  const protectedIds = [
+    ...records.flatMap((record) => snapshotRecoveryRecord(record)?.protectedIds ?? []),
+    ...checkpointOutcomeIds,
+  ];
   const journal = appendJournal(root.appliedOutcomeIds, outcome.outcomeId, protectedIds);
   if (journal === null) return { status: "conflict", latest };
   const foldedOverrides = Object.fromEntries(folded.fields.map((field) => [
@@ -774,10 +795,23 @@ function commitOutcomeImpl(
     const nestedJournal = snapshotStringJournal(galaxyRun.appliedOutcomeIds);
     if (nestedJournal === null) return { status: "conflict", latest };
     const nestedOccurrences = nestedJournal.filter((id) => id === outcome.outcomeId).length;
-    const nextNested = nestedOccurrences === 0
-      ? appendJournal(nestedJournal, outcome.outcomeId, root.protectedIds)
-      : nestedOccurrences === 1 ? nestedJournal : null;
-    if (nextNested === null) return { status: "conflict", latest };
+    if (nestedOccurrences > 1) return { status: "conflict", latest };
+    const unprunedNested = nestedOccurrences === 0
+      ? [...nestedJournal, outcome.outcomeId]
+      : nestedJournal;
+    const rootOutcomeIds = new Set(journal);
+    const nextNested = unprunedNested.filter((outcomeId) => rootOutcomeIds.has(outcomeId));
+    if (nextNested.filter((outcomeId) => outcomeId === outcome.outcomeId).length !== 1) {
+      return { status: "conflict", latest };
+    }
+    const prunedNestedIds = new Set(unprunedNested.filter((outcomeId) => !rootOutcomeIds.has(outcomeId)));
+    if (prunedNestedIds.size > 0) {
+      for (const operation of Object.values(galaxyRun.operations)) {
+        const completionIds = snapshotStringJournal(operation.completionIds);
+        if (completionIds === null) return { status: "conflict", latest };
+        operation.completionIds = completionIds.filter((outcomeId) => !prunedNestedIds.has(outcomeId));
+      }
+    }
     galaxyRun.appliedOutcomeIds = nextNested;
     foldedOverrides.galaxyRun = galaxyRun;
   }

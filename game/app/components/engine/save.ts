@@ -313,6 +313,18 @@ type OutcomeReconciliationReason = Extract<OutcomeRecoveryRecord, {
   kind: "reconciliation_required";
 }>["reason"];
 
+function saturatingQuarantineAdd(left: number, right: number): number {
+  const boundedLeft = Number.isSafeInteger(left) && left >= 0
+    ? left
+    : left >= Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : 0;
+  const boundedRight = Number.isSafeInteger(right) && right >= 0
+    ? right
+    : right >= Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : 0;
+  return boundedLeft >= Number.MAX_SAFE_INTEGER - boundedRight
+    ? Number.MAX_SAFE_INTEGER
+    : boundedLeft + boundedRight;
+}
+
 function reconciliationLock(
   reason: OutcomeReconciliationReason,
   outcomeIds: readonly string[],
@@ -320,12 +332,13 @@ function reconciliationLock(
 ): Extract<OutcomeRecoveryRecord, { kind: "reconciliation_required" }> {
   const unique = [...new Set(outcomeIds)];
   const protectedOutcomeIds = structuredClone(unique.slice(-OUTCOME_JOURNAL_LIMIT));
+  const trimmedOutcomeCount = unique.length - protectedOutcomeIds.length;
   return {
     version: 2,
     kind: "reconciliation_required",
     reason,
     protectedOutcomeIds,
-    quarantinedOutcomeCount: quarantinedOutcomeCount + unique.length - protectedOutcomeIds.length,
+    quarantinedOutcomeCount: saturatingQuarantineAdd(quarantinedOutcomeCount, trimmedOutcomeCount),
   };
 }
 
@@ -348,12 +361,15 @@ function reconcileRecoveryAuthority(
     kind: "reconciliation_required";
   }> => record.kind === "reconciliation_required");
   const priorQuarantine = records.reduce((total, record) =>
-    total + (record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0), 0);
+    saturatingQuarantineAdd(
+      total,
+      record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0,
+    ), 0);
   return [reconciliationLock(
     existingLock?.reason ?? reason,
     [...protectedRecoveryOutcomeIds(records), ...additionalOutcomeIds],
     existingLock === undefined
-      ? priorQuarantine + Math.max(1, quarantinedOutcomeCount)
+      ? saturatingQuarantineAdd(priorQuarantine, Math.max(1, quarantinedOutcomeCount))
       : Math.max(priorQuarantine, quarantinedOutcomeCount),
   )];
 }
@@ -371,23 +387,35 @@ function migrateOutcomeRecoveryRecords(
   const invalidPreparedIds: string[] = [];
   let invalidPrepared = false;
   const invalidAuthorityIds: string[] = [];
+  let invalidAuthorityWithoutEvidence = 0;
+  const noteInvalidAuthority = (entry: unknown) => {
+    const outcomeIdField = snapshotOwnField(entry, "outcomeId");
+    if (outcomeIdField.kind === "data" && typeof outcomeIdField.value === "string" &&
+      outcomeIdField.value.length > 0) {
+      invalidAuthorityIds.push(outcomeIdField.value);
+    } else {
+      invalidAuthorityWithoutEvidence = saturatingQuarantineAdd(invalidAuthorityWithoutEvidence, 1);
+    }
+  };
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     const kindField = snapshotOwnField(entry, "kind");
     if (kindField.kind === "data" && kindField.value === "reconciliation_required") {
-      return [snapshotReconciliation(entry) ?? salvageReconciliation(entry)];
+      newestFirst.push(snapshotReconciliation(entry) ?? salvageReconciliation(entry));
+      continue;
     }
     const source = ownDataRecord(entry);
-    if (source === null) continue;
+    if (source === null) {
+      noteInvalidAuthority(entry);
+      continue;
+    }
     let record: OutcomeRecoveryRecord | null = null;
     let identity: unknown;
     if (source.kind === "applied_return") {
       record = snapshotAppliedReturn(entry);
       identity = source.outcomeId;
       if (record === null) {
-        if (source.returnPending === true && typeof source.outcomeId === "string" && source.outcomeId.length > 0) {
-          invalidAuthorityIds.push(source.outcomeId);
-        }
+        noteInvalidAuthority(entry);
         continue;
       }
       if (record?.kind === "applied_return" && record.returnPending &&
@@ -431,6 +459,7 @@ function migrateOutcomeRecoveryRecords(
         continue;
       }
     } else {
+      noteInvalidAuthority(entry);
       continue;
     }
     if (typeof identity !== "string" || identity.length === 0) continue;
@@ -450,24 +479,31 @@ function migrateOutcomeRecoveryRecords(
   const records = newestFirst.reverse();
   const retainedPreparedIds = records.flatMap((record) =>
     record.kind === "legacy_poi_prepared" ? [record.envelope.outcomeId] : []);
-  const protectedOutcomeIds = records.flatMap((record) =>
-    record.kind === "legacy_poi_prepared"
-      ? [record.envelope.outcomeId]
-      : record.kind === "applied_return" &&
-          (record.returnPending || record.persistenceAuthority === "galaxy")
-        ? [record.outcomeId]
-        : []);
-  if (invalidAuthorityIds.length > 0) {
+  const protectedOutcomeIds = protectedRecoveryOutcomeIds(records);
+  const existingLock = records.find((record): record is Extract<OutcomeRecoveryRecord, {
+    kind: "reconciliation_required";
+  }> => record.kind === "reconciliation_required");
+  const priorLockQuarantine = records.reduce((total, record) =>
+    saturatingQuarantineAdd(
+      total,
+      record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0,
+    ), 0);
+  if (invalidAuthorityIds.length > 0 || invalidAuthorityWithoutEvidence > 0) {
     return [reconciliationLock(
-      "outcome_authority_invalid",
+      existingLock?.reason ?? "outcome_authority_invalid",
       [...protectedOutcomeIds, ...invalidAuthorityIds.reverse()],
+      saturatingQuarantineAdd(priorLockQuarantine, invalidAuthorityWithoutEvidence),
     )];
   }
   if (invalidPrepared) {
     return [reconciliationLock(
-      "prepared_outcome_invalid",
+      existingLock?.reason ?? "prepared_outcome_invalid",
       [...protectedOutcomeIds, ...invalidPreparedIds.reverse()],
+      priorLockQuarantine,
     )];
+  }
+  if (existingLock !== undefined) {
+    return [reconciliationLock(existingLock.reason, protectedOutcomeIds, priorLockQuarantine)];
   }
   const overflowDiscard = records.slice(0, Math.max(0, records.length - OUTCOME_RECOVERY_LIMIT));
   if (overflowDiscard.some((record) =>
@@ -543,13 +579,13 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
   const rawGalaxyJournalInspection = rawGalaxyRun === null || rawGalaxyRun === undefined
     ? { ok: true as const, nestedOutcomeIds: [], operationOwners: new Map<string, string>() }
     : inspectGalaxyOutcomeJournals(rawGalaxyRun, OUTCOME_JOURNAL_LIMIT);
-  const rawGalaxyHistoryField = rawGalaxyRun !== null && typeof rawGalaxyRun === "object" && !Array.isArray(rawGalaxyRun)
+  const rawGalaxyHistoryField = rawGalaxyRunField.kind === "data" && rawGalaxyRun !== null
     ? snapshotOwnField(rawGalaxyRun, "historyFacts")
     : { kind: "absent" as const };
   const rawPreparedInspection: GalaxyPoiPreparedAuthorityInspection = rawGalaxyHistoryField.kind === "absent"
     ? { status: "none" }
     : inspectGalaxyPoiPreparedAuthority(rawGalaxyRun);
-  const rawGalaxyIdentityField = rawGalaxyRun !== null && typeof rawGalaxyRun === "object" && !Array.isArray(rawGalaxyRun)
+  const rawGalaxyIdentityField = rawGalaxyRunField.kind === "data" && rawGalaxyRun !== null
     ? snapshotOwnField(rawGalaxyRun, "identity")
     : { kind: "absent" as const };
   const identitySource = rawGalaxyIdentityField.kind === "data"
@@ -592,7 +628,8 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
     : rawRecoveryField.kind === "data" ? snapshotDenseArray(rawRecoveryField.value) : null;
   const preA3SeedIsCoherent = isPreA3Authority && rawGalaxyJournalInspection.ok &&
     rawGalaxyJournalInspection.operationOwners.size === rawGalaxyJournalInspection.nestedOutcomeIds.length;
-  const malformedGalaxyRunContainer = rawGalaxyRunField.kind === "invalid";
+  const malformedGalaxyRunContainer = rawGalaxyRunField.kind === "invalid" ||
+    (rawGalaxyRunField.kind === "data" && rawGalaxyRunField.value !== null && galaxyRun === null);
   const malformedJournalContainer = rawJournalField.kind !== "absent" && strictRootJournal === null;
   const malformedRecoveryContainer = recoverySnapshot === null;
   const malformedRevision = rawRevisionField.kind === "invalid" ||

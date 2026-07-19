@@ -503,30 +503,44 @@ test("recovery migration accepts only exact own-data records and never invokes a
     get() { accessorReads += 1; return 1; },
   });
   const inherited = Object.create(applied) as Record<string, unknown>;
-  const hostile = [
-    { ...applied, outcomeId: "forged" },
-    { ...applied, appliedRevision: -1 },
-    { ...applied, persistenceAuthority: "galaxy", returnTarget: "legacy-cockpit" },
-    accessor,
-    inherited,
-  ];
+  const nonPlain = Object.assign(new Date(0), applied);
+  const revoked = Proxy.revocable({ ...applied }, {});
+  revoked.revoke();
+  const invalidAcknowledged = { ...applied, appliedRevision: -1, returnPending: false };
 
   const accepted = migrateSave({
     ...prepared.envelope.launchSnapshot,
     saveRevision: 2,
     appliedOutcomeIds: [applied.outcomeId],
-    outcomeRecoveryRecords: [applied, prepared, accessor, inherited],
+    outcomeRecoveryRecords: [applied, prepared],
   });
 
-  assert.equal(accessorReads, 0);
   assert.deepEqual(accepted.outcomeRecoveryRecords, [applied, prepared]);
-  const migrated = migrateSave({
-    ...prepared.envelope.launchSnapshot,
-    saveRevision: 2,
-    appliedOutcomeIds: [applied.outcomeId],
-    outcomeRecoveryRecords: [applied, prepared, ...hostile],
-  });
-  assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+  const hostile: ReadonlyArray<readonly [string, unknown, boolean]> = [
+    ["accessor", accessor, true],
+    ["inherited", inherited, false],
+    ["non-plain", nonPlain, true],
+    ["opaque", 17, false],
+    ["revoked", revoked.proxy, false],
+    ["unknown plain record", { kind: "future_recovery", outcomeId: applied.outcomeId }, true],
+    ["invalid acknowledged applied return", invalidAcknowledged, true],
+  ];
+  for (const [label, entry, salvagesOutcomeId] of hostile) {
+    const migrated = totalCall(label, () => migrateSave({
+      ...prepared.envelope.launchSnapshot,
+      saveRevision: 2,
+      appliedOutcomeIds: [applied.outcomeId],
+      outcomeRecoveryRecords: [entry],
+    }));
+    const lock = migrated.outcomeRecoveryRecords[0];
+    assert.equal(lock?.kind, "reconciliation_required", label);
+    if (lock?.kind !== "reconciliation_required") continue;
+    assert.equal(lock.version, 2, label);
+    assert.equal(lock.reason, "outcome_authority_invalid", label);
+    assert.equal(lock.protectedOutcomeIds.includes(applied.outcomeId), salvagesOutcomeId, label);
+    assert.ok(lock.quarantinedOutcomeCount >= (salvagesOutcomeId ? 0 : 1), label);
+  }
+  assert.equal(accessorReads, 0);
 });
 
 test("pending return migration locks incoherent journal and revision authority", () => {
@@ -647,6 +661,49 @@ test("generated reconciliation locks bound hundreds of invalid receipts and prep
     assert.equal(validPreparedSave.appliedOutcomeIds.length, 0);
   }
   assert.deepEqual(migrateSave(JSON.parse(JSON.stringify(validPreparedSave))), validPreparedSave);
+});
+
+test("reconciliation quarantine arithmetic saturates at the safe-integer boundary", () => {
+  const protectedOutcomeIds = Array.from({ length: 300 }, (_, index) => `saturated:${index}`);
+  const migrated = migrateSave({
+    appliedOutcomeIds: protectedOutcomeIds,
+    outcomeRecoveryRecords: [{
+      version: 2,
+      kind: "reconciliation_required",
+      reason: "outcome_authority_invalid",
+      protectedOutcomeIds,
+      quarantinedOutcomeCount: Number.MAX_SAFE_INTEGER - 10,
+    }],
+  });
+  const lock = migrated.outcomeRecoveryRecords[0];
+  assert.equal(lock?.kind, "reconciliation_required");
+  if (lock?.kind !== "reconciliation_required") return;
+  assert.equal(lock.protectedOutcomeIds.length, 256);
+  assert.equal(lock.quarantinedOutcomeCount, Number.MAX_SAFE_INTEGER);
+  assert.ok(Number.isSafeInteger(lock.quarantinedOutcomeCount));
+  assert.deepEqual(migrateSave(JSON.parse(JSON.stringify(migrated))), migrated);
+
+  const summed = migrateSave({
+    outcomeRecoveryRecords: [{
+      version: 2,
+      kind: "reconciliation_required",
+      reason: "outcome_authority_invalid",
+      protectedOutcomeIds: ["summed:first"],
+      quarantinedOutcomeCount: Number.MAX_SAFE_INTEGER - 5,
+    }, {
+      version: 2,
+      kind: "reconciliation_required",
+      reason: "prepared_outcome_invalid",
+      protectedOutcomeIds: ["summed:second"],
+      quarantinedOutcomeCount: 10,
+    }],
+  });
+  const summedLock = summed.outcomeRecoveryRecords[0];
+  assert.equal(summedLock?.kind, "reconciliation_required");
+  if (summedLock?.kind !== "reconciliation_required") return;
+  assert.equal(summedLock.quarantinedOutcomeCount, Number.MAX_SAFE_INTEGER);
+  assert.deepEqual(summedLock.protectedOutcomeIds, ["summed:first", "summed:second"]);
+  assert.deepEqual(migrateSave(JSON.parse(JSON.stringify(summed))), summed);
 });
 
 test("an invalid durable Legacy preparation migrates to a reconciliation lock", () => {
@@ -1112,6 +1169,62 @@ test("operation success, failure, and retreat are code-owned Galaxy folds with e
   }
 });
 
+test("Galaxy operation outcomes commit at full coherent journal capacity", () => {
+  const base = atAshfall();
+  assert.ok(base.galaxyRun);
+  const protectedOutcomeId = "capacity-protected:success";
+  const prunedOutcomeId = "capacity-pruned:success";
+  const fillerIds = [
+    protectedOutcomeId,
+    prunedOutcomeId,
+    ...Array.from({ length: 254 }, (_, index) => `capacity-operation:${index}`),
+  ];
+  const protectedReceipt: OutcomeRecoveryRecord = {
+    version: 2,
+    kind: "applied_return",
+    outcomeId: protectedOutcomeId,
+    launchId: "capacity-protected",
+    missionId: "operation:op:hostile-picket",
+    routeKind: "operation",
+    routeIdentity: { kind: "operation", operationId: "op:hostile-picket" },
+    terminalKind: "success",
+    persistenceAuthority: "galaxy",
+    returnTarget: "galaxy-atlas",
+    appliedRevision: base.saveRevision,
+    returnPending: true,
+  };
+  const run = structuredClone(base.galaxyRun!);
+  run.appliedOutcomeIds = [...fillerIds];
+  run.operations["op:hostile-picket"].completionIds = [protectedOutcomeId, prunedOutcomeId];
+  const save: SaveData = {
+    ...base,
+    appliedOutcomeIds: [...fillerIds],
+    outcomeRecoveryRecords: [protectedReceipt],
+    galaxyRun: run,
+  };
+  assert.ok(snapshotOutcomeRootAuthority(save));
+  const terminal = envelope(
+    attempt(save, "operation", "capacity-operation-new", "galaxy", "galaxy-atlas", ["galaxyRun"]),
+    { version: 1, kind: "operation_result_v1", result: "failure", metrics: null },
+    "failure",
+  );
+
+  const committed = commitOutcome(memoryStore(save).store, terminal);
+
+  assert.equal(committed.status, "committed");
+  if (committed.status !== "committed" || committed.save.galaxyRun === null) return;
+  assert.equal(committed.save.appliedOutcomeIds.length, 256);
+  assert.equal(committed.save.galaxyRun.appliedOutcomeIds.length, 256);
+  assert.ok(committed.save.appliedOutcomeIds.includes(protectedOutcomeId));
+  assert.ok(committed.save.galaxyRun.appliedOutcomeIds.includes(protectedOutcomeId));
+  assert.ok(!committed.save.appliedOutcomeIds.includes(prunedOutcomeId));
+  assert.ok(!committed.save.galaxyRun.appliedOutcomeIds.includes(prunedOutcomeId));
+  assert.ok(committed.save.appliedOutcomeIds.includes(terminal.outcomeId));
+  assert.ok(committed.save.galaxyRun.appliedOutcomeIds.includes(terminal.outcomeId));
+  assert.deepEqual(committed.save.galaxyRun.operations["op:hostile-picket"].completionIds, [protectedOutcomeId]);
+  assert.deepEqual(committed.save.galaxyRun.operations["op:ashfall-sortie"].completionIds, [terminal.outcomeId]);
+});
+
 test("hostile Galaxy journals and operation records never become replay authority", () => {
   const save = atAshfall();
   const terminal = envelope(
@@ -1215,6 +1328,47 @@ test("Galaxy POI shell staging writes only v2 authority and rebuilds the exact a
   assert.deepEqual(recovered, staged.attempt);
   assert.equal(recovered?.expectedRevision, reloaded.saveRevision);
   assert.deepEqual(recovered?.launchSnapshot, { galaxyRun: reloaded.galaxyRun });
+});
+
+test("Galaxy POI outcomes commit at full coherent journal capacity", () => {
+  const fixture = galaxyStageFixture("capacity-galaxy-poi");
+  const fillerIds = Array.from({ length: 256 }, (_, index) => `capacity-poi:${index}`);
+  const run = structuredClone(fixture.save.galaxyRun!);
+  run.appliedOutcomeIds = [...fillerIds];
+  const save: SaveData = {
+    ...fixture.save,
+    appliedOutcomeIds: [...fillerIds],
+    galaxyRun: run,
+  };
+  const staged = stageGalaxyPoiOutcomeAuthority(
+    save,
+    fixture.active,
+    GameScreen.LEVEL_COMPLETE,
+    {
+      ...fixture.attempt,
+      expectedRevision: save.saveRevision,
+      launchSnapshot: { galaxyRun: structuredClone(run) },
+    },
+  );
+  assert.equal(staged.ok, true);
+  if (!staged.ok) return;
+  const terminal = envelope(staged.attempt, {
+    version: 2,
+    kind: "poi_result_v2",
+    destinationColonyId: "galaxy:ashfall-primary",
+  });
+
+  const committed = commitOutcome(memoryStore(staged.save).store, terminal);
+
+  assert.equal(committed.status, "committed");
+  if (committed.status !== "committed" || committed.save.galaxyRun === null) return;
+  assert.equal(committed.save.appliedOutcomeIds.length, 256);
+  assert.equal(committed.save.galaxyRun.appliedOutcomeIds.length, 256);
+  assert.ok(!committed.save.appliedOutcomeIds.includes(fillerIds[0]));
+  assert.ok(!committed.save.galaxyRun.appliedOutcomeIds.includes(fillerIds[0]));
+  assert.ok(committed.save.appliedOutcomeIds.includes(terminal.outcomeId));
+  assert.ok(committed.save.galaxyRun.appliedOutcomeIds.includes(terminal.outcomeId));
+  assert.equal(recoverGalaxyPoiPreparation(committed.save.galaxyRun), null);
 });
 
 test("Galaxy POI preparation binds the exact root outcome, consumes its fact, and journals both authorities", () => {
@@ -2264,6 +2418,62 @@ test("outcome metadata migration distinguishes absent fields from explicit or ac
   const migratedAccessor = migrateSave(galaxyRunAccessor);
   assert.equal(galaxyRunReads, 0);
   assert.equal(migratedAccessor.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+});
+
+test("present hostile or throwing GalaxyRun containers fail closed without resetting root history", () => {
+  const begun = beginGalaxyExperience(migrateSave({}));
+  assert.ok(begun.galaxyRun);
+  const rootOutcomeId = "unrelated-root-history:success";
+  const base = {
+    ...begun,
+    credits: 73,
+    saveRevision: 4,
+    appliedOutcomeIds: [rootOutcomeId],
+    outcomeRecoveryRecords: [],
+  };
+  const delayedRun = new Proxy(structuredClone(begun.galaxyRun!), {
+    getOwnPropertyDescriptor(target, property) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(target, property);
+      if (property === "identity") {
+        Object.defineProperty(target, "worldCycle", {
+          enumerable: true,
+          configurable: true,
+          get() { throw new Error("delayed Galaxy migration failure"); },
+        });
+      }
+      return descriptor;
+    },
+  });
+  const revokedRun = Proxy.revocable(structuredClone(begun.galaxyRun!), {});
+  revokedRun.revoke();
+  const throwingRun = structuredClone(begun.galaxyRun!);
+  Object.defineProperty(throwingRun, "worldCycle", {
+    enumerable: true,
+    configurable: true,
+    get() { throw new Error("Galaxy field migration failure"); },
+  });
+
+  for (const [label, galaxyRun] of [
+    ["delayed", delayedRun],
+    ["revoked", revokedRun.proxy],
+    ["throwing valid run", throwingRun],
+    ["explicit undefined", undefined],
+  ] as const) {
+    const migrated = totalCall(label, () => migrateSave({ ...base, galaxyRun }));
+    assert.equal(migrated.credits, 73, label);
+    assert.deepEqual(migrated.appliedOutcomeIds, [rootOutcomeId], label);
+    const lock = migrated.outcomeRecoveryRecords[0];
+    assert.equal(lock?.kind, "reconciliation_required", label);
+    if (lock?.kind !== "reconciliation_required") continue;
+    assert.equal(lock.version, 2, label);
+    assert.equal(lock.reason, "outcome_authority_invalid", label);
+    assert.ok(lock.protectedOutcomeIds.length <= 256, label);
+    assert.ok(lock.quarantinedOutcomeCount >= 1, label);
+  }
+
+  const explicitNull = migrateSave({ ...base, activeExperience: "legacy", galaxyRun: null });
+  assert.deepEqual(explicitNull.appliedOutcomeIds, [rootOutcomeId]);
+  assert.deepEqual(explicitNull.outcomeRecoveryRecords, []);
 });
 
 test("multiple distinct Legacy preparations are invalid runtime and migration authority", () => {
