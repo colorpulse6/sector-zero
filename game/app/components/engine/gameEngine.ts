@@ -668,6 +668,10 @@ export function updateGame(
   if (s.objective && !s.objective.completed && !s.objective.failed) {
     const objResult = updateObjective(
       s.objective, s.frameCount, s.player, s.enemyBullets, s.enemies,
+      {
+        allWavesSpawned: s.waves.every((wave) => wave.spawned),
+        hasActiveBoss: !!s.boss && !s.boss.defeated,
+      },
       s.escort, s.defendStructure
     );
     s.objective = objResult.objective;

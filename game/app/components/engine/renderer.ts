@@ -30,6 +30,14 @@ import { drawBoardingGame } from "./boardingRenderer";
 import { drawFirstPerson } from "./firstPersonRenderer";
 import { drawTurretGame } from "./turretRenderer";
 import { operationSurfaceLabel } from "./galaxy/experienceFlow";
+import {
+  drawObjectiveHud,
+  drawPlanetBackground,
+  drawPlanetForeground,
+  drawPlanetHazards,
+  drawPlanetObjectiveActor,
+} from "./planetRenderer";
+import { getHazardState } from "./gameEngine";
 
 export function drawGame(
   ctx: CanvasRenderingContext2D,
@@ -45,7 +53,11 @@ export function drawGame(
   }
 
   // Background
-  drawBackground(ctx, state.background, state.currentWorld, state.planetId);
+  if (state.planetId) {
+    drawPlanetBackground(ctx, state.planetId, state.frameCount);
+  } else {
+    drawBackground(ctx, state.background, state.currentWorld);
+  }
 
   // Phase transition screen
   if (state.screen === GameScreen.PHASE_TRANSITION) {
@@ -125,9 +137,14 @@ export function drawGame(
   drawPlayerBullets(ctx, state.playerBullets, state.player.weaponLevel, hasRapidFire);
   drawPlayer(ctx, state);
   drawSideGunners(ctx, state);
+  drawPlanetObjectiveActor(ctx, state);
+  drawPlanetHazards(ctx, state, getHazardState());
   drawParticles(ctx, state.particles);
   drawSpriteExplosions(ctx, state.explosions);
   drawFloatingLabels(ctx, state.floatingLabels);
+  if (state.planetId) {
+    drawPlanetForeground(ctx, state.planetId, state.frameCount);
+  }
 
   // Wave indicator (only during normal play, not boss)
   if (state.screen === GameScreen.PLAYING && state.waveDelay > 30 && state.currentWave > 0 && !state.boss) {
@@ -144,6 +161,10 @@ export function drawGame(
   // Level complete banner (game keeps running during countdown)
   if (state.levelCompleteTimer > 0) {
     drawLevelCompleteBanner(ctx, state);
+  }
+
+  if (state.planetId && state.objective) {
+    drawObjectiveHud(ctx, state.objective, state.planetId, state.frameCount);
   }
 
   // Dashboard (bottom panel — replaces old HUD + dialog overlay)

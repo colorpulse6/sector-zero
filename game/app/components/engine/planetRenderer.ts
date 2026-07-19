@@ -6,6 +6,7 @@ import {
   type EscortEntity,
   type DefendStructure,
   type Collectible,
+  type GameState,
 } from "./types";
 import type { HazardState } from "./hazards";
 import type { ConsumableEffect } from "./consumables";
@@ -132,7 +133,6 @@ export function drawPlanetBackground(
   const bgKeys = PALETTES[planetId] ? getBgSpriteKeys(planetId) : null;
   const farSprite = bgKeys ? getSprite(bgKeys[0]) : null;
   const midSprite = bgKeys ? getSprite(bgKeys[1]) : null;
-  const nearSprite = bgKeys ? getSprite(bgKeys[2]) : null;
 
   if (farSprite) {
     // Sprite-based parallax (same as main campaign)
@@ -163,7 +163,31 @@ export function drawPlanetBackground(
     }
   }
 
-  // Particles (always procedural, overlaid on sprites)
+}
+
+/** Draw near parallax and atmospheric particles above authored gameplay state. */
+export function drawPlanetForeground(
+  ctx: CanvasRenderingContext2D,
+  planetId: PlanetId,
+  frameCount: number,
+): void {
+  if (currentPlanetBg !== planetId) {
+    currentPlanetBg = planetId;
+    initParticles(planetId);
+  }
+
+  const palette = PALETTES[planetId];
+  const [, , nearKey] = getBgSpriteKeys(planetId);
+  const nearSprite = getSprite(nearKey);
+  if (nearSprite) {
+    const nearY = (frameCount * 0.9) % nearSprite.height;
+    ctx.globalAlpha = 0.22;
+    ctx.drawImage(nearSprite, 0, nearY - nearSprite.height, CANVAS_WIDTH, GAME_AREA_HEIGHT);
+    ctx.drawImage(nearSprite, 0, nearY, CANVAS_WIDTH, GAME_AREA_HEIGHT);
+    ctx.globalAlpha = 1;
+  }
+
+  // Atmospheric particles remain available when authored sprites are absent.
   ctx.fillStyle = palette.particleColor;
   for (const p of particles) {
     p.y += p.speed;
@@ -410,6 +434,40 @@ export function drawCollectibles(
 
     ctx.restore();
   }
+}
+
+/** Draw the objective entity whose position or health affects planet gameplay. */
+export function drawPlanetObjectiveActor(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+): void {
+  if (!state.planetId || !state.objective) return;
+
+  switch (state.objective.type) {
+    case "collect":
+      drawCollectibles(ctx, state.objective.collectibles, state.planetId, state.frameCount);
+      break;
+    case "escort":
+      if (state.escort) drawEscortEntity(ctx, state.escort, state.frameCount);
+      break;
+    case "defend":
+      if (state.defendStructure) {
+        drawDefendStructure(ctx, state.defendStructure, state.frameCount);
+      }
+      break;
+    case "survive":
+      break;
+  }
+}
+
+/** Draw the hazard state consumed by the active planet simulation. */
+export function drawPlanetHazards(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  hazards: HazardState | null,
+): void {
+  if (!state.planetId || hazards?.planetId !== state.planetId) return;
+  renderHazards(ctx, hazards, state.frameCount);
 }
 
 // ─── Consumable HUD ─────────────────────────────────────────────────
