@@ -1,7 +1,7 @@
 # Cantina Asset Production Provenance
 
 **Started:** 2026-07-18
-**Bundle status:** IN PRODUCTION — NOT REGISTERED — NOT INTEGRATED
+**Bundle status:** PRODUCTION-REVIEWED — NOT REGISTERED — NOT INTEGRATED
 **Temporary workspace:** `/private/tmp/sector-zero-m3-cantina/`
 
 ## Environment attempts
@@ -257,3 +257,24 @@ magick npc-alpha.png -trim +repage -filter Lanczos -resize "118x250>" -gravity s
 
 The first derivative was inspection-only and was removed from the production path after the
 seam rejection.
+
+## Production-art handoff
+
+- **Manifest state:** every Cantina entry is exactly `PRODUCTION-REVIEWED, NOT REGISTERED,
+  NOT INTEGRATED`.
+- **Final verification (2026-07-19):** the Cantina, Marketplace, and Town Hall direct
+  validators all passed; TypeScript was clean; colony tests passed 284/284; engine tests
+  passed 282/282; sprite tests passed 7/7; and both the standard and DevTools static exports
+  compiled successfully, generated 6/6 static pages, and exported 3/3 routes.
+- **Visual boundary:** the committed source/production comparisons, scale checks, seam checks,
+  and composites were inspected. There is intentionally no gameplay screenshot because these
+  assets have no runtime consumer yet.
+- **Runtime integration audit (2026-07-19):** `InteriorTemplate` has no environment-art or
+  interior NPC placement/schedule fields. `generateInteriorState` supplies shared Ashfall sky,
+  wall, and floor and no `ceilingSprite`. FP props are square projected billboards
+  (`widthFactor: 1`), and the FP dialog renderer consumes speaker/text but does not render
+  `FPDialogLine.portraitKey`. No M3 hub asset paths are registered in `SPRITES` or referenced by
+  a runtime hub consumer.
+- **Required next artifact:** an M3 Cantina code design/plan defining the layout, interior asset
+  fields, NPC placement and schedules, interaction, DevPanel fixture, normal player access,
+  Atlas and bulletin-board boundaries, and runtime registration before implementation begins.

@@ -90,7 +90,7 @@ and were copied to the exact Town Hall manifest `sourcePath`s.
 - **Edge treatment:** helper soft matte and despill only; no edge contraction or feather pass
   was required
 - **Review:** each exact 256×256 production prop was composited without rescaling on its own
-  true 16px checkerboard cell; the five cells were labeled and joined into an opaque
+  true checkerboard cell; the five cells were labeled and joined into an opaque
   1280×288, 8-bit sRGB evidence panel with metadata stripped and page geometry reset. The
   separate dark/bright composites remain unchanged. All corners are transparent in the
   production assets, all bottom bands are occupied, natural wide/tall proportions are
@@ -182,3 +182,24 @@ magick governor-desk-cell.png petition-terminal-cell.png holo-atlas-cell.png ben
 The complete bundle remains unregistered and unintegrated. Runtime constants, sprite sheets,
 renderers, gameplay consumers, optional walk frames, and gameplay screenshots are outside
 this production-art slice.
+
+## Production-art handoff
+
+- **Manifest state:** every Town Hall entry is exactly `PRODUCTION-REVIEWED, NOT REGISTERED,
+  NOT INTEGRATED`.
+- **Final verification (2026-07-19):** the Cantina, Marketplace, and Town Hall direct
+  validators all passed; TypeScript was clean; colony tests passed 284/284; engine tests
+  passed 282/282; sprite tests passed 7/7; and both the standard and DevTools static exports
+  compiled successfully, generated 6/6 static pages, and exported 3/3 routes.
+- **Visual boundary:** the committed source/production comparisons, scale checks, seam checks,
+  and composites were inspected. There is intentionally no gameplay screenshot because these
+  assets have no runtime consumer yet.
+- **Runtime integration audit (2026-07-19):** `InteriorTemplate` has no environment-art or
+  interior NPC placement/schedule fields. `generateInteriorState` supplies shared Ashfall sky,
+  wall, and floor and no `ceilingSprite`. FP props are square projected billboards
+  (`widthFactor: 1`), and the FP dialog renderer consumes speaker/text but does not render
+  `FPDialogLine.portraitKey`. No M3 hub asset paths are registered in `SPRITES` or referenced by
+  a runtime hub consumer.
+- **Required next artifact:** an M3 Cantina code design/plan defining the layout, interior asset
+  fields, NPC placement and schedules, interaction, DevPanel fixture, normal player access,
+  Atlas and bulletin-board boundaries, and runtime registration before implementation begins.
