@@ -3,7 +3,7 @@
   "scope": "m3-ashfall-base",
   "bundles": {
     "cantina": {
-      "status": "planned",
+      "status": "production-reviewed",
       "environment": [
         { "constant": "HUB_CANTINA_WALL", "path": "game/public/sprites/interiors/m3/cantina/wall.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/wall-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
         { "constant": "HUB_CANTINA_FLOOR", "path": "game/public/sprites/interiors/m3/cantina/floor.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/floor-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },

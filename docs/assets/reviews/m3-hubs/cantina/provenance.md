@@ -180,7 +180,65 @@ shadow, no green in the subject, and no text. Seeds were not exposed.
 - **Dependency isolation:** Pillow 12.3.0 was installed only in `/private/tmp/sector-zero-m3-imagegen-venv`; no Python dependency or environment file entered the repo
 - **Scale/canvas:** alpha trim, Lanczos fit inside 232×230, south gravity on exact 256×256 transparent canvas, forced PNG color type 6
 - **Review:** transparent checkerboard, actual-size dark and bright composites, transparent corners, bottom band, and green-fringe inspection
-- **Evidence:** `props-actual-size.png` and the props-only initial `billboards-dark-bright.png`; the latter remains incomplete until Cantina NPC billboards are appended
+- **Evidence:** `props-actual-size.png` and `billboards-dark-bright.png`; the latter began as a props-only panel and is now complete with the Cantina NPC billboards
+
+## NPC identity pairs — SELECTED
+
+Portraits were generated first as distinct single-subject identities. Each accepted portrait
+was then attached as the only identity reference for its full-body billboard generation.
+Billboards used the flat-green override and the same local chroma-key helper as the props.
+Seeds were not exposed.
+
+### `hub-bartender`
+
+- **Portrait output ID:** `exec-fbb0bbf4-c6b9-4b85-b0fe-01a67156c483.png`
+- **Portrait original:** `/Users/nichalasbarnes/.codex/generated_images/019f5d85-985f-7d93-a56c-e9a171e6c280/exec-fbb0bbf4-c6b9-4b85-b0fe-01a67156c483.png`
+- **Portrait source:** `docs/assets/source/m3-hubs/cantina/hub-bartender-portrait-source.png`
+- **Portrait production:** `game/public/sprites/portraits/hub-bartender.png`, 512×512 8-bit RGB
+- **Billboard output ID:** `exec-5f4a404b-78bd-46c0-8d2b-eb2fcf66b31a.png`
+- **Billboard original:** `/Users/nichalasbarnes/.codex/generated_images/019f5d85-985f-7d93-a56c-e9a171e6c280/exec-5f4a404b-78bd-46c0-8d2b-eb2fcf66b31a.png`
+- **Billboard reference:** accepted bartender portrait; face, age, build, apron, tool gear, and prosthetic forearm locked
+- **Billboard source:** `docs/assets/source/m3-hubs/cantina/hub-bartender-billboard-source.png`, 887×1774 RGB
+- **Billboard production:** `game/public/sprites/boarding/npc-hub-bartender.png`, 128×256 8-bit RGBA
+- **5%-alpha bounds:** 95×250+16+6; transparent corners and bottom contact present
+- **Decision:** selected. The portrait and billboard retain the same face, broad build, square shoulder line, apron, and reinforced prosthetic.
+
+### `hub-regular`
+
+- **Portrait output ID:** `exec-38c2a34a-b2fd-4823-b050-cba87d4f33fa.png`
+- **Portrait original:** `/Users/nichalasbarnes/.codex/generated_images/019f5d85-985f-7d93-a56c-e9a171e6c280/exec-38c2a34a-b2fd-4823-b050-cba87d4f33fa.png`
+- **Portrait source:** `docs/assets/source/m3-hubs/cantina/hub-regular-portrait-source.png`
+- **Portrait production:** `game/public/sprites/portraits/hub-regular.png`, 512×512 8-bit RGB
+- **Billboard output ID:** `exec-4b73d4ec-1a45-4eca-b911-c7a402af1db6.png`
+- **Billboard original:** `/Users/nichalasbarnes/.codex/generated_images/019f5d85-985f-7d93-a56c-e9a171e6c280/exec-4b73d4ec-1a45-4eca-b911-c7a402af1db6.png`
+- **Billboard reference:** accepted regular portrait; face, age, compact build, respiratory collar, keepsake, and patched jacket locked
+- **Billboard source:** `docs/assets/source/m3-hubs/cantina/hub-regular-billboard-source.png`, 887×1774 RGB
+- **Billboard production:** `game/public/sprites/boarding/npc-hub-regular.png`, 128×256 8-bit RGBA
+- **5%-alpha bounds:** 88×250+20+6; transparent corners and bottom contact present
+- **Decision:** selected. The same maintenance veteran reads at portrait, actual billboard, and 48px checks without becoming a soldier caricature.
+
+### `hub-signal-chaser`
+
+- **Portrait output ID:** `exec-cd6cd0de-bd95-4724-8c08-962536c2300e.png`
+- **Portrait original:** `/Users/nichalasbarnes/.codex/generated_images/019f5d85-985f-7d93-a56c-e9a171e6c280/exec-cd6cd0de-bd95-4724-8c08-962536c2300e.png`
+- **Portrait source:** `docs/assets/source/m3-hubs/cantina/hub-signal-chaser-portrait-source.png`
+- **Portrait production:** `game/public/sprites/portraits/hub-signal-chaser.png`, 512×512 8-bit RGB
+- **Billboard output ID:** `exec-d0b33430-c01e-464c-9e8e-30c12052708a.png`
+- **Billboard original:** `/Users/nichalasbarnes/.codex/generated_images/019f5d85-985f-7d93-a56c-e9a171e6c280/exec-d0b33430-c01e-464c-9e8e-30c12052708a.png`
+- **Billboard reference:** accepted signal-chaser portrait; face, build, sensor headset, cloak, antenna pack, shoulder instrument, and cyan glow locked
+- **Billboard source:** `docs/assets/source/m3-hubs/cantina/hub-signal-chaser-billboard-source.png`, 887×1774 RGB
+- **Billboard production:** `game/public/sprites/boarding/npc-hub-signal-chaser.png`, 128×256 8-bit RGBA
+- **5%-alpha bounds:** 72×250+28+6; transparent corners and bottom contact present
+- **Decision:** selected. The narrow silhouette, headset, pack, cloak, and restrained cyan instrument remain recognizable at 48px.
+
+### NPC processing and deferred motion
+
+- **Portrait processing:** Lanczos resize to exact 512×512, alpha removed, forced PNG color type 2
+- **Billboard matte:** border auto-key, soft matte, transparent threshold 12, opaque threshold 220, despill
+- **Billboard scale/canvas:** alpha trim, Lanczos fit inside 118×250, south gravity on exact 128×256 transparent canvas, forced PNG color type 6
+- **Review:** identity-pair panel, actual 128×256 checkerboard, 48px silhouette check, and dark/bright composites
+- **Evidence:** `npc-identity-pairs.png` and the completed `billboards-dark-bright.png`
+- **Walk frames:** intentionally deferred because the M3 manifest and current runtime consumer specify idle pairs only. The bartender is the first future walk-frame candidate after integration establishes a real consumer.
 
 ## Commands recorded
 
@@ -193,6 +251,8 @@ magick ceiling-source.png -filter Lanczos -resize 512x512! -alpha off -type True
 magick facade-source.png -filter Lanczos -resize 64x64! -alpha off -type TrueColor cantina.png
 remove_chroma_key.py --input prop-source.png --out prop-alpha.png --auto-key border --soft-matte --transparent-threshold 12 --opaque-threshold 220 --despill
 magick prop-alpha.png -trim +repage -filter Lanczos -resize "232x230>" -gravity south -background none -extent 256x256 -colorspace sRGB -define png:color-type=6 prop.png
+magick portrait-source.png -filter Lanczos -resize 512x512! -alpha off -type TrueColor -define png:color-type=2 portrait.png
+magick npc-alpha.png -trim +repage -filter Lanczos -resize "118x250>" -gravity south -background none -extent 128x256 -colorspace sRGB -define png:color-type=6 npc.png
 ```
 
 The first derivative was inspection-only and was removed from the production path after the
