@@ -78,8 +78,14 @@ export interface LaunchContext {
 export type LaunchIdFactory = () => string;
 export type ColonyExplorationMode = "exterior" | "interior";
 export type PoiEngineAdapter = "firstPerson" | "boarding" | "groundRun";
+export type EngineLaunchRoute =
+  | { kind: "campaign"; world: number; level: number }
+  | { kind: "planet"; planetId: PlanetId }
+  | { kind: "special"; missionId: "kepler-black-box" };
 
 let fallbackLaunchSequence = 0;
+const issuedLaunchIds = new Set<string>();
+const mountedLaunchIds = new Set<string>();
 
 export const createLaunchId: LaunchIdFactory = () => {
   if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -88,6 +94,42 @@ export const createLaunchId: LaunchIdFactory = () => {
   fallbackLaunchSequence += 1;
   return `launch:${Date.now().toString(36)}:${fallbackLaunchSequence.toString(36)}`;
 };
+
+function issueLaunchId(launchIdFactory: LaunchIdFactory): string {
+  const launchId = launchIdFactory();
+  if (typeof launchId !== "string") {
+    throw new Error("Launch ID factories must return a non-empty, non-blank string.");
+  }
+  const canonicalLaunchId = launchId.trim();
+  if (canonicalLaunchId.length === 0) {
+    throw new Error("Launch ID factories must return a non-empty, non-blank string.");
+  }
+  if (issuedLaunchIds.has(canonicalLaunchId)) {
+    throw new Error(`Duplicate launch ID ${canonicalLaunchId}.`);
+  }
+  issuedLaunchIds.add(canonicalLaunchId);
+  return canonicalLaunchId;
+}
+
+export function claimLaunchContextForGameState(context: LaunchContext): void {
+  if (typeof context.launchId !== "string") {
+    throw new Error("Launch contexts require a non-empty, non-blank launch ID.");
+  }
+  const canonicalLaunchId = context.launchId.trim();
+  if (canonicalLaunchId.length === 0) {
+    throw new Error("Launch contexts require a non-empty, non-blank launch ID.");
+  }
+  if (mountedLaunchIds.has(canonicalLaunchId)) {
+    throw new Error(`Launch ID ${canonicalLaunchId} is already mounted.`);
+  }
+  issuedLaunchIds.add(canonicalLaunchId);
+  mountedLaunchIds.add(canonicalLaunchId);
+  context.launchId = canonicalLaunchId;
+}
+
+function encodeIdentityComponent(value: string): string {
+  return `${value.length}:${value}`;
+}
 
 export function campaignMissionDescriptor(world: number, level: number): MissionDescriptor {
   const authored = ALL_LEVELS.find((entry) => entry.world === world && entry.level === level);
@@ -171,8 +213,8 @@ export function colonyMissionDescriptor(
     : null;
   return {
     id: ownedBuildingId === null
-      ? `colony:${ownedColonyId}:exterior`
-      : `colony:${ownedColonyId}:interior:${ownedBuildingId}`,
+      ? `colony:${encodeIdentityComponent(ownedColonyId)}:exterior`
+      : `colony:${encodeIdentityComponent(ownedColonyId)}:interior:${encodeIdentityComponent(ownedBuildingId)}`,
     kind: "colony",
     title: mode === "exterior" ? "Colony Exterior" : "Colony Interior",
     locationLabel: ownedColonyId,
@@ -202,7 +244,7 @@ export function poiMissionDescriptor(
     groundRun: "ground-canyon-glassknife",
   };
   return {
-    id: `poi:${templateIds[adapter]}:${ownedNodeId}`,
+    id: `poi:${encodeIdentityComponent(templateIds[adapter])}:${encodeIdentityComponent(ownedNodeId)}`,
     kind: "colony",
     title: "Region Expedition",
     locationLabel: ownedNodeId,
@@ -222,6 +264,128 @@ function assertAuthorityReturnTarget(
   if (!coherent) {
     throw new Error(`${authority} launch authority cannot return through ${returnTarget}.`);
   }
+}
+
+function sameDescriptor(left: MissionDescriptor, right: MissionDescriptor): boolean {
+  return left.id === right.id &&
+    left.kind === right.kind &&
+    left.title === right.title &&
+    left.locationLabel === right.locationLabel &&
+    left.objectiveLabel === right.objectiveLabel &&
+    left.controlsProfile === right.controlsProfile &&
+    left.replayPolicy === right.replayPolicy;
+}
+
+function assertPolicy(
+  context: LaunchContext,
+  authority: PersistenceAuthority,
+  provenances: readonly EntryProvenance[],
+  returnTargets: readonly ExperienceRoute[],
+): void {
+  if (context.persistenceAuthority !== authority) {
+    throw new Error(`Mission authority must be ${authority}.`);
+  }
+  if (!provenances.includes(context.entryProvenance)) {
+    throw new Error(`Mission provenance ${context.entryProvenance} is unauthorized.`);
+  }
+  if (!returnTargets.includes(context.returnTarget)) {
+    throw new Error(`Mission return ${context.returnTarget} is unauthorized.`);
+  }
+}
+
+function assertCompatibilityShell(context: LaunchContext, world: number, level: number): void {
+  if (world !== 1 || level !== 1 || context.mission.kind !== "colony") {
+    throw new Error("Mission descriptor does not match the campaign engine shell.");
+  }
+  const authority = context.persistenceAuthority;
+  if (context.mission.id.startsWith("poi:")) {
+    if (context.mission.replayPolicy !== "replay-variant" ||
+      !["first-person", "boarding", "ground-run"].includes(context.mission.controlsProfile)) {
+      throw new Error("POI descriptor does not match its compatibility shell.");
+    }
+    assertPolicy(
+      context,
+      authority,
+      ["region", "retry", "continue"],
+      [authority === "legacy" ? "legacy-colony-exterior" : "galaxy-region"],
+    );
+    return;
+  }
+  if (context.mission.id.startsWith("colony:") &&
+    context.mission.replayPolicy === "repeatable" &&
+    context.mission.controlsProfile === "colony-exploration") {
+    assertPolicy(
+      context,
+      authority,
+      ["cockpit", "landing-pad", "retry", "continue"],
+      authority === "legacy"
+        ? ["legacy-cockpit", "legacy-colony-exterior", "legacy-landing-pad"]
+        : ["galaxy-atlas", "galaxy-colony-exterior", "galaxy-landing-pad"],
+    );
+    return;
+  }
+  throw new Error("Colony descriptor does not match its compatibility shell.");
+}
+
+export function assertLaunchContextMatchesEngineRoute(
+  context: LaunchContext,
+  route: EngineLaunchRoute,
+): void {
+  assertAuthorityReturnTarget(context.persistenceAuthority, context.returnTarget);
+  if (route.kind === "campaign") {
+    if (context.mission.kind === "campaign") {
+      const expected = campaignMissionDescriptor(route.world, route.level);
+      if (!sameDescriptor(context.mission, expected)) {
+        throw new Error("Campaign descriptor does not match engine coordinates.");
+      }
+      assertPolicy(
+        context,
+        "legacy",
+        ["star-map", "cockpit", "retry", "continue"],
+        ["legacy-star-map", "legacy-cockpit"],
+      );
+      return;
+    }
+    if (context.mission.kind === "operation") {
+      const expected = operationMissionDescriptor("op:hostile-picket");
+      if (route.world !== 1 || route.level !== 1 || !sameDescriptor(context.mission, expected)) {
+        throw new Error("Operation descriptor does not match the campaign engine shell.");
+      }
+      assertPolicy(context, "galaxy", ["atlas", "retry", "continue"], ["galaxy-atlas"]);
+      return;
+    }
+    assertCompatibilityShell(context, route.world, route.level);
+    return;
+  }
+  if (route.kind === "planet") {
+    if (context.mission.kind === "planet") {
+      const expected = planetMissionDescriptor(route.planetId);
+      if (!sameDescriptor(context.mission, expected)) {
+        throw new Error("Planet descriptor does not match the selected planet.");
+      }
+      assertPolicy(context, "legacy", ["cockpit", "retry", "continue"], ["legacy-cockpit"]);
+      return;
+    }
+    const expected = operationMissionDescriptor("op:ashfall-sortie");
+    if (route.planetId !== "ashfall" || !sameDescriptor(context.mission, expected)) {
+      throw new Error("Operation descriptor does not match the planet engine shell.");
+    }
+    assertPolicy(context, "galaxy", ["atlas", "retry", "continue"], ["galaxy-atlas"]);
+    return;
+  }
+  if (context.mission.kind === "special") {
+    const expected = specialMissionDescriptor(route.missionId);
+    if (!sameDescriptor(context.mission, expected)) {
+      throw new Error("Special descriptor does not match the selected mission.");
+    }
+    assertPolicy(context, "legacy", ["cockpit", "retry", "continue"], ["legacy-cockpit"]);
+    return;
+  }
+  const expected = operationMissionDescriptor("op:kepler-black-box");
+  if (!sameDescriptor(context.mission, expected)) {
+    throw new Error("Operation descriptor does not match the special engine shell.");
+  }
+  assertPolicy(context, "galaxy", ["atlas", "retry", "continue"], ["galaxy-atlas"]);
 }
 
 export function clonePilotLoadout(pilot: PilotLoadout): PilotLoadout {
@@ -256,15 +420,8 @@ export function launchContextFromSave(
   returnTarget: ExperienceRoute,
   launchIdFactory: LaunchIdFactory = createLaunchId,
 ): LaunchContext {
-  const launchId = launchIdFactory();
-  if (typeof launchId !== "string" || launchId.length === 0) {
-    throw new Error("Launch ID factories must return a non-empty string.");
-  }
-  assertAuthorityReturnTarget(persistenceAuthority, returnTarget);
-  return {
-    launchId,
-    mission: { ...mission },
-    pilot: {
+  return launchContextFromPilotLoadout(
+    {
       upgrades: { ...save.upgrades },
       unlockedEnhancements: [...save.unlockedEnhancements],
       pilotLevel: save.pilotLevel,
@@ -273,6 +430,28 @@ export function launchContextFromSave(
       equippedConsumables: [...save.equippedConsumables],
       consumableInventory: { ...save.consumableInventory },
     },
+    mission,
+    persistenceAuthority,
+    entryProvenance,
+    returnTarget,
+    launchIdFactory,
+  );
+}
+
+export function launchContextFromPilotLoadout(
+  pilot: PilotLoadout,
+  mission: MissionDescriptor,
+  persistenceAuthority: PersistenceAuthority,
+  entryProvenance: EntryProvenance,
+  returnTarget: ExperienceRoute,
+  launchIdFactory: LaunchIdFactory = createLaunchId,
+): LaunchContext {
+  const launchId = issueLaunchId(launchIdFactory);
+  assertAuthorityReturnTarget(persistenceAuthority, returnTarget);
+  return {
+    launchId,
+    mission: { ...mission },
+    pilot: clonePilotLoadout(pilot),
     persistenceAuthority,
     entryProvenance,
     returnTarget,
@@ -285,9 +464,9 @@ function continuedAttempt(
   launchIdFactory: LaunchIdFactory,
 ): LaunchContext {
   const copy = cloneLaunchContext(context);
-  const launchId = launchIdFactory();
-  if (typeof launchId !== "string" || launchId.length === 0 || launchId === context.launchId) {
-    throw new Error("A new gameplay attempt requires a new non-empty launch ID.");
+  const launchId = issueLaunchId(launchIdFactory);
+  if (launchId === context.launchId) {
+    throw new Error("A new gameplay attempt requires a new launch ID.");
   }
   return { ...copy, launchId, entryProvenance };
 }

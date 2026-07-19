@@ -19,13 +19,18 @@ import {
   getOperation,
   listG0Operations,
 } from "../../app/components/engine/operations/operationCatalog";
-import { launchOperation } from "../../app/components/engine/operations/operationAdapters";
+import {
+  prepareGalaxyPoiCompletion,
+  resolveGalaxyPoiCompletion,
+  startGalaxyRegionExpedition,
+  launchOperation,
+} from "../../app/components/engine/operations/operationAdapters";
 import type {
   OperationId,
   OperationLaunchContext,
 } from "../../app/components/engine/operations/operationTypes";
 import { migrateSave } from "../../app/components/engine/save";
-import type { SaveData } from "../../app/components/engine/types";
+import { GameScreen, type SaveData } from "../../app/components/engine/types";
 
 const IDS: readonly OperationId[] = [
   "op:hostile-picket",
@@ -283,6 +288,195 @@ test("projection validation cannot be bypassed by live upgrades or toJSON", () =
     assert.deepEqual(result.availability.reasons, ["projection_not_locked"]);
   }
   assert.equal(toJSONReads, 0);
+});
+
+test("validated Galaxy loadout is a single snapshot and never re-reads the caller projection", () => {
+  const run = atHostileInterruption();
+  const projection = projectGalaxyRunToLegacySave(richParent(run));
+  let lateReads = 0;
+  const unstable = new Proxy(projection, {
+    get(target, property, receiver) {
+      if (property === "equippedWeaponType") {
+        lateReads += 1;
+        return "cryogenic";
+      }
+      if (property === "equippedConsumables") {
+        lateReads += 1;
+        return ["shield-charge"];
+      }
+      if (property === "consumableInventory") {
+        lateReads += 1;
+        return { "shield-charge": 99 };
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+
+  const result = launchOperation(
+    run,
+    unstable,
+    requireAuthorization(run, "op:hostile-picket"),
+  );
+
+  assert.equal(result.ok, true, result.ok ? undefined : result.availability.reasons.join("; "));
+  if (!result.ok) return;
+  assert.equal(lateReads, 0);
+  assert.equal(result.gameState.equippedWeaponType, run.ship.equippedWeaponType);
+  assert.deepEqual(result.gameState.pilotLoadout.equippedConsumables, run.ship.equippedConsumables);
+  assert.deepEqual(result.gameState.pilotLoadout.consumableInventory, run.ship.consumableInventory);
+});
+
+test("locked projection tolerates unrelated future own data fields without weakening consumed shapes", () => {
+  const run = atHostileInterruption();
+  const projection = Object.assign(
+    projectGalaxyRunToLegacySave(richParent(run)),
+    { saveRevision: 7, appliedOutcomeIds: ["outcome:prior"] },
+  );
+
+  const result = launchOperation(
+    run,
+    projection,
+    requireAuthorization(run, "op:hostile-picket"),
+  );
+
+  assert.equal(result.ok, true, result.ok ? undefined : result.availability.reasons.join("; "));
+});
+
+test("Galaxy Region and POI boundaries preserve unrelated future save-root data", () => {
+  const parent = Object.assign(
+    richParent(atContact("contact:ashfall", true)),
+    { saveRevision: 7, appliedOutcomeIds: ["outcome:prior"] },
+  );
+  const originColonyId = "galaxy:ashfall-primary";
+  const targetNodeId = "ashfall-cinder-relay";
+  const surveyed = startGalaxyRegionExpedition(
+    parent,
+    "contact:ashfall",
+    { kind: "survey", originColonyId, targetNodeId },
+    null,
+  );
+  assert.equal(surveyed.ok, true, surveyed.ok ? undefined : surveyed.reason);
+  if (!surveyed.ok) return;
+  assert.equal((surveyed.save as SaveData & { saveRevision: number }).saveRevision, 7);
+  assert.deepEqual(
+    (surveyed.save as SaveData & { appliedOutcomeIds: string[] }).appliedOutcomeIds,
+    ["outcome:prior"],
+  );
+
+  const launched = startGalaxyRegionExpedition(
+    surveyed.save,
+    "contact:ashfall",
+    { kind: "poi", originColonyId, targetNodeId },
+    null,
+  );
+  assert.equal(launched.ok, true, launched.ok ? undefined : launched.reason);
+  if (!launched.ok || launched.session === null) return;
+  const prepared = prepareGalaxyPoiCompletion(
+    launched.save,
+    "contact:ashfall",
+    { originColonyId, session: launched.session },
+    GameScreen.LEVEL_COMPLETE,
+  );
+  assert.equal(prepared.ok, true, prepared.ok ? undefined : prepared.reason);
+  if (!prepared.ok) return;
+  const resolved = resolveGalaxyPoiCompletion(
+    prepared.save,
+    "contact:ashfall",
+    prepared.pending,
+    originColonyId,
+  );
+  assert.equal(resolved.ok, true, resolved.ok ? undefined : resolved.reason);
+  if (!resolved.ok) return;
+  assert.equal((resolved.save as SaveData & { saveRevision: number }).saveRevision, 7);
+  assert.deepEqual(
+    (resolved.save as SaveData & { appliedOutcomeIds: string[] }).appliedOutcomeIds,
+    ["outcome:prior"],
+  );
+});
+
+test("Galaxy Region and POI reject reflective future root fields without invoking them", () => {
+  const request = {
+    kind: "survey" as const,
+    originColonyId: "galaxy:ashfall-primary",
+    targetNodeId: "ashfall-cinder-relay",
+  };
+  let getterReads = 0;
+  const accessorSave = richParent(atContact("contact:ashfall", true));
+  Object.defineProperty(accessorSave, "futureAccessor", {
+    enumerable: true,
+    get() {
+      getterReads += 1;
+      return "unsafe";
+    },
+  });
+  const accessorResult = startGalaxyRegionExpedition(
+    accessorSave,
+    "contact:ashfall",
+    request,
+    null,
+  );
+  assert.equal(accessorResult.ok, false);
+  if (!accessorResult.ok) assert.equal(accessorResult.reason, "malformed_save");
+  assert.equal(getterReads, 0);
+
+  let functionCalls = 0;
+  const functionSave = Object.assign(richParent(atContact("contact:ashfall", true)), {
+    futureFunction() {
+      functionCalls += 1;
+      return "unsafe";
+    },
+  });
+  const functionResult = startGalaxyRegionExpedition(
+    functionSave,
+    "contact:ashfall",
+    request,
+    null,
+  );
+  assert.equal(functionResult.ok, false);
+  if (!functionResult.ok) assert.equal(functionResult.reason, "malformed_save");
+  assert.equal(functionCalls, 0);
+
+  const surveyed = startGalaxyRegionExpedition(
+    richParent(atContact("contact:ashfall", true)),
+    "contact:ashfall",
+    request,
+    null,
+  );
+  assert.equal(surveyed.ok, true, surveyed.ok ? undefined : surveyed.reason);
+  if (!surveyed.ok) return;
+  const launched = startGalaxyRegionExpedition(
+    surveyed.save,
+    "contact:ashfall",
+    { ...request, kind: "poi" },
+    null,
+  );
+  assert.equal(launched.ok, true, launched.ok ? undefined : launched.reason);
+  if (!launched.ok || launched.session === null) return;
+  const prepared = prepareGalaxyPoiCompletion(
+    launched.save,
+    "contact:ashfall",
+    { originColonyId: request.originColonyId, session: launched.session },
+    GameScreen.LEVEL_COMPLETE,
+  );
+  assert.equal(prepared.ok, true, prepared.ok ? undefined : prepared.reason);
+  if (!prepared.ok) return;
+  let pendingGetterReads = 0;
+  Object.defineProperty(prepared.pending.baseSave, "futurePendingAccessor", {
+    enumerable: true,
+    get() {
+      pendingGetterReads += 1;
+      return "unsafe";
+    },
+  });
+  const pendingResult = resolveGalaxyPoiCompletion(
+    prepared.save,
+    "contact:ashfall",
+    prepared.pending,
+    request.originColonyId,
+  );
+  assert.equal(pendingResult.ok, false);
+  if (!pendingResult.ok) assert.equal(pendingResult.reason, "invalid_poi_session");
+  assert.equal(pendingGetterReads, 0);
 });
 
 test("explicit canonical launch contexts bypass all locked legacy availability fields", () => {

@@ -45,20 +45,18 @@ import {
   fireEnemyBullet,
   isEnemyOffscreen,
   spawnFormation,
-  resetEnemyIds,
   setDifficultyForWorld,
   setPlanetClassOverride,
 } from "./enemies";
 import { PLANET_DOMINANT_CLASS, resolveAffinity } from "./enemyClasses";
 import { AFFINITY_MULTIPLIER } from "./weaponTypes";
-import { createAffinityLabel, updateFloatingLabels, resetFloatingLabelIds } from "./floatingLabels";
-import { resetBulletIds } from "./weapons";
+import { createAffinityLabel, updateFloatingLabels } from "./floatingLabels";
 import { aabbOverlap, SpatialHash } from "./physics";
 import { getLevelData, getWorldLevelCount, getMultiPhaseLevelData } from "./levels";
 import { clamp } from "./physics";
 
 const spatialHash = new SpatialHash();
-import { createBossForWorld, updateBossForWorld, isBossDefeated, resetBossBulletIds } from "./bosses";
+import { createBossForWorld, updateBossForWorld, isBossDefeated } from "./bosses";
 import { updateGroundEngine } from "./groundEngine";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./groundLevel";
 import { updateBoardingEngine } from "./boardingEngine";
@@ -74,6 +72,8 @@ import { createHazardState, updateHazards } from "./hazards";
 import { createCheckpoint, isLastPhase } from "./phases";
 import { createKeplerBlackBoxFirstPersonState } from "./keplerBlackBoxMission";
 import {
+  assertLaunchContextMatchesEngineRoute,
+  claimLaunchContextForGameState,
   cloneLaunchContext,
   clonePilotLoadout,
   type LaunchContext,
@@ -217,15 +217,12 @@ export function createGameState(
   const pilotLoadout = launchContext
     ? clonePilotLoadout(launchContext.pilot)
     : legacyPilotLoadout(upgrades, normalizedEnhancements, normalizedPilotLevel, normalizedAllocatedSkills);
-  setPlanetClassOverride(null);
-  setDifficultyForWorld(world);
-  resetEnemyIds();
-  resetFloatingLabelIds();
-  resetBulletIds();
-  resetBossBulletIds();
-  resetPowerUpIds();
-
   const levelData = getLevelData(world, level);
+  if (levelData === undefined) throw new Error(`Unknown campaign coordinates ${world}-${level}.`);
+  if (launchContext) {
+    assertLaunchContextMatchesEngineRoute(launchContext, { kind: "campaign", world, level });
+    claimLaunchContextForGameState(launchContext);
+  }
   const multiPhaseData = getMultiPhaseLevelData(world, level);
   const waves: Wave[] = (levelData?.waves ?? []).map((def) => ({
     definition: def,
@@ -241,6 +238,7 @@ export function createGameState(
     screen: GameScreen.BRIEFING,
     launchContext,
     pilotLoadout,
+    enemySpawnPolicy: { difficultyWorld: world, planetClassOverride: null },
     player: createPlayer(upgrades, normalizedPilotLevel, normalizedAllocatedSkills),
     playerBullets: [],
     enemyBullets: [],
@@ -318,19 +316,16 @@ export function createPlanetGameState(
   const normalizedEnhancements = launchContext?.pilot.unlockedEnhancements ?? enhancements;
   const normalizedPilotLevel = launchContext?.pilot.pilotLevel ?? pilotLevel;
   const normalizedAllocatedSkills = launchContext?.pilot.allocatedSkills ?? allocatedSkills;
-  setPlanetClassOverride(PLANET_DOMINANT_CLASS[planetId]);
   const pilotLoadout = launchContext
     ? clonePilotLoadout(launchContext.pilot)
     : legacyPilotLoadout(upgrades, normalizedEnhancements, normalizedPilotLevel, normalizedAllocatedSkills);
 
   const planet = getPlanetDef(planetId);
-  setDifficultyForWorld(planet.pairedWorld);
-  resetEnemyIds();
-  resetFloatingLabelIds();
-  resetBulletIds();
-  resetBossBulletIds();
-  resetPowerUpIds();
-
+  if (!planet) throw new Error(`Unknown planet mission ${String(planetId)}.`);
+  if (launchContext) {
+    assertLaunchContextMatchesEngineRoute(launchContext, { kind: "planet", planetId });
+    claimLaunchContextForGameState(launchContext);
+  }
   const levelData = getPlanetLevelData(planetId);
   const waves: Wave[] = levelData.waves.map((def) => ({
     definition: def,
@@ -347,6 +342,10 @@ export function createPlanetGameState(
     screen: GameScreen.BRIEFING,
     launchContext,
     pilotLoadout,
+    enemySpawnPolicy: {
+      difficultyWorld: planet.pairedWorld,
+      planetClassOverride: PLANET_DOMINANT_CLASS[planetId],
+    },
     player: createPlayer(upgrades, normalizedPilotLevel, normalizedAllocatedSkills),
     playerBullets: [],
     enemyBullets: [],
@@ -426,6 +425,9 @@ export function createSpecialMissionGameState(
   pilotLevel: number = 1,
   allocatedSkills: SkillNodeId[] = [],
 ): GameState {
+  if (missionId !== "kepler-black-box") {
+    throw new Error(`Unknown special mission ${String(missionId)}.`);
+  }
   const launchContext = isLaunchContext(upgradesOrLaunch)
     ? cloneLaunchContext(upgradesOrLaunch)
     : undefined;
@@ -438,14 +440,10 @@ export function createSpecialMissionGameState(
   const pilotLoadout = launchContext
     ? clonePilotLoadout(launchContext.pilot)
     : legacyPilotLoadout(upgrades, normalizedEnhancements, normalizedPilotLevel, normalizedAllocatedSkills);
-  setPlanetClassOverride(null);
-  setDifficultyForWorld(4);
-  resetEnemyIds();
-  resetFloatingLabelIds();
-  resetBulletIds();
-  resetBossBulletIds();
-  resetPowerUpIds();
-
+  if (launchContext) {
+    assertLaunchContextMatchesEngineRoute(launchContext, { kind: "special", missionId });
+    claimLaunchContextForGameState(launchContext);
+  }
   const firstPersonState =
     missionId === "kepler-black-box"
       ? createKeplerBlackBoxFirstPersonState(blackBoxRecovered)
@@ -455,6 +453,7 @@ export function createSpecialMissionGameState(
     screen: GameScreen.BRIEFING,
     launchContext,
     pilotLoadout,
+    enemySpawnPolicy: { difficultyWorld: 4, planetClassOverride: null },
     player: createPlayer(upgrades, normalizedPilotLevel, normalizedAllocatedSkills),
     playerBullets: [],
     enemyBullets: [],
@@ -635,6 +634,9 @@ export function updateGame(
   touchY: number | null,
   dtMs: number = 16.67
 ): GameState {
+  setDifficultyForWorld(state.enemySpawnPolicy.difficultyWorld);
+  setPlanetClassOverride(state.enemySpawnPolicy.planetClassOverride);
+
   // Briefing screen: countdown + animate background
   if (state.screen === GameScreen.BRIEFING) {
     return updateBriefingScreen(state);

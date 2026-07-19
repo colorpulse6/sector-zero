@@ -514,6 +514,11 @@ export interface GameState {
   launchContext?: LaunchContext;
   /** State-owned build snapshot used by simulation even before shell launch rewiring. */
   pilotLoadout: PilotLoadout;
+  /** Attempt-owned enemy construction policy rebound before any shared spawn path. */
+  enemySpawnPolicy: {
+    difficultyWorld: number;
+    planetClassOverride: EnemyClass | null;
+  };
   /** Ephemeral Atlas identity for an authorized galaxy operation. Never saved. */
   galaxyOperation?: { id: string; label: string };
   player: Player;

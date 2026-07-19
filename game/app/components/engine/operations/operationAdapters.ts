@@ -46,7 +46,7 @@ import type {
   WeaponType,
 } from "../types";
 import {
-  launchContextFromSave,
+  launchContextFromPilotLoadout,
   operationMissionDescriptor,
   type LaunchIdFactory,
 } from "../missionContext";
@@ -69,7 +69,7 @@ function unavailable(reason: OperationUnavailableReason): Extract<OperationAvail
 
 interface EngineProjectionInput {
   upgrades: ShipUpgrades;
-  enhancements: EnhancementId[];
+  unlockedEnhancements: EnhancementId[];
   pilotLevel: number;
   allocatedSkills: SkillNodeId[];
   equippedWeaponType: WeaponType;
@@ -123,6 +123,25 @@ function exactOwnData(
     snapshot[key] = descriptor.value;
   }
   return snapshot;
+}
+
+function requiredOwnData(
+  value: unknown,
+  requiredKeys: readonly string[],
+): Record<string, unknown> | null {
+  if (!isPlainRecord(value)) return null;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") return null;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor) || typeof descriptor.value === "function") {
+      return null;
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return requiredKeys.every((key) => Object.prototype.hasOwnProperty.call(snapshot, key))
+    ? snapshot
+    : null;
 }
 
 function arraySnapshot(value: unknown): unknown[] | null {
@@ -232,7 +251,7 @@ function lockedProjection(
   run: GalaxyRunState,
 ): EngineProjectionInput | null {
   try {
-    const snapshot = exactOwnData(projection, SAVE_DATA_KEYS);
+    const snapshot = requiredOwnData(projection, SAVE_DATA_KEYS);
     if (snapshot === null) return null;
     const levels = exactOwnData(snapshot.levels, []);
     const completedQuests = stringArraySnapshot(snapshot.completedQuests);
@@ -274,7 +293,7 @@ function lockedProjection(
     ) return null;
     return {
       upgrades,
-      enhancements: enhancements as EnhancementId[],
+      unlockedEnhancements: enhancements as EnhancementId[],
       pilotLevel: snapshot.pilotLevel as number,
       allocatedSkills: allocatedSkills as SkillNodeId[],
       equippedWeaponType: snapshot.equippedWeaponType as WeaponType,
@@ -340,8 +359,8 @@ export function launchOperation(
       };
     }
 
-    const gameplayLaunch = launchContextFromSave(
-      projection,
+    const gameplayLaunch = launchContextFromPilotLoadout(
+      engineInput,
       operationMissionDescriptor(safeContext.operationId),
       "galaxy",
       "atlas",
@@ -507,7 +526,7 @@ function openAshfallProjection(
     return { ok: false, reason: "unsupported_contact" };
   }
   try {
-    const root = exactOwnData(save, SAVE_DATA_KEYS);
+    const root = requiredOwnData(save, SAVE_DATA_KEYS);
     if (root === null) return { ok: false, reason: "malformed_save" };
     const parent = root as unknown as SaveData;
     if (parent.activeExperience !== "galaxy" || parent.galaxyRun === null) {
@@ -553,7 +572,7 @@ function mergeProjectedRegion(
   projected: SaveData,
 ): { ok: true; save: SaveData } | { ok: false; reason: GalaxyRegionAdapterReason } {
   try {
-    const projection = exactOwnData(projected, SAVE_DATA_KEYS);
+    const projection = requiredOwnData(projected, SAVE_DATA_KEYS);
     if (projection === null || projection.activeExperience !== "legacy" || projection.galaxyRun !== null) {
       return { ok: false, reason: "projected_result_invalid" };
     }
@@ -1076,9 +1095,9 @@ function snapshotGalaxyPending(
       snapshot.originColonyId.length === 0 || typeof snapshot.nodeId !== "string" ||
       snapshot.nodeId.length === 0 || typeof snapshot.preparedFactId !== "string" ||
       snapshot.preparedFactId.length === 0) return null;
-    const baseRoot = exactOwnData(snapshot.baseSave, SAVE_DATA_KEYS);
-    const aliasRoot = exactOwnData(snapshot.projectedSave, SAVE_DATA_KEYS);
-    const currentRoot = exactOwnData(save, SAVE_DATA_KEYS);
+    const baseRoot = requiredOwnData(snapshot.baseSave, SAVE_DATA_KEYS);
+    const aliasRoot = requiredOwnData(snapshot.projectedSave, SAVE_DATA_KEYS);
+    const currentRoot = requiredOwnData(save, SAVE_DATA_KEYS);
     if (baseRoot === null || aliasRoot === null || currentRoot === null ||
       baseRoot.activeExperience !== "galaxy" || baseRoot.galaxyRun === null ||
       currentRoot.activeExperience !== "galaxy" || currentRoot.galaxyRun === null ||

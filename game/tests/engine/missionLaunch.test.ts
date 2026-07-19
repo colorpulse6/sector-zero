@@ -8,7 +8,7 @@ import {
   updateGame,
 } from "../../app/components/engine/gameEngine";
 import { createHydrationSafeSave } from "../../app/components/engine/save";
-import { GameScreen, PowerUpType } from "../../app/components/engine/types";
+import { EnemyType, GameScreen, PowerUpType } from "../../app/components/engine/types";
 import {
   campaignMissionDescriptor,
   colonyMissionDescriptor,
@@ -34,6 +34,7 @@ import { authorizeOperationLaunch } from "../../app/components/engine/operations
 import { launchOperation } from "../../app/components/engine/operations/operationAdapters";
 import { createPoiGameState } from "../../app/components/colony/region/poiRuntime";
 import { createFirstPersonRuinTemplate } from "../../app/components/colony/region/poiTemplates";
+import { createAffinityLabel } from "../../app/components/engine/floatingLabels";
 
 test("campaign construction consumes and owns a complete non-default launch loadout", () => {
   const save = createHydrationSafeSave();
@@ -53,15 +54,7 @@ test("campaign construction consumes and owns a complete non-default launch load
   save.consumableInventory = { "shield-charge": 3, "scanner-pulse": 2 };
   const launch: LaunchContext = {
     launchId: "launch:test:campaign",
-    mission: {
-      id: "campaign:2:3",
-      kind: "campaign",
-      title: "Frozen Siege",
-      locationLabel: "Cryon Nebula",
-      objectiveLabel: "Complete the campaign level",
-      controlsProfile: "shooter",
-      replayPolicy: "repeatable",
-    },
+    mission: campaignMissionDescriptor(2, 3),
     pilot: {
       upgrades: structuredClone(save.upgrades),
       unlockedEnhancements: [...save.unlockedEnhancements],
@@ -99,14 +92,7 @@ test("a planet attempt cannot inherit allocated-skill caches from an earlier cam
   save.allocatedSkills = ["overcharge"];
   const campaignLaunch: LaunchContext = {
     launchId: "launch:test:cache-source",
-    mission: {
-      id: "campaign:1:1",
-      kind: "campaign",
-      title: "First Contact",
-      objectiveLabel: "Complete the campaign level",
-      controlsProfile: "shooter",
-      replayPolicy: "repeatable",
-    },
+    mission: campaignMissionDescriptor(1, 1),
     pilot: {
       upgrades: structuredClone(save.upgrades),
       unlockedEnhancements: [],
@@ -148,14 +134,7 @@ test("a later special constructor cannot replace an earlier attempt's build effe
   const save = createHydrationSafeSave();
   const campaignLaunch: LaunchContext = {
     launchId: "launch:test:owned-build",
-    mission: {
-      id: "campaign:1:1",
-      kind: "campaign",
-      title: "First Contact",
-      objectiveLabel: "Complete the campaign level",
-      controlsProfile: "shooter",
-      replayPolicy: "repeatable",
-    },
+    mission: campaignMissionDescriptor(1, 1),
     pilot: {
       upgrades: { ...save.upgrades },
       unlockedEnhancements: ["resonance-field"],
@@ -250,14 +229,7 @@ test("gameplay retry preserves its owned context but receives a new launch ID", 
   save.consumableInventory = { "scanner-pulse": 2 };
   const original = launchContextFromSave(
     save,
-    {
-      id: "campaign:3:2",
-      kind: "campaign",
-      title: "Ignis Rift 3-2",
-      objectiveLabel: "Complete the campaign level",
-      controlsProfile: "shooter",
-      replayPolicy: "repeatable",
-    },
+    campaignMissionDescriptor(3, 2),
     "legacy",
     "star-map",
     "legacy-star-map",
@@ -279,14 +251,7 @@ test("gameplay retry preserves its owned context but receives a new launch ID", 
 test("gameplay continue preserves context, records provenance, and receives a new launch ID", () => {
   const original = launchContextFromSave(
     createHydrationSafeSave(),
-    {
-      id: "campaign:4-5",
-      kind: "campaign",
-      title: "The Graveyard 4-5",
-      objectiveLabel: "Complete the campaign level",
-      controlsProfile: "shooter",
-      replayPolicy: "repeatable",
-    },
+    campaignMissionDescriptor(4, 5),
     "legacy",
     "cockpit",
     "legacy-cockpit",
@@ -345,7 +310,9 @@ test("mission descriptor factories cover every shipped core route with unique id
   assert.ok(pois.every((descriptor) => descriptor.replayPolicy === "replay-variant"));
   assert.deepEqual(
     pois.map((descriptor) => descriptor.id),
-    POI_TEMPLATE_IDS.map((templateId) => `poi:${templateId}:node:${templateId}`),
+    POI_TEMPLATE_IDS.map((templateId) =>
+      `poi:${templateId.length}:${templateId}:${`node:${templateId}`.length}:node:${templateId}`
+    ),
   );
 });
 
@@ -377,7 +344,7 @@ test("Colony surface contexts inherit legacy or Galaxy authority instead of crea
     save,
     colonyMissionDescriptor("colony:legacy", "exterior"),
     "legacy",
-    "landing-pad",
+    "cockpit",
     "legacy-cockpit",
     () => "launch:test:legacy-colony",
   );
@@ -410,8 +377,8 @@ test("planet and special constructors consume the same complete launch boundary"
     save,
     planetMissionDescriptor("glaciem"),
     "legacy",
-    "star-map",
-    "legacy-star-map",
+    "cockpit",
+    "legacy-cockpit",
     () => "launch:test:planet",
   );
   const specialLaunch = launchContextFromSave(
@@ -510,12 +477,26 @@ test("POI runtime inherits explicit experience authority and the complete pilot 
     "galaxy",
     () => "launch:test:poi",
   );
+  const legacyState = createPoiGameState(
+    session,
+    save,
+    "legacy",
+    () => "launch:test:legacy-poi-return",
+  );
 
   assert.equal(state.launchContext?.launchId, "launch:test:poi");
-  assert.equal(state.launchContext?.mission.id, "poi:fp-ruin-cinder-relay:node:cinder-relay");
+  assert.equal(state.launchContext?.mission.id, "poi:20:fp-ruin-cinder-relay:17:node:cinder-relay");
   assert.equal(state.launchContext?.persistenceAuthority, "galaxy");
   assert.equal(state.launchContext?.entryProvenance, "region");
   assert.equal(state.launchContext?.returnTarget, "galaxy-region");
+  assert.equal(legacyState.launchContext?.entryProvenance, "region");
+  assert.equal(legacyState.launchContext?.returnTarget, "legacy-colony-exterior");
+  const legacyRetry = retryLaunchContext(
+    legacyState.launchContext!,
+    () => "launch:test:legacy-poi-retry",
+  );
+  assert.equal(legacyRetry.entryProvenance, "retry");
+  assert.equal(legacyRetry.returnTarget, "legacy-colony-exterior");
   assert.deepEqual(state.pilotLoadout, {
     upgrades: { hullPlating: 0, engineBoost: 0, weaponCore: 0, munitionsBay: 2, fireControl: 0, shieldGenerator: 0 },
     unlockedEnhancements: ["extended-magnet"],
@@ -526,4 +507,282 @@ test("POI runtime inherits explicit experience authority and the complete pilot 
     consumableInventory: { "weapon-overcharge": 2 },
   });
   assert.equal(state.equippedWeaponType, "incendiary");
+});
+
+test("an earlier planet attempt rebinds its own enemy spawn policy after another constructor", () => {
+  const planet = createPlanetGameState("verdania");
+  planet.screen = GameScreen.PLAYING;
+  planet.waveDelay = 0;
+  createGameState(8, 1);
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    const updated = updateGame(
+      planet,
+      { left: false, right: false, up: false, down: false, strafeLeft: false, strafeRight: false, shoot: false, bomb: false, jump: false },
+      null,
+      null,
+    );
+    assert.ok(updated.enemies.length > 0);
+    assert.ok(updated.enemies.every((enemy) => enemy.classId === "bio-organic"));
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("constructing a second live attempt cannot recycle shared gameplay identities", () => {
+  const keys = { left: false, right: false, up: false, down: false, strafeLeft: false, strafeRight: false, shoot: true, bomb: false, jump: false };
+  const first = createGameState(1, 1);
+  first.screen = GameScreen.PLAYING;
+  first.waveDelay = 0;
+  const firstUpdated = updateGame(first, keys, null, null);
+  const firstLabel = createAffinityLabel(0, 0, "effective")!;
+
+  const second = createGameState(2, 1);
+  second.screen = GameScreen.PLAYING;
+  second.waveDelay = 0;
+  const secondUpdated = updateGame(second, keys, null, null);
+  const secondLabel = createAffinityLabel(0, 0, "effective")!;
+
+  assert.equal(
+    firstUpdated.enemies.some((left) => secondUpdated.enemies.some((right) => right.id === left.id)),
+    false,
+    "live attempts must not reuse enemy IDs",
+  );
+  assert.equal(
+    firstUpdated.playerBullets.some((left) => secondUpdated.playerBullets.some((right) => right.id === left.id)),
+    false,
+    "live attempts must not reuse player-bullet IDs",
+  );
+  assert.notEqual(firstLabel.id, secondLabel.id, "live attempts must not reuse floating-label IDs");
+});
+
+test("constructing another attempt cannot recycle boss-bullet identities", () => {
+  const bossBulletsForAttempt = (state: ReturnType<typeof createGameState>): number[] => {
+    state.screen = GameScreen.BOSS_INTRO;
+    state.bossIntroTimer = 0;
+    const introduced = updateGame(
+      state,
+      { left: false, right: false, up: false, down: false, strafeLeft: false, strafeRight: false, shoot: false, bomb: false, jump: false },
+      null,
+      null,
+    );
+    assert.ok(introduced.boss);
+    introduced.boss.y = 40;
+    introduced.boss.fireTimer = 0;
+    const fired = updateGame(
+      introduced,
+      { left: false, right: false, up: false, down: false, strafeLeft: false, strafeRight: false, shoot: false, bomb: false, jump: false },
+      null,
+      null,
+    );
+    return fired.enemyBullets.map((bullet) => bullet.id);
+  };
+
+  const firstBullets = bossBulletsForAttempt(createGameState(1, 1));
+  const secondBullets = bossBulletsForAttempt(createGameState(2, 1));
+
+  assert.ok(firstBullets.length > 0);
+  assert.ok(secondBullets.length > 0);
+  assert.equal(
+    firstBullets.some((left) => secondBullets.includes(left)),
+    false,
+    "live attempts must not reuse boss-bullet IDs",
+  );
+});
+
+test("constructing another attempt cannot recycle dropped power-up identities", () => {
+  const guaranteedDrop = (world: number, bulletId: number): number => {
+    const state = createGameState(world, 1);
+    state.screen = GameScreen.PLAYING;
+    state.waveDelay = 60;
+    state.enemies = [{
+      id: bulletId + 1,
+      type: EnemyType.TURRET,
+      x: 120,
+      y: 120,
+      width: 48,
+      height: 48,
+      hp: 1,
+      maxHp: 1,
+      speed: 0,
+      vx: 0,
+      vy: 0,
+      score: 100,
+      fireTimer: 999,
+      fireRate: 90,
+      shoots: false,
+      behavior: "static",
+      behaviorTimer: 0,
+      cloaked: false,
+      classId: "armored",
+      lastHitTimer: 0,
+    }];
+    state.playerBullets = [{
+      id: bulletId,
+      x: 120,
+      y: 120,
+      vx: 0,
+      vy: 0,
+      width: 12,
+      height: 12,
+      damage: 10,
+      isPlayer: true,
+      piercing: false,
+    }];
+    const updated = updateGame(
+      state,
+      { left: false, right: false, up: false, down: false, strafeLeft: false, strafeRight: false, shoot: false, bomb: false, jump: false },
+      null,
+      null,
+    );
+    assert.equal(updated.powerUps.length, 1);
+    return updated.powerUps[0].id;
+  };
+
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    const firstPowerUpId = guaranteedDrop(1, 910001);
+    const secondPowerUpId = guaranteedDrop(2, 910002);
+    assert.notEqual(firstPowerUpId, secondPowerUpId, "live attempts must not reuse power-up IDs");
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("public engine constructors reject unknown campaign and special registry identity", () => {
+  assert.throws(() => createGameState(99, 99), /Unknown campaign coordinates/);
+  assert.throws(
+    () => Reflect.apply(createSpecialMissionGameState, undefined, ["unknown-special", false]),
+    /Unknown special mission/,
+  );
+});
+
+test("public engine constructors reject descriptor-to-route mismatches", () => {
+  const save = createHydrationSafeSave();
+  const glaciem = launchContextFromSave(
+    save,
+    planetMissionDescriptor("glaciem"),
+    "legacy",
+    "cockpit",
+    "legacy-cockpit",
+    () => "launch:test:mismatched-planet",
+  );
+  const wrongOperationShell = launchContextFromSave(
+    save,
+    operationMissionDescriptor("op:ashfall-sortie"),
+    "galaxy",
+    "atlas",
+    "galaxy-atlas",
+    () => "launch:test:wrong-operation-shell",
+  );
+
+  assert.throws(() => createPlanetGameState("verdania", glaciem), /descriptor/i);
+  assert.throws(() => createGameState(1, 1, wrongOperationShell), /descriptor|shell/i);
+});
+
+test("public engine constructors reject coherent-looking but unauthorized route policy", () => {
+  const unauthorized = launchContextFromSave(
+    createHydrationSafeSave(),
+    campaignMissionDescriptor(1, 1),
+    "galaxy",
+    "atlas",
+    "galaxy-atlas",
+    () => "launch:test:unauthorized-campaign",
+  );
+
+  assert.throws(() => createGameState(1, 1, unauthorized), /authority|provenance|return/i);
+});
+
+test("dynamic descriptor components are encoded without delimiter collisions", () => {
+  const first = colonyMissionDescriptor("a:interior:b", "interior", "c");
+  const second = colonyMissionDescriptor("a", "interior", "b:interior:c");
+  const poi = poiMissionDescriptor("node:with:delimiters", "firstPerson");
+
+  assert.notEqual(first.id, second.id);
+  assert.match(first.id, /^colony:\d+:/);
+  assert.match(second.id, /^colony:\d+:/);
+  assert.match(poi.id, /^poi:\d+:/);
+  assert.ok(poi.id.includes("fp-ruin-cinder-relay"));
+  assert.ok(poi.id.includes("node:with:delimiters"));
+});
+
+test("launch ID issuance rejects blank and process-wide duplicate factory output", () => {
+  const save = createHydrationSafeSave();
+  const descriptor = campaignMissionDescriptor(1, 1);
+  assert.throws(
+    () => launchContextFromSave(
+      save,
+      descriptor,
+      "legacy",
+      "star-map",
+      "legacy-star-map",
+      () => "   ",
+    ),
+    /non-empty|blank/i,
+  );
+
+  const factory = () => "launch:test:process-duplicate";
+  launchContextFromSave(save, descriptor, "legacy", "star-map", "legacy-star-map", factory);
+  assert.throws(
+    () => launchContextFromSave(save, descriptor, "legacy", "star-map", "legacy-star-map", factory),
+    /duplicate/i,
+  );
+
+  const trimmed = launchContextFromSave(
+    save,
+    descriptor,
+    "legacy",
+    "star-map",
+    "legacy-star-map",
+    () => "  launch:test:trimmed  ",
+  );
+  assert.equal(trimmed.launchId, "launch:test:trimmed");
+  assert.throws(
+    () => launchContextFromSave(
+      save,
+      descriptor,
+      "legacy",
+      "star-map",
+      "legacy-star-map",
+      () => "launch:test:trimmed",
+    ),
+    /duplicate/i,
+  );
+});
+
+test("retry and continue reject an ID already issued to another attempt", () => {
+  const original = launchContextFromSave(
+    createHydrationSafeSave(),
+    campaignMissionDescriptor(1, 1),
+    "legacy",
+    "star-map",
+    "legacy-star-map",
+    () => "launch:test:lineage-original",
+  );
+  retryLaunchContext(original, () => "launch:test:lineage-child");
+
+  assert.throws(
+    () => continueLaunchContext(original, () => "launch:test:lineage-child"),
+    /duplicate/i,
+  );
+  assert.throws(
+    () => retryLaunchContext(original, () => original.launchId),
+    /duplicate|new/i,
+  );
+});
+
+test("engine constructors reject mounting the same launch attempt twice", () => {
+  const launch = launchContextFromSave(
+    createHydrationSafeSave(),
+    campaignMissionDescriptor(1, 1),
+    "legacy",
+    "star-map",
+    "legacy-star-map",
+    () => "launch:test:double-mount",
+  );
+
+  createGameState(1, 1, launch);
+  assert.throws(() => createGameState(1, 1, launch), /duplicate|mounted/i);
 });

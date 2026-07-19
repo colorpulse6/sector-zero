@@ -32,7 +32,7 @@ export function createPoiGameState(
 ): GameState {
   const returnTarget: ExperienceRoute = experience === "galaxy"
     ? "galaxy-region"
-    : "legacy-region";
+    : "legacy-colony-exterior";
   const launchContext = launchContextFromSave(
     save,
     poiMissionDescriptor(session.nodeId, session.engine),
