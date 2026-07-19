@@ -6,6 +6,64 @@ import { installSaveFixture } from "./helpers/saveFixture";
 
 const CANVAS_SELECTOR = "#sector-zero-game-canvas";
 
+interface CanvasObservations {
+  texts: string[];
+  imageSources: string[];
+}
+
+async function observeCanvasPresentation(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const observations: CanvasObservations = { texts: [], imageSources: [] };
+    Object.defineProperty(window, "__sectorZeroCanvasObservations", {
+      configurable: false,
+      value: observations,
+    });
+
+    const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function observedFillText(
+      text: string,
+      x: number,
+      y: number,
+      maxWidth?: number,
+    ): void {
+      observations.texts.push(String(text));
+      if (observations.texts.length > 2_000) observations.texts.splice(0, 1_000);
+      if (maxWidth === undefined) originalFillText.call(this, text, x, y);
+      else originalFillText.call(this, text, x, y, maxWidth);
+    };
+
+    const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage;
+    CanvasRenderingContext2D.prototype.drawImage = function observedDrawImage(
+      this: CanvasRenderingContext2D,
+      image: CanvasImageSource,
+      ...args: number[]
+    ): void {
+      const source = image instanceof HTMLImageElement
+        ? image.currentSrc || image.src
+        : "";
+      if (source) {
+        observations.imageSources.push(source);
+        if (observations.imageSources.length > 2_000) {
+          observations.imageSources.splice(0, 1_000);
+        }
+      }
+      Reflect.apply(originalDrawImage, this, [image, ...args]);
+    } as typeof CanvasRenderingContext2D.prototype.drawImage;
+  });
+}
+
+async function readCanvasObservations(page: Page): Promise<CanvasObservations> {
+  return page.evaluate(() => {
+    const observations = (window as typeof window & {
+      __sectorZeroCanvasObservations: CanvasObservations;
+    }).__sectorZeroCanvasObservations;
+    return {
+      texts: [...observations.texts],
+      imageSources: [...observations.imageSources],
+    };
+  });
+}
+
 async function canvasPixel(page: Page, x: number, y: number): Promise<string> {
   return page.locator(CANVAS_SELECTOR).evaluate((canvas, point) => {
     const context = (canvas as HTMLCanvasElement).getContext("2d");
@@ -69,6 +127,7 @@ test("@touch reaches the real Mission Board at 480x854", async ({ page }, testIn
 });
 
 test("@pointer launches the Ashfall Galaxy operation through its real surface", async ({ page }, testInfo) => {
+  await observeCanvasPresentation(page);
   await installSaveFixture(page, galaxyAtAshfall);
   await page.goto("/");
   await page.getByRole("button", { name: "CONTINUE GALAXY" }).click();
@@ -78,6 +137,13 @@ test("@pointer launches the Ashfall Galaxy operation through its real surface", 
   await expect(launch).toBeEnabled();
   await launch.click();
   await expect(launch).toBeHidden();
+
+  await expect.poll(async () => (await readCanvasObservations(page)).texts).toContain("ASHFALL SORTIE");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await readCanvasObservations(page)).texts).toContain("SURVIVE");
+  await expect.poll(async () => (await readCanvasObservations(page)).imageSources).toEqual(
+    expect.arrayContaining([expect.stringMatching(/\/sprites\/backgrounds\/ashfall-far\.png$/)]),
+  );
   await testInfo.attach("ashfall-operation", {
     body: await page.locator(CANVAS_SELECTOR).screenshot(),
     contentType: "image/png",
@@ -88,6 +154,6 @@ test("@pointer launches the Ashfall Galaxy operation through its real surface", 
     inputMethod: "pointer",
     saveFixture: "galaxyAtAshfall",
     expectedOutcome: "The selected Ashfall operation launches into its planet-authored shooter presentation.",
-    observedOutcome: "The real Galaxy Atlas identified SECURE THE ASHFALL DISTRESS ZONE, enabled LAUNCH OPERATION, and mounted the operation canvas. Recording-canvas coverage separately proves the Ashfall palette, SURVIVE objective, and ASHFALL SORTIE identity.",
+    observedOutcome: "The real Galaxy Atlas identified SECURE THE ASHFALL DISTRESS ZONE and enabled LAUNCH OPERATION. Canvas observations then recorded ASHFALL SORTIE during briefing, SURVIVE after the shipped Enter skip, and the authored ashfall-far background sprite.",
   });
 });

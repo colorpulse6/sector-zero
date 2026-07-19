@@ -8,7 +8,8 @@ import {
 } from "../../app/components/engine/gameEngine";
 import { PLANET_DEFS } from "../../app/components/engine/planets";
 import { drawGame } from "../../app/components/engine/renderer";
-import { GameScreen } from "../../app/components/engine/types";
+import { loadSprite, SPRITES } from "../../app/components/engine/sprites";
+import { CANVAS_HEIGHT, GameScreen } from "../../app/components/engine/types";
 
 interface CanvasEvent {
   operation: string;
@@ -269,4 +270,87 @@ test("the Ashfall Galaxy operation inherits planet presentation and operation id
   assert.ok(recording.events.some(
     (event) => event.operation === "fillText" && event.args[0] === "ASHFALL SORTIE",
   ));
+});
+
+test("loaded planet layers tile contiguously in destination space and cover briefings", async () => {
+  const originalImage = globalThis.Image;
+  class FakeImage {
+    width = 1024;
+    height = 1536;
+    onload: ((event: Event) => void) | null = null;
+    onerror: ((event: Event | string) => void) | null = null;
+    currentSrc = "";
+    private value = "";
+
+    set src(value: string) {
+      this.value = value;
+      this.currentSrc = value;
+      queueMicrotask(() => this.onload?.(new Event("load")));
+    }
+
+    get src(): string {
+      return this.value;
+    }
+  }
+
+  Object.defineProperty(globalThis, "Image", {
+    configurable: true,
+    writable: true,
+    value: FakeImage,
+  });
+  try {
+    await Promise.all([
+      loadSprite(SPRITES.BG_BASTION_FAR),
+      loadSprite(SPRITES.BG_BASTION_MID),
+      loadSprite(SPRITES.BG_BASTION_NEAR),
+    ]);
+  } finally {
+    if (originalImage) {
+      Object.defineProperty(globalThis, "Image", {
+        configurable: true,
+        writable: true,
+        value: originalImage,
+      });
+    } else {
+      Reflect.deleteProperty(globalThis, "Image");
+    }
+  }
+
+  const assertCoverage = (events: CanvasEvent[], path: string, label: string) => {
+    const ranges = events
+      .filter(
+        (event) => event.operation === "drawImage" &&
+          (event.args[0] as { src?: string }).src === path,
+      )
+      .map((event) => ({
+        start: Number(event.args[2]),
+        end: Number(event.args[2]) + Number(event.args[4]),
+      }))
+      .sort((left, right) => left.start - right.start);
+    assert.ok(ranges.length >= 2, `missing tiled ${label} draws`);
+
+    let coveredUntil = 0;
+    for (const range of ranges) {
+      if (range.end <= 0 || range.start >= CANVAS_HEIGHT) continue;
+      assert.ok(range.start <= coveredUntil, `${label} leaves a gap before y=${range.start}`);
+      coveredUntil = Math.max(coveredUntil, range.end);
+    }
+    assert.ok(coveredUntil >= CANVAS_HEIGHT, `${label} stops at y=${coveredUntil}`);
+  };
+
+  const playing = createPlanetGameState("bastion");
+  playing.screen = GameScreen.PLAYING;
+  playing.frameCount = 2380;
+  const playingRecording = recordingCanvas();
+  drawGame(playingRecording.ctx, playing);
+  assertCoverage(playingRecording.events, SPRITES.BG_BASTION_FAR, "far layer");
+  assertCoverage(playingRecording.events, SPRITES.BG_BASTION_MID, "mid layer");
+  assertCoverage(playingRecording.events, SPRITES.BG_BASTION_NEAR, "near layer");
+
+  const briefing = createPlanetGameState("bastion");
+  briefing.screen = GameScreen.BRIEFING;
+  briefing.frameCount = 2380;
+  const briefingRecording = recordingCanvas();
+  drawGame(briefingRecording.ctx, briefing);
+  assertCoverage(briefingRecording.events, SPRITES.BG_BASTION_FAR, "briefing far layer");
 });
