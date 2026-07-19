@@ -131,6 +131,28 @@ function encodeIdentityComponent(value: string): string {
   return `${value.length}:${value}`;
 }
 
+function decodeIdentityComponent(
+  identity: string,
+  offset: number,
+): { value: string; nextOffset: number } | null {
+  const separator = identity.indexOf(":", offset);
+  if (separator < 0) return null;
+  const encodedLength = identity.slice(offset, separator);
+  if (!/^[1-9]\d*$/.test(encodedLength)) return null;
+  const length = Number(encodedLength);
+  if (!Number.isSafeInteger(length)) return null;
+  const valueOffset = separator + 1;
+  const nextOffset = valueOffset + length;
+  if (nextOffset > identity.length) return null;
+  return { value: identity.slice(valueOffset, nextOffset), nextOffset };
+}
+
+const POI_TEMPLATES: Record<PoiEngineAdapter, string> = {
+  firstPerson: "fp-ruin-cinder-relay",
+  boarding: "boarding-wreck-oathbreaker",
+  groundRun: "ground-canyon-glassknife",
+};
+
 export function campaignMissionDescriptor(world: number, level: number): MissionDescriptor {
   const authored = ALL_LEVELS.find((entry) => entry.world === world && entry.level === level);
   if (authored === undefined) {
@@ -238,13 +260,8 @@ export function poiMissionDescriptor(
   if (controlsProfile === undefined) {
     throw new Error(`Unknown POI engine adapter ${String(adapter)}.`);
   }
-  const templateIds: Record<PoiEngineAdapter, string> = {
-    firstPerson: "fp-ruin-cinder-relay",
-    boarding: "boarding-wreck-oathbreaker",
-    groundRun: "ground-canyon-glassknife",
-  };
   return {
-    id: `poi:${encodeIdentityComponent(templateIds[adapter])}:${encodeIdentityComponent(ownedNodeId)}`,
+    id: `poi:${encodeIdentityComponent(POI_TEMPLATES[adapter])}:${encodeIdentityComponent(ownedNodeId)}`,
     kind: "colony",
     title: "Region Expedition",
     locationLabel: ownedNodeId,
@@ -276,6 +293,52 @@ function sameDescriptor(left: MissionDescriptor, right: MissionDescriptor): bool
     left.replayPolicy === right.replayPolicy;
 }
 
+export function snapshotRetryLaunchContext(
+  context: LaunchContext,
+  expectedMission: MissionDescriptor,
+  persistenceAuthority: PersistenceAuthority,
+  returnTarget: ExperienceRoute,
+): LaunchContext | null {
+  try {
+    const snapshot = cloneLaunchContext(context);
+    if (snapshot.launchId !== snapshot.launchId.trim() ||
+      !issuedLaunchIds.has(snapshot.launchId) ||
+      snapshot.entryProvenance !== "retry" ||
+      snapshot.persistenceAuthority !== persistenceAuthority ||
+      snapshot.returnTarget !== returnTarget ||
+      !sameDescriptor(snapshot.mission, expectedMission)) return null;
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function canonicalPoiDescriptorFromId(id: string): MissionDescriptor | null {
+  if (!id.startsWith("poi:")) return null;
+  const template = decodeIdentityComponent(id, "poi:".length);
+  if (template === null || id[template.nextOffset] !== ":") return null;
+  const node = decodeIdentityComponent(id, template.nextOffset + 1);
+  if (node === null || node.nextOffset !== id.length) return null;
+  const adapter = (Object.keys(POI_TEMPLATES) as PoiEngineAdapter[]).find(
+    (candidate) => POI_TEMPLATES[candidate] === template.value,
+  );
+  return adapter === undefined ? null : poiMissionDescriptor(node.value, adapter);
+}
+
+function canonicalColonyDescriptorFromId(id: string): MissionDescriptor | null {
+  if (!id.startsWith("colony:")) return null;
+  const colony = decodeIdentityComponent(id, "colony:".length);
+  if (colony === null) return null;
+  const suffix = id.slice(colony.nextOffset);
+  if (suffix === ":exterior") return colonyMissionDescriptor(colony.value, "exterior");
+  const interiorMarker = ":interior:";
+  if (!suffix.startsWith(interiorMarker)) return null;
+  const building = decodeIdentityComponent(id, colony.nextOffset + interiorMarker.length);
+  return building !== null && building.nextOffset === id.length
+    ? colonyMissionDescriptor(colony.value, "interior", building.value)
+    : null;
+}
+
 function assertPolicy(
   context: LaunchContext,
   authority: PersistenceAuthority,
@@ -299,8 +362,8 @@ function assertCompatibilityShell(context: LaunchContext, world: number, level: 
   }
   const authority = context.persistenceAuthority;
   if (context.mission.id.startsWith("poi:")) {
-    if (context.mission.replayPolicy !== "replay-variant" ||
-      !["first-person", "boarding", "ground-run"].includes(context.mission.controlsProfile)) {
+    const expected = canonicalPoiDescriptorFromId(context.mission.id);
+    if (expected === null || !sameDescriptor(context.mission, expected)) {
       throw new Error("POI descriptor does not match its compatibility shell.");
     }
     assertPolicy(
@@ -311,9 +374,11 @@ function assertCompatibilityShell(context: LaunchContext, world: number, level: 
     );
     return;
   }
-  if (context.mission.id.startsWith("colony:") &&
-    context.mission.replayPolicy === "repeatable" &&
-    context.mission.controlsProfile === "colony-exploration") {
+  if (context.mission.id.startsWith("colony:")) {
+    const expected = canonicalColonyDescriptorFromId(context.mission.id);
+    if (expected === null || !sameDescriptor(context.mission, expected)) {
+      throw new Error("Colony descriptor does not match its compatibility shell.");
+    }
     assertPolicy(
       context,
       authority,

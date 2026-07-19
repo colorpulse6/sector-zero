@@ -36,6 +36,8 @@ import {
 import { stableHash } from "../galaxy/coordinates";
 import { getGalaxyRunAvailability } from "../galaxy/galaxyRun";
 import type { GalaxyRunState, HistoricalFact } from "../galaxy/galaxyTypes";
+import { MAX_PILOT_LEVEL } from "../pilotLevel";
+import { ALL_SKILL_NODES } from "../skillTree";
 import type {
   EnhancementId,
   GameScreen,
@@ -48,6 +50,8 @@ import type {
 import {
   launchContextFromPilotLoadout,
   operationMissionDescriptor,
+  snapshotRetryLaunchContext,
+  type LaunchContext,
   type LaunchIdFactory,
 } from "../missionContext";
 import {
@@ -103,6 +107,14 @@ const UPGRADE_KEYS = [
   "fireControl",
   "shieldGenerator",
 ] as const;
+
+const ENHANCEMENT_IDS: readonly EnhancementId[] = [
+  "reinforced-shield",
+  "incendiary-bombs",
+  "extended-magnet",
+  "homing-gunners",
+  "resonance-field",
+];
 
 function exactOwnData(
   value: unknown,
@@ -177,10 +189,31 @@ function stringArraySnapshot(value: unknown): string[] | null {
     : null;
 }
 
+function knownUniqueStringArraySnapshot<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): T[] | null {
+  const snapshot = stringArraySnapshot(value);
+  if (snapshot === null || snapshot.some((entry) => !allowed.includes(entry as T)) ||
+    new Set(snapshot).size !== snapshot.length) return null;
+  return snapshot as T[];
+}
+
+function allocatedSkillSnapshot(value: unknown): SkillNodeId[] | null {
+  const skillIds = ALL_SKILL_NODES.map((node) => node.id);
+  const snapshot = knownUniqueStringArraySnapshot(value, skillIds);
+  if (snapshot === null || snapshot.some((id) => {
+    const node = ALL_SKILL_NODES.find((candidate) => candidate.id === id);
+    return node === undefined || node.prerequisites.some((required) => !snapshot.includes(required));
+  })) return null;
+  return snapshot;
+}
+
 function upgradeSnapshot(value: unknown): ShipUpgrades | null {
   const snapshot = exactOwnData(value, UPGRADE_KEYS);
   if (snapshot === null || UPGRADE_KEYS.some((key) =>
-    !Number.isSafeInteger(snapshot[key]) || (snapshot[key] as number) < 0)) {
+    !Number.isSafeInteger(snapshot[key]) || (snapshot[key] as number) < 0 ||
+    (snapshot[key] as number) > 5)) {
     return null;
   }
   return {
@@ -259,14 +292,14 @@ function lockedProjection(
     const completedPlanets = stringArraySnapshot(snapshot.completedPlanets);
     const unlockedSpecialMissions = stringArraySnapshot(snapshot.unlockedSpecialMissions);
     const upgrades = upgradeSnapshot(snapshot.upgrades);
-    const enhancements = stringArraySnapshot(snapshot.unlockedEnhancements);
-    const allocatedSkills = stringArraySnapshot(snapshot.allocatedSkills);
-    const equippedConsumables = stringArraySnapshot(snapshot.equippedConsumables);
+    const enhancements = knownUniqueStringArraySnapshot(snapshot.unlockedEnhancements, ENHANCEMENT_IDS);
+    const allocatedSkills = allocatedSkillSnapshot(snapshot.allocatedSkills);
+    const equippedConsumables = knownUniqueStringArraySnapshot(snapshot.equippedConsumables, CONSUMABLE_IDS);
     const consumableInventory = consumableInventorySnapshot(snapshot.consumableInventory);
     const canonicalUpgrades = upgradeSnapshot(run.ship.upgrades);
-    const canonicalEnhancements = stringArraySnapshot(run.ship.unlockedEnhancements);
-    const canonicalSkills = stringArraySnapshot(run.pilot.allocatedSkills);
-    const canonicalEquippedConsumables = stringArraySnapshot(run.ship.equippedConsumables);
+    const canonicalEnhancements = knownUniqueStringArraySnapshot(run.ship.unlockedEnhancements, ENHANCEMENT_IDS);
+    const canonicalSkills = allocatedSkillSnapshot(run.pilot.allocatedSkills);
+    const canonicalEquippedConsumables = knownUniqueStringArraySnapshot(run.ship.equippedConsumables, CONSUMABLE_IDS);
     const canonicalConsumableInventory = consumableInventorySnapshot(run.ship.consumableInventory);
     if (
       snapshot.activeExperience !== "legacy" || snapshot.galaxyRun !== null ||
@@ -282,7 +315,8 @@ function lockedProjection(
       canonicalEquippedConsumables === null || canonicalConsumableInventory === null ||
       typeof snapshot.equippedWeaponType !== "string" ||
       !WEAPON_TYPES.includes(snapshot.equippedWeaponType as WeaponType) ||
-      !Number.isSafeInteger(snapshot.pilotLevel) ||
+      !Number.isSafeInteger(snapshot.pilotLevel) || (snapshot.pilotLevel as number) < 1 ||
+      (snapshot.pilotLevel as number) > MAX_PILOT_LEVEL ||
       !sameUpgrades(upgrades, canonicalUpgrades) ||
       !sameStrings(enhancements, canonicalEnhancements) ||
       snapshot.pilotLevel !== run.pilot.level ||
@@ -325,7 +359,7 @@ export function launchOperation(
   run: GalaxyRunState,
   projection: SaveData,
   context: OperationLaunchContext,
-  launchIdFactory?: LaunchIdFactory,
+  launchIdFactoryOrRetry?: LaunchIdFactory | LaunchContext,
 ): OperationLaunchResult {
   let safeContext: OperationLaunchContext | null = null;
   try {
@@ -359,14 +393,23 @@ export function launchOperation(
       };
     }
 
-    const gameplayLaunch = launchContextFromPilotLoadout(
-      engineInput,
-      operationMissionDescriptor(safeContext.operationId),
-      "galaxy",
-      "atlas",
-      "galaxy-atlas",
-      launchIdFactory,
-    );
+    const gameplayMission = operationMissionDescriptor(safeContext.operationId);
+    const gameplayLaunch = typeof launchIdFactoryOrRetry === "function" || launchIdFactoryOrRetry === undefined
+      ? launchContextFromPilotLoadout(
+          engineInput,
+          gameplayMission,
+          "galaxy",
+          "atlas",
+          "galaxy-atlas",
+          launchIdFactoryOrRetry,
+        )
+      : snapshotRetryLaunchContext(
+          launchIdFactoryOrRetry,
+          gameplayMission,
+          "galaxy",
+          "galaxy-atlas",
+        );
+    if (gameplayLaunch === null) return fail(safeContext, "context_mismatch");
     let gameState;
     switch (safeContext.adapterKind) {
       case "legacy_level": {
@@ -516,6 +559,12 @@ function samePlainData(left: unknown, right: unknown): boolean {
   return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
     key === rightKeys[index] && Object.prototype.hasOwnProperty.call(rightRecord, key) &&
     samePlainData(leftRecord[key], rightRecord[key]));
+}
+
+function sameRequiredSaveData(left: SaveData, right: SaveData): boolean {
+  const leftRecord = left as unknown as Record<string, unknown>;
+  const rightRecord = right as unknown as Record<string, unknown>;
+  return SAVE_DATA_KEYS.every((key) => samePlainData(leftRecord[key], rightRecord[key]));
 }
 
 function openAshfallProjection(
@@ -1101,7 +1150,7 @@ function snapshotGalaxyPending(
     if (baseRoot === null || aliasRoot === null || currentRoot === null ||
       baseRoot.activeExperience !== "galaxy" || baseRoot.galaxyRun === null ||
       currentRoot.activeExperience !== "galaxy" || currentRoot.galaxyRun === null ||
-      !samePlainData(baseRoot, aliasRoot) ||
+      !SAVE_DATA_KEYS.every((key) => samePlainData(baseRoot[key], aliasRoot[key])) ||
       !SAVE_DATA_KEYS.filter((key) => key !== "galaxyRun").every((key) =>
         samePlainData(baseRoot[key], currentRoot[key]))) return null;
     const baseRun = mergeProjectionIntoGalaxy(baseRoot.galaxyRun as GalaxyRunState, {});
@@ -1193,7 +1242,7 @@ export function resolveGalaxyPoiCompletion(
     return { ok: false, save, reason: "invalid_poi_session" };
   }
   try {
-    const atPreparedBase = samePlainData(safePending.baseSave, safePending.currentSave);
+    const atPreparedBase = sameRequiredSaveData(safePending.baseSave, safePending.currentSave);
     if (!atPreparedBase) {
       const canonicalResolution = resolveValidatedGalaxyPending(
         safePending.baseSave,
@@ -1202,7 +1251,7 @@ export function resolveGalaxyPoiCompletion(
         destinationColonyId,
       );
       if (!canonicalResolution.ok ||
-        !samePlainData(canonicalResolution.save, safePending.currentSave)) {
+        !sameRequiredSaveData(canonicalResolution.save, safePending.currentSave)) {
         return { ok: false, save, reason: "invalid_poi_session" };
       }
       const stale = resolveValidatedGalaxyPending(

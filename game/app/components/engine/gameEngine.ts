@@ -205,12 +205,11 @@ export function createGameState(
   pilotLevel: number = 1,
   allocatedSkills: SkillNodeId[] = [],
 ): GameState {
-  const launchContext = isLaunchContext(upgradesOrLaunch)
+  const hasLaunchContext = isLaunchContext(upgradesOrLaunch);
+  const launchContext = hasLaunchContext
     ? cloneLaunchContext(upgradesOrLaunch)
     : undefined;
-  const upgrades = isLaunchContext(upgradesOrLaunch)
-    ? upgradesOrLaunch.pilot.upgrades
-    : upgradesOrLaunch;
+  const upgrades = launchContext?.pilot.upgrades ?? upgradesOrLaunch as ShipUpgrades;
   const normalizedEnhancements = launchContext?.pilot.unlockedEnhancements ?? enhancements;
   const normalizedPilotLevel = launchContext?.pilot.pilotLevel ?? pilotLevel;
   const normalizedAllocatedSkills = launchContext?.pilot.allocatedSkills ?? allocatedSkills;
@@ -307,12 +306,11 @@ export function createPlanetGameState(
   pilotLevel: number = 1,
   allocatedSkills: SkillNodeId[] = [],
 ): GameState {
-  const launchContext = isLaunchContext(upgradesOrLaunch)
+  const hasLaunchContext = isLaunchContext(upgradesOrLaunch);
+  const launchContext = hasLaunchContext
     ? cloneLaunchContext(upgradesOrLaunch)
     : undefined;
-  const upgrades = isLaunchContext(upgradesOrLaunch)
-    ? upgradesOrLaunch.pilot.upgrades
-    : upgradesOrLaunch;
+  const upgrades = launchContext?.pilot.upgrades ?? upgradesOrLaunch as ShipUpgrades;
   const normalizedEnhancements = launchContext?.pilot.unlockedEnhancements ?? enhancements;
   const normalizedPilotLevel = launchContext?.pilot.pilotLevel ?? pilotLevel;
   const normalizedAllocatedSkills = launchContext?.pilot.allocatedSkills ?? allocatedSkills;
@@ -428,12 +426,11 @@ export function createSpecialMissionGameState(
   if (missionId !== "kepler-black-box") {
     throw new Error(`Unknown special mission ${String(missionId)}.`);
   }
-  const launchContext = isLaunchContext(upgradesOrLaunch)
+  const hasLaunchContext = isLaunchContext(upgradesOrLaunch);
+  const launchContext = hasLaunchContext
     ? cloneLaunchContext(upgradesOrLaunch)
     : undefined;
-  const upgrades = isLaunchContext(upgradesOrLaunch)
-    ? upgradesOrLaunch.pilot.upgrades
-    : upgradesOrLaunch;
+  const upgrades = launchContext?.pilot.upgrades ?? upgradesOrLaunch as ShipUpgrades;
   const normalizedEnhancements = launchContext?.pilot.unlockedEnhancements ?? enhancements;
   const normalizedPilotLevel = launchContext?.pilot.pilotLevel ?? pilotLevel;
   const normalizedAllocatedSkills = launchContext?.pilot.allocatedSkills ?? allocatedSkills;

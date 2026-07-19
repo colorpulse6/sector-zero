@@ -31,6 +31,11 @@ import type {
 } from "../../app/components/engine/operations/operationTypes";
 import { migrateSave } from "../../app/components/engine/save";
 import { GameScreen, type SaveData } from "../../app/components/engine/types";
+import { MAX_PILOT_LEVEL } from "../../app/components/engine/pilotLevel";
+import {
+  operationMissionDescriptor,
+  retryLaunchContext,
+} from "../../app/components/engine/missionContext";
 
 const IDS: readonly OperationId[] = [
   "op:hostile-picket",
@@ -326,6 +331,73 @@ test("validated Galaxy loadout is a single snapshot and never re-reads the calle
   assert.deepEqual(result.gameState.pilotLoadout.consumableInventory, run.ship.consumableInventory);
 });
 
+test("operation retries accept a separate issued gameplay context and preserve its pilot snapshot", () => {
+  const run = atHostileInterruption();
+  run.ship.equippedWeaponType = "energy";
+  run.ship.equippedConsumables = ["scanner-pulse"];
+  run.ship.consumableInventory = { "scanner-pulse": 2 };
+  const authorization = requireAuthorization(run, "op:hostile-picket");
+  const first = launchOperation(
+    run,
+    projectGalaxyRunToLegacySave(richParent(run)),
+    authorization,
+    () => "launch:test:operation-retry-source",
+  );
+  assert.equal(first.ok, true, first.ok ? undefined : first.availability.reasons.join("; "));
+  if (!first.ok || first.gameState.launchContext === undefined) return;
+  const retry = retryLaunchContext(
+    first.gameState.launchContext,
+    () => "launch:test:operation-retry-child",
+  );
+
+  const changedRun = structuredClone(run);
+  changedRun.ship.equippedWeaponType = "cryogenic";
+  changedRun.ship.equippedConsumables = ["hull-repair"];
+  changedRun.ship.consumableInventory = { "hull-repair": 1 };
+  const retried = launchOperation(
+    changedRun,
+    projectGalaxyRunToLegacySave(richParent(changedRun)),
+    authorization,
+    retry,
+  );
+
+  assert.equal(retried.ok, true, retried.ok ? undefined : retried.availability.reasons.join("; "));
+  if (!retried.ok) return;
+  assert.equal(retried.context.operationId, authorization.operationId);
+  assert.equal(retried.gameState.launchContext?.launchId, retry.launchId);
+  assert.equal(retried.gameState.launchContext?.entryProvenance, "retry");
+  assert.equal(retried.gameState.equippedWeaponType, "energy");
+  assert.deepEqual(retried.gameState.pilotLoadout.equippedConsumables, ["scanner-pulse"]);
+  assert.deepEqual(retried.gameState.pilotLoadout.consumableInventory, { "scanner-pulse": 2 });
+
+  const wrongMission = retryLaunchContext(
+    first.gameState.launchContext,
+    () => "launch:test:operation-retry-wrong-mission",
+  );
+  wrongMission.mission = operationMissionDescriptor("op:ashfall-sortie");
+  const rejectedMission = launchOperation(
+    changedRun,
+    projectGalaxyRunToLegacySave(richParent(changedRun)),
+    authorization,
+    wrongMission,
+  );
+  assert.equal(rejectedMission.ok, false);
+  if (!rejectedMission.ok) {
+    assert.deepEqual(rejectedMission.availability.reasons, ["context_mismatch"]);
+  }
+
+  const rejectedProvenance = launchOperation(
+    changedRun,
+    projectGalaxyRunToLegacySave(richParent(changedRun)),
+    authorization,
+    first.gameState.launchContext,
+  );
+  assert.equal(rejectedProvenance.ok, false);
+  if (!rejectedProvenance.ok) {
+    assert.deepEqual(rejectedProvenance.availability.reasons, ["context_mismatch"]);
+  }
+});
+
 test("locked projection tolerates unrelated future own data fields without weakening consumed shapes", () => {
   const run = atHostileInterruption();
   const projection = Object.assign(
@@ -340,6 +412,84 @@ test("locked projection tolerates unrelated future own data fields without weake
   );
 
   assert.equal(result.ok, true, result.ok ? undefined : result.availability.reasons.join("; "));
+});
+
+test("locked projections reject matching but impossible PilotLoadout domain values", () => {
+  const cases: Array<[
+    string,
+    (run: GalaxyRunState, projection: SaveData) => void,
+  ]> = [
+    ["upgrade above authored cap", (run, projection) => {
+      run.ship.upgrades.hullPlating = 6;
+      projection.upgrades.hullPlating = 6;
+    }],
+    ["fractional upgrade", (run, projection) => {
+      run.ship.upgrades.weaponCore = 1.5;
+      projection.upgrades.weaponCore = 1.5;
+    }],
+    ["pilot below level one", (run, projection) => {
+      run.pilot.level = 0;
+      projection.pilotLevel = 0;
+    }],
+    ["pilot above authored maximum", (run, projection) => {
+      run.pilot.level = MAX_PILOT_LEVEL + 1;
+      projection.pilotLevel = MAX_PILOT_LEVEL + 1;
+    }],
+    ["unknown enhancement", (run, projection) => {
+      run.ship.unlockedEnhancements = ["future-enhancement" as never];
+      projection.unlockedEnhancements = ["future-enhancement" as never];
+    }],
+    ["duplicate enhancement", (run, projection) => {
+      run.ship.unlockedEnhancements = ["reinforced-shield", "reinforced-shield"];
+      projection.unlockedEnhancements = ["reinforced-shield", "reinforced-shield"];
+    }],
+    ["unknown skill", (run, projection) => {
+      run.pilot.allocatedSkills = ["future-skill" as never];
+      projection.allocatedSkills = ["future-skill" as never];
+    }],
+    ["duplicate skill", (run, projection) => {
+      run.pilot.allocatedSkills = ["sharpshooter", "sharpshooter"];
+      projection.allocatedSkills = ["sharpshooter", "sharpshooter"];
+    }],
+    ["missing skill prerequisite", (run, projection) => {
+      run.pilot.allocatedSkills = ["berserker"];
+      projection.allocatedSkills = ["berserker"];
+    }],
+    ["unknown weapon", (run, projection) => {
+      run.ship.equippedWeaponType = "future-weapon" as never;
+      projection.equippedWeaponType = "future-weapon" as never;
+    }],
+    ["unknown equipped consumable", (run, projection) => {
+      run.ship.equippedConsumables = ["future-consumable" as never];
+      projection.equippedConsumables = ["future-consumable" as never];
+    }],
+    ["duplicate equipped consumable", (run, projection) => {
+      run.ship.equippedConsumables = ["hull-repair", "hull-repair"];
+      projection.equippedConsumables = ["hull-repair", "hull-repair"];
+    }],
+    ["unknown inventory key", (run, projection) => {
+      (run.ship.consumableInventory as Record<string, number>)["future-consumable"] = 1;
+      (projection.consumableInventory as Record<string, number>)["future-consumable"] = 1;
+    }],
+    ["negative inventory quantity", (run, projection) => {
+      run.ship.consumableInventory = { "hull-repair": -1 };
+      projection.consumableInventory = { "hull-repair": -1 };
+    }],
+    ["fractional inventory quantity", (run, projection) => {
+      run.ship.consumableInventory = { "hull-repair": 1.5 };
+      projection.consumableInventory = { "hull-repair": 1.5 };
+    }],
+  ];
+
+  for (const [label, mutate] of cases) {
+    const run = atHostileInterruption();
+    const authorization = requireAuthorization(run, "op:hostile-picket");
+    const projection = projectGalaxyRunToLegacySave(richParent(run));
+    mutate(run, projection);
+    const result = launchOperation(run, projection, authorization);
+    assert.equal(result.ok, false, label);
+    if (!result.ok) assert.deepEqual(result.availability.reasons, ["projection_not_locked"], label);
+  }
 });
 
 test("Galaxy Region and POI boundaries preserve unrelated future save-root data", () => {
@@ -477,6 +627,98 @@ test("Galaxy Region and POI reject reflective future root fields without invokin
   assert.equal(pendingResult.ok, false);
   if (!pendingResult.ok) assert.equal(pendingResult.reason, "invalid_poi_session");
   assert.equal(pendingGetterReads, 0);
+});
+
+test("Galaxy POI resolution treats nested future root data as opaque without invoking it", () => {
+  let accessorReads = 0;
+  let functionCalls = 0;
+  const futureOpaque = {} as Record<string, unknown>;
+  Object.defineProperty(futureOpaque, "aAccessor", {
+    enumerable: true,
+    get() {
+      accessorReads += 1;
+      return "canonical";
+    },
+  });
+  Object.defineProperty(futureOpaque, "zFunction", {
+    enumerable: true,
+    value() {
+      functionCalls += 1;
+      return "canonical";
+    },
+  });
+  const parent = Object.assign(
+    richParent(atContact("contact:ashfall", true)),
+    { futureOpaque },
+  );
+  const originColonyId = "galaxy:ashfall-primary";
+  const targetNodeId = "ashfall-cinder-relay";
+  const surveyed = startGalaxyRegionExpedition(
+    parent,
+    "contact:ashfall",
+    { kind: "survey", originColonyId, targetNodeId },
+    null,
+  );
+  assert.equal(surveyed.ok, true, surveyed.ok ? undefined : surveyed.reason);
+  if (!surveyed.ok) return;
+  assert.strictEqual(
+    (surveyed.save as SaveData & { futureOpaque: object }).futureOpaque,
+    futureOpaque,
+  );
+  const launched = startGalaxyRegionExpedition(
+    surveyed.save,
+    "contact:ashfall",
+    { kind: "poi", originColonyId, targetNodeId },
+    null,
+  );
+  assert.equal(launched.ok, true, launched.ok ? undefined : launched.reason);
+  if (!launched.ok || launched.session === null) return;
+  const prepared = prepareGalaxyPoiCompletion(
+    launched.save,
+    "contact:ashfall",
+    { originColonyId, session: launched.session },
+    GameScreen.LEVEL_COMPLETE,
+  );
+  assert.equal(prepared.ok, true, prepared.ok ? undefined : prepared.reason);
+  if (!prepared.ok) return;
+
+  const aliasOpaque = {} as Record<string, unknown>;
+  Object.defineProperty(aliasOpaque, "aAccessor", {
+    enumerable: true,
+    get() {
+      accessorReads += 1;
+      return "alias";
+    },
+  });
+  Object.defineProperty(aliasOpaque, "zFunction", {
+    enumerable: true,
+    value() {
+      functionCalls += 1;
+      return "alias";
+    },
+  });
+  const pending = {
+    ...prepared.pending,
+    projectedSave: {
+      ...prepared.pending.projectedSave,
+      futureOpaque: aliasOpaque,
+    } as SaveData,
+  };
+  const resolved = resolveGalaxyPoiCompletion(
+    prepared.save,
+    "contact:ashfall",
+    pending,
+    originColonyId,
+  );
+
+  assert.equal(resolved.ok, true, resolved.ok ? undefined : resolved.reason);
+  assert.equal(accessorReads, 0);
+  assert.equal(functionCalls, 0);
+  if (!resolved.ok) return;
+  assert.strictEqual(
+    (resolved.save as SaveData & { futureOpaque: object }).futureOpaque,
+    futureOpaque,
+  );
 });
 
 test("explicit canonical launch contexts bypass all locked legacy availability fields", () => {

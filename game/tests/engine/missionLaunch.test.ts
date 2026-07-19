@@ -87,6 +87,76 @@ test("campaign construction consumes and owns a complete non-default launch load
   assert.deepEqual(state.allocatedSkills, ["sharpshooter", "overcharge"]);
 });
 
+test("all engine constructors derive gameplay only from one cloned launch snapshot", () => {
+  const save = createHydrationSafeSave();
+  const fixtures: Array<{
+    launch: LaunchContext;
+    construct: (launch: LaunchContext) => ReturnType<typeof createGameState>;
+  }> = [
+    {
+      launch: launchContextFromSave(
+        save,
+        campaignMissionDescriptor(1, 1),
+        "legacy",
+        "star-map",
+        "legacy-star-map",
+        () => "launch:test:snapshot-campaign",
+      ),
+      construct: (launch) => createGameState(1, 1, launch),
+    },
+    {
+      launch: launchContextFromSave(
+        save,
+        planetMissionDescriptor("verdania"),
+        "legacy",
+        "cockpit",
+        "legacy-cockpit",
+        () => "launch:test:snapshot-planet",
+      ),
+      construct: (launch) => createPlanetGameState("verdania", launch),
+    },
+    {
+      launch: launchContextFromSave(
+        save,
+        specialMissionDescriptor("kepler-black-box"),
+        "legacy",
+        "cockpit",
+        "legacy-cockpit",
+        () => "launch:test:snapshot-special",
+      ),
+      construct: (launch) => createSpecialMissionGameState("kepler-black-box", false, launch),
+    },
+  ];
+
+  for (const { launch, construct } of fixtures) {
+    let pilotReads = 0;
+    const drifting = new Proxy(launch, {
+      get(target, property, receiver) {
+        if (property !== "pilot") return Reflect.get(target, property, receiver);
+        pilotReads += 1;
+        if (pilotReads === 1) return target.pilot;
+        return {
+          ...target.pilot,
+          upgrades: {
+            hullPlating: 100,
+            engineBoost: 100,
+            weaponCore: 100,
+            munitionsBay: 100,
+            fireControl: 100,
+            shieldGenerator: 100,
+          },
+        };
+      },
+    });
+
+    const state = construct(drifting);
+    assert.equal(pilotReads, 1);
+    assert.equal(state.launchContext?.pilot.upgrades.hullPlating, 0);
+    assert.equal(state.player.maxHp, 3);
+    assert.equal(state.bombs, 2);
+  }
+});
+
 test("a planet attempt cannot inherit allocated-skill caches from an earlier campaign", () => {
   const save = createHydrationSafeSave();
   save.allocatedSkills = ["overcharge"];
@@ -495,8 +565,22 @@ test("POI runtime inherits explicit experience authority and the complete pilot 
     legacyState.launchContext!,
     () => "launch:test:legacy-poi-retry",
   );
+  const changedSave = structuredClone(save);
+  changedSave.equippedWeaponType = "kinetic";
+  changedSave.equippedConsumables = [];
+  changedSave.consumableInventory = {};
+  const retriedState = createPoiGameState(
+    session,
+    changedSave,
+    "legacy",
+    legacyRetry,
+  );
   assert.equal(legacyRetry.entryProvenance, "retry");
   assert.equal(legacyRetry.returnTarget, "legacy-colony-exterior");
+  assert.equal(retriedState.launchContext?.launchId, legacyRetry.launchId);
+  assert.equal(retriedState.launchContext?.entryProvenance, "retry");
+  assert.equal(retriedState.equippedWeaponType, "incendiary");
+  assert.deepEqual(retriedState.pilotLoadout.equippedConsumables, ["weapon-overcharge"]);
   assert.deepEqual(state.pilotLoadout, {
     upgrades: { hullPlating: 0, engineBoost: 0, weaponCore: 0, munitionsBay: 2, fireControl: 0, shieldGenerator: 0 },
     unlockedEnhancements: ["extended-magnet"],
@@ -507,6 +591,50 @@ test("POI runtime inherits explicit experience authority and the complete pilot 
     consumableInventory: { "weapon-overcharge": 2 },
   });
   assert.equal(state.equippedWeaponType, "incendiary");
+});
+
+test("POI retry contexts must be issued and exactly match the session and experience", () => {
+  const save = createHydrationSafeSave();
+  const session = {
+    nodeId: "node:retry-authority",
+    engine: "firstPerson" as const,
+    state: createFirstPersonRuinTemplate(19),
+    rewardEligible: true,
+  };
+  const source = launchContextFromSave(
+    save,
+    poiMissionDescriptor(session.nodeId, session.engine),
+    "legacy",
+    "region",
+    "legacy-colony-exterior",
+    () => "launch:test:poi-retry-authority-source",
+  );
+  const retry = retryLaunchContext(
+    source,
+    () => "launch:test:poi-retry-authority-child",
+  );
+
+  assert.throws(
+    () => createPoiGameState({ ...session, nodeId: "node:other" }, save, "legacy", retry),
+    /retry|context/i,
+  );
+  assert.throws(
+    () => createPoiGameState(session, save, "galaxy", retry),
+    /retry|context/i,
+  );
+  assert.throws(
+    () => createPoiGameState(session, save, "legacy", source),
+    /retry|context/i,
+  );
+  assert.throws(
+    () => createPoiGameState(
+      session,
+      save,
+      "legacy",
+      { ...retry, launchId: "launch:test:poi-retry-unissued" },
+    ),
+    /retry|context/i,
+  );
 });
 
 test("an earlier planet attempt rebinds its own enemy spawn policy after another constructor", () => {
@@ -706,6 +834,51 @@ test("dynamic descriptor components are encoded without delimiter collisions", (
   assert.match(poi.id, /^poi:\d+:/);
   assert.ok(poi.id.includes("fp-ruin-cinder-relay"));
   assert.ok(poi.id.includes("node:with:delimiters"));
+});
+
+test("compatibility shells reject malformed or forged dynamic descriptors", () => {
+  const save = createHydrationSafeSave();
+  const poi = launchContextFromSave(
+    save,
+    poiMissionDescriptor("node:canonical", "firstPerson"),
+    "legacy",
+    "region",
+    "legacy-colony-exterior",
+    () => "launch:test:dynamic-poi-base",
+  );
+  const colony = launchContextFromSave(
+    save,
+    colonyMissionDescriptor("colony:canonical", "interior", "building:canonical"),
+    "legacy",
+    "landing-pad",
+    "legacy-colony-exterior",
+    () => "launch:test:dynamic-colony-base",
+  );
+  const cases: Array<[string, LaunchContext, MissionDescriptor]> = [
+    ["forged POI prefix", poi, { ...poi.mission, id: "poi:forged-prefix" }],
+    ["malformed POI length", poi, { ...poi.mission, id: poi.mission.id.replace("poi:20:", "poi:020:") }],
+    ["POI title", poi, { ...poi.mission, title: "Forged Expedition" }],
+    ["POI location", poi, { ...poi.mission, locationLabel: "node:forged" }],
+    ["POI objective", poi, { ...poi.mission, objectiveLabel: "Collect forged cargo" }],
+    ["POI profile", poi, { ...poi.mission, controlsProfile: "boarding" }],
+    ["POI replay", poi, { ...poi.mission, replayPolicy: "repeatable" }],
+    ["forged Colony prefix", colony, { ...colony.mission, id: "colony:forged-prefix" }],
+    ["malformed Colony length", colony, { ...colony.mission, id: colony.mission.id.replace("colony:16:", "colony:016:") }],
+    ["Colony title", colony, { ...colony.mission, title: "Forged Colony" }],
+    ["Colony location", colony, { ...colony.mission, locationLabel: "colony:forged" }],
+    ["Colony objective", colony, { ...colony.mission, objectiveLabel: "Forge the Colony" }],
+    ["Colony profile", colony, { ...colony.mission, controlsProfile: "first-person" }],
+    ["Colony replay", colony, { ...colony.mission, replayPolicy: "replay-variant" }],
+  ];
+
+  for (const [label, base, mission] of cases) {
+    const context: LaunchContext = {
+      ...base,
+      launchId: `launch:test:dynamic-forgery:${label.replaceAll(" ", "-")}`,
+      mission,
+    };
+    assert.throws(() => createGameState(1, 1, context), /descriptor|shell/i, label);
+  }
 });
 
 test("launch ID issuance rejects blank and process-wide duplicate factory output", () => {

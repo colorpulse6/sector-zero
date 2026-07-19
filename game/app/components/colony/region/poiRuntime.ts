@@ -4,8 +4,10 @@ import { createGameState } from "../../engine/gameEngine";
 import {
   launchContextFromSave,
   poiMissionDescriptor,
+  snapshotRetryLaunchContext,
   type ExperienceRoute,
   type LaunchIdFactory,
+  type LaunchContext,
 } from "../../engine/missionContext";
 import { getBoardingSpawn } from "../../engine/boardingLevel";
 import { getSpawnPosition as getGroundSpawn } from "../../engine/groundLevel";
@@ -28,19 +30,30 @@ export function createPoiGameState(
   session: PoiSession,
   save: SaveData,
   experience: PoiExperience = "legacy",
-  launchIdFactory?: LaunchIdFactory,
+  launchIdFactoryOrRetry?: LaunchIdFactory | LaunchContext,
 ): GameState {
   const returnTarget: ExperienceRoute = experience === "galaxy"
     ? "galaxy-region"
     : "legacy-colony-exterior";
-  const launchContext = launchContextFromSave(
-    save,
-    poiMissionDescriptor(session.nodeId, session.engine),
-    experience,
-    "region",
-    returnTarget,
-    launchIdFactory,
-  );
+  const mission = poiMissionDescriptor(session.nodeId, session.engine);
+  const launchContext = typeof launchIdFactoryOrRetry === "function" || launchIdFactoryOrRetry === undefined
+    ? launchContextFromSave(
+        save,
+        mission,
+        experience,
+        "region",
+        returnTarget,
+        launchIdFactoryOrRetry,
+      )
+    : snapshotRetryLaunchContext(
+        launchIdFactoryOrRetry,
+        mission,
+        experience,
+        returnTarget,
+      );
+  if (launchContext === null) {
+    throw new Error("POI retry launch context does not match the session and experience.");
+  }
   const base = createGameState(1, 1, launchContext);
   const nodeName = experience === "galaxy"
     ? save.planets
