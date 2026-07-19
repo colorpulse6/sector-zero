@@ -5,7 +5,7 @@
 - Package: A1 — planet mission terminal and render integrity
 - Branch: `fix/sync-planet-integrity`
 - Accepted harness base: `4422be8b3d014baa6a7038fe0b8ec0ab94095b7e`
-- Tested code SHA: `a519641d315ad7240377f5840e0e47733fcd176a`
+- Tested code SHA: `eb7926e566e921bd79f7ede499238ba3770f1ca3`
 - Asset boundary: no M3 asset, asset-validation, roadmap, prompt, or active asset-worktree file changed
 
 ## Test-first evidence
@@ -62,6 +62,24 @@ The recording canvas asserts that exact order, every objective actor, every
 planet's live hazard geometry, the generic non-planet fallback, and Ashfall's
 planet palette plus `SURVIVE` and `ASHFALL SORTIE` identity.
 
+### Loaded-sprite tiling red
+
+Cold review exercised the authored background path rather than the procedural
+fallback and found that 1024x1536 source sprites were scaled to the playfield
+but positioned and wrapped using the 1536-pixel source height. The added fake-
+image recording test failed with the intended live defect:
+
+```text
+far layer leaves a gap before y=714
+```
+
+Planet layers now compute their destination height from the canvas-width scale
+and repeat in that same destination coordinate space. The green test loads far,
+mid, and near layers, advances to a frame that previously left the canvas
+unpainted, and proves contiguous coverage through the full 854-pixel canvas.
+The procedural fallback also fills the full canvas, so the briefing's bottom
+band is painted before its early return.
+
 ## Real-surface browser proof
 
 The tests install only migrated persisted saves before hydration. They use the
@@ -73,7 +91,7 @@ was added.
 | --- | --- | --- |
 | `desktop-pointer` / 1280x900 | Legacy -> cockpit -> Mission Board | Real hotspot opened the Mission Board; backing-canvas sampling confirmed the active Side Quests tab; screenshot shows the Planet Missions tab and badge for ten launchable missions |
 | `mobile-touch` / 480x854 | Legacy -> cockpit -> Mission Board | Native touchscreen tap opened the same legible three-tab surface |
-| `desktop-pointer` / 1280x900 | Galaxy Atlas -> Ashfall -> Launch Operation | Atlas identified `SECURE THE ASHFALL DISTRESS ZONE`, enabled the real launch control, and mounted the operation canvas |
+| `desktop-pointer` / 1280x900 | Galaxy Atlas -> Ashfall -> Launch Operation -> Enter skip | Atlas identified `SECURE THE ASHFALL DISTRESS ZONE`; read-only canvas instrumentation then observed `ASHFALL SORTIE`, the shipped Enter transition to `SURVIVE`, and the authored `ashfall-far.png` layer |
 
 Each row emits a structured JSON Playwright receipt and a canvas screenshot.
 
@@ -95,18 +113,25 @@ is preserved for the later semantic input/navigation package. The exhaustive
 proof is honest route entry, legibility, and Ashfall operation launch. This is a
 remaining release gap, not accepted interaction behavior.
 
+The renderer still consumes the engine's existing module-global hazard state.
+The planet ID guard prevents a mismatched singleton from drawing, but constructing
+multiple states back-to-back can leave the earlier state without its hazards.
+Moving hazards into `GameState` or an explicit render input requires the shared
+state ownership used by the next launch-context package; it remains a recorded
+architecture risk and is not claimed fixed here.
+
 ## Exact-code-SHA gates
 
 All commands ran from `game/` at tested code SHA
-`a519641d315ad7240377f5840e0e47733fcd176a`.
+`eb7926e566e921bd79f7ede499238ba3770f1ca3`.
 
 | Gate | Result |
 | --- | --- |
-| `node --import tsx --test tests/engine/planetMissions.test.ts tests/engine/planetRendering.test.ts` | 12/12 passed |
+| `node --import tsx --test tests/engine/planetMissions.test.ts tests/engine/planetRendering.test.ts` | 13/13 passed |
 | `yarn playwright test tests/browser/planetRoutes.spec.ts` | 3/3 passed across desktop pointer and mobile touch |
-| `yarn browser:test` | 8/8 passed across desktop keyboard, desktop pointer, and mobile touch |
+| `TESTED_CODE_SHA=eb7926e5... yarn browser:test` | 8/8 passed across desktop keyboard, desktop pointer, and mobile touch; structured receipts name the tested code SHA |
 | `npx tsc --noEmit` | Passed, exit 0 |
-| `yarn engine:test` | 294/294 passed |
+| `yarn engine:test` | 295/295 passed |
 | `yarn colony:test` | 284/284 passed |
 | `yarn sprites:test` | 4/4 passed |
 | `COREPACK_ENABLE_PROJECT_SPEC=0 yarn build` | Compiled; generated 6/6 static pages; exported 3/3 |
