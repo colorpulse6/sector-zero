@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "scope": "m3-ashfall-base",
+  "bundles": {
+    "cantina": {
+      "status": "planned",
+      "environment": [
+        { "constant": "HUB_CANTINA_WALL", "path": "game/public/sprites/interiors/m3/cantina/wall.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/wall-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "HUB_CANTINA_FLOOR", "path": "game/public/sprites/interiors/m3/cantina/floor.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/floor-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "HUB_CANTINA_CEILING", "path": "game/public/sprites/interiors/m3/cantina/ceiling.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/ceiling-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "COLONY_WALL_CANTINA", "path": "game/public/sprites/walls/cantina.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/facade-source.png", "width": 64, "height": 64, "alpha": "opaque", "kind": "seamless-texture" }
+      ],
+      "props": [
+        { "constant": "HUB_CANTINA_PROP_BAR_COUNTER", "path": "game/public/sprites/interiors/m3/cantina/bar-counter.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/bar-counter-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_CANTINA_PROP_BOTTLE_RACK", "path": "game/public/sprites/interiors/m3/cantina/bottle-rack.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/bottle-rack-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_CANTINA_PROP_TABLE_CLUSTER", "path": "game/public/sprites/interiors/m3/cantina/table-cluster.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/table-cluster-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_CANTINA_PROP_RUMOR_TERMINAL", "path": "game/public/sprites/interiors/m3/cantina/rumor-terminal.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/rumor-terminal-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true }
+      ],
+      "npcs": [
+        { "roleId": "hub-bartender", "portrait": { "constant": "PORTRAIT_HUB_BARTENDER", "path": "game/public/sprites/portraits/hub-bartender.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/hub-bartender-portrait-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "portrait" }, "billboard": { "constant": "NPC_HUB_BARTENDER", "path": "game/public/sprites/boarding/npc-hub-bartender.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/hub-bartender-billboard-source.png", "width": 128, "height": 256, "alpha": "transparent", "kind": "npc-billboard", "bottomContact": true } },
+        { "roleId": "hub-regular", "portrait": { "constant": "PORTRAIT_HUB_REGULAR", "path": "game/public/sprites/portraits/hub-regular.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/hub-regular-portrait-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "portrait" }, "billboard": { "constant": "NPC_HUB_REGULAR", "path": "game/public/sprites/boarding/npc-hub-regular.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/hub-regular-billboard-source.png", "width": 128, "height": 256, "alpha": "transparent", "kind": "npc-billboard", "bottomContact": true } },
+        { "roleId": "hub-signal-chaser", "portrait": { "constant": "PORTRAIT_HUB_SIGNAL_CHASER", "path": "game/public/sprites/portraits/hub-signal-chaser.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/hub-signal-chaser-portrait-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "portrait" }, "billboard": { "constant": "NPC_HUB_SIGNAL_CHASER", "path": "game/public/sprites/boarding/npc-hub-signal-chaser.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/hub-signal-chaser-billboard-source.png", "width": 128, "height": 256, "alpha": "transparent", "kind": "npc-billboard", "bottomContact": true } }
+      ]
+    },
+    "marketplace": {
+      "status": "planned",
+      "environment": [
+        { "constant": "HUB_MARKET_WALL", "path": "game/public/sprites/interiors/m3/marketplace/wall.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/wall-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "HUB_MARKET_FLOOR", "path": "game/public/sprites/interiors/m3/marketplace/floor.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/floor-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "HUB_MARKET_CEILING", "path": "game/public/sprites/interiors/m3/marketplace/ceiling.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/ceiling-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "COLONY_WALL_MARKETPLACE", "path": "game/public/sprites/walls/marketplace.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/facade-source.png", "width": 64, "height": 64, "alpha": "opaque", "kind": "seamless-texture" }
+      ],
+      "props": [
+        { "constant": "HUB_MARKET_PROP_VENDOR_COUNTER", "path": "game/public/sprites/interiors/m3/marketplace/vendor-counter.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/vendor-counter-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_MARKET_PROP_WEAPON_RACK", "path": "game/public/sprites/interiors/m3/marketplace/weapon-rack.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/weapon-rack-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_MARKET_PROP_SUPPLY_CRATES", "path": "game/public/sprites/interiors/m3/marketplace/supply-crates.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/supply-crates-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_MARKET_PROP_TRADE_TERMINAL", "path": "game/public/sprites/interiors/m3/marketplace/trade-terminal.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/trade-terminal-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_MARKET_PROP_CABLE_BUNDLE", "path": "game/public/sprites/interiors/m3/marketplace/cable-bundle.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/cable-bundle-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true }
+      ],
+      "npcs": [
+        { "roleId": "hub-arms-dealer", "portrait": { "constant": "PORTRAIT_HUB_ARMS_DEALER", "path": "game/public/sprites/portraits/hub-arms-dealer.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/hub-arms-dealer-portrait-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "portrait" }, "billboard": { "constant": "NPC_HUB_ARMS_DEALER", "path": "game/public/sprites/boarding/npc-hub-arms-dealer.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/hub-arms-dealer-billboard-source.png", "width": 128, "height": 256, "alpha": "transparent", "kind": "npc-billboard", "bottomContact": true } },
+        { "roleId": "hub-provisioner", "portrait": { "constant": "PORTRAIT_HUB_PROVISIONER", "path": "game/public/sprites/portraits/hub-provisioner.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/hub-provisioner-portrait-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "portrait" }, "billboard": { "constant": "NPC_HUB_PROVISIONER", "path": "game/public/sprites/boarding/npc-hub-provisioner.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/hub-provisioner-billboard-source.png", "width": 128, "height": 256, "alpha": "transparent", "kind": "npc-billboard", "bottomContact": true } },
+        { "roleId": "hub-contract-broker", "portrait": { "constant": "PORTRAIT_HUB_CONTRACT_BROKER", "path": "game/public/sprites/portraits/hub-contract-broker.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/hub-contract-broker-portrait-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "portrait" }, "billboard": { "constant": "NPC_HUB_CONTRACT_BROKER", "path": "game/public/sprites/boarding/npc-hub-contract-broker.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/hub-contract-broker-billboard-source.png", "width": 128, "height": 256, "alpha": "transparent", "kind": "npc-billboard", "bottomContact": true } }
+      ]
+    },
+    "town-hall": {
+      "status": "planned",
+      "environment": [
+        { "constant": "HUB_TOWN_HALL_WALL", "path": "game/public/sprites/interiors/m3/town-hall/wall.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/wall-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "HUB_TOWN_HALL_FLOOR", "path": "game/public/sprites/interiors/m3/town-hall/floor.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/floor-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "HUB_TOWN_HALL_CEILING", "path": "game/public/sprites/interiors/m3/town-hall/ceiling.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/ceiling-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
+        { "constant": "COLONY_WALL_TOWN_HALL", "path": "game/public/sprites/walls/town-hall.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/facade-source.png", "width": 64, "height": 64, "alpha": "opaque", "kind": "seamless-texture" }
+      ],
+      "props": [
+        { "constant": "HUB_TOWN_HALL_PROP_GOVERNOR_DESK", "path": "game/public/sprites/interiors/m3/town-hall/governor-desk.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/governor-desk-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_TOWN_HALL_PROP_PETITION_TERMINAL", "path": "game/public/sprites/interiors/m3/town-hall/petition-terminal.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/petition-terminal-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_TOWN_HALL_PROP_HOLO_ATLAS", "path": "game/public/sprites/interiors/m3/town-hall/holo-atlas.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/holo-atlas-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_TOWN_HALL_PROP_BENCH", "path": "game/public/sprites/interiors/m3/town-hall/bench.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/bench-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true },
+        { "constant": "HUB_TOWN_HALL_PROP_ARCHIVE_CABINET", "path": "game/public/sprites/interiors/m3/town-hall/archive-cabinet.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/archive-cabinet-source.png", "width": 256, "height": 256, "alpha": "transparent", "kind": "square-billboard", "bottomContact": true }
+      ],
+      "npcs": [
+        { "roleId": "hub-governor", "portrait": { "constant": "PORTRAIT_HUB_GOVERNOR", "path": "game/public/sprites/portraits/hub-governor.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/hub-governor-portrait-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "portrait" }, "billboard": { "constant": "NPC_HUB_GOVERNOR", "path": "game/public/sprites/boarding/npc-hub-governor.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/hub-governor-billboard-source.png", "width": 128, "height": 256, "alpha": "transparent", "kind": "npc-billboard", "bottomContact": true } },
+        { "roleId": "hub-civic-clerk", "portrait": { "constant": "PORTRAIT_HUB_CIVIC_CLERK", "path": "game/public/sprites/portraits/hub-civic-clerk.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/hub-civic-clerk-portrait-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "portrait" }, "billboard": { "constant": "NPC_HUB_CIVIC_CLERK", "path": "game/public/sprites/boarding/npc-hub-civic-clerk.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/hub-civic-clerk-billboard-source.png", "width": 128, "height": 256, "alpha": "transparent", "kind": "npc-billboard", "bottomContact": true } }
+      ]
+    }
+  }
+}
