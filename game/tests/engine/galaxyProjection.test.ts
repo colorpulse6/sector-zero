@@ -23,6 +23,9 @@ import {
 } from "../../app/components/engine/types";
 
 const SAVE_DATA_FIELDS: Record<keyof SaveData, true> = {
+  saveRevision: true,
+  appliedOutcomeIds: true,
+  outcomeRecoveryRecords: true,
   currentWorld: true,
   levels: true,
   credits: true,
@@ -62,7 +65,8 @@ const SAVE_DATA_FIELDS: Record<keyof SaveData, true> = {
 
 const LEGACY_TOP_LEVEL_FIELDS = (
   Object.keys(SAVE_DATA_FIELDS) as Array<keyof SaveData>
-).filter((key) => key !== "activeExperience" && key !== "galaxyRun");
+).filter((key) => key !== "activeExperience" && key !== "galaxyRun" &&
+  key !== "saveRevision" && key !== "appliedOutcomeIds" && key !== "outcomeRecoveryRecords");
 
 function richLegacyParent(): SaveData {
   const legacy = migrateSave({

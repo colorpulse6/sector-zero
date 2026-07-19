@@ -150,6 +150,9 @@ function isCanonicalSave(value: SaveData | GalaxyRunState): value is SaveData {
 
 function projectionFromRun(run: GalaxyRunState): SaveData {
   return {
+    saveRevision: 0,
+    appliedOutcomeIds: [],
+    outcomeRecoveryRecords: [],
     currentWorld: 1,
     levels: {},
     credits: run.resources.credits,

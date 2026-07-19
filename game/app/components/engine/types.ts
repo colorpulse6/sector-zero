@@ -512,6 +512,8 @@ export interface GameState {
   screen: GameScreen;
   /** Immutable identity and loadout snapshot for this gameplay attempt. */
   launchContext?: LaunchContext;
+  /** Attempt-owned terminal dependency snapshot captured by the launch wrapper. */
+  outcomeAttempt?: OutcomeAttempt;
   /** State-owned build snapshot used by simulation even before shell launch rewiring. */
   pilotLoadout: PilotLoadout;
   /** Attempt-owned enemy construction policy rebound before any shared spawn path. */
@@ -1084,7 +1086,63 @@ export interface BestiaryEntry {
 }
 
 // ─── Save Data ───────────────────────────────────────────────────────
+export type OutcomeTerminalKind = "success" | "failure" | "retreat";
+export type OutcomeRouteKind = "campaign" | "planet" | "special" | "operation" | "colony" | "poi";
+
+export interface OutcomeAttempt {
+  version: 1;
+  routeKind: OutcomeRouteKind;
+  launchId: string;
+  expectedRevision: number;
+  persistenceAuthority: LaunchContext["persistenceAuthority"];
+  returnTarget: LaunchContext["returnTarget"];
+  declaredFields: string[];
+  launchSnapshot: Record<string, unknown>;
+}
+
+export interface SerializedOutcomeEnvelope extends OutcomeAttempt {
+  outcomeId: string;
+  terminalKind: OutcomeTerminalKind;
+  payload: unknown;
+}
+
+export interface AppliedOutcomeReturnRecord {
+  version: 1;
+  kind: "applied_return";
+  outcomeId: string;
+  launchId: string;
+  terminalKind: OutcomeTerminalKind;
+  persistenceAuthority: LaunchContext["persistenceAuthority"];
+  returnTarget: LaunchContext["returnTarget"];
+  appliedRevision: number;
+  returnPending: boolean;
+}
+
+export interface LegacyPreparedOutcomeRecord {
+  version: 1;
+  kind: "legacy_poi_prepared";
+  envelope: SerializedOutcomeEnvelope;
+}
+
+export interface OutcomeReconciliationRecord {
+  version: 1;
+  kind: "reconciliation_required";
+  reason: "recovery_capacity_exceeded" | "prepared_outcome_invalid";
+  protectedOutcomeIds: string[];
+}
+
+export type OutcomeRecoveryRecord =
+  | AppliedOutcomeReturnRecord
+  | LegacyPreparedOutcomeRecord
+  | OutcomeReconciliationRecord;
+
 export interface SaveData {
+  /** Monotonic root persistence revision. Every canonical write advances it. */
+  saveRevision: number;
+  /** Bounded idempotency journal for terminal outcomes across every route. */
+  appliedOutcomeIds: string[];
+  /** Bounded durable return receipts and Legacy prepared terminal outcomes. */
+  outcomeRecoveryRecords: OutcomeRecoveryRecord[];
   currentWorld: number;
   levels: Record<string, { completed: boolean; stars: number; highScore: number }>;
   credits: number;

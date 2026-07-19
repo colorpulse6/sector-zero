@@ -6,6 +6,9 @@ import type { SaveData } from "../../app/components/engine/types";
 
 function makeEmptySave(): SaveData {
   return {
+    saveRevision: 0,
+    appliedOutcomeIds: [],
+    outcomeRecoveryRecords: [],
     currentWorld: 1,
     levels: {},
     credits: 0,
