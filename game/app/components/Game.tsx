@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
+  AudioEvent,
   GameScreen,
   PowerUpType,
   type GameState,
@@ -44,6 +45,8 @@ import {
   updateCockpit,
   resetCockpitKeys,
   getCockpitTouchHotspot,
+  hitTestMissionBoard,
+  applyMissionBoardHit,
   COCKPIT_HOTSPOTS,
 } from "./engine/cockpit";
 import { applyShopPurchase } from "./engine/consumables";
@@ -62,7 +65,16 @@ import { restoreCheckpoint } from "./engine/phases";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./engine/groundLevel";
 import { createTurretState } from "./engine/turretEngine";
 import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
-import { getSpecialMissionDef } from "./engine/specialMissions";
+import { canLaunchSpecialMission, getSpecialMissionDef } from "./engine/specialMissions";
+import {
+  campaignMissionDescriptor,
+  colonyMissionDescriptor,
+  launchContextFromSave,
+  planetMissionDescriptor,
+  retryLaunchContext,
+  specialMissionDescriptor,
+  type LaunchContext,
+} from "./engine/missionContext";
 import {
   advanceWorldCycle,
   colonyReducer,
@@ -134,6 +146,85 @@ type RegionMapSurface = {
   experience: ExperienceMode;
 };
 
+export function createCampaignLaunchState(
+  save: SaveData,
+  world: number,
+  level: number,
+  provenance: "star-map" | "continue" = "star-map",
+  returnTarget: "legacy-star-map" | "legacy-cockpit" = "legacy-star-map",
+): GameState {
+  const context = launchContextFromSave(
+    save,
+    campaignMissionDescriptor(world, level),
+    "legacy",
+    provenance,
+    returnTarget,
+  );
+  return createGameState(world, level, context);
+}
+
+export function createPlanetLaunchState(save: SaveData, planetId: PlanetId): GameState {
+  const context = launchContextFromSave(
+    save,
+    planetMissionDescriptor(planetId),
+    "legacy",
+    "cockpit",
+    "legacy-cockpit",
+  );
+  return createPlanetGameState(planetId, context);
+}
+
+export function createSpecialLaunchState(
+  save: SaveData,
+  missionId: SpecialMissionId,
+  provenance: "cockpit" | "continue" = "cockpit",
+): GameState {
+  if (!canLaunchSpecialMission(missionId, save)) {
+    throw new Error(`Special mission ${missionId} is locked or already cleared.`);
+  }
+  const context = launchContextFromSave(
+    save,
+    specialMissionDescriptor(missionId),
+    "legacy",
+    provenance,
+    "legacy-cockpit",
+  );
+  return createSpecialMissionGameState(missionId, false, context);
+}
+
+export function createColonyExteriorLaunchState(
+  save: SaveData,
+  colonyId: string,
+  provenance: "cockpit" | "continue" = "cockpit",
+): { gameState: GameState; sceneStack: SceneStack } {
+  const entered = enterColonyExploration(save, colonyId);
+  const context = launchContextFromSave(
+    save,
+    colonyMissionDescriptor(colonyId, "exterior"),
+    "legacy",
+    provenance,
+    "legacy-cockpit",
+  );
+  const baseState = createGameState(1, 1, context);
+  return {
+    sceneStack: entered.sceneStack,
+    gameState: {
+      ...baseState,
+      screen: GameScreen.PLAYING,
+      currentMode: "colony-exploration",
+      currentPhase: 0,
+      totalPhases: 1,
+      firstPersonState: entered.firstPersonState,
+      briefingTimer: 0,
+      devInvincible: false,
+    },
+  };
+}
+
+export function createRetryLaunchContext(state: GameState): LaunchContext | undefined {
+  return state.launchContext ? retryLaunchContext(state.launchContext) : undefined;
+}
+
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // WebGL overlay canvas that presents the graded frame over the 2D game canvas.
@@ -143,6 +234,7 @@ export default function Game() {
   const [showIntro, setShowIntro] = useState(false);
   const [showCockpit, setShowCockpit] = useState(false);
   const [cockpitState, setCockpitState] = useState<CockpitHubState>(createCockpitState());
+  const cockpitStateRef = useRef(cockpitState);
   const [showMap, setShowMap] = useState(false);
   const [showGalaxyAtlas, setShowGalaxyAtlas] = useState(false);
   const [atlasSelectedTarget, setAtlasSelectedTarget] = useState<AtlasTarget | undefined>();
@@ -211,6 +303,8 @@ export default function Game() {
   // back to its own position every frame).
   const lastTurretMouseRef = useRef<{ x: number; y: number } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const cockpitRafRef = useRef<number | null>(null);
+  const cockpitLoopGenerationRef = useRef(0);
   // Dedicated rAF handle for the grade-pass present loop. MUST stay separate from
   // animationFrameRef, which is shared/clobbered across the game/intro/ending loops.
   const presentRafRef = useRef<number | null>(null);
@@ -238,6 +332,11 @@ export default function Game() {
     }
     audioRef.current.init();
     return audioRef.current;
+  }, []);
+
+  const commitCockpitState = useCallback((next: CockpitHubState) => {
+    cockpitStateRef.current = next;
+    setCockpitState(next);
   }, []);
 
   const finishIntro = useCallback(() => {
@@ -587,9 +686,9 @@ export default function Game() {
       setShowMap(false);
       setActivePlanetId(null);
       setActiveSpecialMissionId(null);
-      setGameState(createGameState(world, level, saveData.upgrades, saveData.unlockedEnhancements));
+      setGameState(createCampaignLaunchState(saveDataRef.current, world, level));
     },
-    [ensureAudio, saveData.upgrades, saveData.unlockedEnhancements]
+    [ensureAudio]
   );
 
   const startPlanetMission = useCallback(
@@ -598,33 +697,57 @@ export default function Game() {
       audio.switchMusic("game");
       setActiveSpecialMissionId(null);
       setActivePlanetId(planetId);
-      setGameState(createPlanetGameState(planetId, saveData.upgrades, saveData.unlockedEnhancements));
+      setGameState(createPlanetLaunchState(saveDataRef.current, planetId));
     },
-    [ensureAudio, saveData.upgrades, saveData.unlockedEnhancements]
+    [ensureAudio]
   );
 
   const startSpecialMission = useCallback(
-    (missionId: SpecialMissionId, overrideSave?: SaveData) => {
+    (
+      missionId: SpecialMissionId,
+      overrideSave?: SaveData,
+      provenance: "cockpit" | "continue" = "cockpit",
+    ) => {
       const audio = ensureAudio();
-      const missionSave = overrideSave ?? saveData;
+      const missionSave = overrideSave ?? saveDataRef.current;
+      let nextState: GameState;
+      try {
+        nextState = createSpecialLaunchState(missionSave, missionId, provenance);
+      } catch {
+        audio.play(AudioEvent.UPGRADE_DENIED);
+        return false;
+      }
       audio.switchMusic("game");
       setShowMap(false);
       setShowCockpit(false);
       setActivePlanetId(null);
       setActiveSpecialMissionId(missionId);
-      setGameState(
-        createSpecialMissionGameState(
-          missionId,
-          missionSave.storyItems.includes("kepler-black-box"),
-          missionSave.upgrades,
-          missionSave.unlockedEnhancements,
-          missionSave.pilotLevel,
-          missionSave.allocatedSkills
-        )
-      );
+      setGameState(nextState);
+      return true;
     },
-    [ensureAudio, saveData]
+    [ensureAudio]
   );
+
+  const handleMissionBoardPoint = useCallback((x: number, y: number): boolean => {
+    const currentState = cockpitStateRef.current;
+    if (currentState.screen !== "missions") return false;
+    const currentSave = saveDataRef.current;
+    const hit = hitTestMissionBoard(currentState, currentSave, x, y);
+    if (!hit) return false;
+    const result = applyMissionBoardHit(currentState, currentSave, hit);
+    commitCockpitState(result.newState);
+    for (const event of result.newState.audioEvents) audioRef.current?.play(event);
+
+    if (result.action.type === "save-updated") {
+      persistCanonicalSave(result.action.save);
+    } else if (result.action.type === "launch-planet") {
+      setShowCockpit(false);
+      startPlanetMission(result.action.planetId);
+    } else if (result.action.type === "launch-special-mission") {
+      startSpecialMission(result.action.missionId);
+    }
+    return true;
+  }, [commitCockpitState, persistCanonicalSave, startPlanetMission, startSpecialMission]);
 
   const returnToCockpit = useCallback(() => {
     setGameState(null);
@@ -661,33 +784,17 @@ export default function Game() {
   }, [saveData]);
 
   const handleColoniesExit = useCallback(() => {
-    setCockpitState(prev => ({ ...prev, screen: "hub" }));
-  }, []);
+    commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
+  }, [commitCockpitState]);
 
   const handleDescend = useCallback((colonyId: string) => {
     ensureAudio();
-    const result = enterColonyExploration(saveData, colonyId);
-    const baseState = createGameState(
-      1, 1,
-      saveData.upgrades,
-      saveData.unlockedEnhancements,
-      saveData.pilotLevel,
-      saveData.allocatedSkills
-    );
-    setGameState({
-      ...baseState,
-      screen: GameScreen.PLAYING,
-      currentMode: "colony-exploration",
-      currentPhase: 0,
-      totalPhases: 1,
-      firstPersonState: result.firstPersonState,
-      briefingTimer: 0,
-      devInvincible: false,
-    });
-    setSceneStack(result.sceneStack);
+    const launched = createColonyExteriorLaunchState(saveDataRef.current, colonyId);
+    setGameState(launched.gameState);
+    setSceneStack(launched.sceneStack);
     setShowCockpit(false);
-    setCockpitState(prev => ({ ...prev, screen: "hub" }));
-  }, [saveData, ensureAudio]);
+    commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
+  }, [commitCockpitState, ensureAudio]);
 
   const handleRegionExpedition = useCallback((kind: "survey" | "poi", targetNodeId: string) => {
     const surface = regionMapSurface;
@@ -843,12 +950,15 @@ export default function Game() {
         setShowGalaxyAtlas(false);
         return;
       }
-      const entered = enterColonyExploration(resolved.save, pending.originColonyId);
-      const base = createGameState(1, 1, resolved.save.upgrades, resolved.save.unlockedEnhancements, resolved.save.pilotLevel, resolved.save.allocatedSkills);
+      const launched = createColonyExteriorLaunchState(
+        resolved.save,
+        pending.originColonyId,
+        "continue",
+      );
       saveSave(resolved.save);
       saveDataRef.current = resolved.save; setSaveData(resolved.save);
-      setSceneStack(entered.sceneStack);
-      setGameState({ ...base, screen: GameScreen.PLAYING, currentMode: "colony-exploration", currentPhase: 0, totalPhases: 1, firstPersonState: entered.firstPersonState, briefingTimer: 0, devInvincible: false });
+      setSceneStack(launched.sceneStack);
+      setGameState(launched.gameState);
       setActivePoi(null); setPendingPoiResolution(null); setPoiOutcomeResolving(false); setExitMenuOpen(false);
     } catch {
       setPoiOutcomeError("SAVE FAILED — RETRY DELIVERY");
@@ -888,7 +998,7 @@ export default function Game() {
     endingFrameRef.current = 0;
   }, []);
 
-  const restartGame = useCallback(() => {
+  const restartGame = useCallback((fromBeginning = false) => {
     const audio = ensureAudio();
     audio.switchMusic("game");
     if (activeOperationId && activeOperationContext) {
@@ -898,6 +1008,7 @@ export default function Game() {
     if (gameState && activePoiExperience !== "galaxy") {
       updateSectorZeroProfile(gameState.score);
     }
+    const ownedRetry = gameState ? createRetryLaunchContext(gameState) : undefined;
     if (activePoi) {
       const poiSave = activePoiExperience === "galaxy"
         ? (() => {
@@ -911,12 +1022,14 @@ export default function Game() {
         setActivePoi({ originColonyId: activePoi.originColonyId, session: dispatched.session });
         poiCompletionHandledRef.current = false;
         setPendingPoiResolution(null);
+        // POI construction does not yet accept a claimed retry context. Launch a
+        // fresh attempt until the runtime adapter exposes that explicit seam.
         setGameState(createPoiGameState(dispatched.session, poiSave, activePoiExperience ?? "legacy"));
       }
       return;
     }
     // If we have a checkpoint (multi-phase, not phase 1), restart from checkpoint
-    if (gameState?.phaseCheckpoint && gameState.currentPhase > 0) {
+    if (!fromBeginning && gameState?.phaseCheckpoint && gameState.currentPhase > 0) {
       const restored = restoreCheckpoint(gameState, gameState.phaseCheckpoint);
       // For ground-run mode, re-initialize ground state and reset player spawn position
       const isGroundRun = gameState.currentMode === "ground-run";
@@ -925,6 +1038,11 @@ export default function Game() {
       setGameState({
         ...gameState,
         ...restored,
+        ...(ownedRetry ? {
+          launchContext: ownedRetry,
+          pilotLoadout: ownedRetry.pilot,
+          equippedWeaponType: ownedRetry.pilot.equippedWeaponType,
+        } : {}),
         screen: GameScreen.PLAYING,
         enemies: [],
         boss: null,
@@ -947,22 +1065,21 @@ export default function Game() {
       return;
     }
     if (activeSpecialMissionId) {
-      setGameState(
-        createSpecialMissionGameState(
-          activeSpecialMissionId,
-          saveData.storyItems.includes("kepler-black-box"),
-          saveData.upgrades,
-          saveData.unlockedEnhancements,
-          saveData.pilotLevel,
-          saveData.allocatedSkills
-        )
-      );
+      setGameState(ownedRetry
+        ? createSpecialMissionGameState(activeSpecialMissionId, false, ownedRetry)
+        : createSpecialLaunchState(saveDataRef.current, activeSpecialMissionId));
     } else if (activePlanetId) {
-      setGameState(createPlanetGameState(activePlanetId, saveData.upgrades, saveData.unlockedEnhancements));
+      setGameState(ownedRetry
+        ? createPlanetGameState(activePlanetId, ownedRetry)
+        : createPlanetLaunchState(saveDataRef.current, activePlanetId));
     } else {
-      setGameState(createGameState(gameState?.currentWorld ?? 1, gameState?.currentLevel ?? 1, saveData.upgrades, saveData.unlockedEnhancements));
+      const world = gameState?.currentWorld ?? 1;
+      const level = gameState?.currentLevel ?? 1;
+      setGameState(ownedRetry
+        ? createGameState(world, level, ownedRetry)
+        : createCampaignLaunchState(saveDataRef.current, world, level));
     }
-  }, [gameState, activePlanetId, activeSpecialMissionId, activeOperationId, activeOperationContext, activePoi, activePoiExperience, ensureAudio, mountAuthorizedOperation, saveData]);
+  }, [gameState, activePlanetId, activeSpecialMissionId, activeOperationId, activeOperationContext, activePoi, activePoiExperience, ensureAudio, mountAuthorizedOperation]);
 
   const nextLevel = useCallback((options?: { unlockSpecialMission?: SpecialMissionId; launchSpecialMission?: boolean }) => {
     if (!gameState) return;
@@ -1092,12 +1209,15 @@ export default function Game() {
     setSaveData(cycledSave);
 
     if (options?.unlockSpecialMission && options.launchSpecialMission) {
-      startSpecialMission(options.unlockSpecialMission, cycledSave);
+      startSpecialMission(options.unlockSpecialMission, cycledSave, "continue");
       return;
     }
 
     const maxLevels = getWorldLevelCount(gameState.currentWorld);
     const nextLv = gameState.currentLevel + 1;
+    const campaignReturnTarget = gameState.launchContext?.returnTarget === "legacy-cockpit"
+      ? "legacy-cockpit"
+      : "legacy-star-map";
 
     // Carry forward state across levels in the same world
     const carryForward = (newState: GameState) => {
@@ -1116,7 +1236,13 @@ export default function Game() {
 
     if (nextLv <= maxLevels) {
       // Next level in same world
-      carryForward(createGameState(gameState.currentWorld, nextLv, cycledSave.upgrades, cycledSave.unlockedEnhancements, cycledSave.pilotLevel, cycledSave.allocatedSkills));
+      carryForward(createCampaignLaunchState(
+        cycledSave,
+        gameState.currentWorld,
+        nextLv,
+        "continue",
+        campaignReturnTarget,
+      ));
     } else {
       // World complete — try advancing to next world
       let nextWorld = gameState.currentWorld + 1;
@@ -1124,7 +1250,13 @@ export default function Game() {
         nextWorld++;
       }
       if (nextWorld <= 8 && getWorldLevelCount(nextWorld) > 0) {
-        carryForward(createGameState(nextWorld, 1, cycledSave.upgrades, cycledSave.unlockedEnhancements, cycledSave.pilotLevel, cycledSave.allocatedSkills));
+        carryForward(createCampaignLaunchState(
+          cycledSave,
+          nextWorld,
+          1,
+          "continue",
+          campaignReturnTarget,
+        ));
       } else {
         startEnding();
       }
@@ -1173,7 +1305,7 @@ export default function Game() {
         setShowStartScreen(false);
         setShowMap(false);
         setShowCockpit(false);
-        const newState = createGameState(Number(w), Number(l), saveData.upgrades, saveData.unlockedEnhancements);
+        const newState = createCampaignLaunchState(saveDataRef.current, Number(w), Number(l));
         const wasInvincible = gameState?.devInvincible ?? false;
         setGameState({ ...newState, devInvincible: wasInvincible });
         return;
@@ -1228,26 +1360,10 @@ export default function Game() {
         setShowStartScreen(false);
         setShowMap(false);
         setShowCockpit(false);
-        const result = enterColonyExploration(seeded, colonyId);
-        const baseState = createGameState(
-          1, 1,
-          seeded.upgrades,
-          seeded.unlockedEnhancements,
-          seeded.pilotLevel,
-          seeded.allocatedSkills,
-        );
-        setGameState({
-          ...baseState,
-          screen: GameScreen.PLAYING,
-          currentMode: "colony-exploration",
-          currentPhase: 0,
-          totalPhases: 1,
-          firstPersonState: result.firstPersonState,
-          briefingTimer: 0,
-          devInvincible: false,
-        });
-        setSceneStack(result.sceneStack);
-        setCockpitState(prev => ({ ...prev, screen: "hub" }));
+        const launched = createColonyExteriorLaunchState(seeded, colonyId);
+        setGameState(launched.gameState);
+        setSceneStack(launched.sceneStack);
+        commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
         return;
       }
 
@@ -1430,7 +1546,7 @@ export default function Game() {
         }
       });
     },
-    [gameState?.devInvincible, ensureAudio, persistCanonicalSave, startPlanetMission]
+    [commitCockpitState, gameState?.devInvincible, ensureAudio, persistCanonicalSave, startPlanetMission]
   );
 
   // Keyboard input
@@ -1763,12 +1879,18 @@ export default function Game() {
               if (hotspot.id === "starmap") {
                 openExperienceMap();
               } else {
-                setCockpitState(prev => ({ ...prev, screen: hotspot.id, selectedHotspot: hotspotIndex }));
+                commitCockpitState({
+                  ...cockpitStateRef.current,
+                  screen: hotspot.id,
+                  selectedHotspot: hotspotIndex,
+                });
               }
             }
+          } else if (cockpitState.screen === "missions") {
+            handleMissionBoardPoint(pos.x, pos.y);
           } else {
             // In sub-screen, tap to go back to hub
-            setCockpitState(prev => ({ ...prev, screen: "hub" }));
+            commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
           }
         }
       } else if (gameState?.screen === GameScreen.BRIEFING) {
@@ -1804,7 +1926,7 @@ export default function Game() {
       canvas.removeEventListener("touchmove", handleTouchMove);
       canvas.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [showStartScreen, showIntro, endingPhase, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationContext, activePoi, activePoiExperience, openExperienceMap, finishIntro, advanceEnding, confirmChoice, foldOperationResult, returnGalaxyPoiToAtlas, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice]);
+  }, [showStartScreen, showIntro, endingPhase, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationContext, activePoi, activePoiExperience, openExperienceMap, finishIntro, advanceEnding, confirmChoice, foldOperationResult, returnGalaxyPoiToAtlas, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, commitCockpitState, handleMissionBoardPoint]);
 
   // Intro crawl loop
   useEffect(() => {
@@ -1931,10 +2053,17 @@ export default function Game() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const generation = ++cockpitLoopGenerationRef.current;
 
     const cockpitLoop = () => {
-      const { newState, action } = updateCockpit(cockpitState, keysRef.current, saveData);
-      setCockpitState(newState);
+      if (generation !== cockpitLoopGenerationRef.current) return;
+      const currentSave = saveDataRef.current;
+      const { newState, action } = updateCockpit(
+        cockpitStateRef.current,
+        keysRef.current,
+        currentSave,
+      );
+      commitCockpitState(newState);
 
       // Play cockpit audio events
       for (const event of newState.audioEvents) {
@@ -1958,35 +2087,43 @@ export default function Game() {
       }
 
       if (action.type === "save-updated" && action.save) {
-        saveSave(action.save);
-        setSaveData(action.save);
+        persistCanonicalSave(action.save);
       }
 
       if (action.type === "allocate-skill") {
-        const result = allocateNode(action.nodeId, saveData.allocatedSkills, saveData.skillPoints);
+        const result = allocateNode(action.nodeId, currentSave.allocatedSkills, currentSave.skillPoints);
         if (result) {
           const newSave = {
-            ...saveData,
+            ...currentSave,
             allocatedSkills: result.allocated,
             skillPoints: result.pointsRemaining,
           };
-          saveSave(newSave);
-          setSaveData(newSave);
+          persistCanonicalSave(newSave);
         }
       }
 
-      drawCockpit(ctx, newState, action.type === "save-updated" && action.save ? action.save : saveData);
-      animationFrameRef.current = requestAnimationFrame(cockpitLoop);
-    };
-
-    animationFrameRef.current = requestAnimationFrame(cockpitLoop);
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      drawCockpit(
+        ctx,
+        newState,
+        action.type === "save-updated" && action.save ? action.save : saveDataRef.current,
+      );
+      if (generation === cockpitLoopGenerationRef.current) {
+        cockpitRafRef.current = requestAnimationFrame(cockpitLoop);
       }
     };
-  }, [showCockpit, showGalaxyAtlas, cockpitState, saveData, openExperienceMap, startPlanetMission, startSpecialMission]);
+
+    cockpitRafRef.current = requestAnimationFrame(cockpitLoop);
+
+    return () => {
+      if (generation === cockpitLoopGenerationRef.current) {
+        cockpitLoopGenerationRef.current += 1;
+      }
+      if (cockpitRafRef.current !== null) {
+        cancelAnimationFrame(cockpitRafRef.current);
+        cockpitRafRef.current = null;
+      }
+    };
+  }, [showCockpit, showGalaxyAtlas, commitCockpitState, openExperienceMap, persistCanonicalSave, startPlanetMission, startSpecialMission]);
 
   // Game loop
   useEffect(() => {
@@ -2322,21 +2459,27 @@ export default function Game() {
                   if (h.id === "starmap") {
                     openExperienceMap();
                   } else {
-                    setCockpitState((prev) => ({
-                      ...prev,
+                    commitCockpitState({
+                      ...cockpitStateRef.current,
                       screen: h.id,
                       selectedHotspot: i,
-                    }));
+                    });
                   }
                   break;
                 }
               }
             }
 
-            // Cockpit sub-screens — click near top-left to go back
+            // Mission Board owns tab/row/back geometry for every pointing device.
+            if (showCockpit && cockpitState.screen === "missions") {
+              handleMissionBoardPoint(cx, cy);
+              return;
+            }
+
+            // Other cockpit sub-screens — click near top-left to go back
             if (showCockpit && cockpitState.screen !== "hub") {
               if (cx < 60 && cy < 50) {
-                setCockpitState((prev) => ({ ...prev, screen: "hub" }));
+                commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
               }
             }
 
@@ -2399,7 +2542,7 @@ export default function Game() {
           onClose={() => {
             setShowGalaxyAtlas(false);
             setShowCockpit(true);
-            setCockpitState((previous) => ({ ...previous, screen: "hub" }));
+            commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
             resetCockpitKeys();
           }}
         />
@@ -2734,7 +2877,7 @@ export default function Game() {
           </div>
           <div className="flex gap-4">
             <button
-              onClick={restartGame}
+              onClick={() => restartGame()}
               className="px-8 py-4 border-2 border-cyan-400 text-cyan-400 text-lg hover:bg-cyan-400 hover:text-black transition-colors tracking-wider"
             >
               TRY AGAIN
@@ -2742,15 +2885,7 @@ export default function Game() {
             {gameState.currentPhase > 0 && !activeOperationId && (
               <button
                 onClick={() => {
-                  if (!gameState) return;
-                  setGameState(createGameState(
-                    gameState.currentWorld,
-                    gameState.currentLevel,
-                    saveData.upgrades,
-                    saveData.unlockedEnhancements,
-                    saveData.pilotLevel,
-                    saveData.allocatedSkills
-                  ));
+                  restartGame(true);
                 }}
                 className="px-6 py-4 border-2 border-yellow-600 text-yellow-400 text-lg hover:bg-yellow-600 hover:text-black transition-colors tracking-wider"
               >

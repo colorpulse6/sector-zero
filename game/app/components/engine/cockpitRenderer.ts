@@ -1,6 +1,6 @@
 import { CANVAS_WIDTH, CANVAS_HEIGHT, type SaveData, type BestiaryEntry } from "./types";
 import { getSprite, SPRITES } from "./sprites";
-import { type CockpitHubState, COCKPIT_HOTSPOTS } from "./cockpit";
+import { type CockpitHubState, COCKPIT_HOTSPOTS, getMissionBoardLayout } from "./cockpit";
 import { UPGRADE_DEFS, getUpgradeCost, canPurchase, isUpgradeLevelUnlocked, getUnlockRequirement, getXpProgress, getNextEffect, getCurrentEffect } from "./upgrades";
 import { CREW, getAvailableConversations, isConversationViewed, countUnread, countTotalUnread } from "./crewDialog";
 import { CODEX_CATEGORIES, getEntriesForCategory, isCodexEntryNew, countNewCodexEntries, countNewInCategory } from "./codex";
@@ -13,7 +13,7 @@ import { WEAPON_TYPE_META } from "./weaponTypes";
 import { ENEMY_SPRITE_MAP } from "./enemies";
 import { xpForLevel, xpProgress, getMilestones, MAX_PILOT_LEVEL, bonusHp, creditBonus, materialDropBonus, skillPointsAtLevel } from "./pilotLevel";
 import { getTreeNodes, canAllocate } from "./skillTree";
-import { getAvailableSpecialMissions, isSpecialMissionCompleted } from "./specialMissions";
+import { canLaunchSpecialMission, getAvailableSpecialMissions, isSpecialMissionCompleted } from "./specialMissions";
 
 // ─── Main Cockpit Drawing ───────────────────────────────────────────
 
@@ -1104,15 +1104,16 @@ function drawMissionsScreen(
   drawSubScreenFrame(ctx, "MISSION BOARD", SPRITES.MISSIONS_BG);
 
   // ── Tabs ──
+  const layout = getMissionBoardLayout(state, save);
   const tabNames = ["SIDE QUESTS", "SPECIAL OPS", "PLANET MISSIONS"];
   const tabColors = ["#44ccff", "#ffaa44", "#ff8844"];
-  const tabY = 52;
-  const tabH = 26;
-  const tabSpacing = 6;
-  const tabW = (CANVAS_WIDTH - 24 - tabSpacing * 2) / 3;
 
   for (let t = 0; t < 3; t++) {
-    const tx = 12 + t * (tabW + tabSpacing);
+    const tab = layout.tabs[t];
+    const tx = tab.x;
+    const tabY = tab.y;
+    const tabW = tab.w;
+    const tabH = tab.h;
     const isActive = state.missionTab === t;
 
     if (isActive) {
@@ -1137,7 +1138,9 @@ function drawMissionsScreen(
 
     // Planet notification badge
     if (t === 1) {
-      const unlocked = getAvailableSpecialMissions(save).length;
+      const unlocked = getAvailableSpecialMissions(save).filter((mission) =>
+        canLaunchSpecialMission(mission.id, save)
+      ).length;
       if (unlocked > 0) {
         const bx = tx + tabW - 6;
         const by = tabY + 4;
@@ -1174,11 +1177,11 @@ function drawMissionsScreen(
   }
 
   if (state.missionTab === 0) {
-    drawMissionsQuestsTab(ctx, state, save, tabY + tabH + 6);
+    drawMissionsQuestsTab(ctx, state, save);
   } else if (state.missionTab === 1) {
-    drawMissionsSpecialTab(ctx, state, save, tabY + tabH + 6);
+    drawMissionsSpecialTab(ctx, state, save);
   } else {
-    drawMissionsPlanetsTab(ctx, state, save, tabY + tabH + 6);
+    drawMissionsPlanetsTab(ctx, state, save);
   }
 
   // ── Bottom Bar ──
@@ -1208,23 +1211,23 @@ function drawMissionsQuestsTab(
   ctx: CanvasRenderingContext2D,
   state: CockpitHubState,
   save: SaveData,
-  startY: number
 ): void {
   const quests = getAvailableQuests(save);
   const activeCount = save.activeQuests.length;
+  const layout = getMissionBoardLayout(state, save);
 
   // Active quests counter
   ctx.fillStyle = "#88aabb";
   ctx.font = "9px monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "top";
-  ctx.fillText(`ACTIVE: ${activeCount}/3`, CANVAS_WIDTH - 16, startY);
+  ctx.fillText(`ACTIVE: ${activeCount}/3`, CANVAS_WIDTH - 16, layout.listY - 14);
 
-  const listY = startY + 14;
+  const listY = layout.listY;
   const listX = 12;
   const listW = CANVAS_WIDTH - 24;
-  const rowH = 68;
-  const maxVisible = Math.floor((CANVAS_HEIGHT - listY - 60) / rowH);
+  const rowH = layout.rowH;
+  const maxVisible = layout.maxVisible;
 
   if (quests.length === 0) {
     ctx.fillStyle = "#556677";
@@ -1238,7 +1241,7 @@ function drawMissionsQuestsTab(
     return;
   }
 
-  const scrollOffset = Math.max(0, state.missionSelected - maxVisible + 1);
+  const scrollOffset = layout.scrollOffset;
 
   for (let i = scrollOffset; i < Math.min(quests.length, scrollOffset + maxVisible); i++) {
     const quest = quests[i];
@@ -1354,14 +1357,14 @@ function drawMissionsSpecialTab(
   ctx: CanvasRenderingContext2D,
   state: CockpitHubState,
   save: SaveData,
-  startY: number
 ): void {
   const missions = getAvailableSpecialMissions(save);
-  const listY = startY + 4;
+  const layout = getMissionBoardLayout(state, save);
+  const listY = layout.listY;
   const listX = 12;
   const listW = CANVAS_WIDTH - 24;
-  const rowH = 72;
-  const maxVisible = Math.floor((CANVAS_HEIGHT - listY - 60) / rowH);
+  const rowH = layout.rowH;
+  const maxVisible = layout.maxVisible;
 
   if (missions.length === 0) {
     ctx.fillStyle = "#556677";
@@ -1375,7 +1378,7 @@ function drawMissionsSpecialTab(
     return;
   }
 
-  const scrollOffset = Math.max(0, state.missionSelected - maxVisible + 1);
+  const scrollOffset = layout.scrollOffset;
 
   for (let i = scrollOffset; i < Math.min(missions.length, scrollOffset + maxVisible); i++) {
     const mission = missions[i];
@@ -1383,7 +1386,7 @@ function drawMissionsSpecialTab(
     const completed = isSpecialMissionCompleted(mission.id, save);
     const y = listY + (i - scrollOffset) * rowH;
 
-    if (isSelected) {
+    if (isSelected && !completed) {
       const pulse = 0.06 + 0.03 * Math.sin(state.animTimer * 0.06);
       ctx.fillStyle = `rgba(255, 170, 68, ${pulse})`;
       ctx.beginPath();
@@ -1430,7 +1433,7 @@ function drawMissionsSpecialTab(
       ctx.fillText("\u2713 CLEARED", listX + listW - 8, y + 8);
     }
 
-    if (isSelected) {
+    if (isSelected && !completed) {
       ctx.fillStyle = "#ffaa44";
       ctx.font = "8px monospace";
       ctx.textAlign = "right";
@@ -1459,15 +1462,15 @@ function drawMissionsPlanetsTab(
   ctx: CanvasRenderingContext2D,
   state: CockpitHubState,
   save: SaveData,
-  startY: number
 ): void {
   const planets = PLANET_DEFS;
-  const listY = startY;
+  const layout = getMissionBoardLayout(state, save);
+  const listY = layout.listY;
   const listX = 12;
   const listW = CANVAS_WIDTH - 24;
-  const rowH = 62;
-  const maxVisible = Math.floor((CANVAS_HEIGHT - listY - 60) / rowH);
-  const scrollOffset = Math.max(0, state.missionSelected - maxVisible + 1);
+  const rowH = layout.rowH;
+  const maxVisible = layout.maxVisible;
+  const scrollOffset = layout.scrollOffset;
 
   for (let i = scrollOffset; i < Math.min(planets.length, scrollOffset + maxVisible); i++) {
     const planet = planets[i];

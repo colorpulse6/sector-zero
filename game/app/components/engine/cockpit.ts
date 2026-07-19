@@ -1,4 +1,4 @@
-import { type Keys, type SaveData, type PlanetId, type SpecialMissionId, AudioEvent } from "./types";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, type Keys, type SaveData, type PlanetId, type SpecialMissionId, AudioEvent } from "./types";
 import { UPGRADE_DEFS, getUpgradeCost, canPurchase } from "./upgrades";
 import { purchaseUpgrade } from "./save";
 import { CREW, getAvailableConversations, markConversationViewed } from "./crewDialog";
@@ -8,7 +8,7 @@ import { getAvailableQuests, isQuestActive, isQuestCompleted, acceptQuest, aband
 import { PLANET_DEFS, isPlanetUnlocked, isPlanetCompleted } from "./planets";
 import { getTreeNodes, canAllocate } from "./skillTree";
 import type { SkillNodeId } from "./types";
-import { getAvailableSpecialMissions, isSpecialMissionCompleted } from "./specialMissions";
+import { canLaunchSpecialMission, getAvailableSpecialMissions } from "./specialMissions";
 
 // ─── Cockpit Screen Types ───────────────────────────────────────────
 
@@ -35,6 +35,30 @@ export interface CockpitHubState {
   bestiarySelected: number;
   bestiaryReading: boolean;
   pilotTreeSelected: number;
+}
+
+export type MissionBoardTab = 0 | 1 | 2;
+
+export interface MissionBoardRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export type MissionBoardHit =
+  | { kind: "back" }
+  | { kind: "tab"; tab: MissionBoardTab }
+  | { kind: "row"; tab: MissionBoardTab; index: number };
+
+export interface MissionBoardLayout {
+  back: MissionBoardRect;
+  tabs: Array<MissionBoardRect & { tab: MissionBoardTab }>;
+  rows: Array<MissionBoardRect & { index: number; enabled: boolean }>;
+  listY: number;
+  rowH: number;
+  scrollOffset: number;
+  maxVisible: number;
 }
 
 // ─── Hotspot Definitions ────────────────────────────────────────────
@@ -373,7 +397,7 @@ function updateMissions(
     return { newState: s, action: { type: "none" } };
   }
   if (justPressed.left && s.missionTab > 0) {
-    s.missionTab = 0;
+    s.missionTab -= 1;
     s.missionSelected = 0;
     s.audioEvents.push(AudioEvent.COCKPIT_NAV);
     return { newState: s, action: { type: "none" } };
@@ -399,6 +423,153 @@ function updateMissions(
     // ── Planet Missions tab ──
     return updateMissionsPlanets(s, justPressed, save);
   }
+}
+
+const MISSION_BOARD_TAB_Y = 52;
+const MISSION_BOARD_TAB_H = 26;
+const MISSION_BOARD_TAB_SPACING = 6;
+const MISSION_BOARD_INSET = 12;
+const MISSION_BOARD_TAB_W = (CANVAS_WIDTH - MISSION_BOARD_INSET * 2 - MISSION_BOARD_TAB_SPACING * 2) / 3;
+
+function missionBoardItems(tab: MissionBoardTab, save: SaveData): Array<{ enabled: boolean }> {
+  if (tab === 0) {
+    const activeCount = save.activeQuests.length;
+    return getAvailableQuests(save).map((quest) => ({
+      enabled: isQuestActive(quest.id, save) || (!isQuestCompleted(quest.id, save) && activeCount < 3),
+    }));
+  }
+  if (tab === 1) {
+    return getAvailableSpecialMissions(save).map((mission) => ({
+      enabled: canLaunchSpecialMission(mission.id, save),
+    }));
+  }
+  return PLANET_DEFS.map((planet) => ({
+    enabled: isPlanetUnlocked(planet, save) && !isPlanetCompleted(planet.id, save),
+  }));
+}
+
+export function getMissionBoardLayout(
+  state: CockpitHubState,
+  save: SaveData,
+): MissionBoardLayout {
+  const tab = state.missionTab as MissionBoardTab;
+  const rowH = tab === 0 ? 68 : tab === 1 ? 72 : 62;
+  const listY = tab === 0 ? 98 : tab === 1 ? 88 : 84;
+  const maxVisible = Math.floor((CANVAS_HEIGHT - listY - 60) / rowH);
+  const items = missionBoardItems(tab, save);
+  const scrollOffset = Math.max(0, state.missionSelected - maxVisible + 1);
+  const rows = items
+    .slice(scrollOffset, scrollOffset + maxVisible)
+    .map((item, visibleIndex) => ({
+      x: MISSION_BOARD_INSET,
+      y: listY + visibleIndex * rowH,
+      w: CANVAS_WIDTH - MISSION_BOARD_INSET * 2,
+      h: rowH - 4,
+      index: scrollOffset + visibleIndex,
+      enabled: item.enabled,
+    }));
+
+  return {
+    back: { x: 0, y: 0, w: 60, h: 50 },
+    tabs: ([0, 1, 2] as const).map((tabIndex) => ({
+      x: MISSION_BOARD_INSET + tabIndex * (MISSION_BOARD_TAB_W + MISSION_BOARD_TAB_SPACING),
+      y: MISSION_BOARD_TAB_Y,
+      w: MISSION_BOARD_TAB_W,
+      h: MISSION_BOARD_TAB_H,
+      tab: tabIndex,
+    })),
+    rows,
+    listY,
+    rowH,
+    scrollOffset,
+    maxVisible,
+  };
+}
+
+function contains(rect: MissionBoardRect, x: number, y: number): boolean {
+  return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+}
+
+export function hitTestMissionBoard(
+  state: CockpitHubState,
+  save: SaveData,
+  x: number,
+  y: number,
+): MissionBoardHit | null {
+  const layout = getMissionBoardLayout(state, save);
+  if (contains(layout.back, x, y)) return { kind: "back" };
+  const tab = layout.tabs.find((candidate) => contains(candidate, x, y));
+  if (tab) return { kind: "tab", tab: tab.tab };
+  const row = layout.rows.find((candidate) => contains(candidate, x, y));
+  return row
+    ? { kind: "row", tab: state.missionTab as MissionBoardTab, index: row.index }
+    : null;
+}
+
+function activateMissionRow(
+  s: CockpitHubState,
+  save: SaveData,
+): { newState: CockpitHubState; action: CockpitAction } {
+  if (s.missionTab === 0) {
+    const quests = getAvailableQuests(save);
+    const quest = quests[s.missionSelected];
+    if (!quest) return { newState: s, action: { type: "none" } };
+    if (isQuestActive(quest.id, save)) {
+      s.audioEvents.push(AudioEvent.QUEST_ABANDON);
+      return { newState: s, action: { type: "save-updated", save: abandonQuest(save, quest.id) } };
+    }
+    if (!isQuestCompleted(quest.id, save)) {
+      const newSave = acceptQuest(save, quest.id);
+      if (newSave) {
+        s.audioEvents.push(AudioEvent.QUEST_ACCEPT);
+        return { newState: s, action: { type: "save-updated", save: newSave } };
+      }
+    }
+    s.audioEvents.push(AudioEvent.UPGRADE_DENIED);
+    return { newState: s, action: { type: "none" } };
+  }
+
+  if (s.missionTab === 1) {
+    const mission = getAvailableSpecialMissions(save)[s.missionSelected];
+    if (mission && canLaunchSpecialMission(mission.id, save)) {
+      s.audioEvents.push(AudioEvent.COCKPIT_OPEN);
+      return { newState: s, action: { type: "launch-special-mission", missionId: mission.id } };
+    }
+    s.audioEvents.push(AudioEvent.UPGRADE_DENIED);
+    return { newState: s, action: { type: "none" } };
+  }
+
+  const planet = PLANET_DEFS[s.missionSelected];
+  if (planet && isPlanetUnlocked(planet, save) && !isPlanetCompleted(planet.id, save)) {
+    s.audioEvents.push(AudioEvent.COCKPIT_OPEN);
+    return { newState: s, action: { type: "launch-planet", planetId: planet.id } };
+  }
+  s.audioEvents.push(AudioEvent.UPGRADE_DENIED);
+  return { newState: s, action: { type: "none" } };
+}
+
+export function applyMissionBoardHit(
+  state: CockpitHubState,
+  save: SaveData,
+  hit: MissionBoardHit,
+): { newState: CockpitHubState; action: CockpitAction } {
+  const s = { ...state, audioEvents: [] as AudioEvent[] };
+  if (hit.kind === "back") {
+    s.screen = "hub";
+    s.missionSelected = 0;
+    s.transitionTimer = TRANSITION_FRAMES;
+    s.audioEvents.push(AudioEvent.COCKPIT_BACK);
+    return { newState: s, action: { type: "none" } };
+  }
+  if (hit.kind === "tab") {
+    s.missionTab = hit.tab;
+    s.missionSelected = 0;
+    s.audioEvents.push(AudioEvent.COCKPIT_NAV);
+    return { newState: s, action: { type: "none" } };
+  }
+  if (hit.tab !== s.missionTab) return { newState: s, action: { type: "none" } };
+  s.missionSelected = hit.index;
+  return activateMissionRow(s, save);
 }
 
 function updateMissionsQuests(
@@ -466,13 +637,7 @@ function updateMissionsPlanets(
 
   // Launch planet mission
   if (justPressed.shoot && planets.length > 0) {
-    const planet = planets[s.missionSelected];
-    if (planet && isPlanetUnlocked(planet, save) && !isPlanetCompleted(planet.id, save)) {
-      s.audioEvents.push(AudioEvent.COCKPIT_OPEN);
-      return { newState: s, action: { type: "launch-planet", planetId: planet.id } };
-    }
-    // Can't launch — locked or already completed
-    s.audioEvents.push(AudioEvent.UPGRADE_DENIED);
+    return activateMissionRow(s, save);
   }
 
   return { newState: s, action: { type: "none" } };
@@ -497,11 +662,7 @@ function updateMissionsSpecial(
   }
 
   if (justPressed.shoot && missions.length > 0) {
-    const mission = missions[s.missionSelected];
-    if (mission) {
-      s.audioEvents.push(AudioEvent.COCKPIT_OPEN);
-      return { newState: s, action: { type: "launch-special-mission", missionId: mission.id } };
-    }
+    return activateMissionRow(s, save);
   }
 
   return { newState: s, action: { type: "none" } };
