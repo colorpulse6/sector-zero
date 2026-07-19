@@ -390,6 +390,11 @@ interface DecodedPoiIdentity {
   engine: PoiEngineAdapter;
 }
 
+interface DecodedPoiOutcomeMission {
+  descriptorId: string;
+  originColonyId: string;
+}
+
 function decodePoiIdentity(id: string): DecodedPoiIdentity | null {
   if (!id.startsWith("poi:")) return null;
   const template = decodeIdentityComponent(id, "poi:".length);
@@ -400,6 +405,27 @@ function decodePoiIdentity(id: string): DecodedPoiIdentity | null {
     (candidate) => POI_TEMPLATES[candidate] === template.value,
   );
   return engine === undefined ? null : { nodeId: node.value, templateId: template.value, engine };
+}
+
+const POI_OUTCOME_MISSION_PREFIX = "outcome-poi:";
+
+export function poiOutcomeMissionId(descriptorId: string, originColonyId: string): string {
+  if (canonicalPoiDescriptorFromId(descriptorId) === null) {
+    throw new Error("POI outcome descriptor identity is malformed.");
+  }
+  const origin = requireIdentity(originColonyId, "POI outcome origin");
+  return `${POI_OUTCOME_MISSION_PREFIX}${encodeIdentityComponent(descriptorId)}:${encodeIdentityComponent(origin)}`;
+}
+
+function decodePoiOutcomeMissionId(value: string): DecodedPoiOutcomeMission | null {
+  if (!value.startsWith(POI_OUTCOME_MISSION_PREFIX)) return null;
+  const descriptor = decodeIdentityComponent(value, POI_OUTCOME_MISSION_PREFIX.length);
+  if (descriptor === null || value[descriptor.nextOffset] !== ":" ||
+    canonicalPoiDescriptorFromId(descriptor.value) === null) return null;
+  const origin = decodeIdentityComponent(value, descriptor.nextOffset + 1);
+  return origin !== null && origin.nextOffset === value.length
+    ? { descriptorId: descriptor.value, originColonyId: origin.value }
+    : null;
 }
 
 function canonicalColonyDescriptorFromId(id: string): MissionDescriptor | null {
@@ -497,6 +523,13 @@ export function snapshotOutcomeRouteIdentity(
   }
   if (snapshot === null) return null;
   const identity = structuredClone(snapshot) as unknown as OutcomeRouteIdentity;
+  if (identity.kind === "poi") {
+    const binding = decodePoiOutcomeMissionId(missionId);
+    return binding !== null && binding.originColonyId === identity.originColonyId &&
+      routeIdentityMatchesMissionId(identity, routeKind, binding.descriptorId)
+      ? identity
+      : null;
+  }
   return routeIdentityMatchesMissionId(identity, routeKind, missionId) ? identity : null;
 }
 
@@ -524,6 +557,93 @@ export function outcomeAuthorityReturnMatches(
 
 export type DynamicOutcomeAuthorityPhase = "new" | "applied";
 
+const INVALID_OWN_DATA_TREE = Symbol("invalid-own-data-tree");
+
+function ownDataProperty(value: unknown, key: string): unknown | typeof INVALID_OWN_DATA_TREE {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return INVALID_OWN_DATA_TREE;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return INVALID_OWN_DATA_TREE;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor !== undefined && "value" in descriptor
+      ? descriptor.value
+      : INVALID_OWN_DATA_TREE;
+  } catch {
+    return INVALID_OWN_DATA_TREE;
+  }
+}
+
+/** Recursively detach hostile authority data without invoking property accessors. */
+function snapshotOwnDataTree(
+  value: unknown,
+  ancestors = new Set<object>(),
+): unknown | typeof INVALID_OWN_DATA_TREE {
+  if (value === null || value === undefined || typeof value === "string" ||
+    typeof value === "boolean" || typeof value === "number") return value;
+  if (typeof value !== "object" || ancestors.has(value)) return INVALID_OWN_DATA_TREE;
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) return INVALID_OWN_DATA_TREE;
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+      if (lengthDescriptor === undefined || !("value" in lengthDescriptor) ||
+        !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
+        return INVALID_OWN_DATA_TREE;
+      }
+      const length = lengthDescriptor.value as number;
+      const keys = Reflect.ownKeys(value);
+      if (keys.length !== length + 1 || keys.some((key) => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length))) {
+        return INVALID_OWN_DATA_TREE;
+      }
+      const snapshot: unknown[] = [];
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (descriptor === undefined || !("value" in descriptor)) return INVALID_OWN_DATA_TREE;
+        const entry = snapshotOwnDataTree(descriptor.value, ancestors);
+        if (entry === INVALID_OWN_DATA_TREE) return INVALID_OWN_DATA_TREE;
+        snapshot.push(entry);
+      }
+      return snapshot;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return INVALID_OWN_DATA_TREE;
+    const snapshot: Record<string, unknown> = {};
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") return INVALID_OWN_DATA_TREE;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) return INVALID_OWN_DATA_TREE;
+      const entry = snapshotOwnDataTree(descriptor.value, ancestors);
+      if (entry === INVALID_OWN_DATA_TREE) return INVALID_OWN_DATA_TREE;
+      snapshot[key] = entry;
+    }
+    return snapshot;
+  } catch {
+    return INVALID_OWN_DATA_TREE;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function snapshotDynamicSurface(
+  save: SaveData,
+  authority: PersistenceAuthority,
+): Pick<SaveData, "colonies" | "planets"> | null {
+  const container = authority === "galaxy"
+    ? ownDataProperty(save, "galaxyRun")
+    : save;
+  if (container === INVALID_OWN_DATA_TREE || container === null) return null;
+  const rawColonies = ownDataProperty(container, "colonies");
+  const rawPlanets = ownDataProperty(container, "planets");
+  if (rawColonies === INVALID_OWN_DATA_TREE || rawPlanets === INVALID_OWN_DATA_TREE) return null;
+  const colonies = snapshotOwnDataTree(rawColonies);
+  const planets = snapshotOwnDataTree(rawPlanets);
+  return colonies !== INVALID_OWN_DATA_TREE && planets !== INVALID_OWN_DATA_TREE &&
+    Array.isArray(colonies) && Array.isArray(planets)
+    ? { colonies: colonies as SaveData["colonies"], planets: planets as SaveData["planets"] }
+    : null;
+}
+
 /** Validate dynamic route identity against the selected latest save namespace. */
 export function dynamicOutcomeRouteIdentityIsCanonical(
   save: SaveData,
@@ -532,30 +652,37 @@ export function dynamicOutcomeRouteIdentityIsCanonical(
   phase: DynamicOutcomeAuthorityPhase,
 ): boolean {
   try {
-    const run = authority === "galaxy" ? save.galaxyRun : null;
-    const colonies = authority === "galaxy" ? run?.colonies : save.colonies;
-    const planets = authority === "galaxy" ? run?.planets : save.planets;
-    if (!Array.isArray(colonies) || !Array.isArray(planets)) return false;
-    if (identity.kind === "colony") {
-      const colony = colonies.find((entry) => entry.id === identity.colonyId);
+    const surface = snapshotDynamicSurface(save, authority);
+    const identitySnapshot = snapshotOwnDataTree(identity);
+    if (surface === null || identitySnapshot === INVALID_OWN_DATA_TREE ||
+      typeof identitySnapshot !== "object" || identitySnapshot === null || Array.isArray(identitySnapshot)) return false;
+    const canonicalIdentity = identitySnapshot as OutcomeRouteIdentity;
+    if (canonicalIdentity.kind === "colony") {
+      const data = exactOutcomeIdentityData(canonicalIdentity, ["kind", "colonyId", "mode", "buildingId"]);
+      if (data === null || typeof canonicalIdentity.colonyId !== "string" || canonicalIdentity.colonyId.length === 0 ||
+        (canonicalIdentity.mode !== "exterior" && canonicalIdentity.mode !== "interior")) return false;
+      const colony = surface.colonies.find((entry) => entry.id === canonicalIdentity.colonyId);
       if (colony === undefined) return false;
-      return identity.mode === "exterior"
-        ? identity.buildingId === null
-        : typeof identity.buildingId === "string" && identity.buildingId.length > 0 &&
-          colony.buildings.some((building) => building.id === identity.buildingId);
+      return canonicalIdentity.mode === "exterior"
+        ? canonicalIdentity.buildingId === null
+        : typeof canonicalIdentity.buildingId === "string" && canonicalIdentity.buildingId.length > 0 &&
+          colony.buildings.some((building) => building.id === canonicalIdentity.buildingId);
     }
-    if (identity.kind !== "poi") return true;
-    const surface = authority === "legacy"
-      ? save
-      : { colonies, planets } as SaveData;
-    const dispatched = dispatchPoi(surface, identity.originColonyId, identity.nodeId);
-    if (!dispatched.ok || dispatched.session.engine !== identity.engine) return false;
-    const colony = colonies.find((entry) => entry.id === identity.originColonyId);
-    const node = planets.find((entry) => entry.id === colony?.planetId)
-      ?.regionMap.nodes.find((entry) => entry.id === identity.nodeId);
-    if (node === undefined || node.templateId !== identity.templateId) return false;
-    if (phase === "new") return dispatched.session.rewardEligible === identity.rewardEligible;
-    return node.intel === "cleared" || identity.rewardEligible === dispatched.session.rewardEligible;
+    if (canonicalIdentity.kind !== "poi" || exactOutcomeIdentityData(canonicalIdentity, [
+      "kind", "originColonyId", "nodeId", "engine", "templateId", "rewardEligible",
+    ]) === null || typeof canonicalIdentity.originColonyId !== "string" || canonicalIdentity.originColonyId.length === 0 ||
+      typeof canonicalIdentity.nodeId !== "string" || canonicalIdentity.nodeId.length === 0 ||
+      typeof canonicalIdentity.templateId !== "string" || canonicalIdentity.templateId.length === 0 ||
+      (canonicalIdentity.engine !== "firstPerson" && canonicalIdentity.engine !== "boarding" &&
+        canonicalIdentity.engine !== "groundRun") || typeof canonicalIdentity.rewardEligible !== "boolean") return false;
+    const dispatched = dispatchPoi(surface as SaveData, canonicalIdentity.originColonyId, canonicalIdentity.nodeId);
+    if (!dispatched.ok || dispatched.session.engine !== canonicalIdentity.engine) return false;
+    const colony = surface.colonies.find((entry) => entry.id === canonicalIdentity.originColonyId);
+    const node = surface.planets.find((entry) => entry.id === colony?.planetId)
+      ?.regionMap.nodes.find((entry) => entry.id === canonicalIdentity.nodeId);
+    if (node === undefined || node.templateId !== canonicalIdentity.templateId) return false;
+    if (phase === "new") return dispatched.session.rewardEligible === canonicalIdentity.rewardEligible;
+    return node.intel === "cleared" || canonicalIdentity.rewardEligible === dispatched.session.rewardEligible;
   } catch {
     return false;
   }

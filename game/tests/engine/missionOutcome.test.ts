@@ -37,6 +37,8 @@ import {
   campaignMissionDescriptor,
   colonyMissionDescriptor,
   launchContextFromSave,
+  poiMissionDescriptor,
+  poiOutcomeMissionId,
   routeIdentityMatchesMissionId,
   snapshotOutcomeRouteIdentity,
 } from "../../app/components/engine/missionContext";
@@ -48,7 +50,9 @@ import {
 } from "../../app/components/engine/galaxy/travelResolver";
 import {
   createGalaxyPoiPreparedFact,
+  isGalaxyPoiPreparedAuthorityFact,
   recoverGalaxyPoiPreparation,
+  resolveGalaxyPoiOutcomeFromRun,
 } from "../../app/components/engine/galaxy/galaxyPoiOutcomeAuthority";
 import {
   mergeProjectionIntoGalaxy,
@@ -89,7 +93,10 @@ function attempt(
         : routeKind === "special" ? "special:kepler-black-box"
           : routeKind === "operation" ? "operation:op:ashfall-sortie"
             : routeKind === "colony" ? "colony:4:home:exterior"
-              : "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+              : poiOutcomeMissionId(
+                  "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+                  "home",
+                ),
     routeIdentity,
     launchId,
     expectedRevision: save.saveRevision,
@@ -217,6 +224,17 @@ function memoryStore(initial: SaveData) {
   };
 }
 
+function postWriteThrowStore(initial: SaveData, transform: (candidate: SaveData) => SaveData): CanonicalSaveStore {
+  let current = initial;
+  return {
+    read: () => current,
+    write: (candidate) => {
+      current = transform(candidate);
+      throw new Error("post-write probe");
+    },
+  };
+}
+
 type HostileArrayMode = "static" | "delayed" | "revoked";
 
 function hostileArray<T>(entries: readonly T[], mode: HostileArrayMode): T[] {
@@ -279,6 +297,41 @@ function readyGalaxyPoi(): SaveData {
     },
   }));
   return { ...save, galaxyRun: run };
+}
+
+function galaxyStageFixture(launchId = "galaxy-stage-fixture") {
+  const save = readyGalaxyPoi();
+  const projection = projectGalaxyRunToLegacyState(save.galaxyRun!);
+  const dispatched = dispatchPoi(projection, "galaxy:ashfall-primary", "ashfall-cinder-relay");
+  if (!dispatched.ok) throw new Error("Galaxy POI fixture dispatch failed");
+  const routeIdentity = {
+    kind: "poi" as const,
+    originColonyId: "galaxy:ashfall-primary",
+    nodeId: "ashfall-cinder-relay",
+    engine: "firstPerson" as const,
+    templateId: "fp-ruin-cinder-relay",
+    rewardEligible: true,
+  };
+  const attempt: OutcomeAttempt = {
+    version: 1,
+    routeKind: "poi",
+    missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      routeIdentity.originColonyId,
+    ),
+    routeIdentity,
+    launchId,
+    expectedRevision: save.saveRevision,
+    persistenceAuthority: "galaxy",
+    returnTarget: "galaxy-region",
+    declaredFields: ["galaxyRun"],
+    launchSnapshot: { galaxyRun: structuredClone(save.galaxyRun) },
+  };
+  return {
+    save,
+    active: { originColonyId: routeIdentity.originColonyId, session: dispatched.session },
+    attempt,
+  };
 }
 
 function recoveryRecords(save: SaveData): OutcomeRecoveryRecord[] {
@@ -792,7 +845,7 @@ test("the shared route identity codec rejects the same malformed bindings for ru
     kind: "applied_return",
     outcomeId: "forged-poi:success",
     launchId: "forged-poi",
-    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    missionId: poiOutcomeMissionId("poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay", "home"),
     routeKind: "poi",
     routeIdentity: malformed.at(-1)![2],
     terminalKind: "success",
@@ -1020,7 +1073,10 @@ test("Galaxy POI shell staging writes only v2 authority and rebuilds the exact a
   const initialAttempt: OutcomeAttempt = {
     version: 1,
     routeKind: "poi",
-    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      routeIdentity.originColonyId,
+    ),
     routeIdentity,
     launchId: "galaxy-shell-stage",
     expectedRevision: save.saveRevision,
@@ -1127,7 +1183,10 @@ test("Galaxy POI preparation binds the exact root outcome, consumes its fact, an
   const poiAttempt: OutcomeAttempt = {
     version: 1,
     routeKind: "poi",
-    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      identity.originColonyId,
+    ),
     routeIdentity: identity,
     launchId: binding.launchId,
     expectedRevision: binding.preparedRevision,
@@ -1472,11 +1531,9 @@ test("present malformed migration authority containers lock instead of erasing i
     }
   }
 
-  for (const missing of [undefined, null]) {
-    const migrated = migrateSave({ appliedOutcomeIds: missing, outcomeRecoveryRecords: missing });
-    assert.deepEqual(migrated.appliedOutcomeIds, []);
-    assert.deepEqual(migrated.outcomeRecoveryRecords, []);
-  }
+  const absent = migrateSave({});
+  assert.deepEqual(absent.appliedOutcomeIds, []);
+  assert.deepEqual(absent.outcomeRecoveryRecords, []);
 });
 
 test("new dynamic POI and Colony terminals require exact latest inherited authority", () => {
@@ -1580,7 +1637,10 @@ test("new dynamic POI and Colony terminals require exact latest inherited author
     kind: "applied_return",
     outcomeId: "ghost-receipt:failure",
     launchId: "ghost-receipt",
-    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      "galaxy:ghost",
+    ),
     routeKind: "poi",
     routeIdentity: galaxyGhost.routeIdentity,
     terminalKind: "failure",
@@ -1603,6 +1663,10 @@ test("every Galaxy terminal owns exact root and nested journal parity", () => {
     const save = readyGalaxyPoi();
     const terminal = envelope({
       ...attempt(save, "poi", `galaxy-poi-${terminalKind}`, "galaxy", "galaxy-region", []),
+      missionId: poiOutcomeMissionId(
+        "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+        "galaxy:ashfall-primary",
+      ),
       routeIdentity: {
         kind: "poi",
         originColonyId: "galaxy:ashfall-primary",
@@ -1737,7 +1801,10 @@ test("Galaxy POI v2 staging requires coherent unlocked root and nested authority
   const initialAttempt: OutcomeAttempt = {
     version: 1,
     routeKind: "poi",
-    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      routeIdentity.originColonyId,
+    ),
     routeIdentity,
     launchId: "galaxy-stage-coherence",
     expectedRevision: save.saveRevision,
@@ -1815,4 +1882,393 @@ test("Galaxy POI v2 staging requires coherent unlocked root and nested authority
       stageGalaxyPoiOutcomeAuthority(hostileRoot, active, GameScreen.LEVEL_COMPLETE, initialAttempt);
     }, `hostile Galaxy stage ${mode}`);
   }
+});
+
+test("post-write throws require exact unlocked receipts, parity, and committed effects", () => {
+  const initial = migrateSave({ credits: 5 });
+  const terminal = campaignEnvelope(initial, "post-write-proof");
+  const lock: OutcomeRecoveryRecord = {
+    version: 2,
+    kind: "reconciliation_required",
+    reason: "outcome_authority_invalid",
+    protectedOutcomeIds: [terminal.outcomeId],
+    quarantinedOutcomeCount: 1,
+  };
+  const probes: Array<[string, (candidate: SaveData) => SaveData]> = [
+    ["missing receipt", (candidate) => ({ ...candidate, outcomeRecoveryRecords: [] })],
+    ["locked root", (candidate) => ({ ...candidate, outcomeRecoveryRecords: [lock] })],
+    ["missing declared effect", (candidate) => ({ ...candidate, credits: initial.credits })],
+    ["wrong receipt revision", (candidate) => ({
+      ...candidate,
+      outcomeRecoveryRecords: candidate.outcomeRecoveryRecords.map((record) => record.kind === "applied_return"
+        ? { ...record, appliedRevision: record.appliedRevision + 1 }
+        : record),
+    })],
+  ];
+  for (const [label, transform] of probes) {
+    assert.equal(commitOutcome(postWriteThrowStore(initial, transform), terminal).status, "write_failed", label);
+  }
+
+  let partialAfterMutation = initial;
+  const mutatingStore: CanonicalSaveStore = {
+    read: () => partialAfterMutation,
+    write: (candidate) => {
+      partialAfterMutation = { ...candidate, credits: initial.credits };
+      candidate.credits = initial.credits;
+      throw new Error("mutated candidate after partial write");
+    },
+  };
+  assert.equal(commitOutcome(mutatingStore, terminal).status, "write_failed", "mutated candidate");
+
+  const committed = commitOutcome(memoryStore(initial).store, terminal);
+  assert.equal(committed.status, "committed");
+  if (committed.status !== "committed") return;
+  const ackTransforms: Array<[string, (candidate: SaveData) => SaveData]> = [
+    ["ack missing receipt", (candidate) => ({ ...candidate, outcomeRecoveryRecords: [] })],
+    ["ack locked root", (candidate) => ({ ...candidate, outcomeRecoveryRecords: [lock] })],
+  ];
+  for (const [label, transform] of ackTransforms) {
+    assert.equal(
+      acknowledgeOutcomeReturn(postWriteThrowStore(committed.save, transform), terminal.outcomeId).status,
+      "write_failed",
+      label,
+    );
+  }
+});
+
+test("Galaxy POI staging snapshots one exact bound attempt and never invokes attempt accessors", () => {
+  const fixture = galaxyStageFixture("exact-stage-attempt");
+  const valid = stageGalaxyPoiOutcomeAuthority(
+    fixture.save,
+    fixture.active,
+    GameScreen.LEVEL_COMPLETE,
+    fixture.attempt,
+  );
+  assert.equal(valid.ok, true);
+  if (valid.ok) {
+    const recovered = recoverGalaxyPoiOutcomeAuthority(valid.save);
+    assert.deepEqual(recovered, valid.attempt);
+    assert.equal(recovered?.missionId, fixture.attempt.missionId);
+    assert.deepEqual(recovered?.routeIdentity, fixture.attempt.routeIdentity);
+  }
+
+  let accessorReads = 0;
+  const accessorAttempt = { ...fixture.attempt } as OutcomeAttempt;
+  Object.defineProperty(accessorAttempt, "missionId", {
+    enumerable: true,
+    configurable: true,
+    get() { accessorReads += 1; return fixture.attempt.missionId; },
+  });
+  let delayed = false;
+  const delayedAttempt = new Proxy(structuredClone(fixture.attempt), {
+    ownKeys(target) { delayed = true; return Reflect.ownKeys(target); },
+    get(target, property, receiver) {
+      if (delayed) throw new Error(`delayed attempt read ${String(property)}`);
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  const invalidAttempts = [
+    { ...fixture.attempt, version: 2 as 1 },
+    { ...fixture.attempt, missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      "other-origin",
+    ) },
+    { ...fixture.attempt, extra: true } as unknown as OutcomeAttempt,
+    accessorAttempt,
+    delayedAttempt,
+  ];
+  for (const candidate of invalidAttempts) {
+    const result = totalCall("invalid exact stage attempt", () => stageGalaxyPoiOutcomeAuthority(
+      fixture.save,
+      fixture.active,
+      GameScreen.LEVEL_COMPLETE,
+      candidate,
+    ));
+    assert.equal(result.ok, false);
+  }
+  assert.equal(accessorReads, 0);
+});
+
+test("historical Galaxy journal and operation ownership parity blocks all later authority", () => {
+  const operationSave = atAshfall();
+  const operation = envelope(
+    attempt(operationSave, "operation", "historical-operation", "galaxy", "galaxy-atlas", ["galaxyRun"]),
+    { version: 1, kind: "operation_result_v1", result: "failure", metrics: null },
+    "failure",
+  );
+  const committed = commitOutcome(memoryStore(operationSave).store, operation);
+  assert.equal(committed.status, "committed");
+  if (committed.status !== "committed" || committed.save.galaxyRun === null) return;
+  const missingNested = structuredClone(committed.save);
+  missingNested.galaxyRun!.appliedOutcomeIds = [];
+  const missingOwner = structuredClone(committed.save);
+  missingOwner.galaxyRun!.operations["op:ashfall-sortie"].completionIds = [];
+  const orphanNested = structuredClone(operationSave);
+  orphanNested.galaxyRun!.appliedOutcomeIds.push("historical:orphan");
+  const later = envelope({
+    ...attempt(committed.save, "colony", "later-galaxy-colony", "galaxy", "galaxy-atlas", []),
+    missionId: colonyMissionDescriptor("galaxy:ashfall-primary", "exterior").id,
+    routeIdentity: {
+      kind: "colony",
+      colonyId: "galaxy:ashfall-primary",
+      mode: "exterior",
+      buildingId: null,
+    },
+  }, { version: 1, kind: "terminal_noop_v1" }, "failure");
+  for (const [label, save] of [["missing nested", missingNested], ["missing owner", missingOwner], ["orphan", orphanNested]] as const) {
+    assert.equal(commitOutcome(memoryStore(save).store, later).status, "conflict", label);
+    const migrated = migrateSave(JSON.parse(JSON.stringify(save)));
+    assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required", label);
+  }
+  const stage = galaxyStageFixture("historical-stage-block");
+  stage.save.galaxyRun!.appliedOutcomeIds.push("historical:orphan-stage");
+  assert.equal(stageGalaxyPoiOutcomeAuthority(
+    stage.save,
+    stage.active,
+    GameScreen.LEVEL_COMPLETE,
+    stage.attempt,
+  ).ok, false);
+  assert.equal(recoverGalaxyPoiOutcomeAuthority(stage.save), null);
+});
+
+test("dynamic zero-field validation snapshots hostile Colony and POI authority without getter reads", () => {
+  const save = readyLegacyPoi(migrateSave({}));
+  const terminal = envelope(
+    attempt(save, "poi", "dynamic-getter", "legacy", "legacy-colony-exterior", []),
+    { version: 1, kind: "terminal_noop_v1" },
+    "failure",
+  );
+  let rootReads = 0;
+  const rootGetter = { ...save };
+  Object.defineProperty(rootGetter, "colonies", {
+    enumerable: true,
+    configurable: true,
+    get() { rootReads += 1; return save.colonies; },
+  });
+  assert.equal(commitOutcome(memoryStore(rootGetter).store, terminal).status, "conflict");
+  assert.equal(rootReads, 0);
+  assert.equal(typeof Object.getOwnPropertyDescriptor(rootGetter, "colonies")?.get, "function");
+
+  let nestedReads = 0;
+  const hostileColony = { ...save.colonies[0] };
+  Object.defineProperty(hostileColony, "id", {
+    enumerable: true,
+    configurable: true,
+    get() { nestedReads += 1; return "home"; },
+  });
+  const nestedGetter = { ...save, colonies: [hostileColony as SaveData["colonies"][number]] };
+  assert.equal(commitOutcome(memoryStore(nestedGetter).store, terminal).status, "conflict");
+  assert.equal(nestedReads, 0);
+
+  let runReads = 0;
+  const galaxyFixture = galaxyStageFixture("dynamic-run-getter");
+  const hostileRun = { ...galaxyFixture.save.galaxyRun! };
+  Object.defineProperty(hostileRun, "colonies", {
+    enumerable: true,
+    configurable: true,
+    get() { runReads += 1; return galaxyFixture.save.galaxyRun!.colonies; },
+  });
+  const galaxyTerminal = envelope(
+    { ...galaxyFixture.attempt, declaredFields: [], launchSnapshot: {} },
+    { version: 1, kind: "terminal_noop_v1" },
+    "failure",
+  );
+  assert.equal(commitOutcome(memoryStore({ ...galaxyFixture.save, galaxyRun: hostileRun }).store, galaxyTerminal).status, "conflict");
+  assert.equal(runReads, 0);
+});
+
+test("outcome metadata migration distinguishes absent fields from explicit or accessor authority", () => {
+  const absent = migrateSave({});
+  assert.deepEqual(absent.appliedOutcomeIds, []);
+  assert.deepEqual(absent.outcomeRecoveryRecords, []);
+  for (const value of [undefined, null]) {
+    for (const field of ["appliedOutcomeIds", "outcomeRecoveryRecords"] as const) {
+      const migrated = migrateSave({ [field]: value });
+      assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required", `${field} ${value}`);
+    }
+  }
+  for (const field of ["appliedOutcomeIds", "outcomeRecoveryRecords"] as const) {
+    let reads = 0;
+    const raw: Record<string, unknown> = {};
+    Object.defineProperty(raw, field, {
+      enumerable: true,
+      configurable: true,
+      get() { reads += 1; return []; },
+    });
+    const migrated = migrateSave(raw);
+    assert.equal(reads, 0, field);
+    assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required", field);
+  }
+});
+
+test("multiple distinct Legacy preparations are invalid runtime and migration authority", () => {
+  const save = readyLegacyPoi(migrateSave({}));
+  const first = envelope(
+    attempt(save, "poi", "prepared-one", "legacy", "legacy-colony-exterior", [...LEGACY_POI_FIELDS]),
+    { version: 2, kind: "poi_prepared_v2" },
+  );
+  const second = envelope(
+    attempt(save, "poi", "prepared-two", "legacy", "legacy-colony-exterior", [...LEGACY_POI_FIELDS]),
+    { version: 2, kind: "poi_prepared_v2" },
+  );
+  const records: OutcomeRecoveryRecord[] = [first, second].map((prepared) => ({
+    version: 2,
+    kind: "legacy_poi_prepared",
+    envelope: prepared,
+  }));
+  const ambiguous = { ...save, outcomeRecoveryRecords: records };
+  assert.equal(recoverLegacyPreparedOutcome(ambiguous), null);
+  assert.equal(commitOutcome(memoryStore(ambiguous).store, campaignEnvelope(ambiguous, "blocked-two-prep")).status, "conflict");
+  assert.equal(migrateSave(ambiguous as unknown as Record<string, unknown>)
+    .outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+});
+
+test("lower Galaxy prepared authority APIs are total over hostile public inputs", () => {
+  const fixture = galaxyStageFixture("lower-api-total");
+  const run = fixture.save.galaxyRun!;
+  const identity = fixture.attempt.routeIdentity as Extract<OutcomeRouteIdentity, { kind: "poi" }>;
+  const binding = {
+    launchId: fixture.attempt.launchId,
+    outcomeId: `${fixture.attempt.launchId}:success`,
+    preparedRevision: fixture.save.saveRevision + 1,
+  };
+  const revokedRun = Proxy.revocable(run, {});
+  revokedRun.revoke();
+  assert.equal(totalCall("create revoked run", () => createGalaxyPoiPreparedFact(
+    revokedRun.proxy,
+    identity,
+    binding,
+  )), null);
+  assert.equal(totalCall("recover revoked run", () => recoverGalaxyPoiPreparation(revokedRun.proxy)), null);
+  assert.deepEqual(totalCall("resolve revoked run", () => resolveGalaxyPoiOutcomeFromRun(
+    revokedRun.proxy,
+    identity,
+    binding,
+    null,
+  )), { ok: false });
+  let factReads = 0;
+  const hostileFact = { kind: "poi_completion_prepared" } as { id: string; kind: string };
+  Object.defineProperty(hostileFact, "id", {
+    enumerable: true,
+    get() { factReads += 1; throw new Error("fact getter"); },
+  });
+  assert.equal(totalCall("hostile predicate", () => isGalaxyPoiPreparedAuthorityFact(hostileFact as never)), false);
+  assert.equal(factReads, 0);
+  const hostileBinding = new Proxy(binding, { get() { throw new Error("binding getter"); } });
+  assert.equal(totalCall("hostile binding", () => createGalaxyPoiPreparedFact(run, identity, hostileBinding)), null);
+});
+
+test("reserved Galaxy preparation facts migrate to explicit reconciliation unless exactly valid v2", () => {
+  const fixture = galaxyStageFixture("reserved-fact-migration");
+  const oldFact = {
+    id: "history:poi-prepared:00000000:%5B%5D",
+    kind: "poi_completion_prepared" as const,
+    subjectId: "ashfall-cinder-relay",
+    cycle: fixture.save.galaxyRun!.worldCycle,
+    causeFactIds: [],
+  };
+  const oldSave = {
+    ...fixture.save,
+    galaxyRun: {
+      ...fixture.save.galaxyRun!,
+      historyFacts: [...fixture.save.galaxyRun!.historyFacts, oldFact],
+    },
+  };
+  assert.equal(migrateSave(JSON.parse(JSON.stringify(oldSave))).outcomeRecoveryRecords[0]?.kind,
+    "reconciliation_required");
+  const staged = stageGalaxyPoiOutcomeAuthority(
+    fixture.save,
+    fixture.active,
+    GameScreen.LEVEL_COMPLETE,
+    fixture.attempt,
+  );
+  assert.equal(staged.ok, true);
+  if (!staged.ok) return;
+  const validReload = migrateSave(JSON.parse(JSON.stringify(staged.save)));
+  assert.ok(recoverGalaxyPoiOutcomeAuthority(validReload));
+  const revisionMismatch = migrateSave(JSON.parse(JSON.stringify({
+    ...staged.save,
+    saveRevision: staged.save.saveRevision + 1,
+  })));
+  assert.equal(revisionMismatch.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+  const ambiguous = migrateSave(JSON.parse(JSON.stringify({
+    ...staged.save,
+    galaxyRun: {
+      ...staged.save.galaxyRun!,
+      historyFacts: [...staged.save.galaxyRun!.historyFacts, ...staged.save.galaxyRun!.historyFacts.filter(
+        isGalaxyPoiPreparedAuthorityFact,
+      )],
+    },
+  })));
+  assert.equal(ambiguous.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+});
+
+test("durable POI origin binding rejects substitution between two otherwise valid adjacent origins", () => {
+  let save = readyLegacyPoi(migrateSave({}));
+  save = {
+    ...save,
+    planets: save.planets.map((planet) => ({
+      ...planet,
+      regionMap: {
+        ...planet.regionMap,
+        nodes: planet.regionMap.nodes.map((node) =>
+          node.id === "ashfall-ironreach-shelf"
+            ? { ...node, intel: "surveyed" as const, discovered: true }
+            : node.id === "ashfall-oathbreaker-wreck"
+              ? { ...node, intel: "surveyed" as const, discovered: true }
+              : node),
+      },
+    })),
+  };
+  save = colonyReducer(save, Events.founded({
+    colonyId: "second-origin",
+    name: "Second Origin",
+    planetId: "ashfall",
+    foundingType: "outpost",
+    regionNodeId: "ashfall-ironreach-shelf",
+    missionCount: 0,
+    layoutSeed: 91,
+  }));
+  assert.equal(dispatchPoi(save, "home", "ashfall-oathbreaker-wreck").ok, true);
+  assert.equal(dispatchPoi(save, "second-origin", "ashfall-oathbreaker-wreck").ok, true);
+  const descriptor = poiMissionDescriptor("ashfall-oathbreaker-wreck", "boarding");
+  const homeAttempt: OutcomeAttempt = {
+    ...attempt(save, "poi", "origin-bound", "legacy", "legacy-colony-exterior", []),
+    missionId: poiOutcomeMissionId(descriptor.id, "home"),
+    routeIdentity: {
+      kind: "poi",
+      originColonyId: "home",
+      nodeId: "ashfall-oathbreaker-wreck",
+      engine: "boarding",
+      templateId: "boarding-wreck-oathbreaker",
+      rewardEligible: true,
+    },
+  };
+  const terminal = envelope(homeAttempt, { version: 1, kind: "terminal_noop_v1" }, "failure");
+  const substituted = {
+    ...terminal,
+    routeIdentity: { ...terminal.routeIdentity, originColonyId: "second-origin" },
+  } as SerializedOutcomeEnvelope;
+  assert.equal(commitOutcome(memoryStore(save).store, substituted).status, "conflict");
+  const receipt = {
+    version: 2,
+    kind: "applied_return",
+    outcomeId: substituted.outcomeId,
+    launchId: substituted.launchId,
+    missionId: substituted.missionId,
+    routeKind: "poi",
+    routeIdentity: substituted.routeIdentity,
+    terminalKind: "failure",
+    persistenceAuthority: "legacy",
+    returnTarget: "legacy-colony-exterior",
+    appliedRevision: 1,
+    returnPending: true,
+  } as const;
+  const migrated = migrateSave({
+    ...save,
+    saveRevision: 1,
+    appliedOutcomeIds: [receipt.outcomeId],
+    outcomeRecoveryRecords: [receipt],
+  });
+  assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
 });

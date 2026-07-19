@@ -37,6 +37,11 @@ import {
 } from "../colony/region/regionMap";
 import type { RegionIntelState, RegionNode, SiteStats } from "../colony/shared/colonyTypes";
 import { migrateGalaxyRun } from "./galaxy/galaxyRun";
+import {
+  inspectGalaxyPoiPreparedAuthority,
+  type GalaxyPoiPreparedAuthorityInspection,
+} from "./galaxy/galaxyPoiOutcomeAuthority";
+import { snapshotGalaxyOutcomeAuthority } from "./outcomeJournalAuthority";
 export type { SaveData };
 
 const SAVE_KEY = "sector-zero-save";
@@ -62,6 +67,24 @@ function snapshotDenseArray(value: unknown): unknown[] | null {
     return snapshot;
   } catch {
     return null;
+  }
+}
+
+type OwnFieldSnapshot =
+  | { kind: "absent" }
+  | { kind: "invalid" }
+  | { kind: "data"; value: unknown };
+
+function snapshotOwnField(value: unknown, key: string): OwnFieldSnapshot {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return { kind: "invalid" };
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined) return { kind: "absent" };
+    return "value" in descriptor
+      ? { kind: "data", value: descriptor.value }
+      : { kind: "invalid" };
+  } catch {
+    return { kind: "invalid" };
   }
 }
 
@@ -174,7 +197,7 @@ function snapshotOutcomeEnvelope(value: unknown): Record<string, unknown> | null
     "returnTarget", "declaredFields", "launchSnapshot", "outcomeId", "terminalKind", "payload",
   ]);
   if (envelope === null || envelope.version !== 1 || envelope.routeKind !== "poi" ||
-    typeof envelope.missionId !== "string" || !envelope.missionId.startsWith("poi:") ||
+    typeof envelope.missionId !== "string" || envelope.missionId.length === 0 ||
     typeof envelope.launchId !== "string" || envelope.launchId.length === 0 ||
     !Number.isSafeInteger(envelope.expectedRevision) || (envelope.expectedRevision as number) < 0 ||
     envelope.persistenceAuthority !== "legacy" || envelope.returnTarget !== "legacy-colony-exterior" ||
@@ -282,6 +305,33 @@ function reconciliationLock(
   };
 }
 
+function protectedRecoveryOutcomeIds(records: readonly OutcomeRecoveryRecord[]): string[] {
+  return records.flatMap((record) =>
+    record.kind === "applied_return"
+      ? record.returnPending ? [record.outcomeId] : []
+      : record.kind === "legacy_poi_prepared"
+        ? [record.envelope.outcomeId]
+        : record.protectedOutcomeIds);
+}
+
+function reconcileRecoveryAuthority(
+  records: readonly OutcomeRecoveryRecord[],
+  reason: OutcomeReconciliationReason,
+  additionalOutcomeIds: readonly string[],
+  quarantinedOutcomeCount: number,
+): OutcomeRecoveryRecord[] {
+  const existingLock = records.find((record): record is Extract<OutcomeRecoveryRecord, {
+    kind: "reconciliation_required";
+  }> => record.kind === "reconciliation_required");
+  const priorQuarantine = records.reduce((total, record) =>
+    total + (record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0), 0);
+  return [reconciliationLock(
+    existingLock?.reason ?? reason,
+    [...protectedRecoveryOutcomeIds(records), ...additionalOutcomeIds],
+    priorQuarantine + Math.max(1, quarantinedOutcomeCount),
+  )];
+}
+
 function migrateOutcomeRecoveryRecords(
   value: unknown,
   rootRevision: number,
@@ -373,6 +423,8 @@ function migrateOutcomeRecoveryRecords(
     newestFirst.push(record);
   }
   const records = newestFirst.reverse();
+  const retainedPreparedIds = records.flatMap((record) =>
+    record.kind === "legacy_poi_prepared" ? [record.envelope.outcomeId] : []);
   const protectedOutcomeIds = records.flatMap((record) =>
     record.kind === "legacy_poi_prepared"
       ? [record.envelope.outcomeId]
@@ -395,6 +447,9 @@ function migrateOutcomeRecoveryRecords(
   if (overflowDiscard.some((record) =>
     record.kind === "legacy_poi_prepared" || (record.kind === "applied_return" && record.returnPending))) {
     return [reconciliationLock("recovery_capacity_exceeded", protectedOutcomeIds)];
+  }
+  if (retainedPreparedIds.length > 1) {
+    return [reconciliationLock("prepared_outcome_invalid", retainedPreparedIds)];
   }
   return records.slice(-OUTCOME_RECOVERY_LIMIT);
 }
@@ -458,6 +513,12 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
   const colonies = migrateColonies(raw.colonies);
   const planets = migratePlanets(raw.planets, colonies);
   const rawGalaxyRun = raw.galaxyRun;
+  const rawGalaxyHistoryField = rawGalaxyRun !== null && typeof rawGalaxyRun === "object" && !Array.isArray(rawGalaxyRun)
+    ? snapshotOwnField(rawGalaxyRun, "historyFacts")
+    : { kind: "absent" as const };
+  const rawPreparedInspection: GalaxyPoiPreparedAuthorityInspection = rawGalaxyHistoryField.kind === "absent"
+    ? { status: "none" }
+    : inspectGalaxyPoiPreparedAuthority(rawGalaxyRun);
   const rawGalaxyIdentity = rawGalaxyRun !== null
       && typeof rawGalaxyRun === "object"
       && !Array.isArray(rawGalaxyRun)
@@ -485,15 +546,20 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
   const saveRevision = Number.isSafeInteger(raw.saveRevision) && (raw.saveRevision as number) >= 0
     ? raw.saveRevision as number
     : 0;
+  const activeExperience = raw.activeExperience === "galaxy" && galaxyRun !== null
+    ? "galaxy"
+    : "legacy";
   const missionsSinceStart = (raw.missionsSinceStart as number) ?? 0;
-  const rawJournalContainer = raw.appliedOutcomeIds;
-  const rawRecoveryContainer = raw.outcomeRecoveryRecords;
-  const journalSnapshot = snapshotDenseArray(rawJournalContainer);
-  const recoverySnapshot = snapshotDenseArray(rawRecoveryContainer);
-  const malformedJournalContainer = rawJournalContainer !== undefined && rawJournalContainer !== null &&
-    journalSnapshot === null;
-  const malformedRecoveryContainer = rawRecoveryContainer !== undefined && rawRecoveryContainer !== null &&
-    recoverySnapshot === null;
+  const rawJournalField = snapshotOwnField(raw, "appliedOutcomeIds");
+  const rawRecoveryField = snapshotOwnField(raw, "outcomeRecoveryRecords");
+  const journalSnapshot = rawJournalField.kind === "absent"
+    ? []
+    : rawJournalField.kind === "data" ? snapshotDenseArray(rawJournalField.value) : null;
+  const recoverySnapshot = rawRecoveryField.kind === "absent"
+    ? []
+    : rawRecoveryField.kind === "data" ? snapshotDenseArray(rawRecoveryField.value) : null;
+  const malformedJournalContainer = journalSnapshot === null;
+  const malformedRecoveryContainer = recoverySnapshot === null;
   const rawOutcomeJournal = migrateStringJournal(journalSnapshot ?? []);
   let outcomeRecoveryRecords = migrateOutcomeRecoveryRecords(
     recoverySnapshot ?? [],
@@ -503,29 +569,63 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
   );
   const opaqueAuthorityCount = Number(malformedJournalContainer) + Number(malformedRecoveryContainer);
   if (opaqueAuthorityCount > 0) {
-    const knownProtectedIds = outcomeRecoveryRecords.flatMap((record) =>
-      record.kind === "applied_return"
-        ? record.returnPending ? [record.outcomeId] : []
-        : record.kind === "legacy_poi_prepared"
-          ? [record.envelope.outcomeId]
-          : record.protectedOutcomeIds);
-    const priorQuarantine = outcomeRecoveryRecords.reduce((total, record) =>
-      total + (record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0), 0);
-    outcomeRecoveryRecords = [reconciliationLock(
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
       "outcome_authority_invalid",
-      knownProtectedIds,
-      priorQuarantine + opaqueAuthorityCount,
-    )];
+      [],
+      opaqueAuthorityCount,
+    );
   }
-  const protectedOutcomeIds = outcomeRecoveryRecords.flatMap((record) =>
-    record.kind === "applied_return"
-      ? record.returnPending ? [record.outcomeId] : []
-      : record.kind === "legacy_poi_prepared"
-        ? [record.envelope.outcomeId]
-        : record.protectedOutcomeIds);
+  if (rawPreparedInspection.status === "invalid") {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "prepared_outcome_invalid",
+      [],
+      rawPreparedInspection.quarantinedCount,
+    );
+  } else if (rawPreparedInspection.status === "valid") {
+    const preparation = rawPreparedInspection.preparation;
+    const migratedInspection = galaxyRun === null
+      ? { status: "invalid" as const, quarantinedCount: 1 }
+      : inspectGalaxyPoiPreparedAuthority(galaxyRun);
+    const migratedMatches = migratedInspection.status === "valid" &&
+      migratedInspection.preparation.launchId === preparation.launchId &&
+      migratedInspection.preparation.outcomeId === preparation.outcomeId &&
+      migratedInspection.preparation.preparedRevision === preparation.preparedRevision &&
+      migratedInspection.preparation.factId === preparation.factId;
+    const nestedOutcomeIds = galaxyRun?.appliedOutcomeIds ?? [];
+    if (!migratedMatches || activeExperience !== "galaxy" ||
+      preparation.preparedRevision !== saveRevision || rawOutcomeJournal.includes(preparation.outcomeId) ||
+      nestedOutcomeIds.includes(preparation.outcomeId)) {
+      outcomeRecoveryRecords = reconcileRecoveryAuthority(
+        outcomeRecoveryRecords,
+        "prepared_outcome_invalid",
+        [preparation.outcomeId],
+        1,
+      );
+    }
+  }
+  let protectedOutcomeIds = protectedRecoveryOutcomeIds(outcomeRecoveryRecords);
+  let appliedOutcomeIds = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
+  const parity = snapshotGalaxyOutcomeAuthority(
+    galaxyRun,
+    appliedOutcomeIds,
+    outcomeRecoveryRecords,
+    OUTCOME_JOURNAL_LIMIT,
+  );
+  if (!parity.ok) {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "outcome_authority_invalid",
+      parity.knownOutcomeIds,
+      parity.quarantinedOutcomeCount,
+    );
+    protectedOutcomeIds = protectedRecoveryOutcomeIds(outcomeRecoveryRecords);
+    appliedOutcomeIds = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
+  }
   return {
     saveRevision,
-    appliedOutcomeIds: migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds),
+    appliedOutcomeIds,
     outcomeRecoveryRecords,
     currentWorld: (raw.currentWorld as number) ?? 1,
     levels: (raw.levels as SaveData["levels"]) ?? {},
@@ -566,9 +666,7 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       realtimeMsPerGameMinute: 1000,
       season: "standard",
     },
-    activeExperience: raw.activeExperience === "galaxy" && galaxyRun !== null
-      ? "galaxy"
-      : "legacy",
+    activeExperience,
     galaxyRun,
   };
 }

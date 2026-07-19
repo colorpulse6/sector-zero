@@ -59,7 +59,9 @@ import {
 import {
   launchContextFromPilotLoadout,
   operationMissionDescriptor,
+  poiOutcomeMissionId,
   poiMissionDescriptor,
+  snapshotOutcomeRouteIdentity,
   snapshotRetryLaunchContext,
   type LaunchContext,
   type LaunchIdFactory,
@@ -197,6 +199,97 @@ function stringArraySnapshot(value: unknown): string[] | null {
   return snapshot !== null && snapshot.every((entry) => typeof entry === "string")
     ? snapshot as string[]
     : null;
+}
+
+const INVALID_PLAIN_SNAPSHOT = Symbol("invalid-plain-snapshot");
+
+function snapshotPlainData(
+  value: unknown,
+  ancestors = new Set<object>(),
+): unknown | typeof INVALID_PLAIN_SNAPSHOT {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : INVALID_PLAIN_SNAPSHOT;
+  if (typeof value !== "object" || ancestors.has(value)) return INVALID_PLAIN_SNAPSHOT;
+  try {
+    ancestors.add(value);
+    if (Array.isArray(value)) {
+      const entries = arraySnapshot(value);
+      if (entries === null) return INVALID_PLAIN_SNAPSHOT;
+      const snapshot: unknown[] = [];
+      for (const entry of entries) {
+        const safeEntry = snapshotPlainData(entry, ancestors);
+        if (safeEntry === INVALID_PLAIN_SNAPSHOT) return INVALID_PLAIN_SNAPSHOT;
+        snapshot.push(safeEntry);
+      }
+      return snapshot;
+    }
+    const entries = requiredOwnData(value, []);
+    if (entries === null) return INVALID_PLAIN_SNAPSHOT;
+    const snapshot: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(entries)) {
+      const safeEntry = snapshotPlainData(entry, ancestors);
+      if (safeEntry === INVALID_PLAIN_SNAPSHOT) return INVALID_PLAIN_SNAPSHOT;
+      snapshot[key] = safeEntry;
+    }
+    return snapshot;
+  } catch {
+    return INVALID_PLAIN_SNAPSHOT;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+type GalaxyPoiOutcomeAttempt = OutcomeAttempt & {
+  routeKind: "poi";
+  routeIdentity: Extract<OutcomeAttempt["routeIdentity"], { kind: "poi" }>;
+  persistenceAuthority: "galaxy";
+  returnTarget: "galaxy-region";
+};
+
+function snapshotGalaxyPoiOutcomeAttempt(value: unknown): GalaxyPoiOutcomeAttempt | null {
+  try {
+    const attempt = exactOwnData(value, [
+      "version", "routeKind", "missionId", "routeIdentity", "launchId", "expectedRevision",
+      "persistenceAuthority", "returnTarget", "declaredFields", "launchSnapshot",
+    ]);
+    if (attempt === null || attempt.version !== 1 || attempt.routeKind !== "poi" ||
+      typeof attempt.missionId !== "string" || attempt.missionId.length === 0 ||
+      typeof attempt.launchId !== "string" || attempt.launchId.length === 0 ||
+      !Number.isSafeInteger(attempt.expectedRevision) || (attempt.expectedRevision as number) < 0 ||
+      attempt.persistenceAuthority !== "galaxy" || attempt.returnTarget !== "galaxy-region") return null;
+    const routeIdentity = snapshotOutcomeRouteIdentity(
+      attempt.routeIdentity,
+      "poi",
+      attempt.missionId,
+    );
+    const declaredFields = arraySnapshot(attempt.declaredFields);
+    const launchSnapshot = exactOwnData(attempt.launchSnapshot, ["galaxyRun"]);
+    const galaxyRun = launchSnapshot === null
+      ? INVALID_PLAIN_SNAPSHOT
+      : snapshotPlainData(launchSnapshot.galaxyRun);
+    if (routeIdentity === null || routeIdentity.kind !== "poi" || declaredFields === null ||
+      declaredFields.length !== 1 || declaredFields[0] !== "galaxyRun" ||
+      galaxyRun === INVALID_PLAIN_SNAPSHOT) return null;
+    // A transparent Proxy can emulate own data descriptors. Structured clone
+    // rejects Proxy exotics; all nested values have already passed the
+    // descriptor-only snapshot above, so this cannot invoke an accessor.
+    try { structuredClone(value); }
+    catch { return null; }
+    return {
+      version: 1,
+      routeKind: "poi",
+      missionId: attempt.missionId,
+      routeIdentity,
+      launchId: attempt.launchId,
+      expectedRevision: attempt.expectedRevision as number,
+      persistenceAuthority: "galaxy",
+      returnTarget: "galaxy-region",
+      declaredFields: ["galaxyRun"],
+      launchSnapshot: { galaxyRun },
+    };
+  } catch {
+    return null;
+  }
 }
 
 function knownUniqueStringArraySnapshot<T extends string>(
@@ -1077,36 +1170,39 @@ function stageGalaxyPoiOutcomeAuthorityImpl(
   const root = snapshotOutcomeRootAuthority(save);
   const saveData = requiredOwnData(save, ["activeExperience", "galaxyRun"]);
   const submittedRun = saveData?.galaxyRun as GalaxyRunState | null | undefined;
-  const runData = requiredOwnData(submittedRun, ["appliedOutcomeIds"]);
+  const attemptSnapshot = snapshotGalaxyPoiOutcomeAttempt(attempt);
+  const submittedRunSnapshot = snapshotPlainData(submittedRun);
+  const safeSubmittedRun = submittedRunSnapshot === INVALID_PLAIN_SNAPSHOT
+    ? null
+    : submittedRunSnapshot as GalaxyRunState;
+  const runData = requiredOwnData(safeSubmittedRun, ["appliedOutcomeIds"]);
   const nestedJournal = runData === null ? null : snapshotOutcomeIdJournal(runData.appliedOutcomeIds);
-  const outcomeId = `${attempt.launchId}:success`;
+  const outcomeId = attemptSnapshot === null ? null : `${attemptSnapshot.launchId}:success`;
   const rootOccurrences = root?.appliedOutcomeIds.filter((id) => id === outcomeId).length ?? -1;
   const nestedOccurrences = nestedJournal?.filter((id) => id === outcomeId).length ?? -1;
   if (screen !== GameScreen.LEVEL_COMPLETE || active === null || root === null || root.locked ||
-    saveData === null || saveData.activeExperience !== "galaxy" || submittedRun === null || submittedRun === undefined ||
+    saveData === null || saveData.activeExperience !== "galaxy" || safeSubmittedRun === null ||
+    attemptSnapshot === null || outcomeId === null ||
     nestedJournal === null || rootOccurrences !== 0 || nestedOccurrences !== 0 ||
-    attempt.routeKind !== "poi" || attempt.routeIdentity.kind !== "poi" ||
-    attempt.persistenceAuthority !== "galaxy" || attempt.returnTarget !== "galaxy-region" ||
-    attempt.expectedRevision !== root.saveRevision || attempt.launchId.length === 0 ||
-    attempt.declaredFields.length !== 1 || attempt.declaredFields[0] !== "galaxyRun" ||
-    !samePlainData(attempt.launchSnapshot.galaxyRun, submittedRun) ||
-    active.originColonyId !== attempt.routeIdentity.originColonyId ||
-    active.nodeId !== attempt.routeIdentity.nodeId || active.engine !== attempt.routeIdentity.engine ||
-    active.rewardEligible !== attempt.routeIdentity.rewardEligible) {
+    attemptSnapshot.expectedRevision !== root.saveRevision ||
+    !samePlainData(attemptSnapshot.launchSnapshot.galaxyRun, safeSubmittedRun) ||
+    active.originColonyId !== attemptSnapshot.routeIdentity.originColonyId ||
+    active.nodeId !== attemptSnapshot.routeIdentity.nodeId || active.engine !== attemptSnapshot.routeIdentity.engine ||
+    active.rewardEligible !== attemptSnapshot.routeIdentity.rewardEligible) {
     return { ok: false, reason: "invalid_poi_session" };
   }
   const preparedRevision = root.saveRevision + 1;
   if (!Number.isSafeInteger(preparedRevision)) return { ok: false, reason: "invalid_poi_session" };
-  const fact = createGalaxyPoiPreparedFact(submittedRun, attempt.routeIdentity, {
-    launchId: attempt.launchId,
+  const fact = createGalaxyPoiPreparedFact(safeSubmittedRun, attemptSnapshot.routeIdentity, {
+    launchId: attemptSnapshot.launchId,
     outcomeId,
     preparedRevision,
   });
   if (fact === null) return { ok: false, reason: "invalid_poi_session" };
-  const galaxyRun = structuredClone(submittedRun);
+  const galaxyRun = structuredClone(safeSubmittedRun);
   galaxyRun.historyFacts.push(fact);
   const stagedSave = {
-    ...save,
+    ...saveData as unknown as SaveData,
     saveRevision: preparedRevision,
     appliedOutcomeIds: root.appliedOutcomeIds,
     outcomeRecoveryRecords: root.outcomeRecoveryRecords,
@@ -1116,7 +1212,7 @@ function stageGalaxyPoiOutcomeAuthorityImpl(
     ok: true,
     save: stagedSave,
     attempt: {
-      ...structuredClone(attempt),
+      ...attemptSnapshot,
       expectedRevision: preparedRevision,
       launchSnapshot: { galaxyRun: structuredClone(galaxyRun) },
     },
@@ -1152,7 +1248,7 @@ export function recoverGalaxyPoiOutcomeAuthority(save: SaveData): OutcomeAttempt
     return {
       version: 1,
       routeKind: "poi",
-      missionId: mission.id,
+      missionId: poiOutcomeMissionId(mission.id, recovered.identity.originColonyId),
       routeIdentity: recovered.identity,
       launchId: recovered.launchId,
       expectedRevision: recovered.preparedRevision,

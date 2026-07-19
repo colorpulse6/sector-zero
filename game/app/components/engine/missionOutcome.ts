@@ -12,11 +12,13 @@ import {
   dynamicOutcomeRouteIdentityIsCanonical,
   outcomeRouteIdentityFromLaunch,
   outcomeAuthorityReturnMatches,
+  poiOutcomeMissionId,
   snapshotOutcomeRouteIdentity,
   type LaunchContext,
   type PoiOutcomeRouteInput,
 } from "./missionContext";
 import { foldMissionOutcome, outcomeAttemptFields, outcomeEnvelopeFields } from "./missionOutcomeFolds";
+import { snapshotGalaxyOutcomeAuthority } from "./outcomeJournalAuthority";
 
 export type OutcomeDeclaredField = Exclude<
   keyof SaveData,
@@ -179,45 +181,49 @@ interface ValidatedEnvelope {
 
 type OutcomeJournalStatus = "new" | "applied" | "conflict";
 
+function snapshotGalaxyAuthorityFromSave(
+  save: SaveData,
+  rootOutcomeIds: readonly string[],
+  recoveryRecords: readonly OutcomeRecoveryRecord[],
+) {
+  const saveData = requiredOwnData(save, ["galaxyRun"]);
+  return saveData === null
+    ? { ok: false as const, knownOutcomeIds: [], quarantinedOutcomeCount: 1 }
+    : snapshotGalaxyOutcomeAuthority(
+        saveData.galaxyRun,
+        rootOutcomeIds,
+        recoveryRecords,
+        OUTCOME_JOURNAL_LIMIT,
+      );
+}
+
 function outcomeJournalStatus(
   save: SaveData,
   outcome: SerializedOutcomeEnvelope,
   root: ValidatedOutcomeRoot,
 ): OutcomeJournalStatus {
   try {
+    const galaxyAuthority = snapshotGalaxyAuthorityFromSave(
+      save,
+      root.appliedOutcomeIds,
+      root.outcomeRecoveryRecords,
+    );
+    if (!galaxyAuthority.ok) return "conflict";
     const rootOccurrences = root.appliedOutcomeIds.filter((id) => id === outcome.outcomeId).length;
     if (outcome.persistenceAuthority !== "galaxy") {
       return rootOccurrences === 0 ? "new" : rootOccurrences === 1 ? "applied" : "conflict";
     }
-    const saveData = requiredOwnData(save, ["galaxyRun"]);
-    const run = saveData === null ? null : requiredOwnData(saveData.galaxyRun, ["appliedOutcomeIds", "operations"]);
-    if (run === null) return "conflict";
-    const nestedJournal = snapshotStringJournal(run.appliedOutcomeIds);
-    if (nestedJournal === null) return "conflict";
-    const nestedOccurrences = nestedJournal.filter((id) => id === outcome.outcomeId).length;
+    const nestedOccurrences = galaxyAuthority.nestedOutcomeIds.filter((id) => id === outcome.outcomeId).length;
+    const owner = galaxyAuthority.operationOwners.get(outcome.outcomeId);
     if (outcome.routeKind === "operation") {
       if (outcome.routeIdentity.kind !== "operation") return "conflict";
-      let ownerCount = 0;
-      let exactOwnerOccurrences = 0;
-      const operations = ownDataRecord(run.operations);
-      if (operations === null) return "conflict";
-      for (const [operationId, rawRecord] of Object.entries(operations)) {
-        const record = ownDataRecord(rawRecord);
-        const completions = record === null ? null : snapshotStringJournal(record.completionIds);
-        if (completions === null) return "conflict";
-        const occurrences = completions.filter((id) => id === outcome.outcomeId).length;
-        if (occurrences > 0) {
-          ownerCount += 1;
-          if (operationId === outcome.routeIdentity.operationId) exactOwnerOccurrences = occurrences;
-        }
-      }
-      if (rootOccurrences === 0 && nestedOccurrences === 0 && ownerCount === 0) return "new";
-      return rootOccurrences === 1 && nestedOccurrences === 1 && ownerCount === 1 && exactOwnerOccurrences === 1
+      if (rootOccurrences === 0 && nestedOccurrences === 0 && owner === undefined) return "new";
+      return rootOccurrences === 1 && nestedOccurrences === 1 && owner === outcome.routeIdentity.operationId
         ? "applied"
         : "conflict";
     }
-    if (rootOccurrences === 0 && nestedOccurrences === 0) return "new";
-    return rootOccurrences === 1 && nestedOccurrences === 1 ? "applied" : "conflict";
+    if (rootOccurrences === 0 && nestedOccurrences === 0 && owner === undefined) return "new";
+    return rootOccurrences === 1 && nestedOccurrences === 1 && owner === undefined ? "applied" : "conflict";
   } catch {
     return "conflict";
   }
@@ -266,7 +272,7 @@ function validateLegacyPreparedEnvelope(value: unknown): SerializedOutcomeEnvelo
     "returnTarget", "declaredFields", "launchSnapshot", "outcomeId", "terminalKind", "payload",
   ]);
   if (envelope === null || envelope.version !== 1 || envelope.routeKind !== "poi" ||
-    typeof envelope.missionId !== "string" || !envelope.missionId.startsWith("poi:") ||
+    typeof envelope.missionId !== "string" || envelope.missionId.length === 0 ||
     typeof envelope.launchId !== "string" || envelope.launchId.length === 0 ||
     !Number.isSafeInteger(envelope.expectedRevision) || (envelope.expectedRevision as number) < 0 ||
     envelope.persistenceAuthority !== "legacy" || envelope.returnTarget !== "legacy-colony-exterior" ||
@@ -343,7 +349,7 @@ function snapshotRecoveryRecord(value: unknown): SnapshotRecoveryRecord | null {
     return receipt === null ? null : {
       record: receipt,
       identity: receipt.outcomeId,
-      protectedIds: receipt.returnPending ? [receipt.outcomeId] : [],
+      protectedIds: receipt.returnPending || receipt.persistenceAuthority === "galaxy" ? [receipt.outcomeId] : [],
       locked: false,
     };
   }
@@ -400,6 +406,7 @@ function validateRoot(save: SaveData): ValidatedOutcomeRoot | null {
   const protectedIds: string[] = [];
   const identities = new Set<string>();
   let locked = false;
+  let legacyPreparedCount = 0;
   for (const rawRecord of outcomeRecoveryRecords) {
     const snapshot = snapshotRecoveryRecord(rawRecord);
     if (snapshot === null || identities.has(snapshot.identity)) return null;
@@ -419,6 +426,8 @@ function validateRoot(save: SaveData): ValidatedOutcomeRoot | null {
           "applied",
         )) return null;
     } else if (snapshot.record.kind === "legacy_poi_prepared") {
+      legacyPreparedCount += 1;
+      if (legacyPreparedCount > 1) return null;
       const preparedRecord = snapshot.record;
       const current = requiredOwnData(save, LEGACY_POI_FIELDS);
       if (current === null || preparedRecord.envelope.expectedRevision > (root.saveRevision as number) ||
@@ -426,6 +435,7 @@ function validateRoot(save: SaveData): ValidatedOutcomeRoot | null {
           !sameData(current[field], preparedRecord.envelope.launchSnapshot[field]))) return null;
     }
   }
+  if (!snapshotGalaxyAuthorityFromSave(save, appliedOutcomeIds, snapshots).ok) return null;
   return {
     saveRevision: root.saveRevision as number,
     appliedOutcomeIds,
@@ -544,7 +554,9 @@ export function createOutcomeAttempt(
   return {
     version: 1,
     routeKind,
-    missionId: context.mission.id,
+    missionId: routeIdentity.kind === "poi"
+      ? poiOutcomeMissionId(context.mission.id, routeIdentity.originColonyId)
+      : context.mission.id,
     routeIdentity,
     launchId: context.launchId,
     expectedRevision: root.saveRevision,
@@ -614,6 +626,49 @@ function recoverLegacyPreparedOutcomeImpl(save: SaveData): SerializedOutcomeEnve
 export function recoverLegacyPreparedOutcome(save: SaveData): SerializedOutcomeEnvelope | null {
   try { return recoverLegacyPreparedOutcomeImpl(save); }
   catch { return null; }
+}
+
+interface OutcomeWriteProof {
+  expectedRevision: number;
+  expectedOutcomeIds: string[];
+  expectedRecords: OutcomeRecoveryRecord[];
+  effectFields: OutcomeDeclaredField[];
+  expectedEffects: Record<string, unknown>;
+}
+
+function createOutcomeWriteProof(
+  candidate: SaveData,
+  expectedRevision: number,
+  expectedOutcomeIds: readonly string[],
+  expectedRecords: readonly OutcomeRecoveryRecord[],
+  effectFields: readonly OutcomeDeclaredField[],
+): OutcomeWriteProof | null {
+  try {
+    const effects = requiredOwnData(candidate, effectFields);
+    return effects === null ? null : {
+      expectedRevision,
+      expectedOutcomeIds: structuredClone(expectedOutcomeIds) as string[],
+      expectedRecords: structuredClone(expectedRecords) as OutcomeRecoveryRecord[],
+      effectFields: [...effectFields],
+      expectedEffects: structuredClone(effects),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function exactPostWriteProof(
+  after: SaveData,
+  proof: OutcomeWriteProof,
+): ValidatedOutcomeRoot | null {
+  const afterRoot = validateRoot(after);
+  if (afterRoot === null || afterRoot.locked || afterRoot.saveRevision !== proof.expectedRevision ||
+    !sameData(afterRoot.appliedOutcomeIds, proof.expectedOutcomeIds) ||
+    !sameData(afterRoot.outcomeRecoveryRecords, proof.expectedRecords)) return null;
+  const afterEffects = requiredOwnData(after, proof.effectFields);
+  if (afterEffects === null || proof.effectFields.some((field) =>
+    !sameData(afterEffects[field], proof.expectedEffects[field]))) return null;
+  return afterRoot;
 }
 
 function commitOutcomeImpl(
@@ -737,12 +792,18 @@ function commitOutcomeImpl(
   if (candidateRoot === null || outcomeJournalStatus(candidate, outcome, candidateRoot) !== "applied") {
     return { status: "conflict", latest };
   }
+  const effectFields = [...new Set<OutcomeDeclaredField>([
+    ...folded.fields,
+    ...(outcome.persistenceAuthority === "galaxy" ? ["galaxyRun" as const] : []),
+  ])];
+  const writeProof = createOutcomeWriteProof(candidate, revision, journal, records, effectFields);
+  if (writeProof === null) return { status: "conflict", latest };
   try {
     store.write(candidate);
   } catch (cause) {
     try {
       const after = store.read();
-      const afterRoot = validateRoot(after);
+      const afterRoot = exactPostWriteProof(after, writeProof);
       if (afterRoot !== null && outcomeJournalStatus(after, outcome, afterRoot) === "applied") {
         return { status: "already_applied", save: after };
       }
@@ -807,16 +868,14 @@ function acknowledgeOutcomeReturnImpl(
   records[index] = { ...record, returnPending: false };
   const candidate = withRootOverrides(latest, { saveRevision: revision, outcomeRecoveryRecords: records });
   if (candidate === null || validateRoot(candidate) === null) return { status: "conflict", latest };
+  const writeProof = createOutcomeWriteProof(candidate, revision, root.appliedOutcomeIds, records, []);
+  if (writeProof === null) return { status: "conflict", latest };
   try { store.write(candidate); }
   catch (cause) {
     try {
       const after = store.read();
-      const afterRoot = validateRoot(after);
-      const matchesAfter = afterRoot?.outcomeRecoveryRecords.filter((entry) =>
-        entry.kind === "applied_return" && entry.outcomeId === outcomeId) ?? [];
-      const pending = matchesAfter[0];
-      if (afterRoot !== null && afterRoot.appliedOutcomeIds.includes(outcomeId) && matchesAfter.length === 1 &&
-        pending?.kind === "applied_return" && !pending.returnPending) {
+      const afterRoot = exactPostWriteProof(after, writeProof);
+      if (afterRoot !== null && afterRoot.appliedOutcomeIds.includes(outcomeId)) {
         return { status: "already_applied", save: after };
       }
     } catch { /* preserve the original write failure */ }

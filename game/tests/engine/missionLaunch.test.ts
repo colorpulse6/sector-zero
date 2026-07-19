@@ -17,6 +17,7 @@ import {
   operationMissionDescriptor,
   planetMissionDescriptor,
   poiMissionDescriptor,
+  poiOutcomeMissionId,
   retryLaunchContext,
   specialMissionDescriptor,
   type LaunchContext,
@@ -590,7 +591,10 @@ test("POI runtime inherits explicit experience authority and the complete pilot 
   assert.deepEqual(state.outcomeAttempt, {
     version: 1,
     routeKind: "poi",
-    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      "galaxy:ashfall-primary",
+    ),
     routeIdentity: {
       kind: "poi",
       originColonyId: "galaxy:ashfall-primary",
