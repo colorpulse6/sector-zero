@@ -238,7 +238,7 @@ Seeds were not exposed.
 - **Billboard scale/canvas:** alpha trim, Lanczos fit inside 118×250, south gravity on exact 128×256 transparent canvas, forced PNG color type 6
 - **Review:** identity-pair panel, actual 128×256 checkerboard, 48px silhouette check, and dark/bright composites
 - **Evidence:** `npc-identity-pairs.png` and the completed `billboards-dark-bright.png`
-- **Walk frames:** intentionally deferred because the M3 manifest and current runtime consumer specify idle pairs only. The bartender is the first future walk-frame candidate after integration establishes a real consumer.
+- **Walk frames:** intentionally deferred because the M3 manifest and current asset contract specify idle pairs only. The bartender is the first future walk-frame candidate after integration establishes a real consumer.
 
 ## Commands recorded
 

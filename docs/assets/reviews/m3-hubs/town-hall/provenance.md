@@ -158,8 +158,8 @@ green override and matte path as props. No walk frames were generated. Seeds wer
   and dark/bright composites
 - **Evidence:** `npc-identity-pairs.png` and the complete
   `billboards-dark-bright.png`
-- **Walk frames:** intentionally deferred because the M3 manifest and current runtime
-  consumer require idle pairs only. The governor is the first future candidate after a real
+- **Walk frames:** intentionally deferred because the M3 manifest and current asset contract
+  require idle pairs only. The governor is the first future candidate after a real
   integration consumer exists.
 
 ## Recorded commands
