@@ -3,7 +3,7 @@
   "scope": "m3-ashfall-base",
   "bundles": {
     "cantina": {
-      "status": "planned",
+      "status": "production-reviewed",
       "environment": [
         { "constant": "HUB_CANTINA_WALL", "path": "game/public/sprites/interiors/m3/cantina/wall.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/wall-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
         { "constant": "HUB_CANTINA_FLOOR", "path": "game/public/sprites/interiors/m3/cantina/floor.png", "sourcePath": "docs/assets/source/m3-hubs/cantina/floor-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
@@ -23,7 +23,7 @@
       ]
     },
     "marketplace": {
-      "status": "planned",
+      "status": "production-reviewed",
       "environment": [
         { "constant": "HUB_MARKET_WALL", "path": "game/public/sprites/interiors/m3/marketplace/wall.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/wall-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
         { "constant": "HUB_MARKET_FLOOR", "path": "game/public/sprites/interiors/m3/marketplace/floor.png", "sourcePath": "docs/assets/source/m3-hubs/marketplace/floor-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
@@ -44,7 +44,7 @@
       ]
     },
     "town-hall": {
-      "status": "planned",
+      "status": "production-reviewed",
       "environment": [
         { "constant": "HUB_TOWN_HALL_WALL", "path": "game/public/sprites/interiors/m3/town-hall/wall.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/wall-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
         { "constant": "HUB_TOWN_HALL_FLOOR", "path": "game/public/sprites/interiors/m3/town-hall/floor.png", "sourcePath": "docs/assets/source/m3-hubs/town-hall/floor-source.png", "width": 512, "height": 512, "alpha": "opaque", "kind": "seamless-texture" },
