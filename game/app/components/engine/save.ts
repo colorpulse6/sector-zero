@@ -41,7 +41,10 @@ import {
   inspectGalaxyPoiPreparedAuthority,
   type GalaxyPoiPreparedAuthorityInspection,
 } from "./galaxy/galaxyPoiOutcomeAuthority";
-import { snapshotGalaxyOutcomeAuthority } from "./outcomeJournalAuthority";
+import {
+  inspectGalaxyOutcomeJournals,
+  snapshotGalaxyOutcomeAuthority,
+} from "./outcomeJournalAuthority";
 export type { SaveData };
 
 const SAVE_KEY = "sector-zero-save";
@@ -100,6 +103,14 @@ function migrateStringJournal(value: unknown): string[] {
     newestFirst.push(entry);
   }
   return newestFirst.reverse();
+}
+
+function snapshotStrictStringJournal(value: unknown): string[] | null {
+  const entries = snapshotDenseArray(value);
+  return entries !== null && entries.every((entry) => typeof entry === "string" && entry.length > 0) &&
+    new Set(entries).size === entries.length
+    ? entries as string[]
+    : null;
 }
 
 function migrateOutcomeJournal(value: unknown, protectedIds: readonly string[] = []): string[] {
@@ -285,6 +296,19 @@ function snapshotReconciliation(value: unknown): OutcomeRecoveryRecord | null {
   );
 }
 
+function salvageReconciliation(value: unknown): Extract<OutcomeRecoveryRecord, {
+  kind: "reconciliation_required";
+}> {
+  const idsField = snapshotOwnField(value, "protectedOutcomeIds");
+  const countField = snapshotOwnField(value, "quarantinedOutcomeCount");
+  const protectedOutcomeIds = idsField.kind === "data" ? migrateStringJournal(idsField.value) : [];
+  const priorQuarantine = countField.kind === "data" && Number.isSafeInteger(countField.value) &&
+    (countField.value as number) >= 0
+    ? countField.value as number
+    : 0;
+  return reconciliationLock("outcome_authority_invalid", protectedOutcomeIds, Math.max(1, priorQuarantine));
+}
+
 type OutcomeReconciliationReason = Extract<OutcomeRecoveryRecord, {
   kind: "reconciliation_required";
 }>["reason"];
@@ -308,7 +332,7 @@ function reconciliationLock(
 function protectedRecoveryOutcomeIds(records: readonly OutcomeRecoveryRecord[]): string[] {
   return records.flatMap((record) =>
     record.kind === "applied_return"
-      ? record.returnPending ? [record.outcomeId] : []
+      ? record.returnPending || record.persistenceAuthority === "galaxy" ? [record.outcomeId] : []
       : record.kind === "legacy_poi_prepared"
         ? [record.envelope.outcomeId]
         : record.protectedOutcomeIds);
@@ -328,7 +352,9 @@ function reconcileRecoveryAuthority(
   return [reconciliationLock(
     existingLock?.reason ?? reason,
     [...protectedRecoveryOutcomeIds(records), ...additionalOutcomeIds],
-    priorQuarantine + Math.max(1, quarantinedOutcomeCount),
+    existingLock === undefined
+      ? priorQuarantine + Math.max(1, quarantinedOutcomeCount)
+      : Math.max(priorQuarantine, quarantinedOutcomeCount),
   )];
 }
 
@@ -347,13 +373,12 @@ function migrateOutcomeRecoveryRecords(
   const invalidAuthorityIds: string[] = [];
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
+    const kindField = snapshotOwnField(entry, "kind");
+    if (kindField.kind === "data" && kindField.value === "reconciliation_required") {
+      return [snapshotReconciliation(entry) ?? salvageReconciliation(entry)];
+    }
     const source = ownDataRecord(entry);
     if (source === null) continue;
-    if (source.kind === "reconciliation_required") {
-      const lock = snapshotReconciliation(entry);
-      if (lock !== null) return [lock];
-      continue;
-    }
     let record: OutcomeRecoveryRecord | null = null;
     let identity: unknown;
     if (source.kind === "applied_return") {
@@ -428,7 +453,8 @@ function migrateOutcomeRecoveryRecords(
   const protectedOutcomeIds = records.flatMap((record) =>
     record.kind === "legacy_poi_prepared"
       ? [record.envelope.outcomeId]
-      : record.kind === "applied_return" && record.returnPending
+      : record.kind === "applied_return" &&
+          (record.returnPending || record.persistenceAuthority === "galaxy")
         ? [record.outcomeId]
         : []);
   if (invalidAuthorityIds.length > 0) {
@@ -512,68 +538,106 @@ export function createHydrationSafeSave(): SaveData {
 export function migrateSave(raw: Record<string, unknown>): SaveData {
   const colonies = migrateColonies(raw.colonies);
   const planets = migratePlanets(raw.planets, colonies);
-  const rawGalaxyRun = raw.galaxyRun;
+  const rawGalaxyRunField = snapshotOwnField(raw, "galaxyRun");
+  const rawGalaxyRun = rawGalaxyRunField.kind === "data" ? rawGalaxyRunField.value : null;
+  const rawGalaxyJournalInspection = rawGalaxyRun === null || rawGalaxyRun === undefined
+    ? { ok: true as const, nestedOutcomeIds: [], operationOwners: new Map<string, string>() }
+    : inspectGalaxyOutcomeJournals(rawGalaxyRun, OUTCOME_JOURNAL_LIMIT);
   const rawGalaxyHistoryField = rawGalaxyRun !== null && typeof rawGalaxyRun === "object" && !Array.isArray(rawGalaxyRun)
     ? snapshotOwnField(rawGalaxyRun, "historyFacts")
     : { kind: "absent" as const };
   const rawPreparedInspection: GalaxyPoiPreparedAuthorityInspection = rawGalaxyHistoryField.kind === "absent"
     ? { status: "none" }
     : inspectGalaxyPoiPreparedAuthority(rawGalaxyRun);
-  const rawGalaxyIdentity = rawGalaxyRun !== null
-      && typeof rawGalaxyRun === "object"
-      && !Array.isArray(rawGalaxyRun)
-      && Object.prototype.hasOwnProperty.call(rawGalaxyRun, "identity")
-    ? (rawGalaxyRun as Record<string, unknown>).identity
-    : null;
-  const identitySource = rawGalaxyIdentity !== null
-      && typeof rawGalaxyIdentity === "object"
-      && !Array.isArray(rawGalaxyIdentity)
-    ? rawGalaxyIdentity as Record<string, unknown>
+  const rawGalaxyIdentityField = rawGalaxyRun !== null && typeof rawGalaxyRun === "object" && !Array.isArray(rawGalaxyRun)
+    ? snapshotOwnField(rawGalaxyRun, "identity")
+    : { kind: "absent" as const };
+  const identitySource = rawGalaxyIdentityField.kind === "data"
+    ? ownDataRecord(rawGalaxyIdentityField.value)
     : null;
   const identityIsComplete = identitySource !== null
-    && Object.prototype.hasOwnProperty.call(identitySource, "galaxySeed")
     && typeof identitySource.galaxySeed === "string"
-    && Object.prototype.hasOwnProperty.call(identitySource, "generationVersion")
     && Number.isSafeInteger(identitySource.generationVersion)
     && (identitySource.generationVersion as number) >= 0
-    && Object.prototype.hasOwnProperty.call(
-      identitySource,
-      "authoredAnchorRegistryVersion",
-    )
     && Number.isSafeInteger(identitySource.authoredAnchorRegistryVersion)
     && (identitySource.authoredAnchorRegistryVersion as number) >= 0;
-  const galaxyRun = identityIsComplete ? migrateGalaxyRun(rawGalaxyRun) : null;
-  const saveRevision = Number.isSafeInteger(raw.saveRevision) && (raw.saveRevision as number) >= 0
-    ? raw.saveRevision as number
+  let galaxyRun: SaveData["galaxyRun"] = null;
+  if (identityIsComplete) {
+    try { galaxyRun = migrateGalaxyRun(rawGalaxyRun); }
+    catch { galaxyRun = null; }
+  }
+  const rawRevisionField = snapshotOwnField(raw, "saveRevision");
+  const rawJournalField = snapshotOwnField(raw, "appliedOutcomeIds");
+  const rawRecoveryField = snapshotOwnField(raw, "outcomeRecoveryRecords");
+  const isPreA3Authority = rawRevisionField.kind === "absent" && rawJournalField.kind === "absent" &&
+    rawRecoveryField.kind === "absent";
+  const absentAuthorityFieldCount = Number(rawRevisionField.kind === "absent") +
+    Number(rawJournalField.kind === "absent") + Number(rawRecoveryField.kind === "absent");
+  const hasPartialA3Authority = absentAuthorityFieldCount > 0 && absentAuthorityFieldCount < 3;
+  const saveRevision = rawRevisionField.kind === "data" && Number.isSafeInteger(rawRevisionField.value) &&
+    (rawRevisionField.value as number) >= 0
+    ? rawRevisionField.value as number
     : 0;
   const activeExperience = raw.activeExperience === "galaxy" && galaxyRun !== null
     ? "galaxy"
     : "legacy";
   const missionsSinceStart = (raw.missionsSinceStart as number) ?? 0;
-  const rawJournalField = snapshotOwnField(raw, "appliedOutcomeIds");
-  const rawRecoveryField = snapshotOwnField(raw, "outcomeRecoveryRecords");
-  const journalSnapshot = rawJournalField.kind === "absent"
-    ? []
-    : rawJournalField.kind === "data" ? snapshotDenseArray(rawJournalField.value) : null;
+  const journalSnapshot = rawJournalField.kind === "data" ? snapshotDenseArray(rawJournalField.value) :
+    rawJournalField.kind === "absent" ? [] : null;
+  const strictRootJournal = rawJournalField.kind === "data"
+    ? snapshotStrictStringJournal(rawJournalField.value)
+    : rawJournalField.kind === "absent" ? [] : null;
   const recoverySnapshot = rawRecoveryField.kind === "absent"
     ? []
     : rawRecoveryField.kind === "data" ? snapshotDenseArray(rawRecoveryField.value) : null;
-  const malformedJournalContainer = journalSnapshot === null;
+  const preA3SeedIsCoherent = isPreA3Authority && rawGalaxyJournalInspection.ok &&
+    rawGalaxyJournalInspection.operationOwners.size === rawGalaxyJournalInspection.nestedOutcomeIds.length;
+  const malformedGalaxyRunContainer = rawGalaxyRunField.kind === "invalid";
+  const malformedJournalContainer = rawJournalField.kind !== "absent" && strictRootJournal === null;
   const malformedRecoveryContainer = recoverySnapshot === null;
-  const rawOutcomeJournal = migrateStringJournal(journalSnapshot ?? []);
+  const malformedRevision = rawRevisionField.kind === "invalid" ||
+    (rawRevisionField.kind === "data" && (!Number.isSafeInteger(rawRevisionField.value) ||
+      (rawRevisionField.value as number) < 0));
+  const rawOutcomeJournal = preA3SeedIsCoherent
+    ? [...rawGalaxyJournalInspection.nestedOutcomeIds]
+    : migrateStringJournal(journalSnapshot ?? []);
   let outcomeRecoveryRecords = migrateOutcomeRecoveryRecords(
     recoverySnapshot ?? [],
     saveRevision,
     rawOutcomeJournal,
     { colonies, planets, missionsSinceStart, galaxyRun },
   );
-  const opaqueAuthorityCount = Number(malformedJournalContainer) + Number(malformedRecoveryContainer);
+  const opaqueAuthorityCount = Number(malformedGalaxyRunContainer) + Number(malformedJournalContainer) +
+    Number(malformedRecoveryContainer) + Number(malformedRevision) +
+    Number(isPreA3Authority && !preA3SeedIsCoherent);
   if (opaqueAuthorityCount > 0) {
     outcomeRecoveryRecords = reconcileRecoveryAuthority(
       outcomeRecoveryRecords,
       "outcome_authority_invalid",
       [],
       opaqueAuthorityCount,
+    );
+  }
+  if (hasPartialA3Authority) {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "outcome_authority_invalid",
+      [],
+      0,
+    );
+  }
+  const rawParity = snapshotGalaxyOutcomeAuthority(
+    rawGalaxyRun,
+    rawOutcomeJournal,
+    outcomeRecoveryRecords,
+    OUTCOME_JOURNAL_LIMIT,
+  );
+  if (!rawParity.ok) {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "outcome_authority_invalid",
+      rawParity.knownOutcomeIds,
+      rawParity.quarantinedOutcomeCount,
     );
   }
   if (rawPreparedInspection.status === "invalid") {
@@ -605,7 +669,10 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       );
     }
   }
-  let protectedOutcomeIds = protectedRecoveryOutcomeIds(outcomeRecoveryRecords);
+  let protectedOutcomeIds = [
+    ...protectedRecoveryOutcomeIds(outcomeRecoveryRecords),
+    ...(rawParity.ok ? rawParity.nestedOutcomeIds : []),
+  ];
   let appliedOutcomeIds = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
   const parity = snapshotGalaxyOutcomeAuthority(
     galaxyRun,

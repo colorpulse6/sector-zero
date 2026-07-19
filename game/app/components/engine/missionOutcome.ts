@@ -856,7 +856,6 @@ function acknowledgeOutcomeReturnImpl(
   const currentRecords = root.outcomeRecoveryRecords;
   const matches = currentRecords.map((record, index) => ({ record, index })).filter(({ record }) =>
     record.kind === "applied_return" && record.outcomeId === outcomeId);
-  if (matches.length === 0) return { status: "already_applied", save: latest };
   if (matches.length !== 1) return { status: "conflict", latest };
   const index = matches[0].index;
   const record = currentRecords[index];
