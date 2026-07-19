@@ -5,8 +5,8 @@
 - Package: H0 — browser harness and deterministic route fixtures
 - Branch: `test/sync-browser-harness`
 - Planning base: `6744a494eaffd156317d434fd1e8eed46e3c4c52`
-- Tested code SHA: `f35fae82b36bd1813abf3e769e1c912b94004140`
-- Scope: Playwright test infrastructure, route fixtures, PR checks, and this receipt only; no game runtime source changed
+- Tested code SHA: `fdf980674af008bd5ac2fdf6e5010c6a69c754e9`
+- Scope: Playwright test infrastructure, route fixtures, game-local Yarn runtime pin, PR checks, and this receipt only; no game runtime source changed
 
 Playwright Chromium is locked through `@playwright/test` 1.61.1 in
 `game/yarn.lock`. A new machine installs the pinned browser once from `game/`:
@@ -16,7 +16,9 @@ yarn playwright install chromium
 ```
 
 CI uses `yarn playwright install --with-deps chromium` before
-`yarn browser:test`.
+`yarn browser:test`. `game/package.json` pins Yarn 4.9.2 so raw outer Yarn
+commands resolve the same runtime locally and in CI without annotating either
+manifest.
 
 ## TDD evidence
 
@@ -34,7 +36,7 @@ Usage Error: Couldn't find a script named "browser:test".
 
 Corepack briefly annotated the repository-root `package.json` while discovering
 the project during the first invocation. That incidental change was reverted
-before implementation; it is absent from both the code commit and final scope.
+before implementation; the final game-local runtime pin prevents it recurring.
 
 ### Save installation red
 
@@ -59,6 +61,45 @@ state. It initially failed with `Expected: undefined; Received: true` for
 `introSeen`, then passed after the pre-dismissed intro state moved to the
 route-ready `allPlanetsLaunchable` fixture.
 
+### Reload persistence red
+
+Cold quality review found that the original `page.addInitScript` rewrote the
+fixture on every reload. A focused regression started from `freshGalaxy`, chose
+Legacy, and then reloaded. Before the fix it failed twice for the intended reason:
+
+```text
+Expected activeExperience: "legacy"
+Received activeExperience: "galaxy"
+```
+
+The initializer now uses a session-scoped installation marker. It writes the
+fixture once before initial hydration and leaves application-written localStorage
+untouched on reload. The same focused test then passed and observed
+`activeExperience: "legacy"` after reload.
+
+### Current-worktree server proof
+
+Cold quality review also found an older static server from
+`/private/tmp/sector-zero-g0-atlas/game` already listening on port 3000. The
+original local `reuseExistingServer` setting could accept it, so all browser
+results before tested code SHA `fdf980674af008bd5ac2fdf6e5010c6a69c754e9`
+are invalidated.
+
+The corrected config derives a port from the current worktree path, passes that
+same port to Next and Playwright, and sets `reuseExistingServer: false`. The
+exact-code-SHA debug run first received `ECONNREFUSED` on worktree port 36882,
+then launched `yarn dev --hostname 127.0.0.1`, observed Next.js 15.3.1 compile
+`/`, ran all five tests, terminated that server, and left the unrelated port-3000
+process untouched.
+
+### Corepack cleanliness red
+
+Before the game-local pin, raw `yarn playwright test --list` warned that no
+`packageManager` existed and modified the repository-root manifest. After adding
+`packageManager: "yarn@4.9.2"` to the owned game manifest, the raw command reports
+Yarn 4.9.2, lists the intended five tests, leaves both manifest checksums
+unchanged, and leaves `git status --short` empty.
+
 ## Persisted route fixtures
 
 Every fixture is built through `migrateSave` plus current registries/reducers and
@@ -77,13 +118,13 @@ is asserted equal after JSON serialization and migration.
 ## Browser event matrix
 
 Console evidence below comes from the focused and full browser runs on the tested
-code SHA. Passing-test receipt attachments record the same commit, project,
-viewport, route, input method, fixture, expected result, and observed result as
-JSON in the temporary Playwright artifact directory.
+code SHA. Each event test also supplies its commit, project, viewport, route,
+input method, fixture, expected result, and observed result as a structured JSON
+`TestInfo` attachment to the active Playwright reporter.
 
 | Project / viewport | Route and fixture | Input | Expected | Observed / console evidence |
 | --- | --- | --- | --- | --- |
-| `desktop-keyboard` / 1280x900 | Experience selector → Legacy cockpit → reload; `allPlanetsLaunchable` | Keyboard | Both choices focus; Enter activates Legacy; reload retains the non-default build | Both buttons focused in sequence, Legacy opened, and the reloaded save retained `equippedWeaponType: "energy"`; `✓ @keyboard focuses both choices, activates Legacy, and reloads the installed save` |
+| `desktop-keyboard` / 1280x900 | Experience selector → Legacy entry → reload; `freshGalaxy` | Keyboard | Both choices focus; Enter activates Legacy; application-written authority survives reload | Both buttons focused in sequence, Legacy opened, and the reloaded save retained `activeExperience: "legacy"`; `✓ @keyboard focuses both choices, activates Legacy, and reloads the installed save` |
 | `desktop-pointer` / 1280x900 | Experience selector → Legacy entry; `freshLegacy` | Pointer | A focused choice activates on click | Selector closed after clicking the focused Legacy button; `✓ @pointer clicks a focused experience choice` |
 | `mobile-touch` / 480x854, `hasTouch: true`, `isMobile: true` | Experience selector → Legacy entry; `freshLegacy` | Real Playwright touchscreen | A native touchscreen event activates Legacy | `page.touchscreen.tap` at the button center closed the selector; `✓ @touch activates an experience choice with a real touchscreen event` |
 
@@ -93,8 +134,9 @@ All commands ran from `game/` on a clean checkout of the tested code SHA.
 
 | Gate | Result |
 | --- | --- |
-| `TESTED_CODE_SHA=f35fae82… yarn playwright test tests/browser/smoke.spec.ts` | 5/5 passed across all three projects |
-| `TESTED_CODE_SHA=f35fae82… yarn browser:test` | 5/5 passed across all three projects |
+| `DEBUG=pw:webserver TESTED_CODE_SHA=fdf98067… yarn playwright test tests/browser/smoke.spec.ts` | Current worktree server launched on port 36882; 5/5 passed across all three projects; server terminated |
+| `TESTED_CODE_SHA=fdf98067… yarn browser:test` | 5/5 passed across all three projects |
+| `yarn --version && yarn playwright test --list` followed by `git status --short` | Yarn 4.9.2; 5 tests listed; worktree remained clean |
 | `npx tsc --noEmit` | Passed, exit 0 |
 | `yarn engine:test` | 282/282 passed |
 | `yarn colony:test` | 284/284 passed |
