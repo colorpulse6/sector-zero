@@ -85,7 +85,8 @@ export type EngineLaunchRoute =
 
 let fallbackLaunchSequence = 0;
 const issuedLaunchIds = new Set<string>();
-const mountedLaunchIds = new Set<string>();
+const issuedLaunchContexts = new Map<string, LaunchContext>();
+const mountedLaunchContexts = new Map<string, LaunchContext>();
 
 export const createLaunchId: LaunchIdFactory = () => {
   if (typeof globalThis.crypto?.randomUUID === "function") {
@@ -119,11 +120,18 @@ export function claimLaunchContextForGameState(context: LaunchContext): void {
   if (canonicalLaunchId.length === 0) {
     throw new Error("Launch contexts require a non-empty, non-blank launch ID.");
   }
-  if (mountedLaunchIds.has(canonicalLaunchId)) {
+  const snapshot = cloneLaunchContext(context);
+  snapshot.launchId = canonicalLaunchId;
+  const issued = issuedLaunchContexts.get(canonicalLaunchId);
+  if (issued !== undefined && !sameLaunchContext(snapshot, issued)) {
+    throw new Error(`Launch context ${canonicalLaunchId} does not match its issued snapshot.`);
+  }
+  if (mountedLaunchContexts.has(canonicalLaunchId)) {
     throw new Error(`Launch ID ${canonicalLaunchId} is already mounted.`);
   }
   issuedLaunchIds.add(canonicalLaunchId);
-  mountedLaunchIds.add(canonicalLaunchId);
+  if (issued === undefined) issuedLaunchContexts.set(canonicalLaunchId, cloneLaunchContext(snapshot));
+  mountedLaunchContexts.set(canonicalLaunchId, cloneLaunchContext(snapshot));
   context.launchId = canonicalLaunchId;
 }
 
@@ -293,6 +301,53 @@ function sameDescriptor(left: MissionDescriptor, right: MissionDescriptor): bool
     left.replayPolicy === right.replayPolicy;
 }
 
+function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((entry, index) => entry === right[index]);
+}
+
+function sameInventory(
+  left: PilotLoadout["consumableInventory"],
+  right: PilotLoadout["consumableInventory"],
+): boolean {
+  const leftKeys = Reflect.ownKeys(left);
+  const rightKeys = Reflect.ownKeys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
+    key === rightKeys[index] && left[key as ConsumableId] === right[key as ConsumableId]);
+}
+
+function samePilotLoadout(left: PilotLoadout, right: PilotLoadout): boolean {
+  return left.upgrades.hullPlating === right.upgrades.hullPlating &&
+    left.upgrades.engineBoost === right.upgrades.engineBoost &&
+    left.upgrades.weaponCore === right.upgrades.weaponCore &&
+    left.upgrades.munitionsBay === right.upgrades.munitionsBay &&
+    left.upgrades.fireControl === right.upgrades.fireControl &&
+    left.upgrades.shieldGenerator === right.upgrades.shieldGenerator &&
+    sameStringArray(left.unlockedEnhancements, right.unlockedEnhancements) &&
+    left.pilotLevel === right.pilotLevel &&
+    sameStringArray(left.allocatedSkills, right.allocatedSkills) &&
+    left.equippedWeaponType === right.equippedWeaponType &&
+    sameStringArray(left.equippedConsumables, right.equippedConsumables) &&
+    sameInventory(left.consumableInventory, right.consumableInventory);
+}
+
+function sameLaunchContext(left: LaunchContext, right: LaunchContext): boolean {
+  return left.launchId === right.launchId &&
+    sameDescriptor(left.mission, right.mission) &&
+    samePilotLoadout(left.pilot, right.pilot) &&
+    left.persistenceAuthority === right.persistenceAuthority &&
+    left.entryProvenance === right.entryProvenance &&
+    left.returnTarget === right.returnTarget;
+}
+
+function registerIssuedLaunchContext(context: LaunchContext): void {
+  const snapshot = cloneLaunchContext(context);
+  const existing = issuedLaunchContexts.get(snapshot.launchId);
+  if (existing !== undefined && !sameLaunchContext(snapshot, existing)) {
+    throw new Error(`Launch context ${snapshot.launchId} conflicts with its issued snapshot.`);
+  }
+  issuedLaunchContexts.set(snapshot.launchId, snapshot);
+}
+
 export function snapshotRetryLaunchContext(
   context: LaunchContext,
   expectedMission: MissionDescriptor,
@@ -301,8 +356,9 @@ export function snapshotRetryLaunchContext(
 ): LaunchContext | null {
   try {
     const snapshot = cloneLaunchContext(context);
+    const issued = issuedLaunchContexts.get(snapshot.launchId);
     if (snapshot.launchId !== snapshot.launchId.trim() ||
-      !issuedLaunchIds.has(snapshot.launchId) ||
+      issued === undefined || !sameLaunchContext(snapshot, issued) ||
       snapshot.entryProvenance !== "retry" ||
       snapshot.persistenceAuthority !== persistenceAuthority ||
       snapshot.returnTarget !== returnTarget ||
@@ -513,7 +569,7 @@ export function launchContextFromPilotLoadout(
 ): LaunchContext {
   const launchId = issueLaunchId(launchIdFactory);
   assertAuthorityReturnTarget(persistenceAuthority, returnTarget);
-  return {
+  const context: LaunchContext = {
     launchId,
     mission: { ...mission },
     pilot: clonePilotLoadout(pilot),
@@ -521,6 +577,8 @@ export function launchContextFromPilotLoadout(
     entryProvenance,
     returnTarget,
   };
+  registerIssuedLaunchContext(context);
+  return context;
 }
 
 function continuedAttempt(
@@ -529,11 +587,17 @@ function continuedAttempt(
   launchIdFactory: LaunchIdFactory,
 ): LaunchContext {
   const copy = cloneLaunchContext(context);
+  const mounted = mountedLaunchContexts.get(copy.launchId);
+  if (mounted === undefined || !sameLaunchContext(copy, mounted)) {
+    throw new Error("Retry and continue require an exact claimed mounted launch context.");
+  }
   const launchId = issueLaunchId(launchIdFactory);
   if (launchId === context.launchId) {
     throw new Error("A new gameplay attempt requires a new launch ID.");
   }
-  return { ...copy, launchId, entryProvenance };
+  const child = { ...copy, launchId, entryProvenance };
+  registerIssuedLaunchContext(child);
+  return child;
 }
 
 export function retryLaunchContext(

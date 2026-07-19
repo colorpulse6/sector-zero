@@ -354,6 +354,25 @@ test("operation retries accept a separate issued gameplay context and preserve i
   changedRun.ship.equippedWeaponType = "cryogenic";
   changedRun.ship.equippedConsumables = ["hull-repair"];
   changedRun.ship.consumableInventory = { "hull-repair": 1 };
+
+  const injectedRetry = retryLaunchContext(
+    first.gameState.launchContext,
+    () => "launch:test:operation-retry-injected",
+  );
+  injectedRetry.pilot.equippedWeaponType = "incendiary";
+  injectedRetry.pilot.equippedConsumables = ["weapon-overcharge"];
+  injectedRetry.pilot.consumableInventory = { "weapon-overcharge": 99 };
+  const rejectedInjection = launchOperation(
+    changedRun,
+    projectGalaxyRunToLegacySave(richParent(changedRun)),
+    authorization,
+    injectedRetry,
+  );
+  assert.equal(rejectedInjection.ok, false);
+  if (!rejectedInjection.ok) {
+    assert.deepEqual(rejectedInjection.availability.reasons, ["context_mismatch"]);
+  }
+
   const retried = launchOperation(
     changedRun,
     projectGalaxyRunToLegacySave(richParent(changedRun)),
@@ -756,6 +775,7 @@ test("explicit canonical launch contexts bypass all locked legacy availability f
 
 test("Kepler objective provenance comes only from canonical galaxy story items", () => {
   const unrecovered = atContact("contact:kepler");
+  const staleAuthorization = requireAuthorization(unrecovered, "op:kepler-black-box");
   const legacyRich = projectGalaxyRunToLegacySave(richParent(unrecovered));
   legacyRich.storyItems = ["kepler-black-box"];
   legacyRich.completedSpecialMissions = ["kepler-black-box"];
@@ -769,10 +789,9 @@ test("Kepler objective provenance comes only from canonical galaxy story items",
   const lockedProjection = projectGalaxyRunToLegacySave(richParent(recovered));
   lockedProjection.storyItems = [];
   lockedProjection.completedSpecialMissions = [];
-  const replay = launchOperation(recovered, lockedProjection, requireAuthorization(recovered, "op:kepler-black-box"));
-  assert.equal(replay.ok, true);
-  if (!replay.ok) return;
-  assert.equal(replay.gameState.firstPersonState?.objectivePickup, undefined);
+  const replay = launchOperation(recovered, lockedProjection, staleAuthorization);
+  assert.equal(replay.ok, false);
+  if (!replay.ok) assert.deepEqual(replay.availability.reasons, ["operation_resolved"]);
 });
 
 test("availability requires canonical physical location or the exact active interruption", () => {

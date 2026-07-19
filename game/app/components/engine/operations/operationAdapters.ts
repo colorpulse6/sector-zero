@@ -383,6 +383,18 @@ export function launchOperation(
         availability: unavailable("context_mismatch"),
       };
     }
+    const blackBoxRecovered = safeContext.operationId === "op:kepler-black-box"
+      ? canonicalBlackBoxRecovered(safeRun)
+      : false;
+    if (blackBoxRecovered === null) return fail(safeContext, "malformed_run");
+    if (blackBoxRecovered) {
+      return {
+        ok: false,
+        context: safeContext,
+        operation: authorization.operation,
+        availability: unavailable("operation_resolved"),
+      };
+    }
     const engineInput = lockedProjection(projection, safeRun);
     if (engineInput === null) {
       return {
@@ -426,8 +438,6 @@ export function launchOperation(
         const payload = safeContext.adapterPayload;
         if (payload.kind !== "special_mission" || payload.missionId !== "kepler-black-box" ||
           safeContext.operationId !== "op:kepler-black-box") return fail(safeContext, "context_mismatch");
-        const blackBoxRecovered = canonicalBlackBoxRecovered(safeRun);
-        if (blackBoxRecovered === null) return fail(safeContext, "malformed_run");
         gameState = createSpecialMissionGameState(
           payload.missionId,
           blackBoxRecovered,

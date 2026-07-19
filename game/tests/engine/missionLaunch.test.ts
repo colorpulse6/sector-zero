@@ -305,17 +305,18 @@ test("gameplay retry preserves its owned context but receives a new launch ID", 
     "legacy-star-map",
     () => "launch:test:original",
   );
+  const mounted = createGameState(3, 2, original).launchContext!;
 
-  const retried = retryLaunchContext(original, () => "launch:test:retry");
+  const retried = retryLaunchContext(mounted, () => "launch:test:retry");
 
   assert.equal(retried.launchId, "launch:test:retry");
   assert.equal(retried.entryProvenance, "retry");
-  assert.deepEqual(retried.mission, original.mission);
-  assert.deepEqual(retried.pilot, original.pilot);
-  assert.equal(retried.persistenceAuthority, original.persistenceAuthority);
-  assert.equal(retried.returnTarget, original.returnTarget);
-  assert.notEqual(retried.mission, original.mission);
-  assert.notEqual(retried.pilot, original.pilot);
+  assert.deepEqual(retried.mission, mounted.mission);
+  assert.deepEqual(retried.pilot, mounted.pilot);
+  assert.equal(retried.persistenceAuthority, mounted.persistenceAuthority);
+  assert.equal(retried.returnTarget, mounted.returnTarget);
+  assert.notEqual(retried.mission, mounted.mission);
+  assert.notEqual(retried.pilot, mounted.pilot);
 });
 
 test("gameplay continue preserves context, records provenance, and receives a new launch ID", () => {
@@ -327,15 +328,16 @@ test("gameplay continue preserves context, records provenance, and receives a ne
     "legacy-cockpit",
     () => "launch:test:continue-source",
   );
+  const mounted = createGameState(4, 5, original).launchContext!;
 
-  const continued = continueLaunchContext(original, () => "launch:test:continue-next");
+  const continued = continueLaunchContext(mounted, () => "launch:test:continue-next");
 
   assert.equal(continued.launchId, "launch:test:continue-next");
   assert.equal(continued.entryProvenance, "continue");
-  assert.deepEqual(continued.mission, original.mission);
-  assert.deepEqual(continued.pilot, original.pilot);
-  assert.equal(continued.persistenceAuthority, original.persistenceAuthority);
-  assert.equal(continued.returnTarget, original.returnTarget);
+  assert.deepEqual(continued.mission, mounted.mission);
+  assert.deepEqual(continued.pilot, mounted.pilot);
+  assert.equal(continued.persistenceAuthority, mounted.persistenceAuthority);
+  assert.equal(continued.returnTarget, mounted.returnTarget);
 });
 
 test("mission descriptor factories cover every shipped core route with unique identity", () => {
@@ -601,17 +603,24 @@ test("POI retry contexts must be issued and exactly match the session and experi
     state: createFirstPersonRuinTemplate(19),
     rewardEligible: true,
   };
-  const source = launchContextFromSave(
+  const source = createPoiGameState(
+    session,
     save,
-    poiMissionDescriptor(session.nodeId, session.engine),
     "legacy",
-    "region",
-    "legacy-colony-exterior",
     () => "launch:test:poi-retry-authority-source",
-  );
+  ).launchContext!;
   const retry = retryLaunchContext(
     source,
     () => "launch:test:poi-retry-authority-child",
+  );
+
+  const injected = structuredClone(retry);
+  injected.pilot.equippedWeaponType = "energy";
+  injected.pilot.equippedConsumables = ["scanner-pulse"];
+  injected.pilot.consumableInventory = { "scanner-pulse": 99 };
+  assert.throws(
+    () => createPoiGameState(session, save, "legacy", injected),
+    /issued|retry|context|match/i,
   );
 
   assert.throws(
@@ -934,15 +943,67 @@ test("retry and continue reject an ID already issued to another attempt", () => 
     "legacy-star-map",
     () => "launch:test:lineage-original",
   );
-  retryLaunchContext(original, () => "launch:test:lineage-child");
+  const mounted = createGameState(1, 1, original).launchContext!;
+  retryLaunchContext(mounted, () => "launch:test:lineage-child");
 
   assert.throws(
-    () => continueLaunchContext(original, () => "launch:test:lineage-child"),
+    () => continueLaunchContext(mounted, () => "launch:test:lineage-child"),
     /duplicate/i,
   );
   assert.throws(
-    () => retryLaunchContext(original, () => original.launchId),
+    () => retryLaunchContext(mounted, () => mounted.launchId),
     /duplicate|new/i,
+  );
+});
+
+test("retry and continue require an exact claimed parent attempt", () => {
+  const unmounted = launchContextFromSave(
+    createHydrationSafeSave(),
+    campaignMissionDescriptor(2, 1),
+    "legacy",
+    "star-map",
+    "legacy-star-map",
+    () => "launch:test:unmounted-lineage-source",
+  );
+  assert.throws(
+    () => retryLaunchContext(unmounted, () => "launch:test:unmounted-retry"),
+    /claimed|mounted/i,
+  );
+  assert.throws(
+    () => continueLaunchContext(unmounted, () => "launch:test:unmounted-continue"),
+    /claimed|mounted/i,
+  );
+
+  const mounted = createGameState(2, 1, unmounted).launchContext!;
+  const forgedParent = structuredClone(mounted);
+  forgedParent.pilot.upgrades.hullPlating = 5;
+  forgedParent.pilot.equippedWeaponType = "energy";
+  assert.throws(
+    () => retryLaunchContext(forgedParent, () => "launch:test:forged-parent-child"),
+    /claimed|mounted|match/i,
+  );
+});
+
+test("an issued retry child cannot be mutated before it is mounted", () => {
+  const source = launchContextFromSave(
+    createHydrationSafeSave(),
+    campaignMissionDescriptor(2, 2),
+    "legacy",
+    "star-map",
+    "legacy-star-map",
+    () => "launch:test:immutable-child-source",
+  );
+  const mounted = createGameState(2, 2, source).launchContext!;
+  const retry = retryLaunchContext(
+    mounted,
+    () => "launch:test:immutable-child",
+  );
+  retry.pilot.upgrades.hullPlating = 5;
+  retry.pilot.equippedWeaponType = "energy";
+
+  assert.throws(
+    () => createGameState(2, 2, retry),
+    /issued|changed|match/i,
   );
 });
 
