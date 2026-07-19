@@ -1127,7 +1127,7 @@ export interface LegacyPreparedOutcomeRecord {
 export interface OutcomeReconciliationRecord {
   version: 1;
   kind: "reconciliation_required";
-  reason: "recovery_capacity_exceeded" | "prepared_outcome_invalid";
+  reason: "recovery_capacity_exceeded" | "prepared_outcome_invalid" | "outcome_authority_invalid";
   protectedOutcomeIds: string[];
 }
 

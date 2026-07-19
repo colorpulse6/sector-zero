@@ -61,7 +61,7 @@ function migrateOutcomeJournal(value: unknown, protectedIds: readonly string[] =
       journal.splice(index, 1);
     }
   }
-  return journal;
+  return journal.slice(-OUTCOME_JOURNAL_LIMIT);
 }
 
 const OUTCOME_ROUTE_KINDS = new Set(["campaign", "planet", "special", "operation", "colony", "poi"]);
@@ -201,18 +201,24 @@ function snapshotAppliedReturn(value: unknown): OutcomeRecoveryRecord | null {
 function snapshotReconciliation(value: unknown): OutcomeRecoveryRecord | null {
   const source = exactOwnData(value, ["version", "kind", "reason", "protectedOutcomeIds"]);
   if (source === null || source.version !== 1 || source.kind !== "reconciliation_required" ||
-    (source.reason !== "recovery_capacity_exceeded" && source.reason !== "prepared_outcome_invalid") ||
+    (source.reason !== "recovery_capacity_exceeded" && source.reason !== "prepared_outcome_invalid" &&
+      source.reason !== "outcome_authority_invalid") ||
     !Array.isArray(source.protectedOutcomeIds) ||
     source.protectedOutcomeIds.some((id) => typeof id !== "string" || id.length === 0) ||
     new Set(source.protectedOutcomeIds).size !== source.protectedOutcomeIds.length) return null;
   return structuredClone(source) as unknown as OutcomeRecoveryRecord;
 }
 
-function migrateOutcomeRecoveryRecords(value: unknown): OutcomeRecoveryRecord[] {
+function migrateOutcomeRecoveryRecords(
+  value: unknown,
+  rootRevision: number,
+  rootJournal: readonly string[],
+): OutcomeRecoveryRecord[] {
   if (!Array.isArray(value)) return [];
   const newestFirst: OutcomeRecoveryRecord[] = [];
   const seen = new Set<string>();
   let invalidPrepared = false;
+  const invalidAuthorityIds: string[] = [];
   for (let index = value.length - 1; index >= 0; index -= 1) {
     const entry = value[index];
     const source = ownDataRecord(entry);
@@ -227,6 +233,11 @@ function migrateOutcomeRecoveryRecords(value: unknown): OutcomeRecoveryRecord[] 
     if (source.kind === "applied_return") {
       record = snapshotAppliedReturn(entry);
       identity = source.outcomeId;
+      if (record?.kind === "applied_return" && record.returnPending &&
+        (record.appliedRevision > rootRevision || !rootJournal.includes(record.outcomeId))) {
+        invalidAuthorityIds.push(record.outcomeId);
+        continue;
+      }
     } else if (source.kind === "legacy_poi_prepared") {
       const wrapped = exactOwnData(entry, ["version", "kind", "envelope"]);
       const envelope = wrapped === null ? null : snapshotOutcomeEnvelope(wrapped.envelope);
@@ -253,6 +264,14 @@ function migrateOutcomeRecoveryRecords(value: unknown): OutcomeRecoveryRecord[] 
       : record.kind === "applied_return" && record.returnPending
         ? [record.outcomeId]
         : []);
+  if (invalidAuthorityIds.length > 0) {
+    return [{
+      version: 1,
+      kind: "reconciliation_required",
+      reason: "outcome_authority_invalid",
+      protectedOutcomeIds: [...new Set([...protectedOutcomeIds, ...invalidAuthorityIds])],
+    }];
+  }
   if (invalidPrepared) {
     return [{
       version: 1,
@@ -357,7 +376,15 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
     && Number.isSafeInteger(identitySource.authoredAnchorRegistryVersion)
     && (identitySource.authoredAnchorRegistryVersion as number) >= 0;
   const galaxyRun = identityIsComplete ? migrateGalaxyRun(rawGalaxyRun) : null;
-  const outcomeRecoveryRecords = migrateOutcomeRecoveryRecords(raw.outcomeRecoveryRecords);
+  const saveRevision = Number.isSafeInteger(raw.saveRevision) && (raw.saveRevision as number) >= 0
+    ? raw.saveRevision as number
+    : 0;
+  const rawOutcomeJournal = migrateStringJournal(raw.appliedOutcomeIds);
+  const outcomeRecoveryRecords = migrateOutcomeRecoveryRecords(
+    raw.outcomeRecoveryRecords,
+    saveRevision,
+    rawOutcomeJournal,
+  );
   const protectedOutcomeIds = outcomeRecoveryRecords.flatMap((record) =>
     record.kind === "applied_return"
       ? record.returnPending ? [record.outcomeId] : []
@@ -365,10 +392,8 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
         ? [record.envelope.outcomeId]
         : record.protectedOutcomeIds);
   return {
-    saveRevision: Number.isSafeInteger(raw.saveRevision) && (raw.saveRevision as number) >= 0
-      ? raw.saveRevision as number
-      : 0,
-    appliedOutcomeIds: migrateOutcomeJournal(raw.appliedOutcomeIds, protectedOutcomeIds),
+    saveRevision,
+    appliedOutcomeIds: migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds),
     outcomeRecoveryRecords,
     currentWorld: (raw.currentWorld as number) ?? 1,
     levels: (raw.levels as SaveData["levels"]) ?? {},

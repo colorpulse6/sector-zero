@@ -212,7 +212,8 @@ function recoveryIdentity(record: OutcomeRecoveryRecord): string[] | null {
   }
   const lock = exactOwnData(record, ["version", "kind", "reason", "protectedOutcomeIds"]);
   return lock !== null && lock.version === 1 && lock.kind === "reconciliation_required" &&
-    (lock.reason === "recovery_capacity_exceeded" || lock.reason === "prepared_outcome_invalid") &&
+    (lock.reason === "recovery_capacity_exceeded" || lock.reason === "prepared_outcome_invalid" ||
+      lock.reason === "outcome_authority_invalid") &&
     Array.isArray(lock.protectedOutcomeIds) &&
     lock.protectedOutcomeIds.every((id) => typeof id === "string" && id.length > 0) &&
     new Set(lock.protectedOutcomeIds).size === lock.protectedOutcomeIds.length
@@ -222,7 +223,8 @@ function recoveryIdentity(record: OutcomeRecoveryRecord): string[] | null {
 
 function validateRoot(save: SaveData): { protectedIds: string[]; locked: boolean } | null {
   if (!Number.isSafeInteger(save.saveRevision) || save.saveRevision < 0 ||
-    !Array.isArray(save.appliedOutcomeIds) || save.appliedOutcomeIds.some((id) => typeof id !== "string" || id.length === 0) ||
+    !Array.isArray(save.appliedOutcomeIds) || save.appliedOutcomeIds.length > OUTCOME_JOURNAL_LIMIT ||
+    save.appliedOutcomeIds.some((id) => typeof id !== "string" || id.length === 0) ||
     new Set(save.appliedOutcomeIds).size !== save.appliedOutcomeIds.length ||
     !Array.isArray(save.outcomeRecoveryRecords) || save.outcomeRecoveryRecords.length > OUTCOME_RECOVERY_LIMIT) return null;
   const protectedIds: string[] = [];
@@ -329,6 +331,11 @@ export function commitOutcome(
   const validated = validateEnvelope(submitted);
   if (root === null || root.locked || validated === null) return { status: "conflict", latest };
   const outcome = validated.envelope;
+  if ((outcome.persistenceAuthority === "legacy" && latest.activeExperience !== "legacy") ||
+    (outcome.persistenceAuthority === "galaxy" &&
+      (latest.activeExperience !== "galaxy" || latest.galaxyRun === null))) {
+    return { status: "conflict", latest };
+  }
   if (latest.appliedOutcomeIds.includes(outcome.outcomeId)) return { status: "already_applied", save: latest };
   if (latest.saveRevision < outcome.expectedRevision || validated.fields.some((field) =>
     !sameData(latest[field], outcome.launchSnapshot[field]))) return { status: "conflict", latest };

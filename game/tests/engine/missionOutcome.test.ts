@@ -146,10 +146,57 @@ test("recovery migration accepts only exact own-data records and never invokes a
     inherited,
   ];
 
-  const migrated = migrateSave({ outcomeRecoveryRecords: [applied, prepared, ...hostile] });
+  const migrated = migrateSave({
+    saveRevision: 2,
+    appliedOutcomeIds: [applied.outcomeId],
+    outcomeRecoveryRecords: [applied, prepared, ...hostile],
+  });
 
   assert.equal(accessorReads, 0);
   assert.deepEqual(migrated.outcomeRecoveryRecords, [applied, prepared]);
+});
+
+test("pending return migration locks incoherent journal and revision authority", () => {
+  const applied = {
+    version: 1,
+    kind: "applied_return",
+    outcomeId: "incoherent-return:success",
+    launchId: "incoherent-return",
+    terminalKind: "success",
+    persistenceAuthority: "legacy",
+    returnTarget: "legacy-cockpit",
+    appliedRevision: 2,
+    returnPending: true,
+  } as const;
+
+  const missingJournal = migrateSave({
+    saveRevision: 2,
+    outcomeRecoveryRecords: [applied],
+  });
+  const futureRevision = migrateSave({
+    saveRevision: 1,
+    appliedOutcomeIds: [applied.outcomeId],
+    outcomeRecoveryRecords: [applied],
+  });
+
+  assert.equal(missingJournal.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+  assert.equal(futureRevision.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+});
+
+test("hostile reconciliation protection cannot leave an oversized root journal", () => {
+  const protectedOutcomeIds = Array.from({ length: 300 }, (_, index) => `locked:${index}`);
+  const migrated = migrateSave({
+    appliedOutcomeIds: protectedOutcomeIds,
+    outcomeRecoveryRecords: [{
+      version: 1,
+      kind: "reconciliation_required",
+      reason: "recovery_capacity_exceeded",
+      protectedOutcomeIds,
+    }],
+  });
+
+  assert.equal(migrated.appliedOutcomeIds.length, 256);
+  assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
 });
 
 test("an invalid durable Legacy preparation migrates to a reconciliation lock", () => {
@@ -448,6 +495,26 @@ test("fresh-store two-writer handling rebases disjoint fields and conflicts on d
   assert.equal(commitOutcome(memory.store, sameField).status, "conflict");
 });
 
+test("two-tab terminal outcomes cannot cross the canonical experience namespace", () => {
+  const legacy = migrateSave({});
+  const galaxy = beginGalaxyExperience(legacy);
+  assert.ok(galaxy.galaxyRun);
+  const legacyFailure = envelope(
+    attempt(legacy, "campaign", "legacy-experience-tab", "legacy", "legacy-cockpit", []),
+    {},
+    "failure",
+  );
+  const galaxyFailure = envelope(
+    attempt(galaxy, "operation", "galaxy-experience-tab", "galaxy", "galaxy-atlas", []),
+    {},
+    "failure",
+  );
+
+  assert.equal(commitOutcome(memoryStore(galaxy).store, legacyFailure).status, "conflict");
+  assert.equal(commitOutcome(memoryStore({ ...galaxy, activeExperience: "legacy" }).store, galaxyFailure).status, "conflict");
+  assert.equal(commitOutcome(memoryStore({ ...galaxy, galaxyRun: null }).store, galaxyFailure).status, "conflict");
+});
+
 test("serializable envelopes reject undeclared patches, malformed domains, and authority crossings", () => {
   const legacy = migrateSave({ credits: 10, xp: 2 });
   const begun = beginGalaxyExperience(legacy);
@@ -487,7 +554,7 @@ test("journal pruning protects validated recovery records and fails closed on re
     appliedRevision: 1,
     returnPending: true,
   };
-  const launch = migrateSave({ appliedOutcomeIds, outcomeRecoveryRecords: [protectedRecord] });
+  const launch = migrateSave({ saveRevision: 1, appliedOutcomeIds, outcomeRecoveryRecords: [protectedRecord] });
   const terminal = envelope(
     attempt(launch, "campaign", "new-attempt", "legacy", "legacy-cockpit", ["credits"]),
     { credits: 1 },
@@ -510,6 +577,12 @@ test("journal pruning protects validated recovery records and fails closed on re
     })),
   };
   assert.equal(commitOutcome(memoryStore(overflow).store, terminal).status, "conflict");
+
+  const oversizedRoot = {
+    ...launch,
+    appliedOutcomeIds: Array.from({ length: 257 }, (_, index) => `oversized:${index}`),
+  };
+  assert.equal(commitOutcome(memoryStore(oversizedRoot).store, terminal).status, "conflict");
 });
 
 test("reload return acknowledgement is a fresh canonical write", () => {
