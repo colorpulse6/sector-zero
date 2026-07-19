@@ -3,12 +3,12 @@ import path from "node:path";
 
 import { defineConfig } from "@playwright/test";
 
-const artifactRoot = process.env.PLAYWRIGHT_OUTPUT_DIR
-  ?? path.join(os.tmpdir(), "sector-zero-playwright-results");
 const worktreeHash = [...process.cwd()].reduce(
   (hash, character) => (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0,
   0,
 );
+const artifactRoot = process.env.PLAYWRIGHT_OUTPUT_DIR
+  ?? path.join(os.tmpdir(), "sector-zero-playwright-results", String(worktreeHash));
 const browserTestPort = process.env.PLAYWRIGHT_TEST_PORT
   ? Number.parseInt(process.env.PLAYWRIGHT_TEST_PORT, 10)
   : 32_000 + (worktreeHash % 10_000);

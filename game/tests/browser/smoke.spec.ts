@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 import { expect, test } from "@playwright/test";
 
 import { enterColonyExploration } from "../../app/components/colony/exploration";
@@ -33,7 +36,16 @@ test("@fixture installs a migrated save before hydration", async ({ page }) => {
   expect(PLANET_DEFS.every((planet) => isPlanetUnlocked(planet, storedSave))).toBe(true);
 });
 
-test("@fixture route saves migrate and round-trip through current registries", () => {
+test("@fixture route saves migrate and round-trip through current registries", ({}, testInfo) => {
+  const worktreeHash = [...process.cwd()].reduce(
+    (hash, character) => (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0,
+    0,
+  );
+  const expectedOutputDir = process.env.PLAYWRIGHT_OUTPUT_DIR
+    ? path.resolve(process.env.PLAYWRIGHT_OUTPUT_DIR)
+    : path.join(os.tmpdir(), "sector-zero-playwright-results", String(worktreeHash));
+  expect(testInfo.project.outputDir).toBe(expectedOutputDir);
+
   for (const [name, fixture] of Object.entries(ROUTE_FIXTURES)) {
     const serialized = JSON.parse(JSON.stringify(fixture)) as Record<string, unknown>;
     expect(migrateSave(serialized), name).toEqual(fixture);
