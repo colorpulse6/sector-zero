@@ -81,7 +81,7 @@ test("@keyboard focuses both choices, activates Legacy, and reloads the installe
   expect((await readInstalledSave(page)).activeExperience).toBe("legacy");
 
   await attachBrowserReceipt(testInfo, {
-    route: "experience-selector -> legacy-cockpit -> reload",
+    route: "experience-selector -> legacy-entry -> reload",
     inputMethod: "keyboard",
     saveFixture: "freshGalaxy",
     expectedOutcome: "Both choices receive focus; Enter opens Legacy; reload preserves the application-written authority change.",
