@@ -5,7 +5,12 @@ import { migrateSave } from "../../app/components/engine/save";
 import { colonyReducer } from "../../app/components/colony/shared/colonyReducer";
 import { Events } from "../../app/components/colony/shared/colonyEvents";
 import { dispatchPoi } from "../../app/components/colony/region/poiDispatcher";
-import { createPoiGameState, preparePoiCompletion, resolvePoiCompletion } from "../../app/components/colony/region/poiRuntime";
+import {
+  createPoiGameState,
+  preparePoiCompletion,
+  recoverLegacyPoiCompletion,
+  resolvePoiCompletion,
+} from "../../app/components/colony/region/poiRuntime";
 
 function ready() {
   const fresh = migrateSave({});
@@ -24,19 +29,105 @@ test("native sessions create launchable states for all engine modes", () => {
   assert.equal(state.screen, GameScreen.PLAYING);
 });
 
-test("only active LEVEL_COMPLETE prepares one completion cycle and atomic outcome", () => {
+test("POI outcome attempts keep the explicit dispatch origin when two colonies share one planet", () => {
+  let save = ready();
+  save = {
+    ...save,
+    planets: save.planets.map((planet) => ({
+      ...planet,
+      regionMap: {
+        ...planet.regionMap,
+        nodes: planet.regionMap.nodes.map((node) => node.id === "ashfall-basalt-basin"
+          ? { ...node, intel: "surveyed" as const, discovered: true }
+          : node),
+      },
+    })),
+  };
+  save = colonyReducer(save, Events.founded({
+    colonyId: "secondary",
+    name: "Secondary",
+    planetId: "ashfall",
+    foundingType: "outpost",
+    regionNodeId: "ashfall-basalt-basin",
+    missionCount: 0,
+    layoutSeed: 2,
+  }));
+  const dispatched = dispatchPoi(save, "home", "ashfall-cinder-relay");
+  assert.equal(dispatched.ok, true);
+  if (!dispatched.ok) return;
+  const state = createPoiGameState(
+    dispatched.session,
+    save,
+    "legacy",
+    () => "explicit-poi-origin",
+    save,
+    "home",
+  );
+  assert.equal(state.outcomeAttempt?.routeIdentity.kind, "poi");
+  if (state.outcomeAttempt?.routeIdentity.kind === "poi") {
+    assert.equal(state.outcomeAttempt.routeIdentity.originColonyId, "home");
+  }
+  assert.throws(() => createPoiGameState(
+    dispatched.session,
+    save,
+    "legacy",
+    () => "forged-poi-origin",
+    save,
+    "missing-origin",
+  ));
+  assert.throws(() => createPoiGameState(
+    dispatched.session,
+    save,
+    "legacy",
+    () => "partial-poi-origin",
+    save,
+  ));
+});
+
+test("only active LEVEL_COMPLETE stages v2 authority; the final fold owns the one domain cycle", () => {
   const save = ready();
   const dispatched = dispatchPoi(save, "home", "ashfall-cinder-relay");
   assert.equal(dispatched.ok, true);
   if (!dispatched.ok) return;
   const active = { originColonyId: "home", session: dispatched.session };
-  assert.equal(preparePoiCompletion(save, active, GameScreen.GAME_OVER), null);
-  const pending = preparePoiCompletion(save, active, GameScreen.LEVEL_COMPLETE);
+  const state = createPoiGameState(
+    dispatched.session,
+    save,
+    "legacy",
+    () => "legacy-poi-prepared",
+    save,
+    "home",
+  );
+  assert.ok(state.outcomeAttempt);
+  assert.equal(preparePoiCompletion(save, active, GameScreen.GAME_OVER, state.outcomeAttempt!), null);
+  const pending = preparePoiCompletion(save, active, GameScreen.LEVEL_COMPLETE, state.outcomeAttempt!);
   assert.ok(pending);
-  assert.equal(pending!.baseSave.missionsSinceStart, save.missionsSinceStart + 1);
+  assert.equal(pending!.baseSave.missionsSinceStart, save.missionsSinceStart);
+  assert.equal(pending!.preparedSave.missionsSinceStart, save.missionsSinceStart);
+  assert.equal(pending!.preparedSave.saveRevision, save.saveRevision + 1);
+  assert.deepEqual(pending!.preparedSave.outcomeRecoveryRecords, [{
+    version: 2,
+    kind: "legacy_poi_prepared",
+    envelope: pending!.preparedEnvelope,
+  }]);
+  assert.equal(pending!.preparedEnvelope.outcomeId, "legacy-poi-prepared:success");
+  assert.equal((pending!.preparedEnvelope.payload as { kind: string }).kind, "poi_prepared_v2");
+
+  const reloaded = migrateSave(JSON.parse(JSON.stringify(pending!.preparedSave)));
+  const recovered = recoverLegacyPoiCompletion(reloaded);
+  assert.ok(recovered);
+  assert.equal(recovered!.preparedEnvelope.outcomeId, pending!.preparedEnvelope.outcomeId);
+  assert.deepEqual(recovered!.outcome, pending!.outcome);
+
   const resolved = resolvePoiCompletion(pending!, "home");
   assert.equal(resolved.ok, true);
   if (!resolved.ok) return;
-  assert.equal(resolved.save.colonies[0].resources.metal, 80);
-  assert.equal(resolved.save.planets[0].regionMap.nodes.find(n => n.id === "ashfall-cinder-relay")?.intel, "cleared");
+  assert.equal(resolved.envelope.outcomeId, pending!.preparedEnvelope.outcomeId);
+  assert.deepEqual(resolved.envelope.payload, {
+    version: 2,
+    kind: "poi_result_v2",
+    destinationColonyId: "home",
+  });
+  assert.equal(resolved.save.colonies[0].resources.metal, 0);
+  assert.equal(resolved.save.planets[0].regionMap.nodes.find(n => n.id === "ashfall-cinder-relay")?.intel, "surveyed");
 });

@@ -1088,10 +1088,26 @@ export interface BestiaryEntry {
 // ─── Save Data ───────────────────────────────────────────────────────
 export type OutcomeTerminalKind = "success" | "failure" | "retreat";
 export type OutcomeRouteKind = "campaign" | "planet" | "special" | "operation" | "colony" | "poi";
+export type OutcomeRouteIdentity =
+  | { kind: "campaign"; world: number; level: number }
+  | { kind: "planet"; planetId: PlanetId }
+  | { kind: "special"; missionId: SpecialMissionId }
+  | { kind: "operation"; operationId: string }
+  | { kind: "colony"; colonyId: string; mode: "exterior" | "interior"; buildingId: string | null }
+  | {
+      kind: "poi";
+      originColonyId: string;
+      nodeId: string;
+      engine: "firstPerson" | "boarding" | "groundRun";
+      templateId: string;
+      rewardEligible: boolean;
+    };
 
 export interface OutcomeAttempt {
   version: 1;
   routeKind: OutcomeRouteKind;
+  missionId: string;
+  routeIdentity: OutcomeRouteIdentity;
   launchId: string;
   expectedRevision: number;
   persistenceAuthority: LaunchContext["persistenceAuthority"];
@@ -1107,10 +1123,13 @@ export interface SerializedOutcomeEnvelope extends OutcomeAttempt {
 }
 
 export interface AppliedOutcomeReturnRecord {
-  version: 1;
+  version: 2;
   kind: "applied_return";
   outcomeId: string;
   launchId: string;
+  missionId: string;
+  routeKind: OutcomeRouteKind;
+  routeIdentity: OutcomeRouteIdentity;
   terminalKind: OutcomeTerminalKind;
   persistenceAuthority: LaunchContext["persistenceAuthority"];
   returnTarget: LaunchContext["returnTarget"];
@@ -1119,16 +1138,17 @@ export interface AppliedOutcomeReturnRecord {
 }
 
 export interface LegacyPreparedOutcomeRecord {
-  version: 1;
+  version: 2;
   kind: "legacy_poi_prepared";
   envelope: SerializedOutcomeEnvelope;
 }
 
 export interface OutcomeReconciliationRecord {
-  version: 1;
+  version: 2;
   kind: "reconciliation_required";
   reason: "recovery_capacity_exceeded" | "prepared_outcome_invalid" | "outcome_authority_invalid";
   protectedOutcomeIds: string[];
+  quarantinedOutcomeCount: number;
 }
 
 export type OutcomeRecoveryRecord =

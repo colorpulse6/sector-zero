@@ -34,22 +34,28 @@ import {
   type GalaxyProjectionDelta,
 } from "../galaxy/galaxyProjection";
 import { stableHash } from "../galaxy/coordinates";
+import {
+  createGalaxyPoiPreparedFact,
+  recoverGalaxyPoiPreparation,
+} from "../galaxy/galaxyPoiOutcomeAuthority";
 import { getGalaxyRunAvailability } from "../galaxy/galaxyRun";
 import type { GalaxyRunState, HistoricalFact } from "../galaxy/galaxyTypes";
 import { MAX_PILOT_LEVEL } from "../pilotLevel";
 import { ALL_SKILL_NODES } from "../skillTree";
 import type {
   EnhancementId,
-  GameScreen,
   ConsumableId,
+  OutcomeAttempt,
   SaveData,
   ShipUpgrades,
   SkillNodeId,
   WeaponType,
 } from "../types";
+import { GameScreen } from "../types";
 import {
   launchContextFromPilotLoadout,
   operationMissionDescriptor,
+  poiMissionDescriptor,
   snapshotRetryLaunchContext,
   type LaunchContext,
   type LaunchIdFactory,
@@ -536,6 +542,10 @@ export type GalaxyPoiRecoveryResult =
 export type GalaxyPoiResolutionResult =
   | { ok: true; save: SaveData; delivery: MissionDelivery | null }
   | { ok: false; save: SaveData; reason: GalaxyRegionAdapterReason };
+
+export type GalaxyPoiAuthorityPreparationResult =
+  | { ok: true; save: SaveData; attempt: OutcomeAttempt }
+  | { ok: false; reason: GalaxyRegionAdapterReason };
 
 /** Reserved preparation IDs remain recovery authority even if their kind is tampered. */
 export function isGalaxyPoiPreparationFact(
@@ -1050,6 +1060,67 @@ export function prepareGalaxyPoiCompletion(
   } catch {
     return { ok: false, reason: "projected_result_invalid" };
   }
+}
+
+/** Stage immutable Galaxy POI authority without advancing cycle or deriving rewards. */
+export function stageGalaxyPoiOutcomeAuthority(
+  save: SaveData,
+  activePoi: ActivePoiDescriptor,
+  screen: GameScreen,
+  attempt: OutcomeAttempt,
+): GalaxyPoiAuthorityPreparationResult {
+  const active = snapshotActivePoi(activePoi);
+  if (screen !== GameScreen.LEVEL_COMPLETE || active === null || save.galaxyRun === null ||
+    attempt.routeKind !== "poi" || attempt.routeIdentity.kind !== "poi" ||
+    attempt.persistenceAuthority !== "galaxy" || attempt.returnTarget !== "galaxy-region" ||
+    attempt.expectedRevision !== save.saveRevision || attempt.launchId.length === 0 ||
+    attempt.declaredFields.length !== 1 || attempt.declaredFields[0] !== "galaxyRun" ||
+    !samePlainData(attempt.launchSnapshot.galaxyRun, save.galaxyRun) ||
+    active.originColonyId !== attempt.routeIdentity.originColonyId ||
+    active.nodeId !== attempt.routeIdentity.nodeId || active.engine !== attempt.routeIdentity.engine ||
+    active.rewardEligible !== attempt.routeIdentity.rewardEligible) {
+    return { ok: false, reason: "invalid_poi_session" };
+  }
+  const preparedRevision = save.saveRevision + 1;
+  if (!Number.isSafeInteger(preparedRevision)) return { ok: false, reason: "invalid_poi_session" };
+  const fact = createGalaxyPoiPreparedFact(save.galaxyRun, attempt.routeIdentity, {
+    launchId: attempt.launchId,
+    outcomeId: `${attempt.launchId}:success`,
+    preparedRevision,
+  });
+  if (fact === null) return { ok: false, reason: "invalid_poi_session" };
+  const galaxyRun = structuredClone(save.galaxyRun);
+  galaxyRun.historyFacts.push(fact);
+  const stagedSave = { ...save, saveRevision: preparedRevision, galaxyRun };
+  return {
+    ok: true,
+    save: stagedSave,
+    attempt: {
+      ...structuredClone(attempt),
+      expectedRevision: preparedRevision,
+      launchSnapshot: { galaxyRun: structuredClone(galaxyRun) },
+    },
+  };
+}
+
+/** Rebuild the exact final Galaxy POI attempt from its durable v2 authority fact. */
+export function recoverGalaxyPoiOutcomeAuthority(save: SaveData): OutcomeAttempt | null {
+  if (save.activeExperience !== "galaxy" || save.galaxyRun === null) return null;
+  const recovered = recoverGalaxyPoiPreparation(save.galaxyRun);
+  if (recovered === null || recovered.preparedRevision !== save.saveRevision) return null;
+  const mission = poiMissionDescriptor(recovered.identity.nodeId, recovered.identity.engine);
+  return {
+    version: 1,
+    routeKind: "poi",
+    missionId: mission.id,
+    routeIdentity: recovered.identity,
+    launchId: recovered.launchId,
+    expectedRevision: recovered.preparedRevision,
+    persistenceAuthority: "galaxy",
+    returnTarget: "galaxy-region",
+    declaredFields: ["galaxyRun"],
+    launchSnapshot: { galaxyRun: structuredClone(save.galaxyRun) },
+  };
 }
 
 /**

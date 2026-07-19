@@ -11,7 +11,7 @@ import { stableHash } from "../galaxy/coordinates";
 import {
   advanceGalaxyWorldCycles,
   mergeProjectionIntoGalaxy,
-  projectGalaxyRunToLegacySave,
+  projectGalaxyRunToLegacyState,
   type GalaxyProjectionDelta,
 } from "../galaxy/galaxyProjection";
 import type {
@@ -89,6 +89,15 @@ export type OperationOutcomeApplyResult =
       ok: true;
       changed: boolean;
       save: SaveData;
+      galaxyRun: GalaxyRunState;
+      delivery: MissionDelivery | null;
+    }
+  | { ok: false; changed: false; errors: OperationOutcomeError[] };
+
+export type OperationRunOutcomeApplyResult =
+  | {
+      ok: true;
+      changed: boolean;
       galaxyRun: GalaxyRunState;
       delivery: MissionDelivery | null;
     }
@@ -677,18 +686,16 @@ function replayArtifactProblem(
   return null;
 }
 
-function applyOutcomeImpl(
-  parent: SaveData,
+function applyOutcomeToRunImpl(
+  submittedRun: GalaxyRunState,
   submitted: NormalizedOperationOutcome,
-): OperationOutcomeApplyResult {
-  let safeParent: SaveData;
+): OperationRunOutcomeApplyResult {
+  let run: GalaxyRunState;
   try {
-    safeParent = clone(parent);
+    run = clone(submittedRun);
   } catch {
-    return failed("malformed_run", "Operation outcome parent save is not safe serializable data.");
+    return failed("malformed_run", "Operation outcome run is not safe serializable data.");
   }
-  const run = safeParent.galaxyRun;
-  if (run === null) return failed("missing_galaxy_run", "Cannot fold an operation without a galaxy run.");
   const snapshot = snapshotNormalizedOutcome(submitted);
   if (!snapshot.ok) {
     return failed(snapshot.code, snapshot.code === "unknown_reward_field"
@@ -730,8 +737,7 @@ function applyOutcomeImpl(
     return {
       ok: true,
       changed: false,
-      save: parent,
-      galaxyRun: parent.galaxyRun!,
+      galaxyRun: submittedRun,
       delivery: null,
     };
   }
@@ -781,10 +787,9 @@ function applyOutcomeImpl(
   let deliveredColonies: GalaxyProjectionDelta["colonies"];
   if (outcome.rewards.missionDelivery !== null) {
     const definition = outcome.rewards.missionDelivery;
-    const projectionParent = { ...safeParent, galaxyRun: current };
     let projection: SaveData;
     try {
-      projection = projectGalaxyRunToLegacySave(projectionParent);
+      projection = projectGalaxyRunToLegacyState(current);
     } catch {
       return failed("mission_delivery_failed", "Ashfall delivery projection could not be created.");
     }
@@ -909,8 +914,19 @@ function applyOutcomeImpl(
     resolved = clone(resolved);
     resolved.activeTravel!.appliedCheckpointIds.push(sharedCheckpoint);
   }
-  const save = { ...safeParent, galaxyRun: resolved };
-  return { ok: true, changed: true, save, galaxyRun: resolved, delivery };
+  return { ok: true, changed: true, galaxyRun: resolved, delivery };
+}
+
+/** Fold one normalized operation against the Galaxy authority and no legacy root fields. */
+export function applyOperationOutcomeToRun(
+  run: GalaxyRunState,
+  outcome: NormalizedOperationOutcome,
+): OperationRunOutcomeApplyResult {
+  try {
+    return applyOutcomeToRunImpl(run, outcome);
+  } catch {
+    return failed("malformed_run", "Operation outcome could not safely inspect or copy submitted state.");
+  }
 }
 
 /** Validate and journal one normalized operation outcome without touching legacy state. */
@@ -919,7 +935,17 @@ export function applyOperationOutcome(
   outcome: NormalizedOperationOutcome,
 ): OperationOutcomeApplyResult {
   try {
-    return applyOutcomeImpl(parent, outcome);
+    const safeParent = clone(parent);
+    if (safeParent.galaxyRun === null) {
+      return failed("missing_galaxy_run", "Cannot fold an operation without a galaxy run.");
+    }
+    const applied = applyOutcomeToRunImpl(safeParent.galaxyRun, outcome);
+    return applied.ok
+      ? {
+          ...applied,
+          save: { ...safeParent, galaxyRun: applied.galaxyRun },
+        }
+      : applied;
   } catch {
     return failed("malformed_run", "Operation outcome could not safely inspect or copy submitted state.");
   }

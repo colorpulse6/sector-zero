@@ -2,6 +2,8 @@ import type {
   ConsumableId,
   EnhancementId,
   PlanetId,
+  OutcomeRouteIdentity,
+  OutcomeRouteKind,
   SaveData,
   ShipUpgrades,
   SkillNodeId,
@@ -381,6 +383,24 @@ function canonicalPoiDescriptorFromId(id: string): MissionDescriptor | null {
   return adapter === undefined ? null : poiMissionDescriptor(node.value, adapter);
 }
 
+interface DecodedPoiIdentity {
+  nodeId: string;
+  templateId: string;
+  engine: PoiEngineAdapter;
+}
+
+function decodePoiIdentity(id: string): DecodedPoiIdentity | null {
+  if (!id.startsWith("poi:")) return null;
+  const template = decodeIdentityComponent(id, "poi:".length);
+  if (template === null || id[template.nextOffset] !== ":") return null;
+  const node = decodeIdentityComponent(id, template.nextOffset + 1);
+  if (node === null || node.nextOffset !== id.length) return null;
+  const engine = (Object.keys(POI_TEMPLATES) as PoiEngineAdapter[]).find(
+    (candidate) => POI_TEMPLATES[candidate] === template.value,
+  );
+  return engine === undefined ? null : { nodeId: node.value, templateId: template.value, engine };
+}
+
 function canonicalColonyDescriptorFromId(id: string): MissionDescriptor | null {
   if (!id.startsWith("colony:")) return null;
   const colony = decodeIdentityComponent(id, "colony:".length);
@@ -393,6 +413,192 @@ function canonicalColonyDescriptorFromId(id: string): MissionDescriptor | null {
   return building !== null && building.nextOffset === id.length
     ? colonyMissionDescriptor(colony.value, "interior", building.value)
     : null;
+}
+
+function decodeColonyIdentity(id: string): Extract<OutcomeRouteIdentity, { kind: "colony" }> | null {
+  if (!id.startsWith("colony:")) return null;
+  const colony = decodeIdentityComponent(id, "colony:".length);
+  if (colony === null) return null;
+  const suffix = id.slice(colony.nextOffset);
+  if (suffix === ":exterior") {
+    return { kind: "colony", colonyId: colony.value, mode: "exterior", buildingId: null };
+  }
+  const interiorMarker = ":interior:";
+  if (!suffix.startsWith(interiorMarker)) return null;
+  const building = decodeIdentityComponent(id, colony.nextOffset + interiorMarker.length);
+  return building !== null && building.nextOffset === id.length
+    ? { kind: "colony", colonyId: colony.value, mode: "interior", buildingId: building.value }
+    : null;
+}
+
+export interface PoiOutcomeRouteInput {
+  originColonyId: string;
+  rewardEligible: boolean;
+}
+
+function exactOutcomeIdentityData(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const actual = Reflect.ownKeys(value);
+    if (actual.length !== keys.length || actual.some((key) => typeof key !== "string" || !keys.includes(key))) return null;
+    const snapshot: Record<string, unknown> = {};
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+/** Total hostile-input codec shared by runtime envelopes and save migration. */
+export function snapshotOutcomeRouteIdentity(
+  value: unknown,
+  routeKind: OutcomeRouteKind,
+  missionId: string,
+): OutcomeRouteIdentity | null {
+  let snapshot: Record<string, unknown> | null = null;
+  if (routeKind === "campaign") {
+    snapshot = exactOutcomeIdentityData(value, ["kind", "world", "level"]);
+    if (snapshot === null || snapshot.kind !== routeKind || !Number.isSafeInteger(snapshot.world) ||
+      (snapshot.world as number) <= 0 || !Number.isSafeInteger(snapshot.level) || (snapshot.level as number) <= 0) return null;
+  } else if (routeKind === "planet") {
+    snapshot = exactOutcomeIdentityData(value, ["kind", "planetId"]);
+    if (snapshot === null || snapshot.kind !== routeKind || typeof snapshot.planetId !== "string" ||
+      snapshot.planetId.length === 0) return null;
+  } else if (routeKind === "special") {
+    snapshot = exactOutcomeIdentityData(value, ["kind", "missionId"]);
+    if (snapshot === null || snapshot.kind !== routeKind || typeof snapshot.missionId !== "string" ||
+      snapshot.missionId.length === 0) return null;
+  } else if (routeKind === "operation") {
+    snapshot = exactOutcomeIdentityData(value, ["kind", "operationId"]);
+    if (snapshot === null || snapshot.kind !== routeKind || typeof snapshot.operationId !== "string" ||
+      snapshot.operationId.length === 0) return null;
+  } else if (routeKind === "colony") {
+    snapshot = exactOutcomeIdentityData(value, ["kind", "colonyId", "mode", "buildingId"]);
+    if (snapshot === null || snapshot.kind !== routeKind || typeof snapshot.colonyId !== "string" ||
+      snapshot.colonyId.length === 0 || (snapshot.mode !== "exterior" && snapshot.mode !== "interior") ||
+      (snapshot.mode === "exterior" ? snapshot.buildingId !== null :
+        typeof snapshot.buildingId !== "string" || snapshot.buildingId.length === 0)) return null;
+  } else if (routeKind === "poi") {
+    snapshot = exactOutcomeIdentityData(value, [
+      "kind", "originColonyId", "nodeId", "engine", "templateId", "rewardEligible",
+    ]);
+    if (snapshot === null || snapshot.kind !== routeKind || typeof snapshot.originColonyId !== "string" ||
+      snapshot.originColonyId.length === 0 || typeof snapshot.nodeId !== "string" || snapshot.nodeId.length === 0 ||
+      typeof snapshot.templateId !== "string" || snapshot.templateId.length === 0 ||
+      (snapshot.engine !== "firstPerson" && snapshot.engine !== "boarding" && snapshot.engine !== "groundRun") ||
+      typeof snapshot.rewardEligible !== "boolean") return null;
+  }
+  if (snapshot === null) return null;
+  const identity = structuredClone(snapshot) as unknown as OutcomeRouteIdentity;
+  return routeIdentityMatchesMissionId(identity, routeKind, missionId) ? identity : null;
+}
+
+/** Canonical route/authority/return policy shared by runtime and migration. */
+export function outcomeAuthorityReturnMatches(
+  routeKind: OutcomeRouteKind,
+  authority: unknown,
+  returnTarget: unknown,
+): boolean {
+  if (routeKind === "operation") return authority === "galaxy" && returnTarget === "galaxy-atlas";
+  if (routeKind === "campaign") return authority === "legacy" &&
+    (returnTarget === "legacy-star-map" || returnTarget === "legacy-cockpit");
+  if (routeKind === "planet" || routeKind === "special") {
+    return authority === "legacy" && returnTarget === "legacy-cockpit";
+  }
+  if (routeKind === "poi") return (authority === "legacy" && returnTarget === "legacy-colony-exterior") ||
+    (authority === "galaxy" && returnTarget === "galaxy-region");
+  return (authority === "legacy" &&
+    (returnTarget === "legacy-cockpit" || returnTarget === "legacy-colony-exterior" ||
+      returnTarget === "legacy-landing-pad")) ||
+    (authority === "galaxy" &&
+      (returnTarget === "galaxy-atlas" || returnTarget === "galaxy-colony-exterior" ||
+        returnTarget === "galaxy-landing-pad"));
+}
+
+export function routeIdentityMatchesMissionId(
+  identity: OutcomeRouteIdentity,
+  routeKind: OutcomeRouteKind,
+  missionId: string,
+): boolean {
+  try {
+    if (identity.kind !== routeKind) return false;
+    switch (identity.kind) {
+      case "campaign":
+        return missionId === campaignMissionDescriptor(identity.world, identity.level).id;
+      case "planet":
+        return missionId === planetMissionDescriptor(identity.planetId).id;
+      case "special":
+        return missionId === specialMissionDescriptor(identity.missionId).id;
+      case "operation":
+        return missionId === operationMissionDescriptor(identity.operationId as OperationId).id;
+      case "colony": {
+        const decoded = decodeColonyIdentity(missionId);
+        return decoded !== null && decoded.colonyId === identity.colonyId && decoded.mode === identity.mode &&
+          decoded.buildingId === identity.buildingId;
+      }
+      case "poi": {
+        const decoded = decodePoiIdentity(missionId);
+        return decoded !== null && decoded.nodeId === identity.nodeId && decoded.templateId === identity.templateId &&
+          decoded.engine === identity.engine;
+      }
+    }
+  } catch {
+    return false;
+  }
+}
+
+export function outcomeRouteIdentityFromLaunch(
+  save: SaveData,
+  context: LaunchContext,
+  routeKind: OutcomeRouteKind,
+  poi?: PoiOutcomeRouteInput,
+): OutcomeRouteIdentity {
+  let identity: OutcomeRouteIdentity;
+  if (routeKind === "campaign") {
+    const match = /^campaign:([1-9]\d*)-([1-9]\d*)$/.exec(context.mission.id);
+    if (match === null) throw new Error("Campaign launch identity is malformed.");
+    identity = { kind: "campaign", world: Number(match[1]), level: Number(match[2]) };
+  } else if (routeKind === "planet") {
+    if (!context.mission.id.startsWith("planet:")) throw new Error("Planet launch identity is malformed.");
+    identity = { kind: "planet", planetId: context.mission.id.slice("planet:".length) as PlanetId };
+  } else if (routeKind === "special") {
+    if (!context.mission.id.startsWith("special:")) throw new Error("Special launch identity is malformed.");
+    identity = { kind: "special", missionId: context.mission.id.slice("special:".length) as "kepler-black-box" };
+  } else if (routeKind === "operation") {
+    if (!context.mission.id.startsWith("operation:")) throw new Error("Operation launch identity is malformed.");
+    identity = { kind: "operation", operationId: context.mission.id.slice("operation:".length) };
+  } else if (routeKind === "colony") {
+    const decoded = decodeColonyIdentity(context.mission.id);
+    if (decoded === null) throw new Error("Colony launch identity is malformed.");
+    identity = decoded;
+  } else {
+    const decoded = decodePoiIdentity(context.mission.id);
+    if (decoded === null || poi === undefined || typeof poi.originColonyId !== "string" ||
+      poi.originColonyId.length === 0 || typeof poi.rewardEligible !== "boolean") {
+      throw new Error("POI launch identity is incomplete.");
+    }
+    const colonies = context.persistenceAuthority === "galaxy" ? save.galaxyRun?.colonies : save.colonies;
+    const planets = context.persistenceAuthority === "galaxy" ? save.galaxyRun?.planets : save.planets;
+    const colony = colonies?.find((entry) => entry.id === poi.originColonyId);
+    const node = planets?.find((entry) => entry.id === colony?.planetId)
+      ?.regionMap.nodes.find((entry) => entry.id === decoded.nodeId);
+    const canonicalReward = node?.intel === "surveyed";
+    if (colony === undefined || node === undefined || node.templateId !== decoded.templateId ||
+      (node.intel !== "surveyed" && node.intel !== "cleared") || canonicalReward !== poi.rewardEligible) {
+      throw new Error("POI launch identity is not canonical save authority.");
+    }
+    identity = { kind: "poi", ...decoded, ...poi };
+  }
+  if (!routeIdentityMatchesMissionId(identity, routeKind, context.mission.id)) {
+    throw new Error("Outcome route identity does not match the launched mission.");
+  }
+  return structuredClone(identity);
 }
 
 function assertPolicy(

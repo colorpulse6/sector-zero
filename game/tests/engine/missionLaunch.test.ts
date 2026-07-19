@@ -8,7 +8,7 @@ import {
   updateGame,
 } from "../../app/components/engine/gameEngine";
 import { createHydrationSafeSave } from "../../app/components/engine/save";
-import { EnemyType, GameScreen, PowerUpType } from "../../app/components/engine/types";
+import { EnemyType, GameScreen, PowerUpType, type SaveData } from "../../app/components/engine/types";
 import {
   campaignMissionDescriptor,
   colonyMissionDescriptor,
@@ -537,37 +537,87 @@ test("POI runtime inherits explicit experience authority and the complete pilot 
   save.equippedConsumables = ["weapon-overcharge"];
   save.consumableInventory = { "weapon-overcharge": 2 };
   const session = {
-    nodeId: "node:cinder-relay",
+    nodeId: "ashfall-cinder-relay",
     engine: "firstPerson" as const,
     state: createFirstPersonRuinTemplate(17),
     rewardEligible: true,
   };
+  const galaxyParent = { ...startFreshGalaxy(save), saveRevision: 7 };
+  galaxyParent.galaxyRun = structuredClone(galaxyParent.galaxyRun);
+  galaxyParent.galaxyRun!.planets = galaxyParent.galaxyRun!.planets.map((planet) => ({
+    ...planet,
+    regionMap: {
+      ...planet.regionMap,
+      nodes: planet.regionMap.nodes.map((node) => node.id === session.nodeId
+        ? { ...node, intel: "surveyed" as const }
+        : node),
+    },
+  }));
+  const galaxyProjection = projectGalaxyRunToLegacySave(galaxyParent);
+  const legacyPoiSave: SaveData = {
+    ...galaxyProjection,
+    upgrades: structuredClone(save.upgrades),
+    unlockedEnhancements: structuredClone(save.unlockedEnhancements),
+    pilotLevel: save.pilotLevel,
+    allocatedSkills: structuredClone(save.allocatedSkills),
+    equippedWeaponType: save.equippedWeaponType,
+    equippedConsumables: structuredClone(save.equippedConsumables),
+    consumableInventory: structuredClone(save.consumableInventory),
+  };
 
   const state = createPoiGameState(
     session,
-    save,
+    legacyPoiSave,
     "galaxy",
     () => "launch:test:poi",
+    galaxyParent,
+    "galaxy:ashfall-primary",
   );
   const legacyState = createPoiGameState(
     session,
-    save,
+    legacyPoiSave,
     "legacy",
     () => "launch:test:legacy-poi-return",
+    legacyPoiSave,
+    "galaxy:ashfall-primary",
   );
 
   assert.equal(state.launchContext?.launchId, "launch:test:poi");
-  assert.equal(state.launchContext?.mission.id, "poi:20:fp-ruin-cinder-relay:17:node:cinder-relay");
+  assert.equal(state.launchContext?.mission.id, "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay");
   assert.equal(state.launchContext?.persistenceAuthority, "galaxy");
   assert.equal(state.launchContext?.entryProvenance, "region");
   assert.equal(state.launchContext?.returnTarget, "galaxy-region");
+  assert.deepEqual(state.outcomeAttempt, {
+    version: 1,
+    routeKind: "poi",
+    missionId: "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+    routeIdentity: {
+      kind: "poi",
+      originColonyId: "galaxy:ashfall-primary",
+      nodeId: "ashfall-cinder-relay",
+      engine: "firstPerson",
+      templateId: "fp-ruin-cinder-relay",
+      rewardEligible: true,
+    },
+    launchId: "launch:test:poi",
+    expectedRevision: 7,
+    persistenceAuthority: "galaxy",
+    returnTarget: "galaxy-region",
+    declaredFields: ["galaxyRun"],
+    launchSnapshot: { galaxyRun: galaxyParent.galaxyRun },
+  });
+  assert.equal(legacyState.outcomeAttempt?.launchId, "launch:test:legacy-poi-return");
+  assert.equal(legacyState.outcomeAttempt?.persistenceAuthority, "legacy");
+  assert.deepEqual(legacyState.outcomeAttempt?.declaredFields, [
+    "colonies", "planets", "missionsSinceStart",
+  ]);
   assert.equal(legacyState.launchContext?.entryProvenance, "region");
   assert.equal(legacyState.launchContext?.returnTarget, "legacy-colony-exterior");
   const legacyRetry = retryLaunchContext(
     legacyState.launchContext!,
     () => "launch:test:legacy-poi-retry",
   );
-  const changedSave = structuredClone(save);
+  const changedSave = structuredClone(legacyPoiSave);
   changedSave.equippedWeaponType = "kinetic";
   changedSave.equippedConsumables = [];
   changedSave.consumableInventory = {};
