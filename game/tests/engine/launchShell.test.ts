@@ -3,7 +3,10 @@ import test from "node:test";
 
 import { createHydrationSafeSave } from "../../app/components/engine/save";
 import type { GameState, PlanetId, SaveData, SpecialMissionId } from "../../app/components/engine/types";
-import type { LaunchContext } from "../../app/components/engine/missionContext";
+import {
+  colonyMissionDescriptor,
+  type LaunchContext,
+} from "../../app/components/engine/missionContext";
 import { applyColonyFixture, findFixture } from "../../app/components/colony/dev/seedColony";
 
 type GameModule = {
@@ -122,7 +125,10 @@ test("direct and continued Colony exterior launches own one attempt across the s
   const direct = game.createColonyExteriorLaunchState!(seeded.save, seeded.colonyId);
   const continued = game.createColonyExteriorLaunchState!(seeded.save, seeded.colonyId, "continue");
 
-  assert.equal(direct.gameState.launchContext?.mission.id, `colony:${seeded.colonyId}:exterior`);
+  assert.equal(
+    direct.gameState.launchContext?.mission.id,
+    colonyMissionDescriptor(seeded.colonyId, "exterior").id,
+  );
   assert.equal(direct.gameState.launchContext?.entryProvenance, "cockpit");
   assert.equal(direct.gameState.launchContext?.returnTarget, "legacy-cockpit");
   assert.equal(direct.sceneStack.colonyId, seeded.colonyId);

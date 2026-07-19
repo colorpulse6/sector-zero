@@ -68,6 +68,7 @@ import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
 import { canLaunchSpecialMission, getSpecialMissionDef } from "./engine/specialMissions";
 import {
   campaignMissionDescriptor,
+  claimLaunchContextForGameState,
   colonyMissionDescriptor,
   launchContextFromSave,
   planetMissionDescriptor,
@@ -509,7 +510,10 @@ export default function Game() {
     if (travelSave(retreated) !== null) setAtlasStatusMessage("EMERGENCY RETREAT COMPLETE · RETURNED TO ORIGIN");
   }, [travelSave]);
 
-  const mountAuthorizedOperation = useCallback((context: OperationLaunchContext) => {
+  const mountAuthorizedOperation = useCallback((
+    context: OperationLaunchContext,
+    retryContext?: LaunchContext,
+  ) => {
     const current = saveDataRef.current;
     if (current.galaxyRun === null) {
       setAtlasStatusMessage("NO ACTIVE GALAXY RUN");
@@ -517,7 +521,7 @@ export default function Game() {
     }
     try {
       const projected = projectGalaxyRunToLegacySave(current);
-      const launched = launchOperation(current.galaxyRun, projected, context);
+      const launched = launchOperation(current.galaxyRun, projected, context, retryContext);
       if (!launched.ok) {
         setAtlasStatusMessage(launched.availability.reasons.join(" · "));
         return false;
@@ -1001,15 +1005,17 @@ export default function Game() {
   const restartGame = useCallback((fromBeginning = false) => {
     const audio = ensureAudio();
     audio.switchMusic("game");
+    const ownedRetry = gameState ? createRetryLaunchContext(gameState) : undefined;
     if (activeOperationId && activeOperationContext) {
-      mountAuthorizedOperation(activeOperationContext);
+      if (!ownedRetry) return;
+      mountAuthorizedOperation(activeOperationContext, ownedRetry);
       return;
     }
     if (gameState && activePoiExperience !== "galaxy") {
       updateSectorZeroProfile(gameState.score);
     }
-    const ownedRetry = gameState ? createRetryLaunchContext(gameState) : undefined;
     if (activePoi) {
+      if (!ownedRetry) return;
       const poiSave = activePoiExperience === "galaxy"
         ? (() => {
             const opened = openGalaxyRegion(saveDataRef.current, "contact:ashfall");
@@ -1022,9 +1028,12 @@ export default function Game() {
         setActivePoi({ originColonyId: activePoi.originColonyId, session: dispatched.session });
         poiCompletionHandledRef.current = false;
         setPendingPoiResolution(null);
-        // POI construction does not yet accept a claimed retry context. Launch a
-        // fresh attempt until the runtime adapter exposes that explicit seam.
-        setGameState(createPoiGameState(dispatched.session, poiSave, activePoiExperience ?? "legacy"));
+        setGameState(createPoiGameState(
+          dispatched.session,
+          poiSave,
+          activePoiExperience ?? "legacy",
+          ownedRetry,
+        ));
       }
       return;
     }
@@ -1035,6 +1044,7 @@ export default function Game() {
       const isGroundRun = gameState.currentMode === "ground-run";
       const freshGroundState = isGroundRun ? createTestGroundState() : undefined;
       const groundSpawn = isGroundRun && freshGroundState ? getGroundSpawn(freshGroundState.tileMap) : null;
+      if (ownedRetry) claimLaunchContextForGameState(ownedRetry);
       setGameState({
         ...gameState,
         ...restored,
