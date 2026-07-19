@@ -48,7 +48,7 @@ function requireTravel(result: TravelTransitionResult) {
   return result.galaxyRun;
 }
 
-export const freshLegacy = canonical({ introSeen: true });
+export const freshLegacy = canonical({});
 
 const planetUnlockLevels = Object.fromEntries(
   PLANET_DEFS.map((planet) => [
@@ -59,6 +59,7 @@ const planetUnlockLevels = Object.fromEntries(
 
 export const allPlanetsLaunchable = canonical({
   ...freshLegacy,
+  introSeen: true,
   levels: planetUnlockLevels,
   totalStars: Math.max(...PLANET_DEFS.map((planet) => planet.unlockStars)),
   completedPlanets: [],

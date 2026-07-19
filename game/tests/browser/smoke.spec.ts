@@ -41,6 +41,7 @@ test("@fixture route saves migrate and round-trip through current registries", (
   }
 
   expect(freshLegacy.activeExperience).toBe("legacy");
+  expect(freshLegacy.introSeen).toBeUndefined();
   expect(keplerUnlocked.unlockedSpecialMissions).toContain("kepler-black-box");
   expect(keplerUnlocked.completedSpecialMissions).not.toContain("kepler-black-box");
   expect(keplerCleared.completedSpecialMissions).toContain("kepler-black-box");
@@ -61,10 +62,10 @@ test("@fixture route saves migrate and round-trip through current registries", (
 test("@keyboard focuses both choices, activates Legacy, and reloads the installed save", async ({
   page,
 }, testInfo) => {
-  await installSaveFixture(page, freshGalaxy);
+  await installSaveFixture(page, allPlanetsLaunchable);
   await page.goto("/");
 
-  const galaxyChoice = page.getByRole("button", { name: "CONTINUE GALAXY" });
+  const galaxyChoice = page.getByRole("button", { name: "BEGIN GALAXY" });
   const legacyChoice = page.getByRole("button", { name: "LEGACY CAMPAIGN" });
   await expect(galaxyChoice).toBeEnabled();
   await galaxyChoice.focus();
@@ -76,15 +77,15 @@ test("@keyboard focuses both choices, activates Legacy, and reloads the installe
 
   expect((await readInstalledSave(page)).activeExperience).toBe("legacy");
   await page.reload();
-  await expect(page.getByRole("button", { name: "CONTINUE GALAXY" })).toBeEnabled();
-  expect((await readInstalledSave(page)).galaxyRun).not.toBeNull();
+  await expect(page.getByRole("button", { name: "BEGIN GALAXY" })).toBeEnabled();
+  expect((await readInstalledSave(page)).equippedWeaponType).toBe("energy");
 
   await attachBrowserReceipt(testInfo, {
     route: "experience-selector -> legacy-cockpit -> reload",
     inputMethod: "keyboard",
-    saveFixture: "freshGalaxy",
-    expectedOutcome: "Both choices receive focus; Enter opens Legacy; reload preserves the installed Galaxy sibling.",
-    observedOutcome: "Legacy opened and reload restored CONTINUE GALAXY from localStorage.",
+    saveFixture: "allPlanetsLaunchable",
+    expectedOutcome: "Both choices receive focus; Enter opens Legacy; reload preserves the non-default pilot build.",
+    observedOutcome: "Legacy opened and reload restored the energy-weapon fixture from localStorage.",
   });
 });
 
@@ -99,7 +100,7 @@ test("@pointer clicks a focused experience choice", async ({ page }, testInfo) =
   await expect(legacyChoice).toBeHidden();
 
   await attachBrowserReceipt(testInfo, {
-    route: "experience-selector -> legacy-cockpit",
+    route: "experience-selector -> legacy-entry",
     inputMethod: "pointer",
     saveFixture: "freshLegacy",
     expectedOutcome: "A pointer click activates the focused Legacy choice.",
@@ -118,7 +119,7 @@ test("@touch activates an experience choice with a real touchscreen event", asyn
   await expect(legacyChoice).toBeHidden();
 
   await attachBrowserReceipt(testInfo, {
-    route: "experience-selector -> legacy-cockpit",
+    route: "experience-selector -> legacy-entry",
     inputMethod: "touch",
     saveFixture: "freshLegacy",
     expectedOutcome: "A native Playwright touchscreen tap activates Legacy at 480x854.",
