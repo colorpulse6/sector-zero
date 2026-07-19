@@ -4,6 +4,7 @@ import { migrateSave } from "../../../app/components/engine/save";
 import type { SaveData } from "../../../app/components/engine/types";
 
 export const SAVE_STORAGE_KEY = "sector-zero-save";
+const FIXTURE_INSTALL_MARKER = `${SAVE_STORAGE_KEY}:browser-fixture-installed`;
 
 export function roundTripSaveFixture(fixture: SaveData): SaveData {
   return migrateSave(JSON.parse(JSON.stringify(fixture)) as Record<string, unknown>);
@@ -12,8 +13,16 @@ export function roundTripSaveFixture(fixture: SaveData): SaveData {
 export async function installSaveFixture(page: Page, fixture: SaveData): Promise<void> {
   const save = roundTripSaveFixture(fixture);
   await page.addInitScript(
-    ({ key, serialized }) => localStorage.setItem(key, serialized),
-    { key: SAVE_STORAGE_KEY, serialized: JSON.stringify(save) },
+    ({ key, marker, serialized }) => {
+      if (sessionStorage.getItem(marker) !== null) return;
+      localStorage.setItem(key, serialized);
+      sessionStorage.setItem(marker, "true");
+    },
+    {
+      key: SAVE_STORAGE_KEY,
+      marker: FIXTURE_INSTALL_MARKER,
+      serialized: JSON.stringify(save),
+    },
   );
 }
 
