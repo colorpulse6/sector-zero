@@ -772,9 +772,10 @@ function commitOutcomeImpl(
   };
   const records = appendRecoveryRecord(root.outcomeRecoveryRecords, receipt, outcome.outcomeId);
   if (records === null) return { status: "conflict", latest };
-  const checkpointOutcomeIds = outcome.persistenceAuthority === "galaxy"
-    ? activeGalaxyCheckpointOutcomeIds(latestData.galaxyRun)
-    : [];
+  const retainedGalaxyRun = latestData.galaxyRun as SaveData["galaxyRun"] | undefined;
+  const checkpointOutcomeIds = retainedGalaxyRun === null
+    ? []
+    : activeGalaxyCheckpointOutcomeIds(retainedGalaxyRun);
   if (checkpointOutcomeIds === null) return { status: "conflict", latest };
   const protectedIds = [
     ...records.flatMap((record) => snapshotRecoveryRecord(record)?.protectedIds ?? []),
@@ -786,34 +787,43 @@ function commitOutcomeImpl(
     field,
     structuredClone(folded.nextSave[field]),
   ])) as Partial<SaveData>;
-  if (outcome.persistenceAuthority === "galaxy") {
-    const sourceRun = (folded.fields.includes("galaxyRun")
-      ? folded.nextSave.galaxyRun
-      : latestData.galaxyRun) as SaveData["galaxyRun"] | undefined;
-    if (sourceRun === null || sourceRun === undefined) return { status: "conflict", latest };
-    const galaxyRun = structuredClone(sourceRun) as NonNullable<SaveData["galaxyRun"]>;
-    const nestedJournal = snapshotStringJournal(galaxyRun.appliedOutcomeIds);
+  let coordinatorUpdatedGalaxyRun = false;
+  const sourceRun = (folded.fields.includes("galaxyRun")
+    ? folded.nextSave.galaxyRun
+    : retainedGalaxyRun) as SaveData["galaxyRun"] | undefined;
+  if (sourceRun !== null && sourceRun !== undefined) {
+    const sourceRunData = requiredOwnData(sourceRun, ["appliedOutcomeIds"]);
+    const nestedJournal = sourceRunData === null ? null : snapshotStringJournal(sourceRunData.appliedOutcomeIds);
     if (nestedJournal === null) return { status: "conflict", latest };
     const nestedOccurrences = nestedJournal.filter((id) => id === outcome.outcomeId).length;
-    if (nestedOccurrences > 1) return { status: "conflict", latest };
-    const unprunedNested = nestedOccurrences === 0
+    if (outcome.persistenceAuthority === "galaxy" ? nestedOccurrences > 1 : nestedOccurrences !== 0) {
+      return { status: "conflict", latest };
+    }
+    const unprunedNested = outcome.persistenceAuthority === "galaxy" && nestedOccurrences === 0
       ? [...nestedJournal, outcome.outcomeId]
       : nestedJournal;
     const rootOutcomeIds = new Set(journal);
     const nextNested = unprunedNested.filter((outcomeId) => rootOutcomeIds.has(outcomeId));
-    if (nextNested.filter((outcomeId) => outcomeId === outcome.outcomeId).length !== 1) {
+    const expectedNestedOccurrences = outcome.persistenceAuthority === "galaxy" ? 1 : 0;
+    if (nextNested.filter((outcomeId) => outcomeId === outcome.outcomeId).length !== expectedNestedOccurrences) {
       return { status: "conflict", latest };
     }
     const prunedNestedIds = new Set(unprunedNested.filter((outcomeId) => !rootOutcomeIds.has(outcomeId)));
-    if (prunedNestedIds.size > 0) {
-      for (const operation of Object.values(galaxyRun.operations)) {
-        const completionIds = snapshotStringJournal(operation.completionIds);
-        if (completionIds === null) return { status: "conflict", latest };
-        operation.completionIds = completionIds.filter((outcomeId) => !prunedNestedIds.has(outcomeId));
+    if (outcome.persistenceAuthority === "galaxy" || prunedNestedIds.size > 0) {
+      const galaxyRun = structuredClone(sourceRun) as NonNullable<SaveData["galaxyRun"]>;
+      if (prunedNestedIds.size > 0) {
+        for (const operation of Object.values(galaxyRun.operations)) {
+          const completionIds = snapshotStringJournal(operation.completionIds);
+          if (completionIds === null) return { status: "conflict", latest };
+          operation.completionIds = completionIds.filter((outcomeId) => !prunedNestedIds.has(outcomeId));
+        }
       }
+      galaxyRun.appliedOutcomeIds = nextNested;
+      foldedOverrides.galaxyRun = galaxyRun;
+      coordinatorUpdatedGalaxyRun = true;
     }
-    galaxyRun.appliedOutcomeIds = nextNested;
-    foldedOverrides.galaxyRun = galaxyRun;
+  } else if (outcome.persistenceAuthority === "galaxy") {
+    return { status: "conflict", latest };
   }
   const candidate = withRootOverrides(latest, {
     ...foldedOverrides,
@@ -828,7 +838,7 @@ function commitOutcomeImpl(
   }
   const effectFields = [...new Set<OutcomeDeclaredField>([
     ...folded.fields,
-    ...(outcome.persistenceAuthority === "galaxy" ? ["galaxyRun" as const] : []),
+    ...(coordinatorUpdatedGalaxyRun ? ["galaxyRun" as const] : []),
   ])];
   const writeProof = createOutcomeWriteProof(candidate, revision, journal, records, effectFields);
   if (writeProof === null) return { status: "conflict", latest };

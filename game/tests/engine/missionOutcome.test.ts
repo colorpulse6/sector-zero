@@ -59,6 +59,11 @@ import {
   mergeProjectionIntoGalaxy,
   projectGalaxyRunToLegacyState,
 } from "../../app/components/engine/galaxy/galaxyProjection";
+import { authorizeOperationLaunch } from "../../app/components/engine/operations/operationCatalog";
+import {
+  applyOperationOutcomeToRun,
+  normalizeOperationOutcome,
+} from "../../app/components/engine/operations/operationOutcome";
 
 function attempt(
   save: SaveData,
@@ -571,6 +576,54 @@ test("pending return migration locks incoherent journal and revision authority",
 
   assert.equal(missingJournal.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
   assert.equal(futureRevision.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+});
+
+test("migration locks when valid protected outcome authority exceeds root journal capacity", () => {
+  const begun = beginGalaxyExperience(migrateSave({ credits: 731, introSeen: true }));
+  assert.ok(begun.galaxyRun);
+  const pendingOutcomeId = "protected-capacity-legacy:success";
+  const galaxyOutcomeIds = Array.from({ length: 256 }, (_, index) => `protected-capacity-galaxy:${index}`);
+  const pendingReturn: OutcomeRecoveryRecord = {
+    version: 2,
+    kind: "applied_return",
+    outcomeId: pendingOutcomeId,
+    launchId: "protected-capacity-legacy",
+    missionId: "campaign:1-1",
+    routeKind: "campaign",
+    routeIdentity: { kind: "campaign", world: 1, level: 1 },
+    terminalKind: "success",
+    persistenceAuthority: "legacy",
+    returnTarget: "legacy-cockpit",
+    appliedRevision: begun.saveRevision,
+    returnPending: true,
+  };
+  const raw: SaveData = {
+    ...begun,
+    appliedOutcomeIds: [pendingOutcomeId, ...galaxyOutcomeIds],
+    outcomeRecoveryRecords: [pendingReturn],
+    galaxyRun: {
+      ...begun.galaxyRun!,
+      appliedOutcomeIds: [...galaxyOutcomeIds],
+    },
+  };
+
+  const migrated = migrateSave(JSON.parse(JSON.stringify(raw)));
+
+  assert.deepEqual(migrated.appliedOutcomeIds, galaxyOutcomeIds);
+  assert.deepEqual(migrated.galaxyRun?.appliedOutcomeIds, galaxyOutcomeIds);
+  assert.equal(migrated.credits, 731);
+  assert.equal(migrated.introSeen, true);
+  const lock = migrated.outcomeRecoveryRecords[0];
+  assert.equal(lock?.kind, "reconciliation_required");
+  if (lock?.kind !== "reconciliation_required") return;
+  assert.equal(lock.version, 2);
+  assert.equal(lock.reason, "recovery_capacity_exceeded");
+  assert.equal(lock.protectedOutcomeIds.length, 256);
+  assert.equal(lock.quarantinedOutcomeCount, 1);
+  const authority = snapshotOutcomeRootAuthority(migrated);
+  assert.ok(authority);
+  assert.equal(authority?.locked, true);
+  assert.deepEqual(migrateSave(JSON.parse(JSON.stringify(migrated))), migrated);
 });
 
 test("hostile reconciliation protection cannot leave an oversized root journal", () => {
@@ -1223,6 +1276,132 @@ test("Galaxy operation outcomes commit at full coherent journal capacity", () =>
   assert.ok(committed.save.galaxyRun.appliedOutcomeIds.includes(terminal.outcomeId));
   assert.deepEqual(committed.save.galaxyRun.operations["op:hostile-picket"].completionIds, [protectedOutcomeId]);
   assert.deepEqual(committed.save.galaxyRun.operations["op:ashfall-sortie"].completionIds, [terminal.outcomeId]);
+});
+
+test("Legacy outcomes prune retained Galaxy authority coherently at full root capacity", () => {
+  const begun = beginGalaxyExperience(migrateSave({}));
+  assert.ok(begun.galaxyRun);
+  let run = begun.galaxyRun!;
+  const applyContactOperation = (
+    contactId: "contact:kepler" | "contact:ashfall",
+    operationId: "op:kepler-black-box" | "op:ashfall-sortie",
+    completionId: string,
+  ) => {
+    const preview = planRoute(run, { kind: "contact", contactId });
+    assert.equal(preview.ok, true);
+    if (!preview.ok) throw new Error(`Route unavailable: ${contactId}`);
+    const committedTravel = commitTravel(run, preview.plan);
+    assert.equal(committedTravel.ok, true);
+    if (!committedTravel.ok) throw new Error(`Travel commit failed: ${contactId}`);
+    const resumed = resumeTravelToBoundary(committedTravel.galaxyRun);
+    assert.equal(resumed.ok, true);
+    if (!resumed.ok) throw new Error(`Travel resume failed: ${contactId}`);
+    const finalized = finalizeTravel(resumed.galaxyRun);
+    assert.equal(finalized.ok, true);
+    if (!finalized.ok) throw new Error(`Travel finalization failed: ${contactId}`);
+    const authorization = authorizeOperationLaunch(finalized.galaxyRun, operationId);
+    assert.equal(authorization.ok, true);
+    if (!authorization.ok) throw new Error(`Operation unavailable: ${operationId}`);
+    const normalized = normalizeOperationOutcome(finalized.galaxyRun, authorization.context, {
+      completionId,
+      result: "success",
+      metrics: null,
+    });
+    assert.equal(normalized.ok, true);
+    if (!normalized.ok) throw new Error(`Operation normalization failed: ${operationId}`);
+    const applied = applyOperationOutcomeToRun(finalized.galaxyRun, normalized.outcome);
+    assert.equal(applied.ok, true);
+    if (!applied.ok) throw new Error(`Operation fold failed: ${operationId}`);
+    run = applied.galaxyRun;
+  };
+  const prunedOutcomeId = "legacy-capacity-pruned:success";
+  const recoveryOutcomeId = "legacy-capacity-recovery:success";
+  const checkpointOutcomeId = "legacy-capacity-checkpoint:success";
+  applyContactOperation("contact:kepler", "op:kepler-black-box", prunedOutcomeId);
+  applyContactOperation("contact:ashfall", "op:ashfall-sortie", recoveryOutcomeId);
+
+  const hostilePreview = planRoute(run, { kind: "contact", contactId: "contact:hostile-picket" });
+  assert.equal(hostilePreview.ok, true);
+  if (!hostilePreview.ok) throw new Error("Hostile route unavailable");
+  const hostileTravel = commitTravel(run, hostilePreview.plan);
+  assert.equal(hostileTravel.ok, true);
+  if (!hostileTravel.ok) throw new Error("Hostile travel commit failed");
+  const interrupted = resumeTravelToBoundary(hostileTravel.galaxyRun);
+  assert.equal(interrupted.ok, true);
+  if (!interrupted.ok) throw new Error("Hostile travel resume failed");
+  const hostileAuthorization = authorizeOperationLaunch(interrupted.galaxyRun, "op:hostile-picket");
+  assert.equal(hostileAuthorization.ok, true);
+  if (!hostileAuthorization.ok) throw new Error("Hostile operation unavailable");
+  const hostileNormalized = normalizeOperationOutcome(interrupted.galaxyRun, hostileAuthorization.context, {
+    completionId: checkpointOutcomeId,
+    result: "success",
+    metrics: { frameCount: 3600 },
+  });
+  assert.equal(hostileNormalized.ok, true);
+  if (!hostileNormalized.ok) throw new Error("Hostile operation normalization failed");
+  const hostileApplied = applyOperationOutcomeToRun(interrupted.galaxyRun, hostileNormalized.outcome);
+  assert.equal(hostileApplied.ok, true);
+  if (!hostileApplied.ok) throw new Error("Hostile operation fold failed");
+  run = hostileApplied.galaxyRun;
+
+  const fillerIds = Array.from({ length: 253 }, (_, index) => `legacy-capacity-filler:${index}`);
+  const galaxyOutcomeIds = [checkpointOutcomeId, recoveryOutcomeId, prunedOutcomeId, ...fillerIds];
+  run.appliedOutcomeIds = [...galaxyOutcomeIds];
+  const recoveryReceipt: OutcomeRecoveryRecord = {
+    version: 2,
+    kind: "applied_return",
+    outcomeId: recoveryOutcomeId,
+    launchId: "legacy-capacity-recovery",
+    missionId: "operation:op:ashfall-sortie",
+    routeKind: "operation",
+    routeIdentity: { kind: "operation", operationId: "op:ashfall-sortie" },
+    terminalKind: "success",
+    persistenceAuthority: "galaxy",
+    returnTarget: "galaxy-atlas",
+    appliedRevision: begun.saveRevision,
+    returnPending: true,
+  };
+  const save: SaveData = {
+    ...begun,
+    activeExperience: "legacy",
+    appliedOutcomeIds: [...galaxyOutcomeIds],
+    outcomeRecoveryRecords: [recoveryReceipt],
+    galaxyRun: run,
+  };
+  assert.equal(snapshotOutcomeRootAuthority(save)?.locked, false);
+  const terminal = campaignEnvelope(save, "legacy-capacity-new");
+
+  const committed = commitOutcome(memoryStore(save).store, terminal);
+
+  assert.equal(committed.status, "committed");
+  if (committed.status !== "committed" || committed.save.galaxyRun === null) return;
+  assert.equal(committed.save.appliedOutcomeIds.length, 256);
+  assert.equal(committed.save.galaxyRun.appliedOutcomeIds.length, 255);
+  assert.ok(committed.save.appliedOutcomeIds.includes(terminal.outcomeId));
+  assert.ok(!committed.save.galaxyRun.appliedOutcomeIds.includes(terminal.outcomeId));
+  assert.ok(!committed.save.appliedOutcomeIds.includes(prunedOutcomeId));
+  assert.ok(!committed.save.galaxyRun.appliedOutcomeIds.includes(prunedOutcomeId));
+  assert.deepEqual(committed.save.galaxyRun.operations["op:kepler-black-box"].completionIds, []);
+  assert.ok(committed.save.appliedOutcomeIds.includes(recoveryOutcomeId));
+  assert.ok(committed.save.galaxyRun.appliedOutcomeIds.includes(recoveryOutcomeId));
+  assert.deepEqual(committed.save.galaxyRun.operations["op:ashfall-sortie"].completionIds, [recoveryOutcomeId]);
+  assert.ok(committed.save.appliedOutcomeIds.includes(checkpointOutcomeId));
+  assert.ok(committed.save.galaxyRun.appliedOutcomeIds.includes(checkpointOutcomeId));
+  assert.deepEqual(committed.save.galaxyRun.operations["op:hostile-picket"].completionIds, [checkpointOutcomeId]);
+  assert.ok(committed.save.galaxyRun.activeTravel?.appliedCheckpointIds.some((checkpointId) =>
+    checkpointId.endsWith(`:operation-outcome:${checkpointOutcomeId}`)));
+
+  const postWrite = commitOutcome(postWriteThrowStore(save, (candidate) => ({
+    ...candidate,
+    galaxyRun: candidate.galaxyRun === null ? null : {
+      ...candidate.galaxyRun,
+      resources: {
+        ...candidate.galaxyRun.resources,
+        supply: candidate.galaxyRun.resources.supply + 1,
+      },
+    },
+  })), terminal);
+  assert.equal(postWrite.status, "write_failed");
 });
 
 test("hostile Galaxy journals and operation records never become replay authority", () => {

@@ -113,10 +113,24 @@ function snapshotStrictStringJournal(value: unknown): string[] | null {
     : null;
 }
 
-function migrateOutcomeJournal(value: unknown, protectedIds: readonly string[] = []): string[] {
+interface MigratedOutcomeJournal {
+  appliedOutcomeIds: string[];
+  protectedCapacityOverflow: number;
+}
+
+function migrateOutcomeJournal(
+  value: unknown,
+  protectedIds: readonly string[] = [],
+): MigratedOutcomeJournal {
   const journal = migrateStringJournal(value);
-  if (journal.length <= OUTCOME_JOURNAL_LIMIT) return journal;
   const protectedSet = new Set(protectedIds);
+  const protectedCapacityOverflow = Math.max(
+    0,
+    journal.filter((outcomeId) => protectedSet.has(outcomeId)).length - OUTCOME_JOURNAL_LIMIT,
+  );
+  if (journal.length <= OUTCOME_JOURNAL_LIMIT) {
+    return { appliedOutcomeIds: journal, protectedCapacityOverflow };
+  }
   for (let index = 0; index < journal.length && journal.length > OUTCOME_JOURNAL_LIMIT;) {
     if (protectedSet.has(journal[index])) {
       index += 1;
@@ -124,7 +138,10 @@ function migrateOutcomeJournal(value: unknown, protectedIds: readonly string[] =
       journal.splice(index, 1);
     }
   }
-  return journal.slice(-OUTCOME_JOURNAL_LIMIT);
+  return {
+    appliedOutcomeIds: journal.slice(-OUTCOME_JOURNAL_LIMIT),
+    protectedCapacityOverflow,
+  };
 }
 
 const OUTCOME_ROUTE_KINDS = new Set(["campaign", "planet", "special", "operation", "colony", "poi"]);
@@ -371,6 +388,25 @@ function reconcileRecoveryAuthority(
     existingLock === undefined
       ? saturatingQuarantineAdd(priorQuarantine, Math.max(1, quarantinedOutcomeCount))
       : Math.max(priorQuarantine, quarantinedOutcomeCount),
+  )];
+}
+
+function reconcileProtectedJournalCapacity(
+  records: readonly OutcomeRecoveryRecord[],
+  protectedOutcomeIds: readonly string[],
+): OutcomeRecoveryRecord[] {
+  const existingLock = records.find((record): record is Extract<OutcomeRecoveryRecord, {
+    kind: "reconciliation_required";
+  }> => record.kind === "reconciliation_required");
+  const priorQuarantine = records.reduce((total, record) =>
+    saturatingQuarantineAdd(
+      total,
+      record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0,
+    ), 0);
+  return [reconciliationLock(
+    existingLock?.reason ?? "recovery_capacity_exceeded",
+    protectedOutcomeIds,
+    priorQuarantine,
   )];
 }
 
@@ -710,7 +746,17 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
     ...protectedRecoveryOutcomeIds(outcomeRecoveryRecords),
     ...(rawParity.ok ? rawParity.nestedOutcomeIds : []),
   ];
-  let appliedOutcomeIds = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
+  let journalMigration = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
+  let appliedOutcomeIds = journalMigration.appliedOutcomeIds;
+  if (journalMigration.protectedCapacityOverflow > 0) {
+    outcomeRecoveryRecords = reconcileProtectedJournalCapacity(outcomeRecoveryRecords, protectedOutcomeIds);
+    protectedOutcomeIds = [
+      ...protectedRecoveryOutcomeIds(outcomeRecoveryRecords),
+      ...(rawParity.ok ? rawParity.nestedOutcomeIds : []),
+    ];
+    journalMigration = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
+    appliedOutcomeIds = journalMigration.appliedOutcomeIds;
+  }
   const parity = snapshotGalaxyOutcomeAuthority(
     galaxyRun,
     appliedOutcomeIds,
@@ -725,7 +771,7 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       parity.quarantinedOutcomeCount,
     );
     protectedOutcomeIds = protectedRecoveryOutcomeIds(outcomeRecoveryRecords);
-    appliedOutcomeIds = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
+    appliedOutcomeIds = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds).appliedOutcomeIds;
   }
   return {
     saveRevision,
