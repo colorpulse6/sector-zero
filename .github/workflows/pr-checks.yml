@@ -57,6 +57,24 @@ jobs:
             echo "No engine tests directory — skipping."
           fi
 
+  game-browser-tests:
+    name: Game · Browser tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "yarn"
+          cache-dependency-path: game/yarn.lock
+      - run: corepack enable
+      - name: Install
+        run: cd game && yarn install
+      - name: Install Playwright Chromium
+        run: cd game && yarn playwright install --with-deps chromium
+      - name: Browser tests
+        run: cd game && yarn browser:test
+
   game-build:
     name: Game · Next build
     runs-on: ubuntu-latest
