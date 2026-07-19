@@ -1,6 +1,12 @@
 import type { GameState, SaveData } from "../../engine/types";
 import { GameScreen } from "../../engine/types";
 import { createGameState } from "../../engine/gameEngine";
+import {
+  launchContextFromSave,
+  poiMissionDescriptor,
+  type ExperienceRoute,
+  type LaunchIdFactory,
+} from "../../engine/missionContext";
 import { getBoardingSpawn } from "../../engine/boardingLevel";
 import { getSpawnPosition as getGroundSpawn } from "../../engine/groundLevel";
 import { advanceWorldCycle } from "../shared/cycleProcessor";
@@ -22,8 +28,20 @@ export function createPoiGameState(
   session: PoiSession,
   save: SaveData,
   experience: PoiExperience = "legacy",
+  launchIdFactory?: LaunchIdFactory,
 ): GameState {
-  const base = createGameState(1, 1, save.upgrades, save.unlockedEnhancements, save.pilotLevel, save.allocatedSkills);
+  const returnTarget: ExperienceRoute = experience === "galaxy"
+    ? "galaxy-region"
+    : "legacy-region";
+  const launchContext = launchContextFromSave(
+    save,
+    poiMissionDescriptor(session.nodeId, session.engine),
+    experience,
+    "region",
+    returnTarget,
+    launchIdFactory,
+  );
+  const base = createGameState(1, 1, launchContext);
   const nodeName = experience === "galaxy"
     ? save.planets
         .flatMap((planet) => planet.regionMap.nodes)

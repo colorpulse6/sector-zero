@@ -11,6 +11,8 @@ import type {
   ExperienceMode,
   GalaxyRunState,
 } from "./galaxy/galaxyTypes";
+import type { HazardState } from "./hazards";
+import type { LaunchContext, PilotLoadout } from "./missionContext";
 
 export type { ExperienceMode, GalaxyRunState } from "./galaxy/galaxyTypes";
 
@@ -508,6 +510,10 @@ export interface DialogTrigger {
 // ─── Full Game State ─────────────────────────────────────────────────
 export interface GameState {
   screen: GameScreen;
+  /** Immutable identity and loadout snapshot for this gameplay attempt. */
+  launchContext?: LaunchContext;
+  /** State-owned build snapshot used by simulation even before shell launch rewiring. */
+  pilotLoadout: PilotLoadout;
   /** Ephemeral Atlas identity for an authorized galaxy operation. Never saved. */
   galaxyOperation?: { id: string; label: string };
   player: Player;
@@ -569,6 +575,8 @@ export interface GameState {
   xp: number;
   hpWarningTriggered: boolean;
   // Planet mission state (optional — only set for planet side missions)
+  /** Attempt-owned planet hazard state; never shared between constructors. */
+  hazardState: HazardState | null;
   planetId?: PlanetId;
   objective?: ObjectiveState;
   escort?: EscortEntity;

@@ -37,7 +37,6 @@ import {
   drawPlanetHazards,
   drawPlanetObjectiveActor,
 } from "./planetRenderer";
-import { getHazardState } from "./gameEngine";
 
 export function drawGame(
   ctx: CanvasRenderingContext2D,
@@ -138,7 +137,7 @@ export function drawGame(
   drawPlayer(ctx, state);
   drawSideGunners(ctx, state);
   drawPlanetObjectiveActor(ctx, state);
-  drawPlanetHazards(ctx, state, getHazardState());
+  drawPlanetHazards(ctx, state, state.hazardState);
   drawParticles(ctx, state.particles);
   drawSpriteExplosions(ctx, state.explosions);
   drawFloatingLabels(ctx, state.floatingLabels);

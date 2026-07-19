@@ -39,10 +39,17 @@ import type { GalaxyRunState, HistoricalFact } from "../galaxy/galaxyTypes";
 import type {
   EnhancementId,
   GameScreen,
+  ConsumableId,
   SaveData,
   ShipUpgrades,
   SkillNodeId,
+  WeaponType,
 } from "../types";
+import {
+  launchContextFromSave,
+  operationMissionDescriptor,
+  type LaunchIdFactory,
+} from "../missionContext";
 import {
   authorizeOperationLaunch,
   operationDisplayLabel,
@@ -65,6 +72,9 @@ interface EngineProjectionInput {
   enhancements: EnhancementId[];
   pilotLevel: number;
   allocatedSkills: SkillNodeId[];
+  equippedWeaponType: WeaponType;
+  equippedConsumables: ConsumableId[];
+  consumableInventory: Partial<Record<ConsumableId, number>>;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -172,6 +182,37 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
   return left.length === right.length && left.every((entry, index) => entry === right[index]);
 }
 
+const WEAPON_TYPES: readonly WeaponType[] = ["kinetic", "energy", "incendiary", "cryogenic"];
+const CONSUMABLE_IDS: readonly ConsumableId[] = [
+  "hull-repair",
+  "cryo-charge",
+  "shield-charge",
+  "weapon-overcharge",
+  "scanner-pulse",
+];
+
+function consumableInventorySnapshot(
+  value: unknown,
+): Partial<Record<ConsumableId, number>> | null {
+  if (!isPlainRecord(value)) return null;
+  const result: Partial<Record<ConsumableId, number>> = {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string" || !CONSUMABLE_IDS.includes(key as ConsumableId)) return null;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor) ||
+      !Number.isSafeInteger(descriptor.value) || descriptor.value < 0) return null;
+    result[key as ConsumableId] = descriptor.value as number;
+  }
+  return result;
+}
+
+function sameInventory(
+  left: Partial<Record<ConsumableId, number>>,
+  right: Partial<Record<ConsumableId, number>>,
+): boolean {
+  return CONSUMABLE_IDS.every((id) => left[id] === right[id]);
+}
+
 function canonicalBlackBoxRecovered(run: GalaxyRunState): boolean | null {
   try {
     const root = exactOwnData(run, Reflect.ownKeys(run).filter(
@@ -201,9 +242,13 @@ function lockedProjection(
     const upgrades = upgradeSnapshot(snapshot.upgrades);
     const enhancements = stringArraySnapshot(snapshot.unlockedEnhancements);
     const allocatedSkills = stringArraySnapshot(snapshot.allocatedSkills);
+    const equippedConsumables = stringArraySnapshot(snapshot.equippedConsumables);
+    const consumableInventory = consumableInventorySnapshot(snapshot.consumableInventory);
     const canonicalUpgrades = upgradeSnapshot(run.ship.upgrades);
     const canonicalEnhancements = stringArraySnapshot(run.ship.unlockedEnhancements);
     const canonicalSkills = stringArraySnapshot(run.pilot.allocatedSkills);
+    const canonicalEquippedConsumables = stringArraySnapshot(run.ship.equippedConsumables);
+    const canonicalConsumableInventory = consumableInventorySnapshot(run.ship.consumableInventory);
     if (
       snapshot.activeExperience !== "legacy" || snapshot.galaxyRun !== null ||
       snapshot.currentWorld !== 1 || levels === null ||
@@ -213,18 +258,28 @@ function lockedProjection(
       completedPlanets === null || completedPlanets.length !== 0 ||
       unlockedSpecialMissions === null || unlockedSpecialMissions.length !== 0 ||
       upgrades === null || enhancements === null || allocatedSkills === null ||
+      equippedConsumables === null || consumableInventory === null ||
       canonicalUpgrades === null || canonicalEnhancements === null || canonicalSkills === null ||
+      canonicalEquippedConsumables === null || canonicalConsumableInventory === null ||
+      typeof snapshot.equippedWeaponType !== "string" ||
+      !WEAPON_TYPES.includes(snapshot.equippedWeaponType as WeaponType) ||
       !Number.isSafeInteger(snapshot.pilotLevel) ||
       !sameUpgrades(upgrades, canonicalUpgrades) ||
       !sameStrings(enhancements, canonicalEnhancements) ||
       snapshot.pilotLevel !== run.pilot.level ||
-      !sameStrings(allocatedSkills, canonicalSkills)
+      !sameStrings(allocatedSkills, canonicalSkills) ||
+      snapshot.equippedWeaponType !== run.ship.equippedWeaponType ||
+      !sameStrings(equippedConsumables, canonicalEquippedConsumables) ||
+      !sameInventory(consumableInventory, canonicalConsumableInventory)
     ) return null;
     return {
       upgrades,
       enhancements: enhancements as EnhancementId[],
       pilotLevel: snapshot.pilotLevel as number,
       allocatedSkills: allocatedSkills as SkillNodeId[],
+      equippedWeaponType: snapshot.equippedWeaponType as WeaponType,
+      equippedConsumables: equippedConsumables as ConsumableId[],
+      consumableInventory,
     };
   } catch {
     return null;
@@ -251,6 +306,7 @@ export function launchOperation(
   run: GalaxyRunState,
   projection: SaveData,
   context: OperationLaunchContext,
+  launchIdFactory?: LaunchIdFactory,
 ): OperationLaunchResult {
   let safeContext: OperationLaunchContext | null = null;
   try {
@@ -284,19 +340,21 @@ export function launchOperation(
       };
     }
 
-    const common = [
-      engineInput.upgrades,
-      engineInput.enhancements,
-      engineInput.pilotLevel,
-      engineInput.allocatedSkills,
-    ] as const;
+    const gameplayLaunch = launchContextFromSave(
+      projection,
+      operationMissionDescriptor(safeContext.operationId),
+      "galaxy",
+      "atlas",
+      "galaxy-atlas",
+      launchIdFactory,
+    );
     let gameState;
     switch (safeContext.adapterKind) {
       case "legacy_level": {
         const payload = safeContext.adapterPayload;
         if (payload.kind !== "legacy_level" || payload.world !== 1 || payload.level !== 1 ||
           safeContext.operationId !== "op:hostile-picket") return fail(safeContext, "context_mismatch");
-        gameState = createGameState(payload.world, payload.level, ...common);
+        gameState = createGameState(payload.world, payload.level, gameplayLaunch);
         // W1-L1 is a gameplay compatibility shell only. Its authored Aurelia
         // campaign dialogue must never become Galaxy operation narrative.
         gameState.dialogTriggers = [];
@@ -311,7 +369,7 @@ export function launchOperation(
         gameState = createSpecialMissionGameState(
           payload.missionId,
           blackBoxRecovered,
-          ...common,
+          gameplayLaunch,
         );
         break;
       }
@@ -319,7 +377,7 @@ export function launchOperation(
         const payload = safeContext.adapterPayload;
         if (payload.kind !== "planet_mission" || payload.planetId !== "ashfall" ||
           safeContext.operationId !== "op:ashfall-sortie") return fail(safeContext, "context_mismatch");
-        gameState = createPlanetGameState(payload.planetId, ...common);
+        gameState = createPlanetGameState(payload.planetId, gameplayLaunch);
         break;
       }
       default: {

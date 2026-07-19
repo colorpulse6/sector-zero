@@ -4,7 +4,6 @@ import { test } from "node:test";
 import {
   createGameState,
   createPlanetGameState,
-  getHazardState,
 } from "../../app/components/engine/gameEngine";
 import { PLANET_DEFS } from "../../app/components/engine/planets";
 import { drawGame } from "../../app/components/engine/renderer";
@@ -45,6 +44,41 @@ function recordingCanvas(): { ctx: CanvasRenderingContext2D; events: CanvasEvent
   });
   return { ctx: proxy as unknown as CanvasRenderingContext2D, events };
 }
+
+test("planet hazard state belongs to its attempt across back-to-back constructors", () => {
+  const first = createPlanetGameState("verdania");
+  const second = createPlanetGameState("ossuary");
+
+  assert.equal(first.hazardState?.planetId, "verdania");
+  assert.equal(second.hazardState?.planetId, "ossuary");
+  assert.notEqual(first.hazardState, second.hazardState);
+});
+
+test("rendering an earlier planet attempt does not consume a later attempt's hazards", () => {
+  const first = createPlanetGameState("verdania");
+  first.screen = GameScreen.PLAYING;
+  first.hazardState!.hazards.push({
+    type: "vine",
+    x: 41,
+    y: 43,
+    width: 17,
+    height: 19,
+    timer: 60,
+    maxTimer: 60,
+    active: true,
+    warning: false,
+  });
+  createPlanetGameState("ossuary");
+  const recording = recordingCanvas();
+
+  drawGame(recording.ctx, first);
+
+  assert.ok(recording.events.some(
+    (event) => event.operation === "fillRect" &&
+      event.args[0] === 41 && event.args[1] === 43 &&
+      event.args[2] === 17 && event.args[3] === 19,
+  ));
+});
 
 test("planet gameplay dispatches the authored objective presentation", () => {
   const state = createPlanetGameState("ossuary");
@@ -117,7 +151,7 @@ test("every planet renders its live hazard state and objective kind", () => {
   for (const [index, planet] of PLANET_DEFS.entries()) {
     const state = createPlanetGameState(planet.id);
     state.screen = GameScreen.PLAYING;
-    const hazards = getHazardState();
+    const hazards = state.hazardState;
     assert.equal(hazards?.planetId, planet.id);
     const marker = { x: 11 + index, y: 23 + index, width: 7, height: 9 };
     hazards!.hazards.push({
@@ -164,7 +198,7 @@ test("planet composition layers background, combat, authored state, foreground, 
     color: "#ff00aa",
     type: "spark",
   }];
-  const hazards = getHazardState();
+  const hazards = state.hazardState;
   assert.ok(hazards);
   hazards.hazards.push({
     type: "debris",
