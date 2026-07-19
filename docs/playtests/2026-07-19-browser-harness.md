@@ -5,7 +5,7 @@
 - Package: H0 — browser harness and deterministic route fixtures
 - Branch: `test/sync-browser-harness`
 - Planning base: `6744a494eaffd156317d434fd1e8eed46e3c4c52`
-- Tested code SHA: `fdf980674af008bd5ac2fdf6e5010c6a69c754e9`
+- Tested code SHA: `7fbc4d1629872e60c48b3b7461262900adf027f0`
 - Scope: Playwright test infrastructure, route fixtures, game-local Yarn runtime pin, PR checks, and this receipt only; no game runtime source changed
 
 Playwright Chromium is locked through `@playwright/test` 1.61.1 in
@@ -100,6 +100,23 @@ Before the game-local pin, raw `yarn playwright test --list` warned that no
 Yarn 4.9.2, lists the intended five tests, leaves both manifest checksums
 unchanged, and leaves `git status --short` empty.
 
+### Parallel artifact-isolation red
+
+The final quality re-review found that otherwise independent worktrees still
+shared the default `/tmp/.../sector-zero-playwright-results` directory. A
+focused config assertion first failed on both attempts for the intended reason:
+
+```text
+Expected: "/tmp/.../sector-zero-playwright-results/2493704882"
+Received: "/tmp/.../sector-zero-playwright-results"
+```
+
+The default output directory now appends the same stable current-worktree hash
+used for port isolation. The focused default-path proof then passed 1/1. A
+second focused run with
+`PLAYWRIGHT_OUTPUT_DIR=/private/tmp/sector-zero-h0-output-override-proof`
+also passed 1/1, proving the explicit override remains authoritative.
+
 ## Persisted route fixtures
 
 Every fixture is built through `migrateSave` plus current registries/reducers and
@@ -134,8 +151,9 @@ All commands ran from `game/` on a clean checkout of the tested code SHA.
 
 | Gate | Result |
 | --- | --- |
-| `DEBUG=pw:webserver TESTED_CODE_SHA=fdf98067… yarn playwright test tests/browser/smoke.spec.ts` | Current worktree server launched on port 36882; 5/5 passed across all three projects; server terminated |
-| `TESTED_CODE_SHA=fdf98067… yarn browser:test` | 5/5 passed across all three projects |
+| `DEBUG=pw:webserver TESTED_CODE_SHA=7fbc4d16… yarn playwright test tests/browser/smoke.spec.ts` | Current worktree server launched on port 36882; 5/5 passed across all three projects; server terminated |
+| `TESTED_CODE_SHA=7fbc4d16… yarn browser:test` | 5/5 passed across all three projects |
+| Default and overridden output-directory focused assertions | 1/1 passed in each run; the default included worktree hash `2493704882`, and the explicit `PLAYWRIGHT_OUTPUT_DIR` remained authoritative |
 | `yarn --version && yarn playwright test --list` followed by `git status --short` | Yarn 4.9.2; 5 tests listed; worktree remained clean |
 | `npx tsc --noEmit` | Passed, exit 0 |
 | `yarn engine:test` | 282/282 passed |
