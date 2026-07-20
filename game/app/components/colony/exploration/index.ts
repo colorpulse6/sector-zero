@@ -88,7 +88,7 @@ export function stepColonyExploration(
     const hashed = Array.from(request.buildingId).reduce((a, ch) => a * 31 + ch.charCodeAt(0), 0);
     const interiorSeed = colony.layoutSeed ^ hashed;
 
-    const interiorState = generateInteriorState(building, interiorSeed);
+    const interiorState = generateInteriorState(building, interiorSeed, save.gameClock.hour);
     // Fill in the colonyId on the interior context (it defaults to empty string in the generator)
     interiorState.colonyContext!.colonyId = stack.colonyId;
 

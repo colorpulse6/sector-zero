@@ -16,6 +16,28 @@ export interface PropSlot {
   scale: number;
 }
 
+export interface InteriorEnvironmentArt {
+  wallSpriteId: string;
+  floorSpriteId: string;
+  ceilingSpriteId?: string;
+  skySpriteId?: string;
+}
+
+export type InteriorNpcContentId =
+  | "hub-bartender"
+  | "hub-regular"
+  | "hub-signal-chaser";
+
+export interface InteriorNpcSchedulePeriod {
+  startHour: number;
+  anchor: { x: number; y: number } | null;
+}
+
+export interface InteriorNpcSlot {
+  contentId: InteriorNpcContentId;
+  schedule: readonly [InteriorNpcSchedulePeriod, InteriorNpcSchedulePeriod];
+}
+
 export interface InteriorTemplate {
   width: number;
   height: number;
@@ -23,6 +45,8 @@ export interface InteriorTemplate {
   tiles: string[];
   propSlots: PropSlot[];
   spawn: { x: number; y: number; facing: "north" | "south" | "east" | "west" };
+  environmentArt?: InteriorEnvironmentArt;
+  npcSlots?: InteriorNpcSlot[];
 }
 
 /**
@@ -63,6 +87,12 @@ export const BUILDING_FOOTPRINTS: Partial<Record<BuildingType, FootprintSpec>> =
     // work-lamp strip) — generated 2026-07-13 via the pilot pipeline, 512²
     // pow2 per the texture registry's mask requirement.
     wallSpriteId: SPRITES.COLONY_WALL_MINE,
+  },
+  cantina: {
+    w: 4, h: 4,
+    doorSide: "south",
+    interiorTemplateId: "cantina",
+    wallSpriteId: SPRITES.COLONY_WALL_CANTINA,
   },
 };
 
@@ -142,5 +172,55 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
     ],
     propSlots: [{ x: 2, y: 2, spriteId: SPRITES.INTERIOR_PURIFIER_PUMP, scale: 1.2 }],
     spawn: { x: 2, y: 5, facing: "north" },
+  },
+  cantina: {
+    width: 12, height: 10,
+    tiles: [
+      "############",
+      "#.B..#.....#",
+      "#....#.....#",
+      "#...C......#",
+      "#..........#",
+      "#..T....R..#",
+      "#..........#",
+      "#..........#",
+      "#..........#",
+      "#####D######",
+    ],
+    propSlots: [
+      { x: 2, y: 1, spriteId: SPRITES.HUB_CANTINA_PROP_BOTTLE_RACK, scale: 1.0 },
+      { x: 4, y: 3, spriteId: SPRITES.HUB_CANTINA_PROP_BAR_COUNTER, scale: 1.4 },
+      { x: 3, y: 5, spriteId: SPRITES.HUB_CANTINA_PROP_TABLE_CLUSTER, scale: 1.2 },
+      { x: 8, y: 5, spriteId: SPRITES.HUB_CANTINA_PROP_RUMOR_TERMINAL, scale: 1.0 },
+    ],
+    spawn: { x: 5, y: 9, facing: "north" },
+    environmentArt: {
+      wallSpriteId: SPRITES.HUB_CANTINA_WALL,
+      floorSpriteId: SPRITES.HUB_CANTINA_FLOOR,
+      ceilingSpriteId: SPRITES.HUB_CANTINA_CEILING,
+    },
+    npcSlots: [
+      {
+        contentId: "hub-bartender",
+        schedule: [
+          { startHour: 6, anchor: { x: 3, y: 2 } },
+          { startHour: 18, anchor: { x: 3, y: 1 } },
+        ],
+      },
+      {
+        contentId: "hub-regular",
+        schedule: [
+          { startHour: 6, anchor: { x: 4, y: 6 } },
+          { startHour: 18, anchor: { x: 6, y: 4 } },
+        ],
+      },
+      {
+        contentId: "hub-signal-chaser",
+        schedule: [
+          { startHour: 6, anchor: { x: 9, y: 5 } },
+          { startHour: 18, anchor: null },
+        ],
+      },
+    ],
   },
 };

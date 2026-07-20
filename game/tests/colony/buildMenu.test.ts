@@ -81,7 +81,7 @@ test("FP exterior: operational mine renders walls, texture, and a door", () => {
 });
 
 test("FP interior: mine interior generates a 6x6 room with a prop", () => {
-  const state = generateInteriorState(makeBuilding("mine"), 42);
+  const state = generateInteriorState(makeBuilding("mine"), 42, 12);
   assert.equal(state.map.width, 6);
   assert.equal(state.map.height, 6);
   assert.ok((state.props?.length ?? 0) >= 1, "mine interior should have the extraction rig prop");
