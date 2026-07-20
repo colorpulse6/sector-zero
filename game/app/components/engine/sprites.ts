@@ -305,6 +305,22 @@ export const SPRITES = {
   INTERIOR_FARM_CRATE: "/sprites/interiors/farm-crate.png",
   INTERIOR_PURIFIER_PUMP: "/sprites/interiors/purifier-pump.png",
   INTERIOR_BUNK: "/sprites/interiors/bunk.png",
+
+  // M3 Cantina runtime bundle
+  HUB_CANTINA_WALL: "/sprites/interiors/m3/cantina/wall.png",
+  HUB_CANTINA_FLOOR: "/sprites/interiors/m3/cantina/floor.png",
+  HUB_CANTINA_CEILING: "/sprites/interiors/m3/cantina/ceiling.png",
+  COLONY_WALL_CANTINA: "/sprites/walls/cantina.png",
+  HUB_CANTINA_PROP_BAR_COUNTER: "/sprites/interiors/m3/cantina/bar-counter.png",
+  HUB_CANTINA_PROP_BOTTLE_RACK: "/sprites/interiors/m3/cantina/bottle-rack.png",
+  HUB_CANTINA_PROP_TABLE_CLUSTER: "/sprites/interiors/m3/cantina/table-cluster.png",
+  HUB_CANTINA_PROP_RUMOR_TERMINAL: "/sprites/interiors/m3/cantina/rumor-terminal.png",
+  NPC_HUB_BARTENDER: "/sprites/boarding/npc-hub-bartender.png",
+  NPC_HUB_REGULAR: "/sprites/boarding/npc-hub-regular.png",
+  NPC_HUB_SIGNAL_CHASER: "/sprites/boarding/npc-hub-signal-chaser.png",
+  PORTRAIT_HUB_BARTENDER: "/sprites/portraits/hub-bartender.png",
+  PORTRAIT_HUB_REGULAR: "/sprites/portraits/hub-regular.png",
+  PORTRAIT_HUB_SIGNAL_CHASER: "/sprites/portraits/hub-signal-chaser.png",
 };
 
 export async function preloadAll(): Promise<void> {
