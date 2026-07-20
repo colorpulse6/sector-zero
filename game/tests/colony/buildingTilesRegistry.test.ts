@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { BUILDING_FOOTPRINTS, INTERIOR_TEMPLATES } from "../../app/components/colony/exploration/buildingTiles";
 
 const PHASE_1_BUILDING_TYPES = ["solar_array", "farm", "water_purifier", "habitat_module"] as const;
+const REGISTERED_INTERIOR_TYPES = [...PHASE_1_BUILDING_TYPES, "mine", "cantina"] as const;
 
 test("BUILDING_FOOTPRINTS: has entries for all Phase 1 types", () => {
   for (const t of PHASE_1_BUILDING_TYPES) {
@@ -21,8 +22,9 @@ test("BUILDING_FOOTPRINTS: each entry has valid dims and doorSide", () => {
 });
 
 test("INTERIOR_TEMPLATES: every referenced template ID exists", () => {
-  for (const t of PHASE_1_BUILDING_TYPES) {
+  for (const t of REGISTERED_INTERIOR_TYPES) {
     const fp = BUILDING_FOOTPRINTS[t]!;
+    assert.ok(fp, `${t} missing footprint`);
     const tmpl = INTERIOR_TEMPLATES[fp.interiorTemplateId];
     assert.ok(tmpl, `${t} references missing template ${fp.interiorTemplateId}`);
   }

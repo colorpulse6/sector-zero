@@ -5,6 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SPRITES } from "../../app/components/engine/sprites";
+import { MAT_ALLOWLIST, SHEETS } from "../../scripts/sprites/sheets";
 import {
   flattenManifestAssets,
   loadM3HubManifest,
@@ -21,6 +23,32 @@ test("M3 hub manifest has unique, valid asset contracts", () => {
   assert.doesNotThrow(() => validateManifestSchema(manifest));
   assert.equal(Object.keys(manifest.bundles).length, 3);
   assert.equal(flattenManifestAssets(manifest).length, 42);
+});
+
+test("only the Cantina bundle is registered as standalone runtime sprites", () => {
+  const manifest = loadM3HubManifest(REPO_ROOT);
+
+  for (const asset of flattenManifestAssets(manifest, "cantina")) {
+    const expectedPath = `/${asset.path.replace(/^game\/public\//, "")}`;
+    const spriteRelativePath = expectedPath.replace(/^\/sprites\//, "");
+    assert.equal(SPRITES[asset.constant as keyof typeof SPRITES], expectedPath);
+    assert.equal(
+      SHEETS.some((sheet) => sheet.path === spriteRelativePath),
+      false,
+      `${asset.constant}: not a sheet`,
+    );
+    assert.equal(
+      MAT_ALLOWLIST.includes(spriteRelativePath),
+      false,
+      `${asset.constant}: not a material`,
+    );
+  }
+
+  for (const hubId of ["marketplace", "town-hall"]) {
+    for (const asset of flattenManifestAssets(manifest, hubId)) {
+      assert.equal(asset.constant in SPRITES, false, `${asset.constant}: not registered`);
+    }
+  }
 });
 
 test("M3 hub manifest rejects unknown bundle statuses", () => {

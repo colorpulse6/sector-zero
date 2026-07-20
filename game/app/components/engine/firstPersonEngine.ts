@@ -192,10 +192,10 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
     if ((ds.shopNavCooldown ?? 0) > 0) ds.shopNavCooldown = Math.max(0, (ds.shopNavCooldown ?? 0) - dtF);
 
     if (ds.shopOpen && ds.shopCanBuy && ds.shopItems) {
-      // ── Buyable shop (quartermaster only, §I) ──
+      // ── Buyable shop (§I + typed services) ──
       // Rows 0..n-1 are items; a trailing LEAVE row sits at index n. Up/down move
-      // the selection (debounced via shopNavCooldown); interact buys a real
-      // consumable row or closes on LEAVE. Never Esc (Game.tsx uses Esc for pause).
+      // the selection (debounced via shopNavCooldown); interact emits a request
+      // for a supported row or closes on LEAVE. Never Esc (Game.tsx uses Esc for pause).
       const leaveIndex = ds.shopItems.length;
       let navigated = false;
       if ((ds.shopNavCooldown ?? 0) <= 0) {
@@ -220,10 +220,11 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
         } else {
           const item = ds.shopItems[idx];
           if (item && item.type === "consumable" && item.itemId) {
-            // One-shot buy signal; Game.tsx drains it → purchaseConsumable. The
-            // shop stays open for more purchases. Emit nothing for a non-consumable
-            // or itemId-less row (defensive — the quartermaster stocks consumables).
+            // One-shot buy signal; Game.tsx drains it. The shop stays open for
+            // more purchases. Legacy material/upgrade rows emit nothing.
             fp.shopPurchaseRequest = { kind: "consumable", itemId: item.itemId as ConsumableId };
+          } else if (item?.type === "service") {
+            fp.shopPurchaseRequest = { kind: "service", serviceId: item.serviceId };
           }
         }
       }
@@ -241,8 +242,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
         // the per-session `!ds.shopSeen` (NOT the per-NPC `!npc.interacted`), so a
         // merchant's shop REOPENS on the next talk (fresh dialog → shopSeen unset)
         // while still closing cleanly within a session — no display-only soft-lock.
-        // `shopCanBuy` is enabled only for a canBuy merchant (the quartermaster);
-        // Ashfall/other merchants stay display-only.
+        // `shopCanBuy` is enabled for a canBuy merchant; Ashfall/other merchants
+        // stay display-only.
         const npc = fp.npcs.find((n) => n.id === ds.npcId);
         if (npc?.type === "merchant" && npc.shopItems && !ds.shopSeen) {
           ds.shopOpen = true;

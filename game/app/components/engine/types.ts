@@ -897,14 +897,26 @@ export interface FPDialogLine {
   portraitKey?: string;
 }
 
-export interface FPShopItem {
+export type FPServiceId = "cantina-house-pour";
+
+export interface FPShopItemBase {
   id: string;
   name: string;
   description: string;
   cost: number;
-  type: "consumable" | "material" | "upgrade";
-  itemId?: string;  // ConsumableId or MaterialId
 }
+
+export type FPShopItem =
+  | (FPShopItemBase & {
+      type: "consumable" | "material" | "upgrade";
+      itemId?: string;  // ConsumableId or MaterialId
+      serviceId?: never;
+    })
+  | (FPShopItemBase & {
+      type: "service";
+      serviceId: FPServiceId;
+      itemId?: never;
+    });
 
 export interface FPNPC {
   id: number;
@@ -923,8 +935,7 @@ export interface FPNPC {
   sprite?: string;     // Optional explicit billboard sprite (Phase 5a colony NPCs
                        //   set distinct SPRITES.NPC_* assets). Additive — Ashfall
                        //   NPCs omit it and resolve via NPC_SPRITE_MAP[name].
-  canBuy?: boolean;    // Phase 5a §I: enables a REAL purchase flow in this NPC's
-                       //   shop (set true only for the quartermaster). Additive —
+  canBuy?: boolean;    // Enables the typed purchase flow in this NPC's shop.
                        //   Ashfall/other merchants omit it → display-only shop.
   // ── Billboard animation (DOOM overhaul) — ALL additive-optional. An NPC with
   //    none of these renders bit-identically to before (static `sprite` path).
@@ -939,14 +950,12 @@ export interface FPNPC {
                           //   Date.now/performance.now.
 }
 
-// Phase 5a §I: a one-shot, typed buy signal the FP engine emits when the player
-// confirms a shop row. Drained by Game.tsx, which applies it to SaveData via the
-// audited purchase helpers. Consumables only in Phase 5a (discriminated on `kind`
-// so materials/upgrades can be added later without widening the channel type).
-export interface FPShopPurchaseRequest {
-  kind: "consumable";
-  itemId: ConsumableId;
-}
+// One-shot, typed buy signal the FP engine emits when the player confirms a
+// supported shop row. Drained by Game.tsx and applied to SaveData via the
+// audited purchase helpers. Legacy material/upgrade rows stay display-only.
+export type FPShopPurchaseRequest =
+  | { kind: "consumable"; itemId: ConsumableId }
+  | { kind: "service"; serviceId: FPServiceId };
 
 export interface FPDialogState {
   active: boolean;
@@ -957,13 +966,15 @@ export interface FPDialogState {
   shopItems?: FPShopItem[];
   // ── Phase 5a §I shop-purchase fields (all additive optional) ──
   selectedIndex?: number;   // Highlighted shop row: 0..shopItems.length (last = LEAVE)
-  shopCanBuy?: boolean;     // true ONLY when a canBuy merchant (quartermaster) opens its shop
+  shopCanBuy?: boolean;     // true when a canBuy merchant opens its typed purchase shop
   shopNavCooldown?: number; // Debounce (frames) for up/down shop navigation
   shopSeen?: boolean;       // Per-session gate: shop has opened once this dialog. Replaces
                             //   the old per-NPC `!interacted` open-gate so a merchant's shop
                             //   REOPENS on the next talk (fresh dialog) while still closing
                             //   cleanly within a session (no display-only soft-lock).
-  shopFlashFrames?: number; // Countdown for the generic "purchase unavailable" flash
+  shopFlashFrames?: number; // Transient feedback countdown; owned by firstPersonEngine
+  shopFlashText?: string;   // Transient feedback copy; never persisted
+  shopFlashTone?: "success" | "error"; // Transient feedback color; never persisted
 }
 
 export interface FPEnemy {
