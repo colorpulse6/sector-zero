@@ -134,6 +134,26 @@ test("only active LEVEL_COMPLETE stages v2 authority; the final fold owns the on
   assert.equal(resolved.save.planets[0].regionMap.nodes.find(n => n.id === "ashfall-cinder-relay")?.intel, "surveyed");
 });
 
+test("the shipped Legacy POI compatibility path still resolves one cycle and one cargo fold", () => {
+  const save = ready();
+  const dispatched = dispatchPoi(save, "home", "ashfall-cinder-relay");
+  assert.equal(dispatched.ok, true);
+  if (!dispatched.ok) return;
+  const active = { originColonyId: "home", session: dispatched.session };
+  const pending = preparePoiCompletion(save, active, GameScreen.LEVEL_COMPLETE);
+  assert.ok(pending);
+  if (!pending) return;
+  assert.equal(pending.baseSave.missionsSinceStart, save.missionsSinceStart + 1);
+  const resolved = resolvePoiCompletion(pending, "home");
+  assert.ok(resolved);
+  if (!resolved || !resolved.ok) return;
+  assert.equal(resolved.save.colonies[0].resources.metal, 80);
+  assert.equal(
+    resolved.save.planets[0].regionMap.nodes.find((node) => node.id === "ashfall-cinder-relay")?.intel,
+    "cleared",
+  );
+});
+
 test("Legacy POI outcome APIs reject hostile inputs without invoking getters or throwing", () => {
   const save = ready();
   const dispatched = dispatchPoi(save, "home", "ashfall-cinder-relay");
@@ -247,4 +267,82 @@ test("Legacy POI outcome APIs reject hostile inputs without invoking getters or 
   });
   assert.equal(resolvePoiCompletion(accessorPending as never, null), null);
   assert.equal(pendingReads, 0);
+});
+
+test("Legacy POI outcome APIs fail closed over malformed plain objects", () => {
+  const save = ready();
+  const dispatched = dispatchPoi(save, "home", "ashfall-cinder-relay");
+  assert.equal(dispatched.ok, true);
+  if (!dispatched.ok) return;
+  const active = { originColonyId: "home", session: dispatched.session };
+  const state = createPoiGameState(
+    dispatched.session,
+    save,
+    "legacy",
+    () => "malformed-poi-inputs",
+    save,
+    "home",
+  );
+  assert.ok(state.outcomeAttempt);
+
+  const malformedPrepareInputs: ReadonlyArray<readonly [string, unknown, unknown]> = [
+    ["empty active POI", {}, state.outcomeAttempt],
+    ["missing session fields", { originColonyId: "home", session: {} }, state.outcomeAttempt],
+    ["empty attempt", active, {}],
+    ["null route identity", active, { ...state.outcomeAttempt!, routeIdentity: null }],
+    ["extra attempt authority", active, { ...state.outcomeAttempt!, opaque: true }],
+  ];
+  for (const [label, malformedActive, malformedAttempt] of malformedPrepareInputs) {
+    assert.doesNotThrow(() => preparePoiCompletion(
+      save,
+      malformedActive as never,
+      GameScreen.LEVEL_COMPLETE,
+      malformedAttempt as never,
+    ), label);
+    assert.equal(preparePoiCompletion(
+      save,
+      malformedActive as never,
+      GameScreen.LEVEL_COMPLETE,
+      malformedAttempt as never,
+    ), null, label);
+  }
+  assert.doesNotThrow(() => preparePoiCompletion(
+    {} as never,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ));
+  assert.equal(preparePoiCompletion(
+    {} as never,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ), null);
+
+  const prepared = preparePoiCompletion(
+    save,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  );
+  assert.ok(prepared);
+  if (!prepared) return;
+  const malformedPendingInputs: ReadonlyArray<readonly [string, unknown]> = [
+    ["empty pending", {}],
+    ["missing save", {
+      originColonyId: "home",
+      nodeId: dispatched.session.nodeId,
+      baseSave: undefined,
+      projectedSave: undefined,
+      outcome: null,
+    }],
+    ["extra pending authority", { ...prepared, opaque: true }],
+    ["forged prepared envelope", { ...prepared, preparedEnvelope: {} }],
+    ["forged prepared save", { ...prepared, preparedSave: {} }],
+    ["wrong prepared field type", { ...prepared, originColonyId: 42 }],
+  ];
+  for (const [label, malformedPending] of malformedPendingInputs) {
+    assert.doesNotThrow(() => resolvePoiCompletion(malformedPending as never, null), label);
+    assert.equal(resolvePoiCompletion(malformedPending as never, null), null, label);
+  }
 });
