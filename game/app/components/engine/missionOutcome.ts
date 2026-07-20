@@ -48,12 +48,17 @@ function ownDataRecord(value: unknown): Record<string, unknown> | null {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return null;
-    const snapshot: Record<string, unknown> = {};
+    const snapshot = Object.create(null) as Record<string, unknown>;
     for (const key of Reflect.ownKeys(value)) {
       if (typeof key !== "string") return null;
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) return null;
-      snapshot[key] = descriptor.value;
+      Object.defineProperty(snapshot, key, {
+        value: descriptor.value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
     return snapshot;
   } catch {
@@ -118,20 +123,44 @@ function snapshotStringJournal(value: unknown): string[] | null {
     : null;
 }
 
-function isPlainSerializable(value: unknown, ancestors = new Set<object>()): boolean {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value !== "object" || ancestors.has(value)) return false;
+const INVALID_PLAIN_SNAPSHOT = Symbol("invalid-plain-snapshot");
+
+function snapshotPlainSerializable(
+  value: unknown,
+  ancestors = new Set<object>(),
+): unknown | typeof INVALID_PLAIN_SNAPSHOT {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : INVALID_PLAIN_SNAPSHOT;
+  if (typeof value !== "object" || ancestors.has(value)) return INVALID_PLAIN_SNAPSHOT;
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
       const snapshot = snapshotDenseArray(value);
-      return snapshot !== null && snapshot.every((entry) => isPlainSerializable(entry, ancestors));
+      if (snapshot === null) return INVALID_PLAIN_SNAPSHOT;
+      const result: unknown[] = [];
+      for (const entry of snapshot) {
+        const cloned = snapshotPlainSerializable(entry, ancestors);
+        if (cloned === INVALID_PLAIN_SNAPSHOT) return INVALID_PLAIN_SNAPSHOT;
+        result.push(cloned);
+      }
+      return result;
     }
     const snapshot = ownDataRecord(value);
-    return snapshot !== null && Object.values(snapshot).every((entry) => isPlainSerializable(entry, ancestors));
+    if (snapshot === null) return INVALID_PLAIN_SNAPSHOT;
+    const result = Object.create(null) as Record<string, unknown>;
+    for (const key of Object.keys(snapshot)) {
+      const cloned = snapshotPlainSerializable(snapshot[key], ancestors);
+      if (cloned === INVALID_PLAIN_SNAPSHOT) return INVALID_PLAIN_SNAPSHOT;
+      Object.defineProperty(result, key, {
+        value: cloned,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+    return result;
   } catch {
-    return false;
+    return INVALID_PLAIN_SNAPSHOT;
   } finally {
     ancestors.delete(value);
   }
@@ -234,20 +263,21 @@ function validateEnvelope(value: unknown): ValidatedEnvelope | null {
     "version", "routeKind", "missionId", "routeIdentity", "launchId", "expectedRevision", "persistenceAuthority",
     "returnTarget", "declaredFields", "launchSnapshot", "outcomeId", "terminalKind", "payload",
   ]);
-  if (envelope === null || envelope.version !== 1 || !ROUTE_KINDS.has(envelope.routeKind as OutcomeRouteKind) ||
+  const declaredFields = envelope === null ? null : snapshotDenseArray(envelope.declaredFields);
+  if (envelope === null || declaredFields === null ||
+    envelope.version !== 1 || !ROUTE_KINDS.has(envelope.routeKind as OutcomeRouteKind) ||
     typeof envelope.missionId !== "string" || envelope.missionId.length === 0 ||
     typeof envelope.launchId !== "string" || envelope.launchId.length === 0 ||
     !Number.isSafeInteger(envelope.expectedRevision) || (envelope.expectedRevision as number) < 0 ||
     !TERMINAL_KINDS.has(envelope.terminalKind as OutcomeTerminalKind) ||
     envelope.outcomeId !== `${envelope.launchId}:${envelope.terminalKind}` ||
-    !Array.isArray(envelope.declaredFields) ||
-    envelope.declaredFields.some((field) => typeof field !== "string" || field.length === 0 || METADATA_FIELDS.has(field)) ||
-    new Set(envelope.declaredFields).size !== envelope.declaredFields.length) return null;
+    declaredFields.some((field) => typeof field !== "string" || field.length === 0 || METADATA_FIELDS.has(field)) ||
+    new Set(declaredFields).size !== declaredFields.length) return null;
   const routeKind = envelope.routeKind as OutcomeRouteKind;
   if (!outcomeAuthorityReturnMatches(routeKind, envelope.persistenceAuthority, envelope.returnTarget)) return null;
   const identity = snapshotOutcomeRouteIdentity(envelope.routeIdentity, routeKind, envelope.missionId as string);
   if (identity === null) return null;
-  const fields = envelope.declaredFields as OutcomeDeclaredField[];
+  const fields = declaredFields as OutcomeDeclaredField[];
   const expectedFields = outcomeEnvelopeFields(
     routeKind,
     envelope.persistenceAuthority as "legacy" | "galaxy",
@@ -257,9 +287,18 @@ function validateEnvelope(value: unknown): ValidatedEnvelope | null {
   if (expectedFields === null || fields.length !== expectedFields.length ||
     fields.some((field, index) => field !== expectedFields[index])) return null;
   const launchSnapshot = exactOwnData(envelope.launchSnapshot, fields);
-  if (launchSnapshot === null || !isPlainSerializable(launchSnapshot) ||
-    !isPlainSerializable(envelope.payload)) return null;
-  const cloned = structuredClone(envelope) as unknown as SerializedOutcomeEnvelope;
+  const safeLaunchSnapshot = launchSnapshot === null
+    ? INVALID_PLAIN_SNAPSHOT
+    : snapshotPlainSerializable(launchSnapshot);
+  const safePayload = snapshotPlainSerializable(envelope.payload);
+  if (safeLaunchSnapshot === INVALID_PLAIN_SNAPSHOT || safePayload === INVALID_PLAIN_SNAPSHOT) return null;
+  const cloned = structuredClone({
+    ...envelope,
+    routeIdentity: identity,
+    declaredFields: fields,
+    launchSnapshot: safeLaunchSnapshot,
+    payload: safePayload,
+  }) as unknown as SerializedOutcomeEnvelope;
   return {
     envelope: cloned,
     fields,
@@ -271,30 +310,44 @@ function validateLegacyPreparedEnvelope(value: unknown): SerializedOutcomeEnvelo
     "version", "routeKind", "missionId", "routeIdentity", "launchId", "expectedRevision", "persistenceAuthority",
     "returnTarget", "declaredFields", "launchSnapshot", "outcomeId", "terminalKind", "payload",
   ]);
-  if (envelope === null || envelope.version !== 1 || envelope.routeKind !== "poi" ||
+  const declaredFields = envelope === null ? null : snapshotDenseArray(envelope.declaredFields);
+  if (envelope === null || declaredFields === null || envelope.version !== 1 || envelope.routeKind !== "poi" ||
     typeof envelope.missionId !== "string" || envelope.missionId.length === 0 ||
     typeof envelope.launchId !== "string" || envelope.launchId.length === 0 ||
     !Number.isSafeInteger(envelope.expectedRevision) || (envelope.expectedRevision as number) < 0 ||
     envelope.persistenceAuthority !== "legacy" || envelope.returnTarget !== "legacy-colony-exterior" ||
     envelope.terminalKind !== "success" || envelope.outcomeId !== `${envelope.launchId}:success` ||
-    !Array.isArray(envelope.declaredFields) || envelope.declaredFields.length !== LEGACY_POI_FIELDS.length ||
-    envelope.declaredFields.some((field, index) => field !== LEGACY_POI_FIELDS[index])) return null;
+    declaredFields.length !== LEGACY_POI_FIELDS.length ||
+    declaredFields.some((field, index) => field !== LEGACY_POI_FIELDS[index])) return null;
   const identity = snapshotOutcomeRouteIdentity(envelope.routeIdentity, "poi", envelope.missionId as string);
   if (identity === null || identity.kind !== "poi") return null;
   const launchSnapshot = exactOwnData(envelope.launchSnapshot, LEGACY_POI_FIELDS);
   const payload = exactOwnData(envelope.payload, ["version", "kind"]);
-  if (launchSnapshot === null || payload === null || payload.version !== 2 ||
-    payload.kind !== "poi_prepared_v2" || !isPlainSerializable(launchSnapshot) ||
-    !Array.isArray(launchSnapshot.colonies) || !Array.isArray(launchSnapshot.planets)) return null;
-  const colonies = launchSnapshot.colonies as SaveData["colonies"];
-  const planets = launchSnapshot.planets as SaveData["planets"];
+  const safeLaunchSnapshot = launchSnapshot === null
+    ? INVALID_PLAIN_SNAPSHOT
+    : snapshotPlainSerializable(launchSnapshot);
+  const safePayload = payload === null ? INVALID_PLAIN_SNAPSHOT : snapshotPlainSerializable(payload);
+  if (payload === null || safeLaunchSnapshot === INVALID_PLAIN_SNAPSHOT ||
+    safePayload === INVALID_PLAIN_SNAPSHOT || payload.version !== 2 || payload.kind !== "poi_prepared_v2" ||
+    typeof safeLaunchSnapshot !== "object" || safeLaunchSnapshot === null ||
+    Array.isArray(safeLaunchSnapshot)) return null;
+  const safeFields = safeLaunchSnapshot as Record<string, unknown>;
+  if (!Array.isArray(safeFields.colonies) || !Array.isArray(safeFields.planets)) return null;
+  const colonies = safeFields.colonies as SaveData["colonies"];
+  const planets = safeFields.planets as SaveData["planets"];
   const origin = colonies.find((colony) => colony.id === identity.originColonyId);
   const node = planets.find((planet) => planet.id === origin?.planetId)
     ?.regionMap.nodes.find((entry) => entry.id === identity.nodeId);
   if (origin === undefined || node === undefined || node.templateId !== identity.templateId ||
     (node.intel !== "surveyed" && node.intel !== "cleared") ||
     identity.rewardEligible !== (node.intel === "surveyed")) return null;
-  return structuredClone(envelope) as unknown as SerializedOutcomeEnvelope;
+  return structuredClone({
+    ...envelope,
+    routeIdentity: identity,
+    declaredFields,
+    launchSnapshot: safeLaunchSnapshot,
+    payload: safePayload,
+  }) as unknown as SerializedOutcomeEnvelope;
 }
 
 function snapshotAppliedReturn(value: unknown): AppliedOutcomeReturnRecord | null {

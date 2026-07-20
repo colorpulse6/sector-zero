@@ -1990,6 +1990,64 @@ test("durable outcome APIs are total over static, delayed, and revoked root and 
   }
 });
 
+test("outcome envelopes reject accessor-backed declared fields and prototype extras without reads", () => {
+  const save = readyLegacyPoi(migrateSave({}));
+  const campaign = campaignEnvelope(save, "hostile-declared-fields");
+  let campaignReads = 0;
+  const campaignFields = [...campaign.declaredFields];
+  Object.defineProperty(campaignFields, "0", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      campaignReads += 1;
+      return campaign.declaredFields[0];
+    },
+  });
+  assert.equal(
+    commitOutcome(memoryStore(save).store, { ...campaign, declaredFields: campaignFields }).status,
+    "conflict",
+  );
+  assert.equal(campaignReads, 0);
+
+  const poiAttempt = attempt(
+    save,
+    "poi",
+    "hostile-prepared-fields",
+    "legacy",
+    "legacy-colony-exterior",
+    [...LEGACY_POI_FIELDS],
+  );
+  const prepared = envelope(poiAttempt, { version: 2, kind: "poi_prepared_v2" });
+  let preparedReads = 0;
+  const preparedFields = [...prepared.declaredFields];
+  Object.defineProperty(preparedFields, "0", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      preparedReads += 1;
+      return prepared.declaredFields[0];
+    },
+  });
+  assert.equal(stageLegacyPreparedOutcome(save, { ...prepared, declaredFields: preparedFields }), null);
+  assert.equal(preparedReads, 0);
+
+  const campaignWithProto = { ...campaign };
+  Object.defineProperty(campaignWithProto, "__proto__", {
+    configurable: true,
+    enumerable: true,
+    value: { forged: true },
+  });
+  assert.equal(commitOutcome(memoryStore(save).store, campaignWithProto).status, "conflict");
+
+  const preparedWithProto = { ...prepared };
+  Object.defineProperty(preparedWithProto, "__proto__", {
+    configurable: true,
+    enumerable: true,
+    value: { forged: true },
+  });
+  assert.equal(stageLegacyPreparedOutcome(save, preparedWithProto), null);
+});
+
 test("present malformed migration authority containers lock instead of erasing idempotency proof", () => {
   const containers: ReadonlyArray<readonly [string, unknown]> = [
     ...(["static", "delayed", "revoked"] as const).map((mode) => [mode, hostileMigrationContainer(mode)] as const),

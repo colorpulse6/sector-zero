@@ -26,7 +26,7 @@ import { getSpawnPosition as getGroundSpawn } from "../../engine/groundLevel";
 import { advanceWorldCycle } from "../shared/cycleProcessor";
 import type { ColonyId } from "../shared/colonyTypes";
 import type { MissionDelivery } from "../shared/missionDelivery";
-import type { PoiSession } from "./poiDispatcher";
+import { dispatchPoi, type PoiSession } from "./poiDispatcher";
 import { createPoiOutcome, confirmPoiOutcome, POI_CARGO, type PendingPoiOutcome } from "./poiOutcomes";
 
 export interface ActivePoiDescriptor { originColonyId: ColonyId; session: PoiSession }
@@ -55,18 +55,33 @@ const PENDING_RESOLUTION_KEYS = [
 const PREPARED_RESOLUTION_KEYS = [
   ...PENDING_RESOLUTION_KEYS, "preparedSave", "preparedEnvelope",
 ] as const;
+const REQUIRED_SAVE_DATA_KEYS = [
+  "saveRevision", "appliedOutcomeIds", "outcomeRecoveryRecords", "currentWorld", "levels", "credits",
+  "totalStars", "totalScore", "xp", "introSeen", "upgrades", "unlockedCodex", "viewedCodex",
+  "viewedConversations", "completedQuests", "activeQuests", "completedPlanets", "unlockedSpecialMissions",
+  "completedSpecialMissions", "storyItems", "materials", "consumableInventory", "equippedConsumables",
+  "unlockedEnhancements", "bestiary", "equippedWeaponType", "pilotLevel", "skillPoints", "allocatedSkills",
+  "colonies", "planets", "earthShipments", "factionStandings", "bounties", "missionsSinceStart",
+  "gameClock", "activeExperience", "galaxyRun",
+] as const;
+const compatibilityPendingAuthority = new WeakMap<object, PendingPoiResolution>();
 
 function ownDataRecord(value: unknown): Record<string, unknown> | null {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return null;
-    const snapshot: Record<string, unknown> = {};
+    const snapshot = Object.create(null) as Record<string, unknown>;
     for (const key of Reflect.ownKeys(value)) {
       if (typeof key !== "string") return null;
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) return null;
-      snapshot[key] = descriptor.value;
+      Object.defineProperty(snapshot, key, {
+        value: descriptor.value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
     return snapshot;
   } catch {
@@ -198,7 +213,7 @@ function snapshotActivePoiMetadata(value: unknown): ActivePoiDescriptor | null {
 }
 
 function isCanonicalCompletionSave(value: unknown): value is SaveData {
-  const fields = requiredOwnData(value, ["colonies", "planets", "missionsSinceStart"]);
+  const fields = requiredOwnData(value, REQUIRED_SAVE_DATA_KEYS);
   return fields !== null && Array.isArray(fields.colonies) && Array.isArray(fields.planets) &&
     Number.isSafeInteger(fields.missionsSinceStart) && (fields.missionsSinceStart as number) >= 0 &&
     snapshotOutcomeRootAuthority(value as SaveData) !== null;
@@ -297,9 +312,16 @@ export function preparePoiCompletion(
   if (screen !== GameScreen.LEVEL_COMPLETE) return null;
   try {
     const safeActivePoi = snapshotActivePoiMetadata(activePoi);
-    if (safeActivePoi === null) return null;
+    const safeSave = snapshotCanonicalCompletionSave(save);
+    if (safeActivePoi === null || safeSave === null) return null;
+    const rebound = dispatchPoi(
+      safeSave,
+      safeActivePoi.originColonyId,
+      safeActivePoi.session.nodeId,
+    );
+    if (!rebound.ok || rebound.session.engine !== safeActivePoi.session.engine ||
+      rebound.session.rewardEligible !== safeActivePoi.session.rewardEligible) return null;
     if (attempt !== undefined) {
-      if (!isCanonicalCompletionSave(save)) return null;
       const attemptSnapshot = snapshotDurableData(attempt);
       const attemptRecord = attemptSnapshot === INVALID_DURABLE_SNAPSHOT
         ? null
@@ -322,54 +344,62 @@ export function preparePoiCompletion(
         version: 2,
         kind: "poi_prepared_v2",
       });
-      const preparedSave = stageLegacyPreparedOutcome(save, preparedEnvelope);
+      const preparedSave = stageLegacyPreparedOutcome(safeSave, preparedEnvelope);
       if (preparedSave === null) return null;
       return {
         originColonyId: safeActivePoi.originColonyId,
         nodeId: safeActivePoi.session.nodeId,
-        baseSave: save,
-        projectedSave: save,
+        baseSave: safeSave,
+        projectedSave: safeSave,
         outcome: null,
         preparedSave,
         preparedEnvelope,
       };
     }
-    const safeSave = snapshotCanonicalCompletionSave(save);
-    if (safeSave === null) return null;
     const baseSave = advanceWorldCycle(safeSave);
     if (!safeActivePoi.session.rewardEligible) {
-      return {
+      const pending: PendingPoiResolution = {
         originColonyId: safeActivePoi.originColonyId,
         nodeId: safeActivePoi.session.nodeId,
         baseSave,
         projectedSave: baseSave,
         outcome: null,
       };
+      const authority = snapshotDurableData(pending);
+      if (authority === INVALID_DURABLE_SNAPSHOT) return null;
+      compatibilityPendingAuthority.set(pending, authority as PendingPoiResolution);
+      return pending;
     }
     const created = createPoiOutcome(baseSave, safeActivePoi.originColonyId, safeActivePoi.session.nodeId);
     if (!created.ok) return null;
-    return {
+    const pending: PendingPoiResolution = {
       originColonyId: safeActivePoi.originColonyId,
       nodeId: safeActivePoi.session.nodeId,
       baseSave,
       projectedSave: created.save,
       outcome: created.outcome,
     };
+    const authority = snapshotDurableData(pending);
+    if (authority === INVALID_DURABLE_SNAPSHOT) return null;
+    compatibilityPendingAuthority.set(pending, authority as PendingPoiResolution);
+    return pending;
   } catch {
     return null;
   }
 }
 
 export function recoverLegacyPoiCompletion(save: SaveData): LegacyPreparedPoiResolution | null {
-  const preparedEnvelope = recoverLegacyPreparedOutcome(save);
+  const safeSave = snapshotCanonicalCompletionSave(save);
+  if (safeSave === null) return null;
+  const preparedEnvelope = recoverLegacyPreparedOutcome(safeSave);
   if (preparedEnvelope === null || preparedEnvelope.routeIdentity.kind !== "poi") return null;
   return {
     originColonyId: preparedEnvelope.routeIdentity.originColonyId,
     nodeId: preparedEnvelope.routeIdentity.nodeId,
-    baseSave: save,
-    projectedSave: save,
+    baseSave: safeSave,
+    projectedSave: safeSave,
     outcome: null,
-    preparedSave: save,
+    preparedSave: safeSave,
     preparedEnvelope,
   };
 }
@@ -391,15 +421,15 @@ export function resolvePoiCompletion(pending: PendingPoiResolution, destinationC
       (typeof destinationColonyId !== "string" || destinationColonyId.length === 0)) return null;
     const preparedRecord = exactOwnData(pending, PREPARED_RESOLUTION_KEYS);
     if (preparedRecord !== null) {
+      const baseSave = snapshotCanonicalCompletionSave(preparedRecord.baseSave);
+      const projectedSave = snapshotCanonicalCompletionSave(preparedRecord.projectedSave);
+      const preparedSave = snapshotCanonicalCompletionSave(preparedRecord.preparedSave);
       if (typeof preparedRecord.originColonyId !== "string" || preparedRecord.originColonyId.length === 0 ||
         typeof preparedRecord.nodeId !== "string" || preparedRecord.nodeId.length === 0 ||
-        !isCanonicalCompletionSave(preparedRecord.baseSave) ||
-        !isCanonicalCompletionSave(preparedRecord.projectedSave) ||
-        !isCanonicalCompletionSave(preparedRecord.preparedSave) ||
-        preparedRecord.outcome !== null ||
-        !sameDurableData(preparedRecord.baseSave, preparedRecord.projectedSave)) return null;
+        baseSave === null || projectedSave === null || preparedSave === null ||
+        preparedRecord.outcome !== null || !sameDurableData(baseSave, projectedSave)) return null;
       const submittedEnvelope = snapshotDurableData(preparedRecord.preparedEnvelope);
-      const recoveredEnvelope = recoverLegacyPreparedOutcome(preparedRecord.preparedSave);
+      const recoveredEnvelope = recoverLegacyPreparedOutcome(preparedSave);
       if (submittedEnvelope === INVALID_DURABLE_SNAPSHOT || recoveredEnvelope === null ||
         !sameDurableData(submittedEnvelope, recoveredEnvelope) ||
         recoveredEnvelope.routeIdentity.kind !== "poi" ||
@@ -407,7 +437,7 @@ export function resolvePoiCompletion(pending: PendingPoiResolution, destinationC
         recoveredEnvelope.routeIdentity.nodeId !== preparedRecord.nodeId) return null;
       return {
         ok: true as const,
-        save: preparedRecord.preparedSave,
+        save: preparedSave,
         delivery: null,
         envelope: createOutcomeEnvelope(recoveredEnvelope, "success", {
           version: 2,
@@ -417,7 +447,12 @@ export function resolvePoiCompletion(pending: PendingPoiResolution, destinationC
       };
     }
 
-    const pendingRecord = exactOwnData(pending, PENDING_RESOLUTION_KEYS);
+    if (typeof pending !== "object" || pending === null) return null;
+    const trustedPending = compatibilityPendingAuthority.get(pending);
+    const submittedPending = snapshotDurableData(pending);
+    if (trustedPending === undefined || submittedPending === INVALID_DURABLE_SNAPSHOT ||
+      !sameDurableData(submittedPending, trustedPending)) return null;
+    const pendingRecord = exactOwnData(trustedPending, PENDING_RESOLUTION_KEYS);
     if (pendingRecord === null || typeof pendingRecord.originColonyId !== "string" ||
       pendingRecord.originColonyId.length === 0 || typeof pendingRecord.nodeId !== "string" ||
       pendingRecord.nodeId.length === 0) return null;

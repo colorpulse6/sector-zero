@@ -10,9 +10,8 @@ import type {
 } from "../../colony/region/poiRuntime";
 import {
   preparePoiCompletion,
-  resolvePoiCompletion,
 } from "../../colony/region/poiRuntime";
-import { POI_CARGO } from "../../colony/region/poiOutcomes";
+import { confirmPoiOutcome, POI_CARGO } from "../../colony/region/poiOutcomes";
 import { isSupportedPoiNode, type PoiTemplateId } from "../../colony/region/poiCatalog";
 import {
   foundOutpost,
@@ -1431,17 +1430,12 @@ function resolveValidatedGalaxyPending(
 ): GalaxyPoiResolutionResult {
   const opened = openAshfallProjection(save, contactId);
   if (isOpenFailure(opened)) return { ...opened, save };
-  const nativePending: PendingPoiResolution = {
-    originColonyId: pending.originColonyId,
-    nodeId: pending.nodeId,
-    baseSave: opened.projectedSave,
-    projectedSave: opened.projectedSave,
-    outcome: pending.outcome,
-  };
-  const native = resolvePoiCompletion(nativePending, destinationColonyId);
-  if (native === null || !native.ok) {
-    return { ok: false, save, reason: native?.reason ?? "outcome_stale" };
-  }
+  const native = pending.outcome === null
+    ? { ok: true as const, save: opened.projectedSave, delivery: null }
+    : destinationColonyId === null
+      ? { ok: false as const, save: opened.projectedSave, reason: "destination_missing" as const }
+      : confirmPoiOutcome(opened.projectedSave, pending.outcome, destinationColonyId);
+  if (!native.ok) return { ok: false, save, reason: native.reason };
   const merged = mergeProjectedRegion(opened, native.save);
   if (!merged.ok) return { ok: false, save, reason: merged.reason };
   return {

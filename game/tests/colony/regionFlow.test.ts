@@ -319,6 +319,42 @@ test("Legacy POI outcome APIs fail closed over malformed plain objects", () => {
     state.outcomeAttempt!,
   ), null);
 
+  const nonexistentNoReward = {
+    originColonyId: "missing-colony",
+    session: {
+      ...dispatched.session,
+      nodeId: "missing-node",
+      rewardEligible: false,
+    },
+  };
+  assert.equal(preparePoiCompletion(
+    save,
+    nonexistentNoReward as never,
+    GameScreen.LEVEL_COMPLETE,
+  ), null);
+
+  const missingCredits = { ...save } as Partial<typeof save>;
+  delete missingCredits.credits;
+  assert.equal(preparePoiCompletion(
+    missingCredits as never,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ), null);
+
+  const attemptWithProto = { ...state.outcomeAttempt! };
+  Object.defineProperty(attemptWithProto, "__proto__", {
+    configurable: true,
+    enumerable: true,
+    value: { forged: true },
+  });
+  assert.equal(preparePoiCompletion(
+    save,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    attemptWithProto,
+  ), null);
+
   const prepared = preparePoiCompletion(
     save,
     active,
@@ -345,4 +381,60 @@ test("Legacy POI outcome APIs fail closed over malformed plain objects", () => {
     assert.doesNotThrow(() => resolvePoiCompletion(malformedPending as never, null), label);
     assert.equal(resolvePoiCompletion(malformedPending as never, null), null, label);
   }
+
+  const fabricatedNoOutcome = {
+    originColonyId: "missing-colony",
+    nodeId: "missing-node",
+    baseSave: migrateSave({}),
+    projectedSave: migrateSave({}),
+    outcome: null,
+  };
+  assert.equal(resolvePoiCompletion(fabricatedNoOutcome as never, null), null);
+
+  const compatibilityPending = preparePoiCompletion(save, active, GameScreen.LEVEL_COMPLETE);
+  assert.ok(compatibilityPending);
+  if (!compatibilityPending) return;
+  assert.equal(resolvePoiCompletion({
+    ...compatibilityPending,
+    baseSave: { ...compatibilityPending.baseSave, credits: compatibilityPending.baseSave.credits + 999 },
+  }, "home"), null);
+
+  let nestedReads = 0;
+  const accessorColonies = [...prepared.baseSave.colonies];
+  Object.defineProperty(accessorColonies, "0", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      nestedReads += 1;
+      return prepared.baseSave.colonies[0];
+    },
+  });
+  const accessorBaseSave = { ...prepared.baseSave, colonies: accessorColonies };
+  assert.equal(resolvePoiCompletion({
+    ...prepared,
+    baseSave: accessorBaseSave,
+    projectedSave: accessorBaseSave,
+  }, null), null);
+  assert.equal(nestedReads, 0);
+
+  let preparedSaveReads = 0;
+  const accessorPreparedSave = { ...prepared.preparedSave };
+  Object.defineProperty(accessorPreparedSave, "credits", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      preparedSaveReads += 1;
+      return prepared.preparedSave.credits;
+    },
+  });
+  assert.equal(resolvePoiCompletion({ ...prepared, preparedSave: accessorPreparedSave }, null), null);
+  assert.equal(preparedSaveReads, 0);
+
+  const pendingWithProto = { ...prepared };
+  Object.defineProperty(pendingWithProto, "__proto__", {
+    configurable: true,
+    enumerable: true,
+    value: { forged: true },
+  });
+  assert.equal(resolvePoiCompletion(pendingWithProto, null), null);
 });
