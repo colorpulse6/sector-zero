@@ -1,10 +1,17 @@
 import type {
   FirstPersonState,
+  FPDialogState,
   FPServiceId,
   FPShopItem,
   FPShopPurchaseRequest,
   SaveData,
 } from "./types";
+
+export type ShopPurchaseFeedback = {
+  text: string;
+  tone: "success" | "error";
+  frames: number;
+} | null;
 
 export const CANTINA_SERVICE_DEFS: Record<FPServiceId, {
   name: string;
@@ -41,12 +48,35 @@ export function drainShopPurchaseRequest(
 export function shopPurchaseFeedback(
   request: FPShopPurchaseRequest,
   applied: boolean,
-): { text: string; tone: "success" | "error"; frames: number } | null {
+): ShopPurchaseFeedback {
   if (!applied) {
     return { text: "PURCHASE UNAVAILABLE", tone: "error", frames: 90 };
   }
-  if (request.kind === "service") {
-    return { text: "HOUSE POUR SERVED", tone: "success", frames: 90 };
+
+  switch (request.kind) {
+    case "service":
+      return { text: "HOUSE POUR SERVED", tone: "success", frames: 90 };
+    case "consumable":
+      return null;
+    default: {
+      const exhaustiveRequest: never = request;
+      return exhaustiveRequest;
+    }
   }
-  return null;
+}
+
+export function setShopPurchaseFeedback(
+  dialog: Pick<FPDialogState, "shopFlashFrames" | "shopFlashText" | "shopFlashTone">,
+  feedback: ShopPurchaseFeedback,
+): void {
+  if (feedback === null) {
+    dialog.shopFlashFrames = 0;
+    dialog.shopFlashText = undefined;
+    dialog.shopFlashTone = undefined;
+    return;
+  }
+
+  dialog.shopFlashFrames = feedback.frames;
+  dialog.shopFlashText = feedback.text;
+  dialog.shopFlashTone = feedback.tone;
 }

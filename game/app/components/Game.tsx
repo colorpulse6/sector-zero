@@ -49,6 +49,7 @@ import {
 import { applyShopPurchase } from "./engine/consumables";
 import {
   drainShopPurchaseRequest,
+  setShopPurchaseFeedback,
   shopPurchaseFeedback,
 } from "./engine/shopServices";
 import { checkQuestCompletion, type QuestCheckData } from "./engine/sideQuests";
@@ -2113,10 +2114,8 @@ export default function Game() {
             setSaveData(nextSave);
           }
           const feedback = shopPurchaseFeedback(buyReq, nextSave !== null);
-          if (feedback && fpBuy.dialogState) {
-            fpBuy.dialogState.shopFlashText = feedback.text;
-            fpBuy.dialogState.shopFlashTone = feedback.tone;
-            fpBuy.dialogState.shopFlashFrames = feedback.frames;
+          if (fpBuy.dialogState) {
+            setShopPurchaseFeedback(fpBuy.dialogState, feedback);
           }
         }
       }

@@ -6,6 +6,7 @@ import {
 } from "../../app/components/engine/firstPersonEngine";
 import type {
   BoardingMap,
+  FPDialogState,
   FPServiceId,
   FPShopPurchaseRequest,
   FirstPersonState,
@@ -20,6 +21,7 @@ import { applyShopPurchase } from "../../app/components/engine/consumables";
 import { createAshfallForwardCampState } from "../../app/components/engine/ashfallForwardCamp";
 import {
   drainShopPurchaseRequest,
+  setShopPurchaseFeedback,
   shopPurchaseFeedback,
 } from "../../app/components/engine/shopServices";
 
@@ -692,6 +694,47 @@ test("shop(M3) feedback: consumables flash only when rejected", () => {
     text: "PURCHASE UNAVAILABLE",
     tone: "error",
     frames: 90,
+  });
+});
+
+test("shop(M3) feedback: a successful consumable clears stale rejection feedback", () => {
+  const dialog: Pick<
+    FPDialogState,
+    "shopFlashFrames" | "shopFlashText" | "shopFlashTone"
+  > = {
+    shopFlashFrames: 45,
+    shopFlashText: "PURCHASE UNAVAILABLE",
+    shopFlashTone: "error",
+  };
+  const feedback = shopPurchaseFeedback({
+    kind: "consumable",
+    itemId: "hull-repair",
+  }, true);
+
+  assert.equal(feedback, null, "successful consumables retain the no-success-flash policy");
+  setShopPurchaseFeedback(dialog, feedback);
+
+  assert.equal(dialog.shopFlashFrames, 0);
+  assert.equal(dialog.shopFlashText, undefined);
+  assert.equal(dialog.shopFlashTone, undefined);
+});
+
+test("shop(M3) feedback: the dialog writer applies every transient service field", () => {
+  const dialog: Pick<
+    FPDialogState,
+    "shopFlashFrames" | "shopFlashText" | "shopFlashTone"
+  > = {};
+  const feedback = shopPurchaseFeedback({
+    kind: "service",
+    serviceId: "cantina-house-pour",
+  }, true);
+
+  setShopPurchaseFeedback(dialog, feedback);
+
+  assert.deepEqual(dialog, {
+    shopFlashFrames: 90,
+    shopFlashText: "HOUSE POUR SERVED",
+    shopFlashTone: "success",
   });
 });
 

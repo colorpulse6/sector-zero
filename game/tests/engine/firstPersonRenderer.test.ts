@@ -7,6 +7,10 @@ import {
 import { drawFPDialogBox } from "../../app/components/engine/firstPersonRenderer";
 import { SPRITES } from "../../app/components/engine/sprites";
 import type { FirstPersonState } from "../../app/components/engine/types";
+import {
+  setShopPurchaseFeedback,
+  shopPurchaseFeedback,
+} from "../../app/components/engine/shopServices";
 
 const DIALOG_PANEL: FPDialogRect = { x: 16, y: 564, width: 448, height: 140 };
 const BODY = "abcdefghijklmnop qrstuvwxyzabcdef";
@@ -308,6 +312,27 @@ test("shop feedback is hidden when its countdown reaches zero", () => {
     recording.text.some(({ value }) => value === "HOUSE POUR SERVED"),
     false,
   );
+  assert.equal(
+    recording.text.some(({ value }) => value === "PURCHASE UNAVAILABLE"),
+    false,
+  );
+});
+
+test("a successful consumable clears a stale visible rejection before rendering", () => {
+  const recording = recordingCanvas();
+  const fp = openShopState();
+  fp.dialogState!.shopFlashFrames = 45;
+  fp.dialogState!.shopFlashText = "PURCHASE UNAVAILABLE";
+  fp.dialogState!.shopFlashTone = "error";
+
+  const feedback = shopPurchaseFeedback({
+    kind: "consumable",
+    itemId: "hull-repair",
+  }, true);
+  setShopPurchaseFeedback(fp.dialogState!, feedback);
+  drawFPDialogBox(recording.ctx, fp, 0, () => null);
+
+  assert.equal(fp.dialogState!.shopFlashFrames, 0);
   assert.equal(
     recording.text.some(({ value }) => value === "PURCHASE UNAVAILABLE"),
     false,
