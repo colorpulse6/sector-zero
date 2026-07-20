@@ -22,6 +22,7 @@ export interface ColonyFixture {
   resources?: Partial<ColonyResources>;
   happiness?: number;
   regionIntel?: Record<string, "unknown" | "rumored" | "surveyed" | "cleared" | "claimed">;
+  playerCredits?: number;
 }
 
 export const COLONY_FIXTURES: ColonyFixture[] = [
@@ -116,6 +117,20 @@ export const COLONY_FIXTURES: ColonyFixture[] = [
       "ashfall-basalt-basin": "surveyed",
       "ashfall-ironreach-shelf": "unknown",
     },
+  },
+  {
+    id: "cantina",
+    label: "SEED CANTINA",
+    buildings: [
+      { type: "solar_array", operational: true },
+      { type: "farm", operational: true },
+      { type: "water_purifier", operational: true },
+      { type: "habitat_module", operational: true },
+      { type: "cantina", operational: true },
+    ],
+    hour: 17,
+    layoutSeed: 1337,
+    playerCredits: 5,
   },
 ];
 
@@ -223,7 +238,11 @@ export function applyColonyFixture(
     }));
   }
 
-  s = { ...s, gameClock: { ...s.gameClock, hour: fx.hour, minute: 0 } };
+  s = {
+    ...s,
+    ...(fx.playerCredits !== undefined ? { credits: fx.playerCredits } : {}),
+    gameClock: { ...s.gameClock, hour: fx.hour, minute: 0 },
+  };
 
   return { save: s, colonyId };
 }

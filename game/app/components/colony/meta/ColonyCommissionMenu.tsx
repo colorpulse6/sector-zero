@@ -28,6 +28,7 @@ export const PHASE_1_BUILD_OPTIONS: BuildOption[] = [
   { type: "water_purifier", label: "Water Purifier", icon: "💧", cost: { metal: 120 }, cyclesToBuild: 2, shortDesc: "+12 water" },
   { type: "habitat_module", label: "Habitat Module", icon: "🏠", cost: { metal: 100 }, cyclesToBuild: 1, shortDesc: `Houses ${HABITAT_CAPACITY_PER_MODULE}` },
   { type: "mine", label: "Mine", icon: "⛏", cost: { metal: 150 }, cyclesToBuild: 2, shortDesc: "+10 metal/cycle" },
+  { type: "cantina", label: "Cantina", icon: "🍺", cost: { metal: 200 }, cyclesToBuild: 3, shortDesc: "Social hub for drinks and rumors" },
 ];
 
 /** Exported for testing (OW-0). */

@@ -14,6 +14,25 @@ import { generateExteriorState, generateInteriorState, assignSlots } from "../..
 import { OUTPOST_TEMPLATE } from "../../app/components/colony/exploration/outpostTemplate";
 import { makeTestColony, makeBuilding } from "./fixtures";
 
+test("build menu: historical options stay unchanged", () => {
+  assert.deepEqual(PHASE_1_BUILD_OPTIONS.slice(0, 5), [
+    { type: "solar_array", label: "Solar Array", icon: "☀", cost: { metal: 80 }, cyclesToBuild: 1, shortDesc: "+10 power" },
+    { type: "farm", label: "Farm", icon: "🌾", cost: { metal: 100 }, cyclesToBuild: 2, shortDesc: "+15 food, −5 water" },
+    { type: "water_purifier", label: "Water Purifier", icon: "💧", cost: { metal: 120 }, cyclesToBuild: 2, shortDesc: "+12 water" },
+    { type: "habitat_module", label: "Habitat Module", icon: "🏠", cost: { metal: 100 }, cyclesToBuild: 1, shortDesc: `Houses ${HABITAT_CAPACITY_PER_MODULE}` },
+    { type: "mine", label: "Mine", icon: "⛏", cost: { metal: 150 }, cyclesToBuild: 2, shortDesc: "+10 metal/cycle" },
+  ]);
+});
+
+test("build menu: Cantina option has the authored commission contract", () => {
+  const cantina = PHASE_1_BUILD_OPTIONS.find(o => o.type === "cantina");
+  assert.ok(cantina, "cantina must be in the Phase 1 build menu");
+  assert.equal(cantina.label, "Cantina");
+  assert.deepEqual(cantina.cost, { metal: 200 });
+  assert.equal(cantina.cyclesToBuild, 3);
+  assert.equal(cantina.shortDesc, "Social hub for drinks and rumors");
+});
+
 test("build menu: mine option exists at 150 metal, 2 cycles", () => {
   const mine = PHASE_1_BUILD_OPTIONS.find(o => o.type === "mine");
   assert.ok(mine, "mine must be in the Phase 1 build menu");
@@ -52,11 +71,13 @@ test("every build-menu type has an FP footprint and interior template", () => {
   }
 });
 
-test("mine footprint fits every outpost slot", () => {
-  const fp = BUILDING_FOOTPRINTS.mine!;
-  for (const slot of OUTPOST_TEMPLATE.slots) {
-    assert.ok(fp.w <= slot.maxFootprint.w && fp.h <= slot.maxFootprint.h,
-      `mine ${fp.w}x${fp.h} exceeds slot ${slot.id} max ${slot.maxFootprint.w}x${slot.maxFootprint.h}`);
+test("every build-menu footprint fits every outpost slot", () => {
+  for (const option of PHASE_1_BUILD_OPTIONS) {
+    const fp = BUILDING_FOOTPRINTS[option.type]!;
+    for (const slot of OUTPOST_TEMPLATE.slots) {
+      assert.ok(fp.w <= slot.maxFootprint.w && fp.h <= slot.maxFootprint.h,
+        `${option.type} ${fp.w}x${fp.h} exceeds slot ${slot.id} max ${slot.maxFootprint.w}x${slot.maxFootprint.h}`);
+    }
   }
 });
 

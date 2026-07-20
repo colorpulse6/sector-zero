@@ -1,7 +1,43 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { colonyReducer, advanceWorldCycle, Events } from "../../app/components/colony";
+import {
+  colonyReducer,
+  advanceWorldCycle,
+  enterColonyExploration,
+  stepColonyExploration,
+  Events,
+} from "../../app/components/colony";
 import type { SaveData } from "../../app/components/engine/types";
+import { SPRITES } from "../../app/components/engine/sprites";
+import { PHASE_1_BUILD_OPTIONS } from "../../app/components/colony/meta/ColonyCommissionMenu";
+import {
+  assignSlots,
+} from "../../app/components/colony/exploration/colonyLayout";
+import { BUILDING_FOOTPRINTS } from "../../app/components/colony/exploration/buildingTiles";
+import { OUTPOST_TEMPLATE } from "../../app/components/colony/exploration/outpostTemplate";
+import type {
+  BuildingInstanceId,
+  ColonyState,
+} from "../../app/components/colony/shared/colonyTypes";
+
+function assignedDoor(
+  colony: ColonyState,
+  buildingId: BuildingInstanceId,
+): { x: number; y: number } {
+  const slotId = assignSlots(colony).get(buildingId);
+  assert.notEqual(slotId, undefined, `${buildingId} must have an assigned exterior slot`);
+  const slot = OUTPOST_TEMPLATE.slots[slotId!];
+  const building = colony.buildings.find(candidate => candidate.id === buildingId)!;
+  const footprint = BUILDING_FOOTPRINTS[building.type]!;
+  return {
+    x: footprint.doorSide === "east" ? slot.anchorX + footprint.w - 1
+      : footprint.doorSide === "west" ? slot.anchorX
+      : slot.anchorX + Math.floor(footprint.w / 2),
+    y: footprint.doorSide === "south" ? slot.anchorY + footprint.h - 1
+      : footprint.doorSide === "north" ? slot.anchorY
+      : slot.anchorY + Math.floor(footprint.h / 2),
+  };
+}
 
 function makeEmpty(): SaveData {
   return {
@@ -80,4 +116,102 @@ test("5-cycle simulation: found colony, commission 2 buildings, run 5 cycles", (
   assert.ok(final.resources.food > 0, `food should be positive after 3 productive cycles, got ${final.resources.food}`);
   assert.ok(final.resources.water > 0, `water should be positive after 3 productive cycles, got ${final.resources.water}`);
   assert.equal(final.buildings.filter(b => b.status === "operational").length, 3);
+});
+
+test("Cantina commissions, constructs for three cycles, and round-trips through its real doors", () => {
+  const colonyId = "ashfall_cantina";
+  const buildingId = "b_cantina";
+  const option = PHASE_1_BUILD_OPTIONS.find(candidate => candidate.type === "cantina");
+  assert.ok(option, "Cantina must be available through the normal commission menu contract");
+
+  let save = colonyReducer(makeEmpty(), Events.founded({
+    colonyId,
+    name: "Ashfall Cantina",
+    planetId: "ashfall",
+    foundingType: "outpost",
+    regionNodeId: "rn_ashfall_cantina",
+    missionCount: 0,
+    layoutSeed: 42,
+  }));
+  save = colonyReducer(save, Events.resourceChanged({
+    colonyId,
+    delta: { metal: option.cost.metal },
+    reason: "integration_test_funding",
+  }));
+  assert.ok(save.colonies[0].siteStats.buildableSlots > save.colonies[0].buildings.length);
+
+  save = colonyReducer(save, Events.buildingCommissioned({
+    colonyId,
+    buildingId,
+    buildingType: option.type,
+    costDeducted: option.cost,
+    cyclesToBuild: option.cyclesToBuild,
+  }));
+  assert.equal(save.colonies[0].resources.metal, 0, "commission deducts the exact 200 metal cost");
+  assert.equal(save.colonies[0].buildings[0].buildProgressCycles, 3);
+
+  save = advanceWorldCycle(save);
+  assert.equal(save.colonies[0].buildings[0].status, "constructing");
+  assert.equal(save.colonies[0].buildings[0].buildProgressCycles, 2);
+  save = advanceWorldCycle(save);
+  assert.equal(save.colonies[0].buildings[0].status, "constructing");
+  assert.equal(save.colonies[0].buildings[0].buildProgressCycles, 1);
+  save = advanceWorldCycle(save);
+  assert.equal(save.colonies[0].buildings[0].status, "operational");
+  assert.equal(save.colonies[0].buildings[0].buildProgressCycles, 0);
+
+  const colony = save.colonies[0];
+  const exteriorDoor = assignedDoor(colony, buildingId);
+  const entered = enterColonyExploration(save, colonyId);
+  assert.equal(entered.sceneStack.current.state.map.tiles[exteriorDoor.y][exteriorDoor.x], "door");
+  const enterRequest = entered.sceneStack.current.state.colonyContext!.onDoorInteract(
+    { x: exteriorDoor.x, y: exteriorDoor.y + 1 },
+    exteriorDoor,
+  );
+  assert.deepEqual(enterRequest, { kind: "enter_interior", buildingId });
+  entered.sceneStack.current.state.colonyTransitionRequest = enterRequest;
+
+  let stack = stepColonyExploration(entered.sceneStack, save, 0);
+  assert.equal(stack.current.kind, "interior");
+  assert.equal(stack.current.buildingId, buildingId);
+  assert.equal(colony.buildings.find(building => building.id === stack.current.buildingId)!.type, "cantina");
+  assert.equal(stack.current.state.map.width, 12);
+  assert.equal(stack.current.state.map.height, 10);
+  assert.deepEqual(stack.current.state.environmentArt, {
+    wallSprite: SPRITES.HUB_CANTINA_WALL,
+    floorSprite: SPRITES.HUB_CANTINA_FLOOR,
+    ceilingSprite: SPRITES.HUB_CANTINA_CEILING,
+    skySprite: undefined,
+  });
+  assert.deepEqual(
+    new Set(stack.current.state.props?.map(prop => prop.sprite)),
+    new Set([
+      SPRITES.HUB_CANTINA_PROP_BOTTLE_RACK,
+      SPRITES.HUB_CANTINA_PROP_BAR_COUNTER,
+      SPRITES.HUB_CANTINA_PROP_TABLE_CLUSTER,
+      SPRITES.HUB_CANTINA_PROP_RUMOR_TERMINAL,
+    ]),
+  );
+
+  let interiorDoor: { x: number; y: number } | undefined;
+  for (let y = 0; y < stack.current.state.map.height; y++) {
+    for (let x = 0; x < stack.current.state.map.width; x++) {
+      if (stack.current.state.map.tiles[y][x] === "door") interiorDoor = { x, y };
+    }
+  }
+  assert.ok(interiorDoor, "authored Cantina interior must expose its exit door");
+  const exitRequest = stack.current.state.colonyContext!.onDoorInteract(
+    interiorDoor!,
+    { x: interiorDoor!.x, y: interiorDoor!.y - 1 },
+  );
+  assert.deepEqual(exitRequest, { kind: "exit_interior" });
+  stack.current.state.colonyTransitionRequest = exitRequest;
+
+  stack = stepColonyExploration(stack, save, 0);
+  assert.equal(stack.current.kind, "exterior");
+  assert.equal(stack.parent, null);
+  assert.equal(stack.current.state.posX, exteriorDoor.x + 0.5);
+  assert.equal(stack.current.state.posY, exteriorDoor.y + 1.5);
+  assert.equal(stack.current.state.dirX, 0);
+  assert.equal(stack.current.state.dirY, 1);
 });
