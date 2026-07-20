@@ -21,12 +21,14 @@ interface TextCall {
 interface RecordingCanvas {
   ctx: CanvasRenderingContext2D;
   text: TextCall[];
+  textColors: Array<{ value: string; color: string }>;
   images: unknown[][];
   roundRects: unknown[][];
 }
 
 function recordingCanvas(): RecordingCanvas {
   const text: TextCall[] = [];
+  const textColors: Array<{ value: string; color: string }> = [];
   const images: unknown[][] = [];
   const roundRects: unknown[][] = [];
   const noop = () => undefined;
@@ -37,6 +39,10 @@ function recordingCanvas(): RecordingCanvas {
         x: Number(x),
         y: Number(y),
         align: target.textAlign as CanvasTextAlign | undefined,
+      });
+      textColors.push({
+        value: String(value),
+        color: String(target.fillStyle),
       });
     },
     measureText(value: unknown) {
@@ -62,6 +68,7 @@ function recordingCanvas(): RecordingCanvas {
   return {
     ctx: proxy as unknown as CanvasRenderingContext2D,
     text,
+    textColors,
     images,
     roundRects,
   };
@@ -93,6 +100,29 @@ function textCall(recording: RecordingCanvas, value: string): TextCall {
   const call = recording.text.find((candidate) => candidate.value === value);
   assert.ok(call, `missing fillText call for ${JSON.stringify(value)}`);
   return call;
+}
+
+function textColor(recording: RecordingCanvas, value: string): string {
+  const call = recording.textColors.find((candidate) => candidate.value === value);
+  assert.ok(call, `missing styled fillText call for ${JSON.stringify(value)}`);
+  return call.color;
+}
+
+function openShopState(): FirstPersonState {
+  const fp = dialogState("PORTRAIT_HUB_BARTENDER");
+  fp.npcs[0].type = "merchant";
+  fp.dialogState = {
+    ...fp.dialogState!,
+    shopOpen: true,
+    shopItems: [{
+      id: "test-item",
+      name: "TEST ITEM",
+      description: "Legacy shop row",
+      cost: 5,
+      type: "material",
+    }],
+  };
+  return fp;
 }
 
 test("dialog layout plans exact portrait and text-only rectangles for the live panel", () => {
@@ -204,19 +234,7 @@ test("absent, unknown, wrong-category, and prototype keys never attempt portrait
 
 test("open shop bypasses portrait handling and retains the 300px shop panel", () => {
   const recording = recordingCanvas();
-  const fp = dialogState("PORTRAIT_HUB_BARTENDER");
-  fp.npcs[0].type = "merchant";
-  fp.dialogState = {
-    ...fp.dialogState!,
-    shopOpen: true,
-    shopItems: [{
-      id: "test-item",
-      name: "TEST ITEM",
-      description: "Legacy shop row",
-      cost: 5,
-      type: "material",
-    }],
-  };
+  const fp = openShopState();
   const lookupCalls: string[] = [];
 
   drawFPDialogBox(recording.ctx, fp, 0, (path) => {
@@ -236,4 +254,62 @@ test("open shop bypasses portrait handling and retains the 300px shop panel", ()
   assert.deepEqual(textCall(recording, "TEST ITEM"), {
     value: "TEST ITEM", x: 32, y: 446, align: "left",
   });
+});
+
+test("shop feedback renders House Pour success in green without replacing the shop panel", () => {
+  const recording = recordingCanvas();
+  const fp = openShopState();
+  fp.dialogState!.shopFlashFrames = 90;
+  fp.dialogState!.shopFlashText = "HOUSE POUR SERVED";
+  fp.dialogState!.shopFlashTone = "success";
+
+  drawFPDialogBox(recording.ctx, fp, 0, () => null);
+
+  assert.deepEqual(recording.roundRects[0], [16, 404, 448, 300, 8]);
+  assert.ok(recording.text.some(({ value }) => value === "TEST ITEM"), "the shop row remains rendered");
+  assert.equal(textCall(recording, "HOUSE POUR SERVED").align, "center");
+  assert.equal(textColor(recording, "HOUSE POUR SERVED"), "#66ff99");
+});
+
+test("shop feedback renders an unavailable error in the current red", () => {
+  const recording = recordingCanvas();
+  const fp = openShopState();
+  fp.dialogState!.shopFlashFrames = 90;
+  fp.dialogState!.shopFlashText = "PURCHASE UNAVAILABLE";
+  fp.dialogState!.shopFlashTone = "error";
+
+  drawFPDialogBox(recording.ctx, fp, 0, () => null);
+
+  assert.equal(textCall(recording, "PURCHASE UNAVAILABLE").align, "center");
+  assert.equal(textColor(recording, "PURCHASE UNAVAILABLE"), "#ff6666");
+});
+
+test("legacy positive shop flash frames use the unavailable error fallback", () => {
+  const recording = recordingCanvas();
+  const fp = openShopState();
+  fp.dialogState!.shopFlashFrames = 1;
+
+  drawFPDialogBox(recording.ctx, fp, 0, () => null);
+
+  assert.equal(textCall(recording, "PURCHASE UNAVAILABLE").align, "center");
+  assert.equal(textColor(recording, "PURCHASE UNAVAILABLE"), "#ff6666");
+});
+
+test("shop feedback is hidden when its countdown reaches zero", () => {
+  const recording = recordingCanvas();
+  const fp = openShopState();
+  fp.dialogState!.shopFlashFrames = 0;
+  fp.dialogState!.shopFlashText = "HOUSE POUR SERVED";
+  fp.dialogState!.shopFlashTone = "success";
+
+  drawFPDialogBox(recording.ctx, fp, 0, () => null);
+
+  assert.equal(
+    recording.text.some(({ value }) => value === "HOUSE POUR SERVED"),
+    false,
+  );
+  assert.equal(
+    recording.text.some(({ value }) => value === "PURCHASE UNAVAILABLE"),
+    false,
+  );
 });

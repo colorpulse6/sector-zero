@@ -47,6 +47,10 @@ import {
   COCKPIT_HOTSPOTS,
 } from "./engine/cockpit";
 import { applyShopPurchase } from "./engine/consumables";
+import {
+  drainShopPurchaseRequest,
+  shopPurchaseFeedback,
+} from "./engine/shopServices";
 import { checkQuestCompletion, type QuestCheckData } from "./engine/sideQuests";
 import { recordKill } from "./engine/bestiary";
 import { allocateNode } from "./engine/skillTree";
@@ -2090,29 +2094,29 @@ export default function Game() {
         }
       }
 
-      // ── FP shop purchase drain (Phase 5a §I) ──
-      // The quartermaster's shop emits a one-shot purchase request; apply it to
-      // the player wallet via the audited purchaseConsumable helper (consumables
-      // only). This is the one intentional SaveData write during colony
-      // exploration. On failure (locked / unaffordable / max-carry → null) show a
-      // brief generic flash. The request is cleared either way. Only a canBuy
-      // merchant ever sets this, so Ashfall's display-only shop never reaches here.
+      // ── FP typed shop purchase drain (Phase 5a §I + M3 services) ──
+      // A buyable shop emits a one-shot typed request. Apply it through the
+      // audited purchase boundary, persist only successful SaveData results, and
+      // keep purchase feedback transient on the current dialog.
       {
         const fpBuy = newState.firstPersonState;
-        const buyReq = fpBuy?.shopPurchaseRequest;
+        const buyReq = fpBuy && drainShopPurchaseRequest(fpBuy);
         if (fpBuy && buyReq) {
-          fpBuy.shopPurchaseRequest = undefined;
           // Colony merchants charge faction-adjusted prices (Phase 5a): derive
           // the buy rank from the explored colony's primary faction — the same
           // rank the shop's displayed costs were built with, so the charge
-          // always equals the display (adjustedBuyPrice on both sides).
+          // always equals the display for consumables. Services ignore rank.
           const buyRank = colonyMerchantRank(saveData.colonies, saveData.factionStandings, sceneStack?.colonyId);
           const nextSave = applyShopPurchase(saveData, buyReq, buyRank);
           if (nextSave) {
             saveSave(nextSave);
             setSaveData(nextSave);
-          } else if (fpBuy.dialogState) {
-            fpBuy.dialogState.shopFlashFrames = 90;
+          }
+          const feedback = shopPurchaseFeedback(buyReq, nextSave !== null);
+          if (feedback && fpBuy.dialogState) {
+            fpBuy.dialogState.shopFlashText = feedback.text;
+            fpBuy.dialogState.shopFlashTone = feedback.tone;
+            fpBuy.dialogState.shopFlashFrames = feedback.frames;
           }
         }
       }

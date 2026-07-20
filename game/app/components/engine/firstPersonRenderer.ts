@@ -411,12 +411,12 @@ export function drawFPDialogBox(
       ctx.fillText("LEAVE", boxX + 16, ly + 7);
     }
 
-    // Transient generic "purchase unavailable" flash (§I)
+    // Transient purchase feedback (§I + typed services)
     if ((ds.shopFlashFrames ?? 0) > 0) {
-      ctx.fillStyle = "#ff6666";
+      ctx.fillStyle = ds.shopFlashTone === "success" ? "#66ff99" : "#ff6666";
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "center";
-      ctx.fillText("PURCHASE UNAVAILABLE", boxX + boxW / 2, boxY + boxH - 14);
+      ctx.fillText(ds.shopFlashText ?? "PURCHASE UNAVAILABLE", boxX + boxW / 2, boxY + boxH - 14);
       ctx.textAlign = "left";
     }
   } else {

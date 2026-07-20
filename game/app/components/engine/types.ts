@@ -972,7 +972,9 @@ export interface FPDialogState {
                             //   the old per-NPC `!interacted` open-gate so a merchant's shop
                             //   REOPENS on the next talk (fresh dialog) while still closing
                             //   cleanly within a session (no display-only soft-lock).
-  shopFlashFrames?: number; // Countdown for the generic "purchase unavailable" flash
+  shopFlashFrames?: number; // Transient feedback countdown; owned by firstPersonEngine
+  shopFlashText?: string;   // Transient feedback copy; never persisted
+  shopFlashTone?: "success" | "error"; // Transient feedback color; never persisted
 }
 
 export interface FPEnemy {

@@ -8,6 +8,7 @@ import type {
   BoardingMap,
   FPServiceId,
   FPShopPurchaseRequest,
+  FirstPersonState,
   Keys,
   SaveData,
 } from "../../app/components/engine/types";
@@ -17,6 +18,10 @@ import { NPC_SPRITE_MAP, resolveNpcSprite } from "../../app/components/engine/fp
 import { SPRITES } from "../../app/components/engine/sprites";
 import { applyShopPurchase } from "../../app/components/engine/consumables";
 import { createAshfallForwardCampState } from "../../app/components/engine/ashfallForwardCamp";
+import {
+  drainShopPurchaseRequest,
+  shopPurchaseFeedback,
+} from "../../app/components/engine/shopServices";
 
 // ─── Fixtures ────────────────────────────────────────────────────────
 // Task 6: frame-rate-independent movement. These tests pin the delta-time
@@ -623,6 +628,71 @@ test("shop(I): the purchase-unavailable flash counts down each frame and clamps 
   assert.equal(shopFp(g).dialogState!.shopFlashFrames, 0, "flash reaches 0");
   updateFirstPerson(g.game, keys(), 16.67);
   assert.equal(shopFp(g).dialogState!.shopFlashFrames, 0, "flash stays clamped at 0 (never negative)");
+});
+
+test("shop(M3) drain: a consumable request is returned once and cleared", () => {
+  const fp: Pick<FirstPersonState, "shopPurchaseRequest"> = {
+    shopPurchaseRequest: { kind: "consumable", itemId: "hull-repair" },
+  };
+
+  assert.deepEqual(
+    drainShopPurchaseRequest(fp),
+    { kind: "consumable", itemId: "hull-repair" },
+  );
+  assert.equal(fp.shopPurchaseRequest, undefined, "the request is cleared after being read");
+  assert.equal(drainShopPurchaseRequest(fp), undefined, "a second drain has nothing to replay");
+});
+
+test("shop(M3) drain: a service request is returned once and cleared", () => {
+  const fp: Pick<FirstPersonState, "shopPurchaseRequest"> = {
+    shopPurchaseRequest: { kind: "service", serviceId: "cantina-house-pour" },
+  };
+
+  assert.deepEqual(
+    drainShopPurchaseRequest(fp),
+    { kind: "service", serviceId: "cantina-house-pour" },
+  );
+  assert.equal(fp.shopPurchaseRequest, undefined, "the request is cleared after being read");
+  assert.equal(drainShopPurchaseRequest(fp), undefined, "a second drain has nothing to replay");
+});
+
+test("shop(M3) drain: an absent purchase request remains absent", () => {
+  const fp: Pick<FirstPersonState, "shopPurchaseRequest"> = {};
+
+  assert.equal(drainShopPurchaseRequest(fp), undefined);
+  assert.equal(fp.shopPurchaseRequest, undefined);
+});
+
+test("shop(M3) feedback: service outcomes produce exact transient messages", () => {
+  const request: FPShopPurchaseRequest = {
+    kind: "service",
+    serviceId: "cantina-house-pour",
+  };
+
+  assert.deepEqual(shopPurchaseFeedback(request, true), {
+    text: "HOUSE POUR SERVED",
+    tone: "success",
+    frames: 90,
+  });
+  assert.deepEqual(shopPurchaseFeedback(request, false), {
+    text: "PURCHASE UNAVAILABLE",
+    tone: "error",
+    frames: 90,
+  });
+});
+
+test("shop(M3) feedback: consumables flash only when rejected", () => {
+  const request: FPShopPurchaseRequest = {
+    kind: "consumable",
+    itemId: "hull-repair",
+  };
+
+  assert.equal(shopPurchaseFeedback(request, true), null);
+  assert.deepEqual(shopPurchaseFeedback(request, false), {
+    text: "PURCHASE UNAVAILABLE",
+    tone: "error",
+    frames: 90,
+  });
 });
 
 test("shop(I) drain: applyShopPurchase deducts credits and grants an affordable consumable", () => {
