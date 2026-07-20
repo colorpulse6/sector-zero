@@ -8,8 +8,10 @@ export interface InteriorNpcContext {
   periodIndex: 0 | 1;
 }
 
-export interface InteriorNpcDefinition {
-  roleId: string;
+export interface InteriorNpcDefinition<
+  RoleId extends InteriorNpcContentId = InteriorNpcContentId,
+> {
+  roleId: RoleId;
   name: string;
   type: FPNPC["type"];
   spriteId: string;
@@ -53,7 +55,9 @@ export function selectCantinaRumor(
   return pool[hash % pool.length];
 }
 
-export const INTERIOR_NPC_DEFINITIONS: Record<InteriorNpcContentId, InteriorNpcDefinition> = {
+export const INTERIOR_NPC_DEFINITIONS: {
+  [RoleId in InteriorNpcContentId]: InteriorNpcDefinition<RoleId>;
+} = {
   "hub-bartender": {
     roleId: "hub-bartender",
     name: "BARTENDER",

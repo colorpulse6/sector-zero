@@ -97,10 +97,10 @@ export const BUILDING_FOOTPRINTS: Partial<Record<BuildingType, FootprintSpec>> =
 };
 
 /**
- * Stub interior templates, one per Phase 1 building type.
- * Each ~6×6 tiles, 1 thematic prop, exit door at south edge.
- * Player spawns ON the exit door facing north (into the room) so
- * immediate re-press of interact would exit.
+ * Interior template registry for both legacy utility rooms and authored hubs.
+ * Legacy Phase-1 stub entries are ~6×6 tiles with thematic props and a south
+ * exit. Players spawn ON the exit door facing north (into the room) so an
+ * immediate re-press of interact exits.
  */
 export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = {
   solar_array_stub: {

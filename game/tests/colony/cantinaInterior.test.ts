@@ -235,6 +235,29 @@ test("authored rumor selection is stable, pool-bounded, and independent of rando
   }
 });
 
+test("authored rumor selection pins seed, role, and period into the FNV contract", () => {
+  assert.equal(
+    selectCantinaRumor("hub-regular", { seed: 1337, periodIndex: 0 }),
+    "The old relay wakes just before the dust turns.",
+  );
+  assert.equal(
+    selectCantinaRumor("hub-regular", { seed: 1337, periodIndex: 1 }),
+    "Long-range static has been spelling out colony call signs.",
+  );
+  assert.equal(
+    selectCantinaRumor("hub-regular", { seed: 1338, periodIndex: 1 }),
+    "A convoy saw lights moving under the western glass.",
+  );
+  assert.equal(
+    selectCantinaRumor("hub-signal-chaser", { seed: 1337, periodIndex: 0 }),
+    "Someone is stepping on the emergency band every sixth pulse.",
+  );
+  assert.equal(
+    selectCantinaRumor("hub-signal-chaser", { seed: 1337, periodIndex: 1 }),
+    "I caught our colony beacon echoing from below the ridge.",
+  );
+});
+
 test("repeated Cantina generation deep-equals NPC identities, positions, and dialog", () => {
   const building = makeBuilding("cantina");
   const first = generateInteriorState(building, 1337, 17);
