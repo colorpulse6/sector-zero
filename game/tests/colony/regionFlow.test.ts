@@ -341,6 +341,38 @@ test("Legacy POI outcome APIs fail closed over malformed plain objects", () => {
     GameScreen.LEVEL_COMPLETE,
     state.outcomeAttempt!,
   ), null);
+  const invalidSaveFields: ReadonlyArray<readonly [string, unknown]> = [
+    ["undefined credits", { ...save, credits: undefined }],
+    ["non-finite credits", { ...save, credits: Number.NaN }],
+    ["negative credits", { ...save, credits: -1 }],
+    ["undefined XP", { ...save, xp: undefined }],
+    ["undefined current world", { ...save, currentWorld: undefined }],
+    ["zero current world", { ...save, currentWorld: 0 }],
+    ["invalid intro flag", { ...save, introSeen: "yes" }],
+    ["malformed level ledger", { ...save, levels: { "1-1": { completed: true, stars: -1, highScore: 0 } } }],
+    ["malformed upgrades", { ...save, upgrades: { ...save.upgrades, hullPlating: 4 } }],
+    ["malformed string journal", { ...save, completedQuests: [42] }],
+    ["unknown consumable inventory", { ...save, consumableInventory: { forged: 1 } }],
+    ["negative consumable inventory", { ...save, consumableInventory: { "hull-repair": -1 } }],
+    ["malformed bestiary", { ...save, bestiary: [] }],
+    ["unknown equipped weapon", { ...save, equippedWeaponType: "forged" }],
+    ["zero pilot level", { ...save, pilotLevel: 0 }],
+    ["negative skill points", { ...save, skillPoints: -1 }],
+    ["malformed colony collection", { ...save, colonies: [42] }],
+    ["malformed planet collection", { ...save, planets: {} }],
+    ["malformed game clock", { ...save, gameClock: { ...save.gameClock, hour: 24 } }],
+    ["unknown experience", { ...save, activeExperience: "forged" }],
+    ["malformed galaxy run", { ...save, galaxyRun: [] }],
+    ["undefined extension", { ...save, futureField: undefined }],
+  ];
+  for (const [label, invalidSave] of invalidSaveFields) {
+    assert.equal(preparePoiCompletion(
+      invalidSave as never,
+      active,
+      GameScreen.LEVEL_COMPLETE,
+      state.outcomeAttempt!,
+    ), null, label);
+  }
 
   const attemptWithProto = { ...state.outcomeAttempt! };
   Object.defineProperty(attemptWithProto, "__proto__", {

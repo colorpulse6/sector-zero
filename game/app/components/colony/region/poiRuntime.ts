@@ -23,6 +23,7 @@ import {
 } from "../../engine/missionContext";
 import { getBoardingSpawn } from "../../engine/boardingLevel";
 import { getSpawnPosition as getGroundSpawn } from "../../engine/groundLevel";
+import { MAX_PILOT_LEVEL } from "../../engine/pilotLevel";
 import { advanceWorldCycle } from "../shared/cycleProcessor";
 import type { ColonyId } from "../shared/colonyTypes";
 import type { MissionDelivery } from "../shared/missionDelivery";
@@ -64,6 +65,45 @@ const REQUIRED_SAVE_DATA_KEYS = [
   "colonies", "planets", "earthShipments", "factionStandings", "bounties", "missionsSinceStart",
   "gameClock", "activeExperience", "galaxyRun",
 ] as const;
+const UPGRADE_LIMITS = {
+  hullPlating: 3,
+  engineBoost: 3,
+  weaponCore: 2,
+  munitionsBay: 3,
+  fireControl: 2,
+  shieldGenerator: 2,
+} as const;
+const PLANET_IDS = [
+  "verdania", "glaciem", "pyraxis", "ossuary", "abyssia",
+  "ashfall", "prismara", "genesis", "luminos", "bastion",
+] as const;
+const SPECIAL_MISSION_IDS = ["kepler-black-box"] as const;
+const STORY_ITEM_IDS = ["kepler-black-box"] as const;
+const MATERIAL_IDS = [
+  "bio-fiber", "cryogenic-alloy", "molten-core", "ruin-shard", "abyssal-plating",
+  "desert-glass", "phase-crystal", "genesis-seed", "neon-circuitry", "ferro-steel",
+  "kinetic-core", "energy-cell", "ember-shard", "cryo-essence", "void-fragment",
+  "hollow-resonance",
+] as const;
+const CONSUMABLE_IDS = [
+  "hull-repair", "cryo-charge", "shield-charge", "weapon-overcharge", "scanner-pulse",
+] as const;
+const ENHANCEMENT_IDS = [
+  "reinforced-shield", "incendiary-bombs", "extended-magnet", "homing-gunners", "resonance-field",
+] as const;
+const SKILL_NODE_IDS = [
+  "sharpshooter", "overcharge", "berserker", "glass-cannon", "adrenaline", "signature-weapon",
+] as const;
+const WEAPON_TYPES = ["kinetic", "energy", "incendiary", "cryogenic"] as const;
+const ENEMY_TYPES = [
+  "SCOUT", "DRONE", "GUNNER", "SHIELDER", "BOMBER", "SWARM", "TURRET",
+  "CLOAKER", "ELITE", "MINE", "WRAITH", "ECHO", "MIRROR",
+] as const;
+const ENEMY_CLASSES = [
+  "armored", "swarm", "bio-organic", "tech-drone", "heavy-mech",
+  "elemental-fire", "elemental-ice", "elemental-cinder",
+] as const;
+const GAME_CLOCK_SEASONS = ["standard", "storm", "bloom", "deadzone"] as const;
 const compatibilityPendingAuthority = new WeakMap<object, PendingPoiResolution>();
 
 function ownDataRecord(value: unknown): Record<string, unknown> | null {
@@ -123,6 +163,7 @@ function snapshotDurableData(
   if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
     return INVALID_DURABLE_SNAPSHOT;
   }
+  if (typeof value === "number" && !Number.isFinite(value)) return INVALID_DURABLE_SNAPSHOT;
   if (value === null || typeof value !== "object") return value;
   if (seen.has(value)) return INVALID_DURABLE_SNAPSHOT;
   seen.add(value);
@@ -174,6 +215,112 @@ function snapshotDurableData(
   }
 }
 
+function isNonnegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function isKnownString(value: unknown, allowed: readonly string[]): value is string {
+  return typeof value === "string" && allowed.includes(value);
+}
+
+function isStringArray(value: unknown, allowed?: readonly string[]): value is string[] {
+  return Array.isArray(value) && value.every((entry) =>
+    typeof entry === "string" && entry.length > 0 && (allowed === undefined || allowed.includes(entry)));
+}
+
+function isPlainRecordArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((entry) => ownDataRecord(entry) !== null);
+}
+
+function isCanonicalLevelLedger(value: unknown): boolean {
+  const levels = ownDataRecord(value);
+  if (levels === null) return false;
+  return Object.entries(levels).every(([key, entry]) => {
+    const level = exactOwnData(entry, ["completed", "stars", "highScore"]);
+    return key.length > 0 && level !== null && typeof level.completed === "boolean" &&
+      Number.isSafeInteger(level.stars) && (level.stars as number) >= 0 && (level.stars as number) <= 3 &&
+      isNonnegativeSafeInteger(level.highScore);
+  });
+}
+
+function isCanonicalUpgrades(value: unknown): boolean {
+  const upgrades = exactOwnData(value, Object.keys(UPGRADE_LIMITS));
+  return upgrades !== null && Object.entries(UPGRADE_LIMITS).every(([key, maximum]) =>
+    isNonnegativeSafeInteger(upgrades[key]) && (upgrades[key] as number) <= maximum);
+}
+
+function isCanonicalInventory(value: unknown): boolean {
+  const inventory = ownDataRecord(value);
+  return inventory !== null && Object.entries(inventory).every(([key, count]) =>
+    CONSUMABLE_IDS.includes(key as (typeof CONSUMABLE_IDS)[number]) && isNonnegativeSafeInteger(count));
+}
+
+function isCanonicalBestiary(value: unknown): boolean {
+  const bestiary = ownDataRecord(value);
+  if (bestiary === null) return false;
+  return Object.entries(bestiary).every(([key, value]) => {
+    if (!ENEMY_TYPES.includes(key as (typeof ENEMY_TYPES)[number])) return false;
+    const entry = ownDataRecord(value);
+    if (entry === null || Object.keys(entry).some((field) =>
+      !["enemyType", "classId", "killCount", "firstSeenPlanet", "firstSeenWorld"].includes(field))) return false;
+    return entry.enemyType === key && isKnownString(entry.classId, ENEMY_CLASSES) &&
+      isNonnegativeSafeInteger(entry.killCount) &&
+      (entry.firstSeenPlanet === undefined || isKnownString(entry.firstSeenPlanet, PLANET_IDS)) &&
+      (entry.firstSeenWorld === undefined ||
+        (Number.isSafeInteger(entry.firstSeenWorld) && (entry.firstSeenWorld as number) >= 1));
+  });
+}
+
+function isCanonicalGameClock(value: unknown): boolean {
+  const clock = exactOwnData(value, ["day", "hour", "minute", "realtimeMsPerGameMinute", "season"]);
+  return clock !== null && isNonnegativeSafeInteger(clock.day) &&
+    Number.isSafeInteger(clock.hour) && (clock.hour as number) >= 0 && (clock.hour as number) <= 23 &&
+    Number.isSafeInteger(clock.minute) && (clock.minute as number) >= 0 && (clock.minute as number) <= 59 &&
+    typeof clock.realtimeMsPerGameMinute === "number" && Number.isFinite(clock.realtimeMsPerGameMinute) &&
+    clock.realtimeMsPerGameMinute > 0 && isKnownString(clock.season, GAME_CLOCK_SEASONS);
+}
+
+function hasCanonicalDurablePrimitives(value: unknown, root = true): boolean {
+  if (value === undefined) return false;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.every((entry) => hasCanonicalDurablePrimitives(entry, false));
+  const record = ownDataRecord(value);
+  return record !== null && Object.entries(record).every(([key, entry]) =>
+    root && key === "introSeen" && entry === undefined
+      ? true
+      : hasCanonicalDurablePrimitives(entry, false));
+}
+
+function hasCanonicalSaveFieldDomains(fields: Record<string, unknown>): boolean {
+  const numericFields = ["credits", "totalStars", "totalScore", "xp", "skillPoints", "missionsSinceStart"];
+  const openStringArrays = [
+    "unlockedCodex", "viewedCodex", "viewedConversations", "completedQuests", "activeQuests",
+  ];
+  return Number.isSafeInteger(fields.currentWorld) && (fields.currentWorld as number) >= 1 &&
+    numericFields.every((key) => isNonnegativeSafeInteger(fields[key])) &&
+    (fields.introSeen === undefined || typeof fields.introSeen === "boolean") &&
+    isCanonicalLevelLedger(fields.levels) && isCanonicalUpgrades(fields.upgrades) &&
+    openStringArrays.every((key) => isStringArray(fields[key])) &&
+    isStringArray(fields.completedPlanets, PLANET_IDS) &&
+    isStringArray(fields.unlockedSpecialMissions, SPECIAL_MISSION_IDS) &&
+    isStringArray(fields.completedSpecialMissions, SPECIAL_MISSION_IDS) &&
+    isStringArray(fields.storyItems, STORY_ITEM_IDS) && isStringArray(fields.materials, MATERIAL_IDS) &&
+    isCanonicalInventory(fields.consumableInventory) &&
+    isStringArray(fields.equippedConsumables, CONSUMABLE_IDS) &&
+    isStringArray(fields.unlockedEnhancements, ENHANCEMENT_IDS) &&
+    isCanonicalBestiary(fields.bestiary) && isKnownString(fields.equippedWeaponType, WEAPON_TYPES) &&
+    Number.isSafeInteger(fields.pilotLevel) && (fields.pilotLevel as number) >= 1 &&
+    (fields.pilotLevel as number) <= MAX_PILOT_LEVEL &&
+    isStringArray(fields.allocatedSkills, SKILL_NODE_IDS) &&
+    isPlainRecordArray(fields.colonies) && isPlainRecordArray(fields.planets) &&
+    isPlainRecordArray(fields.earthShipments) && isPlainRecordArray(fields.factionStandings) &&
+    isPlainRecordArray(fields.bounties) && isCanonicalGameClock(fields.gameClock) &&
+    (fields.activeExperience === "legacy" || fields.activeExperience === "galaxy") &&
+    (fields.galaxyRun === null || ownDataRecord(fields.galaxyRun) !== null);
+}
+
 function sameDurableData(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return false;
@@ -214,8 +361,7 @@ function snapshotActivePoiMetadata(value: unknown): ActivePoiDescriptor | null {
 
 function isCanonicalCompletionSave(value: unknown): value is SaveData {
   const fields = requiredOwnData(value, REQUIRED_SAVE_DATA_KEYS);
-  return fields !== null && Array.isArray(fields.colonies) && Array.isArray(fields.planets) &&
-    Number.isSafeInteger(fields.missionsSinceStart) && (fields.missionsSinceStart as number) >= 0 &&
+  return fields !== null && hasCanonicalDurablePrimitives(value) && hasCanonicalSaveFieldDomains(fields) &&
     snapshotOutcomeRootAuthority(value as SaveData) !== null;
 }
 
