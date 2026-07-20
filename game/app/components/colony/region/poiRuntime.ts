@@ -43,6 +43,63 @@ export interface LegacyPreparedPoiResolution extends PendingPoiResolution {
   preparedEnvelope: SerializedOutcomeEnvelope;
 }
 
+const INVALID_DURABLE_SNAPSHOT = Symbol("invalid-durable-snapshot");
+
+function snapshotDurableData(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+): unknown | typeof INVALID_DURABLE_SNAPSHOT {
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) return value;
+  if (typeof value === "function" || seen.has(value)) return INVALID_DURABLE_SNAPSHOT;
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) return INVALID_DURABLE_SNAPSHOT;
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+      if (lengthDescriptor === undefined || !("value" in lengthDescriptor) ||
+        !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
+        return INVALID_DURABLE_SNAPSHOT;
+      }
+      const length = lengthDescriptor.value as number;
+      const keys = Reflect.ownKeys(value);
+      if (keys.length !== length + 1 || keys.some((key) => key !== "length" &&
+        (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length))) {
+        return INVALID_DURABLE_SNAPSHOT;
+      }
+      const snapshot: unknown[] = [];
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (descriptor === undefined || !("value" in descriptor)) return INVALID_DURABLE_SNAPSHOT;
+        const entry = snapshotDurableData(descriptor.value, seen);
+        if (entry === INVALID_DURABLE_SNAPSHOT) return INVALID_DURABLE_SNAPSHOT;
+        snapshot.push(entry);
+      }
+      return snapshot;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return INVALID_DURABLE_SNAPSHOT;
+    const snapshot = Object.create(prototype) as Record<string, unknown>;
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") return INVALID_DURABLE_SNAPSHOT;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) return INVALID_DURABLE_SNAPSHOT;
+      const entry = snapshotDurableData(descriptor.value, seen);
+      if (entry === INVALID_DURABLE_SNAPSHOT) return INVALID_DURABLE_SNAPSHOT;
+      Object.defineProperty(snapshot, key, {
+        value: entry,
+        enumerable: descriptor.enumerable,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return snapshot;
+  } catch {
+    return INVALID_DURABLE_SNAPSHOT;
+  } finally {
+    seen.delete(value);
+  }
+}
+
 export function createPoiGameState(
   session: PoiSession,
   save: SaveData,
@@ -126,35 +183,43 @@ export function preparePoiCompletion(
   screen: GameScreen,
   attempt?: OutcomeAttempt,
 ): PendingPoiResolution | LegacyPreparedPoiResolution | null {
-  if (!activePoi || screen !== GameScreen.LEVEL_COMPLETE) return null;
+  const saveSnapshot = snapshotDurableData(save);
+  const activePoiSnapshot = snapshotDurableData(activePoi);
+  const attemptSnapshot = attempt === undefined ? undefined : snapshotDurableData(attempt);
+  if (saveSnapshot === INVALID_DURABLE_SNAPSHOT ||
+    activePoiSnapshot === INVALID_DURABLE_SNAPSHOT || activePoiSnapshot === null ||
+    attemptSnapshot === INVALID_DURABLE_SNAPSHOT || screen !== GameScreen.LEVEL_COMPLETE) return null;
+  const safeSave = saveSnapshot as SaveData;
+  const safeActivePoi = activePoiSnapshot as ActivePoiDescriptor;
   if (attempt !== undefined) {
-    if (attempt.routeKind !== "poi" || attempt.routeIdentity.kind !== "poi" ||
-      attempt.persistenceAuthority !== "legacy" || attempt.returnTarget !== "legacy-colony-exterior" ||
-      attempt.routeIdentity.originColonyId !== activePoi.originColonyId ||
-      attempt.routeIdentity.nodeId !== activePoi.session.nodeId ||
-      attempt.routeIdentity.engine !== activePoi.session.engine ||
-      attempt.routeIdentity.rewardEligible !== activePoi.session.rewardEligible) return null;
-    const preparedEnvelope = createOutcomeEnvelope(attempt, "success", {
+    const safeAttempt = attemptSnapshot as OutcomeAttempt;
+    if (safeAttempt.routeKind !== "poi" || safeAttempt.routeIdentity.kind !== "poi" ||
+      safeAttempt.persistenceAuthority !== "legacy" || safeAttempt.returnTarget !== "legacy-colony-exterior" ||
+      safeAttempt.routeIdentity.originColonyId !== safeActivePoi.originColonyId ||
+      safeAttempt.routeIdentity.nodeId !== safeActivePoi.session.nodeId ||
+      safeAttempt.routeIdentity.engine !== safeActivePoi.session.engine ||
+      safeAttempt.routeIdentity.rewardEligible !== safeActivePoi.session.rewardEligible) return null;
+    const preparedEnvelope = createOutcomeEnvelope(safeAttempt, "success", {
       version: 2,
       kind: "poi_prepared_v2",
     });
-    const preparedSave = stageLegacyPreparedOutcome(save, preparedEnvelope);
+    const preparedSave = stageLegacyPreparedOutcome(safeSave, preparedEnvelope);
     if (preparedSave === null) return null;
     return {
-      originColonyId: activePoi.originColonyId,
-      nodeId: activePoi.session.nodeId,
-      baseSave: save,
-      projectedSave: save,
+      originColonyId: safeActivePoi.originColonyId,
+      nodeId: safeActivePoi.session.nodeId,
+      baseSave: safeSave,
+      projectedSave: safeSave,
       outcome: null,
       preparedSave,
       preparedEnvelope,
     };
   }
-  const baseSave = advanceWorldCycle(save);
-  if (!activePoi.session.rewardEligible) return { originColonyId: activePoi.originColonyId, nodeId: activePoi.session.nodeId, baseSave, projectedSave: baseSave, outcome: null };
-  const created = createPoiOutcome(baseSave, activePoi.originColonyId, activePoi.session.nodeId);
+  const baseSave = advanceWorldCycle(safeSave);
+  if (!safeActivePoi.session.rewardEligible) return { originColonyId: safeActivePoi.originColonyId, nodeId: safeActivePoi.session.nodeId, baseSave, projectedSave: baseSave, outcome: null };
+  const created = createPoiOutcome(baseSave, safeActivePoi.originColonyId, safeActivePoi.session.nodeId);
   if (!created.ok) return null;
-  return { originColonyId: activePoi.originColonyId, nodeId: activePoi.session.nodeId, baseSave, projectedSave: created.save, outcome: created.outcome };
+  return { originColonyId: safeActivePoi.originColonyId, nodeId: safeActivePoi.session.nodeId, baseSave, projectedSave: created.save, outcome: created.outcome };
 }
 
 export function recoverLegacyPoiCompletion(save: SaveData): LegacyPreparedPoiResolution | null {
@@ -174,16 +239,20 @@ export function recoverLegacyPoiCompletion(save: SaveData): LegacyPreparedPoiRes
 export function resolvePoiCompletion(
   pending: LegacyPreparedPoiResolution,
   destinationColonyId: ColonyId | null,
-): { ok: true; save: SaveData; delivery: null; envelope: SerializedOutcomeEnvelope };
+): { ok: true; save: SaveData; delivery: null; envelope: SerializedOutcomeEnvelope } | null;
 export function resolvePoiCompletion(
   pending: PendingPoiResolution,
   destinationColonyId: ColonyId | null,
 ):
   | { ok: true; save: SaveData; delivery: MissionDelivery | null }
-  | { ok: false; save: SaveData; reason: "destination_missing" | "outcome_stale" };
+  | { ok: false; save: SaveData; reason: "destination_missing" | "outcome_stale" }
+  | null;
 export function resolvePoiCompletion(pending: PendingPoiResolution, destinationColonyId: ColonyId | null) {
-  if ("preparedEnvelope" in pending && "preparedSave" in pending) {
-    const prepared = pending as LegacyPreparedPoiResolution;
+  const pendingSnapshot = snapshotDurableData(pending);
+  if (pendingSnapshot === INVALID_DURABLE_SNAPSHOT || pendingSnapshot === null) return null;
+  const safePending = pendingSnapshot as PendingPoiResolution;
+  if ("preparedEnvelope" in safePending && "preparedSave" in safePending) {
+    const prepared = safePending as LegacyPreparedPoiResolution;
     return {
       ok: true as const,
       save: prepared.preparedSave,
@@ -195,7 +264,7 @@ export function resolvePoiCompletion(pending: PendingPoiResolution, destinationC
       }),
     };
   }
-  if (!pending.outcome) return { ok: true as const, save: pending.baseSave, delivery: null };
-  if (!destinationColonyId) return { ok: false as const, save: pending.baseSave, reason: "destination_missing" as const };
-  return confirmPoiOutcome(pending.baseSave, pending.outcome, destinationColonyId);
+  if (!safePending.outcome) return { ok: true as const, save: safePending.baseSave, delivery: null };
+  if (!destinationColonyId) return { ok: false as const, save: safePending.baseSave, reason: "destination_missing" as const };
+  return confirmPoiOutcome(safePending.baseSave, safePending.outcome, destinationColonyId);
 }

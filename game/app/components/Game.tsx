@@ -926,9 +926,9 @@ export default function Game() {
     const resolved = galaxyPending
       ? resolveGalaxyPoiCompletion(saveDataRef.current, "contact:ashfall", galaxyPending, destinationColonyId)
       : resolvePoiCompletion(pending, destinationColonyId);
-    if (!resolved.ok) {
+    if (!resolved || !resolved.ok) {
       setPoiOutcomeError(
-        resolved.reason === "destination_missing"
+        resolved?.reason === "destination_missing"
           ? "DESTINATION UNAVAILABLE"
           : galaxyPending
             ? "OUTCOME VALIDATION FAILED — RETRY OR RELOAD"

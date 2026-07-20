@@ -1439,7 +1439,9 @@ function resolveValidatedGalaxyPending(
     outcome: pending.outcome,
   };
   const native = resolvePoiCompletion(nativePending, destinationColonyId);
-  if (!native.ok) return { ok: false, save, reason: native.reason };
+  if (native === null || !native.ok) {
+    return { ok: false, save, reason: native?.reason ?? "outcome_stale" };
+  }
   const merged = mergeProjectedRegion(opened, native.save);
   if (!merged.ok) return { ok: false, save, reason: merged.reason };
   return {

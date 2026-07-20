@@ -2018,6 +2018,39 @@ test("present malformed migration authority containers lock instead of erasing i
   assert.deepEqual(absent.outcomeRecoveryRecords, []);
 });
 
+test("malformed root journals preserve own-data outcome evidence without invoking accessors", () => {
+  let getterReads = 0;
+  const journal = ["known:success"];
+  Object.defineProperty(journal, "opaque", {
+    configurable: true,
+    enumerable: false,
+    get() {
+      getterReads += 1;
+      throw new Error("migration must not inspect opaque journal authority");
+    },
+  });
+
+  const migrated = migrateSave({
+    saveRevision: 1,
+    appliedOutcomeIds: journal,
+    outcomeRecoveryRecords: [],
+  });
+
+  assert.equal(getterReads, 0);
+  assert.deepEqual(migrated.appliedOutcomeIds, ["known:success"]);
+  const lock = migrated.outcomeRecoveryRecords[0];
+  assert.equal(lock?.kind, "reconciliation_required");
+  if (lock?.kind === "reconciliation_required") {
+    assert.equal(lock.reason, "outcome_authority_invalid");
+    assert.ok(lock.protectedOutcomeIds.includes("known:success"));
+    assert.ok(lock.protectedOutcomeIds.length <= 256);
+  }
+
+  const reloaded = migrateSave(JSON.parse(JSON.stringify(migrated)));
+  assert.deepEqual(reloaded, migrated);
+  assert.equal(JSON.stringify(reloaded), JSON.stringify(migrated));
+});
+
 test("new dynamic POI and Colony terminals require exact latest inherited authority", () => {
   const legacy = readyLegacyPoi(migrateSave({}));
   const forged = [

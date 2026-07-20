@@ -120,6 +120,8 @@ test("only active LEVEL_COMPLETE stages v2 authority; the final fold owns the on
   assert.deepEqual(recovered!.outcome, pending!.outcome);
 
   const resolved = resolvePoiCompletion(pending!, "home");
+  assert.ok(resolved);
+  if (!resolved) return;
   assert.equal(resolved.ok, true);
   if (!resolved.ok) return;
   assert.equal(resolved.envelope.outcomeId, pending!.preparedEnvelope.outcomeId);
@@ -130,4 +132,119 @@ test("only active LEVEL_COMPLETE stages v2 authority; the final fold owns the on
   });
   assert.equal(resolved.save.colonies[0].resources.metal, 0);
   assert.equal(resolved.save.planets[0].regionMap.nodes.find(n => n.id === "ashfall-cinder-relay")?.intel, "surveyed");
+});
+
+test("Legacy POI outcome APIs reject hostile inputs without invoking getters or throwing", () => {
+  const save = ready();
+  const dispatched = dispatchPoi(save, "home", "ashfall-cinder-relay");
+  assert.equal(dispatched.ok, true);
+  if (!dispatched.ok) return;
+  const active = { originColonyId: "home", session: dispatched.session };
+  const state = createPoiGameState(
+    dispatched.session,
+    save,
+    "legacy",
+    () => "hostile-poi-inputs",
+    save,
+    "home",
+  );
+  assert.ok(state.outcomeAttempt);
+
+  const revokedSave = Proxy.revocable(save, {});
+  revokedSave.revoke();
+  assert.doesNotThrow(() => preparePoiCompletion(
+    revokedSave.proxy,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ));
+  assert.equal(preparePoiCompletion(
+    revokedSave.proxy,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ), null);
+
+  let saveReads = 0;
+  const accessorSave = { ...save };
+  Object.defineProperty(accessorSave, "saveRevision", {
+    enumerable: true,
+    get() {
+      saveReads += 1;
+      throw new Error("save getter must remain opaque");
+    },
+  });
+  assert.equal(preparePoiCompletion(
+    accessorSave,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ), null);
+  assert.equal(saveReads, 0);
+
+  const revokedActive = Proxy.revocable(active, {});
+  revokedActive.revoke();
+  assert.doesNotThrow(() => preparePoiCompletion(
+    save,
+    revokedActive.proxy,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ));
+  assert.equal(preparePoiCompletion(
+    save,
+    revokedActive.proxy,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ), null);
+
+  let activeSessionReads = 0;
+  const accessorActive = { originColonyId: "home" } as typeof active;
+  Object.defineProperty(accessorActive, "session", {
+    enumerable: true,
+    get() {
+      activeSessionReads += 1;
+      throw new Error("active session getter must remain opaque");
+    },
+  });
+  assert.equal(preparePoiCompletion(
+    save,
+    accessorActive,
+    GameScreen.LEVEL_COMPLETE,
+    state.outcomeAttempt!,
+  ), null);
+  assert.equal(activeSessionReads, 0);
+
+  let attemptReads = 0;
+  const accessorAttempt = { ...state.outcomeAttempt! };
+  Object.defineProperty(accessorAttempt, "routeKind", {
+    enumerable: true,
+    get() {
+      attemptReads += 1;
+      throw new Error("attempt getter must remain opaque");
+    },
+  });
+  assert.equal(preparePoiCompletion(
+    save,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    accessorAttempt,
+  ), null);
+  assert.equal(attemptReads, 0);
+
+  const revokedPending = Proxy.revocable({}, {});
+  revokedPending.revoke();
+  assert.doesNotThrow(() => resolvePoiCompletion(revokedPending.proxy as never, null));
+  assert.equal(resolvePoiCompletion(revokedPending.proxy as never, null), null);
+
+  let pendingReads = 0;
+  const accessorPending = {};
+  Object.defineProperty(accessorPending, "preparedEnvelope", {
+    enumerable: true,
+    get() {
+      pendingReads += 1;
+      throw new Error("pending getter must remain opaque");
+    },
+  });
+  assert.equal(resolvePoiCompletion(accessorPending as never, null), null);
+  assert.equal(pendingReads, 0);
 });

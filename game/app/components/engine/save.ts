@@ -105,6 +105,31 @@ function migrateStringJournal(value: unknown): string[] {
   return newestFirst.reverse();
 }
 
+function snapshotRecoverableStringJournal(value: unknown): string[] {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return [];
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    if (lengthDescriptor === undefined || !("value" in lengthDescriptor) ||
+      !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) return [];
+    const length = lengthDescriptor.value as number;
+    const entries: Array<readonly [number, string]> = [];
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key)) continue;
+      const index = Number(key);
+      if (!Number.isSafeInteger(index) || index >= length) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor !== undefined && "value" in descriptor &&
+        typeof descriptor.value === "string" && descriptor.value.length > 0) {
+        entries.push([index, descriptor.value]);
+      }
+    }
+    entries.sort(([left], [right]) => left - right);
+    return migrateStringJournal(entries.map(([, entry]) => entry));
+  } catch {
+    return [];
+  }
+}
+
 function snapshotStrictStringJournal(value: unknown): string[] | null {
   const entries = snapshotDenseArray(value);
   return entries !== null && entries.every((entry) => typeof entry === "string" && entry.length > 0) &&
@@ -654,8 +679,6 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
     ? "galaxy"
     : "legacy";
   const missionsSinceStart = (raw.missionsSinceStart as number) ?? 0;
-  const journalSnapshot = rawJournalField.kind === "data" ? snapshotDenseArray(rawJournalField.value) :
-    rawJournalField.kind === "absent" ? [] : null;
   const strictRootJournal = rawJournalField.kind === "data"
     ? snapshotStrictStringJournal(rawJournalField.value)
     : rawJournalField.kind === "absent" ? [] : null;
@@ -673,7 +696,9 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       (rawRevisionField.value as number) < 0));
   const rawOutcomeJournal = preA3SeedIsCoherent
     ? [...rawGalaxyJournalInspection.nestedOutcomeIds]
-    : migrateStringJournal(journalSnapshot ?? []);
+    : strictRootJournal ?? (rawJournalField.kind === "data"
+      ? snapshotRecoverableStringJournal(rawJournalField.value)
+      : []);
   let outcomeRecoveryRecords = migrateOutcomeRecoveryRecords(
     recoverySnapshot ?? [],
     saveRevision,
@@ -687,7 +712,7 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
     outcomeRecoveryRecords = reconcileRecoveryAuthority(
       outcomeRecoveryRecords,
       "outcome_authority_invalid",
-      [],
+      rawOutcomeJournal,
       opaqueAuthorityCount,
     );
   }
