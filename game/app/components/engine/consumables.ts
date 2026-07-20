@@ -1,6 +1,7 @@
 import type { ConsumableId, SaveData, FPShopPurchaseRequest } from "./types";
 import { CONSUMABLE_DEFS, isConsumableUnlocked, getConsumableDef } from "./planets";
 import { adjustedBuyPrice, type FactionRank } from "../colony/shared/factionLedger";
+import { purchaseService } from "./shopServices";
 
 // ─── Consumable Inventory Management ────────────────────────────────
 
@@ -35,10 +36,10 @@ export function purchaseConsumable(
 /**
  * Phase 5a §I: apply a drained FP-shop purchase request to a save. Pure — returns
  * a new SaveData on success (credits deducted, item granted) or `null` on any
- * failure (locked / unaffordable / max-carry). Keeps the Game.tsx drain a thin
- * one-liner and makes the buy-application unit-testable. Consumables only for now.
- * `buyRank` is the merchant's faction rank (colonyMerchantRank at the drain
- * site) — the charge matches the rank-adjusted price the shop displayed.
+ * failure (locked / unaffordable / max-carry / unknown service). Keeps the
+ * Game.tsx drain thin and makes buy application unit-testable. `buyRank` is the
+ * merchant's faction rank (colonyMerchantRank at the drain site); it adjusts
+ * consumable prices only. Services always charge their catalog price.
  */
 export function applyShopPurchase(
   save: SaveData,
@@ -48,7 +49,7 @@ export function applyShopPurchase(
   if (request.kind === "consumable") {
     return purchaseConsumable(save, request.itemId, buyRank);
   }
-  return null;
+  return purchaseService(save, request.serviceId);
 }
 
 export function equipConsumable(

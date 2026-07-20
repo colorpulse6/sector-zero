@@ -4,11 +4,19 @@ import {
   updateFirstPerson,
   __runFirstPersonSelfTests,
 } from "../../app/components/engine/firstPersonEngine";
-import type { BoardingMap, Keys, SaveData } from "../../app/components/engine/types";
+import type {
+  BoardingMap,
+  FPServiceId,
+  FPShopPurchaseRequest,
+  Keys,
+  SaveData,
+} from "../../app/components/engine/types";
 import { AudioEvent } from "../../app/components/engine/types";
+import type { FactionRank } from "../../app/components/colony/shared/factionLedger";
 import { NPC_SPRITE_MAP, resolveNpcSprite } from "../../app/components/engine/fpRender/sceneInput";
 import { SPRITES } from "../../app/components/engine/sprites";
 import { applyShopPurchase } from "../../app/components/engine/consumables";
+import { createAshfallForwardCampState } from "../../app/components/engine/ashfallForwardCamp";
 
 // ─── Fixtures ────────────────────────────────────────────────────────
 // Task 6: frame-rate-independent movement. These tests pin the delta-time
@@ -334,15 +342,16 @@ test("H2: NPC sprite resolution prefers an explicit sprite, else name map, else 
     "unmapped, spriteless NPC falls back to survivor");
 });
 
-// ─── Phase 5a §I — FP shop purchase flow (consumables, quartermaster-only) ────
-// The quartermaster's shop is a REAL purchase flow (select → buy) gated by an
-// explicit shopCanBuy flag; Ashfall's shop (no canBuy → shopCanBuy falsy) stays
-// display-only. These pin: selection nav (debounced), a typed buy request on a
-// consumable row, LEAVE-closes, the Ashfall regression (never buys, old close,
-// no soft-lock), reopenability, the movement-freeze, and the drain helper.
+// ─── Phase 5a §I / M3 Cantina — FP shop purchase flow ──────────────
+// Buyable shops emit typed requests for supported consumables and services.
+// Ashfall's shop (no canBuy → shopCanBuy falsy) stays display-only. These pin:
+// selection nav (debounced), typed requests, LEAVE-closes, the Ashfall regression
+// (never buys, old close, no soft-lock), reopenability, movement-freeze, and the
+// pure purchase-application helpers.
 
 interface ShopItemLike {
-  id: string; name: string; description: string; cost: number; type: string; itemId?: string;
+  id: string; name: string; description: string; cost: number; type: string;
+  itemId?: string; serviceId?: string;
 }
 interface ShopDialogLike {
   active: boolean; npcId: number; lines: { speaker: string; text: string }[]; currentLine: number;
@@ -351,7 +360,7 @@ interface ShopDialogLike {
 }
 interface ShopFp {
   dialogState: ShopDialogLike | null;
-  shopPurchaseRequest?: { kind: string; itemId: string };
+  shopPurchaseRequest?: { kind: string; itemId?: string; serviceId?: string };
   posX: number; posY: number; gunCooldown: number;
 }
 const shopFp = (g: { fp: unknown }) => g.fp as ShopFp;
@@ -408,6 +417,100 @@ test("shop(I): interact on a consumable row emits a typed purchase request; shop
   assert.ok(shopFp(g).dialogState, "the shop stays open after a buy (not closed)");
 });
 
+test("shop(M3): interact on a service row emits the exact typed request; shop stays open", () => {
+  const g = makeFpGame({
+    dialogState: shopDialog({
+      selectedIndex: 0,
+      shopItems: [item({
+        id: "cantina-house-pour",
+        name: "House Pour",
+        description: "A local drink and a place at the bar.",
+        cost: 5,
+        type: "service",
+        itemId: undefined,
+        serviceId: "cantina-house-pour",
+      })],
+    }),
+    npcs: [makeNpc({ id: 1, type: "merchant", canBuy: true })],
+    gunCooldown: 0,
+  });
+
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+
+  assert.deepEqual(
+    shopFp(g).shopPurchaseRequest,
+    { kind: "service", serviceId: "cantina-house-pour" },
+    "the engine emits only the authoritative service identity",
+  );
+  assert.equal(shopFp(g).dialogState?.shopOpen, true, "the shop stays open after selecting a service");
+});
+
+test("shop(M3): a drained service request is not re-emitted without another accepted interact", () => {
+  const g = makeFpGame({
+    dialogState: shopDialog({
+      selectedIndex: 0,
+      shopItems: [item({
+        id: "cantina-house-pour",
+        name: "House Pour",
+        description: "A local drink and a place at the bar.",
+        cost: 5,
+        type: "service",
+        itemId: undefined,
+        serviceId: "cantina-house-pour",
+      })],
+    }),
+    npcs: [makeNpc({ id: 1, type: "merchant", canBuy: true })],
+    gunCooldown: 0,
+  });
+
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+  assert.ok(shopFp(g).shopPurchaseRequest, "sanity: the first accepted interact emits a request");
+  shopFp(g).shopPurchaseRequest = undefined; // Simulate the later Game.tsx drain.
+
+  updateFirstPerson(g.game, keys(), 16.67);
+
+  assert.equal(
+    shopFp(g).shopPurchaseRequest,
+    undefined,
+    "a frame with no accepted interact leaves the drained channel empty",
+  );
+});
+
+test("shop(M3) regression: buyable legacy material and upgrade rows emit no request", () => {
+  for (const type of ["material", "upgrade"] as const) {
+    const g = makeFpGame({
+      dialogState: shopDialog({
+        selectedIndex: 0,
+        shopItems: [item({ type, itemId: `legacy-${type}` })],
+      }),
+      npcs: [makeNpc({ id: 1, type: "merchant", canBuy: true })],
+      gunCooldown: 0,
+    });
+
+    updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+
+    assert.equal(shopFp(g).shopPurchaseRequest, undefined, `${type}: no request is emitted`);
+    assert.equal(shopFp(g).dialogState?.shopOpen, true, `${type}: the display row leaves the shop open`);
+  }
+});
+
+test("shop(M3): buildServiceShopItem mirrors the authoritative House Pour catalog at 5 credits", async () => {
+  const { CANTINA_SERVICE_DEFS, buildServiceShopItem } = await import(
+    "../../app/components/engine/shopServices"
+  );
+  const serviceId = "cantina-house-pour";
+
+  const item = buildServiceShopItem(serviceId);
+
+  assert.deepEqual(item, {
+    id: serviceId,
+    type: "service",
+    serviceId,
+    ...CANTINA_SERVICE_DEFS[serviceId],
+  });
+  assert.equal(item.cost, 5, "the displayed House Pour cost is exactly 5 credits");
+});
+
 test("shop(I): interact on the LEAVE row closes the dialog and emits no request", () => {
   const g = makeFpGame({
     dialogState: shopDialog({ selectedIndex: 1, shopItems: [item()] }), // leaveIndex = 1
@@ -429,6 +532,37 @@ test("shop(I) regression: a display-only shop (no shopCanBuy) never buys; intera
   updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
   assert.equal(shopFp(g).shopPurchaseRequest, undefined, "display-only shop never emits a purchase request");
   assert.equal(shopFp(g).dialogState!.shopOpen, false, "interact closes the display-only shop (old behavior)");
+});
+
+test("shop(M3) regression: real Lt. Reyes inventory remains display-only and closes without a request", () => {
+  const camp = createAshfallForwardCampState();
+  const reyes = camp.npcs.find((npc) => npc.name === "Lt. Reyes");
+  assert.ok(reyes, "the Ashfall fixture includes Lt. Reyes");
+  assert.notEqual(reyes!.canBuy, true, "Reyes remains a display-only merchant");
+  assert.deepEqual(
+    reyes!.shopItems?.map(({ id, type, itemId }) => ({ id, type, itemId })),
+    [
+      { id: "hull-repair", type: "consumable", itemId: "hull-repair-kit" },
+      { id: "scanner", type: "consumable", itemId: "scanner-pulse" },
+      { id: "desert-glass", type: "material", itemId: "desert-glass" },
+    ],
+    "all three legacy Reyes rows remain intact",
+  );
+
+  const g = makeFpGame({
+    dialogState: shopDialog({
+      npcId: reyes!.id,
+      shopCanBuy: undefined,
+      shopItems: reyes!.shopItems as unknown as ShopItemLike[],
+    }),
+    npcs: camp.npcs,
+    gunCooldown: 0,
+  });
+
+  updateFirstPerson(g.game, keys({ shoot: true }), 16.67);
+
+  assert.equal(shopFp(g).dialogState?.shopOpen, false, "interact closes Reyes' display-only shop");
+  assert.equal(shopFp(g).shopPurchaseRequest, undefined, "Reyes never emits a purchase request");
 });
 
 test("shop(I): a merchant's shop opens at end-of-dialog regardless of npc.interacted (reopenable)", () => {
@@ -517,4 +651,62 @@ test("shop(I) drain: hated rank doubles the charge — an otherwise-affordable i
   const save = { credits: 500, completedPlanets: ["verdania"], consumableInventory: {} } as unknown as SaveData;
   const next = applyShopPurchase(save, { kind: "consumable", itemId: "hull-repair" }, "hated");
   assert.equal(next, null, "300-cost item costs 600 at hated → unaffordable with 500 credits");
+});
+
+test("shop(M3) drain: an affordable House Pour deducts 5 credits without changing consumables", () => {
+  const consumableInventory = { "hull-repair": 2 } as const;
+  const save = { credits: 5, consumableInventory } as unknown as SaveData;
+
+  const next = applyShopPurchase(save, { kind: "service", serviceId: "cantina-house-pour" });
+
+  assert.ok(next, "an affordable service returns a save");
+  assert.notEqual(next, save, "a successful service returns a new save object");
+  assert.equal(next!.credits, 0, "House Pour costs exactly 5 credits");
+  assert.equal(next!.consumableInventory, consumableInventory, "services do not touch consumable inventory");
+});
+
+test("shop(M3) drain: House Pour costs exactly 5 at every faction rank", () => {
+  const ranks: readonly FactionRank[] = ["hostile", "hated", "neutral", "liked", "allied"];
+
+  for (const rank of ranks) {
+    const save = { credits: 5, consumableInventory: {} } as unknown as SaveData;
+    const next = applyShopPurchase(
+      save,
+      { kind: "service", serviceId: "cantina-house-pour" },
+      rank,
+    );
+    assert.ok(next, `${rank}: a 5-credit wallet can always afford the service`);
+    assert.equal(next!.credits, 0, `${rank}: service pricing ignores faction rank`);
+  }
+});
+
+test("shop(M3) drain: credits below 5 fail without mutating the input save", () => {
+  const save = { credits: 4, consumableInventory: { "hull-repair": 1 } } as unknown as SaveData;
+  const before = JSON.parse(JSON.stringify(save));
+
+  const next = applyShopPurchase(save, { kind: "service", serviceId: "cantina-house-pour" });
+
+  assert.equal(next, null, "an unaffordable service returns null");
+  assert.deepEqual(save, before, "the failed application leaves the input unchanged");
+});
+
+test("shop(M3) drain: unknown runtime service IDs fail closed without mutation", async () => {
+  const { purchaseService } = await import("../../app/components/engine/shopServices");
+  const save = { credits: 100, consumableInventory: { "hull-repair": 1 } } as unknown as SaveData;
+  const before = JSON.parse(JSON.stringify(save));
+
+  for (const runtimeId of ["cantina-unknown", "__proto__", "constructor", "toString"] as const) {
+    const unknownId = runtimeId as FPServiceId;
+    const next = purchaseService(save, unknownId);
+    assert.equal(next, null, `${runtimeId}: an unknown service returns null`);
+    assert.deepEqual(save, before, `${runtimeId}: the unknown service leaves the input unchanged`);
+
+    const unknownRequest = { kind: "service", serviceId: unknownId } as FPShopPurchaseRequest;
+    assert.equal(
+      applyShopPurchase(save, unknownRequest),
+      null,
+      `${runtimeId}: the application boundary also fails closed`,
+    );
+    assert.deepEqual(save, before, `${runtimeId}: the application boundary does not mutate the input`);
+  }
 });
