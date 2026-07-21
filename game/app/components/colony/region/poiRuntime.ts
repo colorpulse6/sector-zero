@@ -25,7 +25,6 @@ import { getBoardingSpawn } from "../../engine/boardingLevel";
 import { getSpawnPosition as getGroundSpawn } from "../../engine/groundLevel";
 import { MAX_PILOT_LEVEL } from "../../engine/pilotLevel";
 import { advanceWorldCycle } from "../shared/cycleProcessor";
-import { COLONY_POPULATION_OVERFLOW_LIMIT } from "../shared/colonyAssert";
 import { rankFromStanding } from "../shared/factionLedger";
 import type { ColonyId } from "../shared/colonyTypes";
 import type { MissionDelivery } from "../shared/missionDelivery";
@@ -125,6 +124,7 @@ const REGION_NODE_TYPES = [
 const REGION_INTEL_STATES = ["unknown", "rumored", "surveyed", "cleared", "claimed"] as const;
 const FACTION_RANKS = ["hostile", "hated", "neutral", "liked", "allied"] as const;
 const BOUNTY_REASONS = ["murder", "theft", "trespass", "treason"] as const;
+const COLONY_POPULATION_OVERFLOW_LIMIT = 20;
 const compatibilityPendingAuthority = new WeakMap<object, PendingPoiResolution>();
 
 function ownDataRecord(value: unknown): Record<string, unknown> | null {
@@ -520,17 +520,23 @@ function isCanonicalGameClock(value: unknown): boolean {
     clock.realtimeMsPerGameMinute > 0 && isKnownString(clock.season, GAME_CLOCK_SEASONS);
 }
 
-function hasCanonicalDurablePrimitives(value: unknown, root = true): boolean {
-  if (value === undefined) return false;
+function hasCanonicalDurablePrimitives(
+  value: unknown,
+  path: readonly (string | number)[] = [],
+): boolean {
+  if (value === undefined) {
+    return (path.length === 1 && path[0] === "introSeen") ||
+      (path.length === 3 && path[0] === "bestiary" && typeof path[1] === "string" &&
+        (path[2] === "firstSeenPlanet" || path[2] === "firstSeenWorld"));
+  }
   if (value === null || typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (typeof value !== "object") return false;
-  if (Array.isArray(value)) return value.every((entry) => hasCanonicalDurablePrimitives(entry, false));
+  if (Array.isArray(value)) return value.every((entry, index) =>
+    hasCanonicalDurablePrimitives(entry, [...path, index]));
   const record = ownDataRecord(value);
   return record !== null && Object.entries(record).every(([key, entry]) =>
-    root && key === "introSeen" && entry === undefined
-      ? true
-      : hasCanonicalDurablePrimitives(entry, false));
+    hasCanonicalDurablePrimitives(entry, [...path, key]));
 }
 
 function hasCanonicalSaveFieldDomains(fields: Record<string, unknown>): boolean {
