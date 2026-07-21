@@ -104,6 +104,25 @@ const ENEMY_CLASSES = [
   "elemental-fire", "elemental-ice", "elemental-cinder",
 ] as const;
 const GAME_CLOCK_SEASONS = ["standard", "storm", "bloom", "deadzone"] as const;
+const PLANET_BIOMES = ["ice", "volcanic", "ocean", "desert", "jungle", "urban", "barren", "toxic"] as const;
+const COLONY_FOUNDING_TYPES = ["outpost", "colony", "stronghold"] as const;
+const BUILDING_TYPES = [
+  "solar_array", "farm", "water_purifier", "mine", "refinery", "habitat_module", "med_bay",
+  "marketplace", "cantina", "town_hall", "barracks", "turret_defense", "shield_generator",
+  "radar_array", "comms_tower", "spaceport", "research_lab", "atmosphere_processor",
+] as const;
+const BUILDING_STATUSES = ["constructing", "operational", "damaged", "offline", "destroyed"] as const;
+const DISTRICT_KINDS = ["residential", "market", "industrial", "civic", "military"] as const;
+const THREAT_KINDS = ["raid_incoming", "siege_ongoing", "disaster_active", "supply_disruption"] as const;
+const THREAT_SEVERITIES = ["minor", "major", "catastrophic"] as const;
+const DEATH_CAUSES = ["hunger", "disease", "raid", "siege", "disaster", "player", "natural"] as const;
+const REGION_NODE_TYPES = [
+  "colony_site", "ruins", "hollow_bunker", "cave", "crash_site", "wreck", "raider_outpost",
+  "neutral_village", "wilderness", "anomaly", "abandoned_colony",
+] as const;
+const REGION_INTEL_STATES = ["unknown", "rumored", "surveyed", "cleared", "claimed"] as const;
+const FACTION_RANKS = ["hostile", "hated", "neutral", "liked", "allied"] as const;
+const BOUNTY_REASONS = ["murder", "theft", "trespass", "treason"] as const;
 const compatibilityPendingAuthority = new WeakMap<object, PendingPoiResolution>();
 
 function ownDataRecord(value: unknown): Record<string, unknown> | null {
@@ -228,8 +247,220 @@ function isStringArray(value: unknown, allowed?: readonly string[]): value is st
     typeof entry === "string" && entry.length > 0 && (allowed === undefined || allowed.includes(entry)));
 }
 
-function isPlainRecordArray(value: unknown): boolean {
-  return Array.isArray(value) && value.every((entry) => ownDataRecord(entry) !== null);
+function isNullableString(value: unknown): boolean {
+  return value === null || (typeof value === "string" && value.length > 0);
+}
+
+function isFiniteInRange(value: unknown, minimum: number, maximum: number): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+
+function isCanonicalSiteStats(value: unknown): boolean {
+  const stats = exactOwnData(value, ["oreDensity", "waterTable", "buildableSlots", "threat"]);
+  return stats !== null && isFiniteInRange(stats.oreDensity, 0, 100) &&
+    isFiniteInRange(stats.waterTable, 0, 100) &&
+    Number.isSafeInteger(stats.buildableSlots) && (stats.buildableSlots as number) >= 0 &&
+    isFiniteInRange(stats.threat, 0, 100);
+}
+
+function isCanonicalDeathRecord(value: unknown): boolean {
+  const record = exactOwnData(value, ["npcId", "cyclesAgo", "cause", "colonyId"]);
+  return record !== null && isNullableString(record.npcId) && isNonnegativeSafeInteger(record.cyclesAgo) &&
+    isKnownString(record.cause, DEATH_CAUSES) && typeof record.colonyId === "string" &&
+    record.colonyId.length > 0;
+}
+
+function isCanonicalPopulation(value: unknown): boolean {
+  const population = exactOwnData(value, ["total", "capacity", "namedCount", "growthRate", "recentDeaths"]);
+  return population !== null && isNonnegativeSafeInteger(population.total) &&
+    isNonnegativeSafeInteger(population.capacity) && isNonnegativeSafeInteger(population.namedCount) &&
+    typeof population.growthRate === "number" && Number.isFinite(population.growthRate) &&
+    Array.isArray(population.recentDeaths) && population.recentDeaths.length <= 10 &&
+    population.recentDeaths.every(isCanonicalDeathRecord);
+}
+
+function isCanonicalColonyResources(value: unknown): boolean {
+  const resources = exactOwnData(value, ["food", "water", "metal", "credits"]);
+  return resources !== null && Object.values(resources).every(isNonnegativeSafeInteger);
+}
+
+function isCanonicalBuilding(value: unknown): boolean {
+  const building = exactOwnData(value, [
+    "id", "type", "tier", "status", "buildProgressCycles", "hp", "maxHp",
+    "interiorTemplateId", "assignedNpcIds", "districtId",
+  ]);
+  return building !== null && typeof building.id === "string" && building.id.length > 0 &&
+    isKnownString(building.type, BUILDING_TYPES) &&
+    Number.isSafeInteger(building.tier) && (building.tier as number) >= 1 && (building.tier as number) <= 3 &&
+    isKnownString(building.status, BUILDING_STATUSES) && isNonnegativeSafeInteger(building.buildProgressCycles) &&
+    isNonnegativeSafeInteger(building.hp) && isNonnegativeSafeInteger(building.maxHp) &&
+    (building.hp as number) <= (building.maxHp as number) && isNullableString(building.interiorTemplateId) &&
+    isStringArray(building.assignedNpcIds) && isNullableString(building.districtId);
+}
+
+function isCanonicalDistrict(value: unknown): boolean {
+  const district = exactOwnData(value, ["id", "colonyId", "kind", "tiles", "travelAnchorId"]);
+  return district !== null && typeof district.id === "string" && district.id.length > 0 &&
+    typeof district.colonyId === "string" && district.colonyId.length > 0 &&
+    isKnownString(district.kind, DISTRICT_KINDS) && Array.isArray(district.tiles) &&
+    district.tiles.every((tile) => Array.isArray(tile) && tile.length === 2 &&
+      tile.every((coordinate) => Number.isSafeInteger(coordinate))) &&
+    isNullableString(district.travelAnchorId);
+}
+
+function isCanonicalThreat(value: unknown): boolean {
+  const threat = exactOwnData(value, [
+    "id", "kind", "cyclesUntilResolve", "severity", "targetBuildingId", "payload",
+  ]);
+  return threat !== null && typeof threat.id === "string" && threat.id.length > 0 &&
+    isKnownString(threat.kind, THREAT_KINDS) && isNonnegativeSafeInteger(threat.cyclesUntilResolve) &&
+    isKnownString(threat.severity, THREAT_SEVERITIES) && isNullableString(threat.targetBuildingId);
+}
+
+function isCanonicalColony(value: unknown): boolean {
+  const colony = exactOwnData(value, [
+    "id", "name", "planetId", "foundingType", "tier", "regionNodeId", "siteStats", "population",
+    "resources", "buildings", "districts", "namedNpcs", "backgroundColonistDensity", "happiness",
+    "selfSufficient", "lastCycleProcessed", "lastGameClock", "activeThreats", "activeQuestlines",
+    "discoveredPoiIds", "layoutSeed", "founded",
+  ]);
+  if (colony === null || typeof colony.id !== "string" || colony.id.length === 0 ||
+    typeof colony.name !== "string" || colony.name.length === 0 || !isKnownString(colony.planetId, PLANET_IDS) ||
+    !isKnownString(colony.foundingType, COLONY_FOUNDING_TYPES) || !Number.isSafeInteger(colony.tier) ||
+    (colony.tier as number) < 1 || (colony.tier as number) > 4 ||
+    typeof colony.regionNodeId !== "string" || colony.regionNodeId.length === 0 ||
+    !isCanonicalSiteStats(colony.siteStats) || !isCanonicalPopulation(colony.population) ||
+    !isCanonicalColonyResources(colony.resources) || !Array.isArray(colony.buildings) ||
+    !colony.buildings.every(isCanonicalBuilding) || !Array.isArray(colony.districts) ||
+    !colony.districts.every(isCanonicalDistrict) || !isStringArray(colony.namedNpcs) ||
+    !isFiniteInRange(colony.backgroundColonistDensity, 0, 1) || !isFiniteInRange(colony.happiness, 0, 100) ||
+    typeof colony.selfSufficient !== "boolean" || !isNonnegativeSafeInteger(colony.lastCycleProcessed) ||
+    !isCanonicalGameClock(colony.lastGameClock) || !Array.isArray(colony.activeThreats) ||
+    !colony.activeThreats.every(isCanonicalThreat) || !isStringArray(colony.activeQuestlines) ||
+    !isStringArray(colony.discoveredPoiIds) || !Number.isSafeInteger(colony.layoutSeed)) return false;
+  const founded = exactOwnData(colony.founded, ["missionCount", "gameClockTick"]);
+  return founded !== null && isNonnegativeSafeInteger(founded.missionCount) &&
+    isNonnegativeSafeInteger(founded.gameClockTick);
+}
+
+function isCanonicalElevationMetadata(value: unknown): boolean {
+  if (value === null) return true;
+  const elevation = exactOwnData(value, [
+    "authoredTemplateId", "overrideName", "questlineId", "requiredCampaignState",
+  ]);
+  return elevation !== null && typeof elevation.authoredTemplateId === "string" &&
+    elevation.authoredTemplateId.length > 0 && typeof elevation.overrideName === "string" &&
+    elevation.overrideName.length > 0 && typeof elevation.questlineId === "string" &&
+    elevation.questlineId.length > 0 && isNullableString(elevation.requiredCampaignState);
+}
+
+function isCanonicalRegionNode(value: unknown): boolean {
+  const node = exactOwnData(value, [
+    "id", "name", "type", "intel", "siteStats", "discovered", "authored", "templateId", "seed",
+    "cleared", "respawnMissions", "coords", "elevationMetadata",
+  ]);
+  if (node === null || typeof node.id !== "string" || node.id.length === 0 ||
+    typeof node.name !== "string" || node.name.length === 0 || !isKnownString(node.type, REGION_NODE_TYPES) ||
+    !isKnownString(node.intel, REGION_INTEL_STATES) ||
+    (node.type === "colony_site" ? !isCanonicalSiteStats(node.siteStats) : node.siteStats !== null) ||
+    typeof node.discovered !== "boolean" || typeof node.authored !== "boolean" ||
+    !isNullableString(node.templateId) || !isNonnegativeSafeInteger(node.seed) ||
+    typeof node.cleared !== "boolean" ||
+    !(node.respawnMissions === null || isNonnegativeSafeInteger(node.respawnMissions)) ||
+    !isCanonicalElevationMetadata(node.elevationMetadata)) return false;
+  const coords = exactOwnData(node.coords, ["x", "y"]);
+  return coords !== null && typeof coords.x === "number" && Number.isFinite(coords.x) &&
+    typeof coords.y === "number" && Number.isFinite(coords.y);
+}
+
+function isCanonicalRegionMap(value: unknown): boolean {
+  const map = exactOwnData(value, ["seed", "nodes", "edges"]);
+  if (map === null || !isNonnegativeSafeInteger(map.seed) || !Array.isArray(map.nodes) ||
+    !map.nodes.every(isCanonicalRegionNode) || !Array.isArray(map.edges)) return false;
+  const nodeIds = new Set((map.nodes as Array<{ id: string }>).map((node) => node.id));
+  if (nodeIds.size !== map.nodes.length) return false;
+  return map.edges.every((edge) => Array.isArray(edge) && edge.length === 2 &&
+    edge.every((nodeId) => typeof nodeId === "string" && nodeIds.has(nodeId)));
+}
+
+function isCanonicalPlanet(value: unknown): boolean {
+  const planet = exactOwnData(value, ["id", "regionMap", "biome", "campaignUnlocked"]);
+  return planet !== null && isKnownString(planet.id, PLANET_IDS) && isCanonicalRegionMap(planet.regionMap) &&
+    isKnownString(planet.biome, PLANET_BIOMES) && typeof planet.campaignUnlocked === "boolean";
+}
+
+function isCanonicalShipmentContents(value: unknown): boolean {
+  const contents = ownDataRecord(value);
+  if (contents === null || Object.keys(contents).some((key) =>
+    !["food", "water", "metal", "credits", "combatMaterials"].includes(key))) return false;
+  return ["food", "water", "metal", "credits"].every((key) =>
+    contents[key] === undefined || isNonnegativeSafeInteger(contents[key])) &&
+    (contents.combatMaterials === undefined || (() => {
+      const materials = ownDataRecord(contents.combatMaterials);
+      return materials !== null && Object.entries(materials).every(([key, count]) =>
+        key.length > 0 && isNonnegativeSafeInteger(count));
+    })());
+}
+
+function isCanonicalShipment(value: unknown): boolean {
+  const shipment = exactOwnData(value, [
+    "id", "contents", "eta", "interceptionChance", "interceptionTriggered", "destinationColonyId", "costPaid",
+  ]);
+  if (shipment === null || typeof shipment.id !== "string" || shipment.id.length === 0 ||
+    !isCanonicalShipmentContents(shipment.contents) || !isFiniteInRange(shipment.interceptionChance, 0, 1) ||
+    typeof shipment.interceptionTriggered !== "boolean" || typeof shipment.destinationColonyId !== "string" ||
+    shipment.destinationColonyId.length === 0 || !isNonnegativeSafeInteger(shipment.costPaid)) return false;
+  const eta = exactOwnData(shipment.eta, ["missionCount"]);
+  return eta !== null && isNonnegativeSafeInteger(eta.missionCount);
+}
+
+function isCanonicalFactionStanding(value: unknown): boolean {
+  const standing = exactOwnData(value, ["factionId", "standing", "rank", "permissions"]);
+  return standing !== null && typeof standing.factionId === "string" && standing.factionId.length > 0 &&
+    isFiniteInRange(standing.standing, -100, 100) && isKnownString(standing.rank, FACTION_RANKS) &&
+    isStringArray(standing.permissions);
+}
+
+function isCanonicalBounty(value: unknown): boolean {
+  const bounty = exactOwnData(value, ["id", "colonyId", "amount", "reason", "witnesses", "issued", "expired"]);
+  if (bounty === null || typeof bounty.id !== "string" || bounty.id.length === 0 ||
+    typeof bounty.colonyId !== "string" || bounty.colonyId.length === 0 ||
+    !isNonnegativeSafeInteger(bounty.amount) || !isKnownString(bounty.reason, BOUNTY_REASONS) ||
+    !isStringArray(bounty.witnesses) || typeof bounty.expired !== "boolean") return false;
+  const issued = exactOwnData(bounty.issued, ["missionCount"]);
+  return issued !== null && isNonnegativeSafeInteger(issued.missionCount);
+}
+
+function isCanonicalRecordArray(value: unknown, validate: (entry: unknown) => boolean): boolean {
+  return Array.isArray(value) && value.every(validate);
+}
+
+function hasCanonicalTypedCollections(fields: Record<string, unknown>): boolean {
+  if (!isCanonicalRecordArray(fields.colonies, isCanonicalColony) ||
+    !isCanonicalRecordArray(fields.planets, isCanonicalPlanet) ||
+    !isCanonicalRecordArray(fields.earthShipments, isCanonicalShipment) ||
+    !isCanonicalRecordArray(fields.factionStandings, isCanonicalFactionStanding) ||
+    !isCanonicalRecordArray(fields.bounties, isCanonicalBounty)) return false;
+  const colonies = fields.colonies as Array<Record<string, unknown>>;
+  const planets = fields.planets as Array<Record<string, unknown>>;
+  const colonyIds = new Set(colonies.map((colony) => colony.id as string));
+  const planetIds = new Set(planets.map((planet) => planet.id as string));
+  if (colonyIds.size !== colonies.length || planetIds.size !== planets.length) return false;
+  for (const colony of colonies) {
+    const planet = planets.find((candidate) => candidate.id === colony.planetId);
+    const regionMap = planet === undefined ? null : ownDataRecord(planet.regionMap);
+    if (regionMap === null || !Array.isArray(regionMap.nodes) || !regionMap.nodes.some((node) => {
+      const candidate = ownDataRecord(node);
+      return candidate !== null && candidate.id === colony.regionNodeId;
+    })) return false;
+  }
+  const uniqueIds = (entries: Array<Record<string, unknown>>, key: string): boolean => {
+    const ids = entries.map((entry) => entry[key] as string);
+    return new Set(ids).size === ids.length;
+  };
+  return uniqueIds(fields.earthShipments as Array<Record<string, unknown>>, "id") &&
+    uniqueIds(fields.factionStandings as Array<Record<string, unknown>>, "factionId") &&
+    uniqueIds(fields.bounties as Array<Record<string, unknown>>, "id");
 }
 
 function isCanonicalLevelLedger(value: unknown): boolean {
@@ -314,9 +545,7 @@ function hasCanonicalSaveFieldDomains(fields: Record<string, unknown>): boolean 
     Number.isSafeInteger(fields.pilotLevel) && (fields.pilotLevel as number) >= 1 &&
     (fields.pilotLevel as number) <= MAX_PILOT_LEVEL &&
     isStringArray(fields.allocatedSkills, SKILL_NODE_IDS) &&
-    isPlainRecordArray(fields.colonies) && isPlainRecordArray(fields.planets) &&
-    isPlainRecordArray(fields.earthShipments) && isPlainRecordArray(fields.factionStandings) &&
-    isPlainRecordArray(fields.bounties) && isCanonicalGameClock(fields.gameClock) &&
+    hasCanonicalTypedCollections(fields) && isCanonicalGameClock(fields.gameClock) &&
     (fields.activeExperience === "legacy" || fields.activeExperience === "galaxy") &&
     (fields.galaxyRun === null || ownDataRecord(fields.galaxyRun) !== null);
 }

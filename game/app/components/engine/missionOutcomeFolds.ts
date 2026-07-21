@@ -80,12 +80,17 @@ function ownDataRecord(value: unknown): Record<string, unknown> | null {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return null;
-    const snapshot: Record<string, unknown> = {};
+    const snapshot = Object.create(null) as Record<string, unknown>;
     for (const key of Reflect.ownKeys(value)) {
       if (typeof key !== "string") return null;
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) return null;
-      snapshot[key] = descriptor.value;
+      Object.defineProperty(snapshot, key, {
+        value: descriptor.value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
     return snapshot;
   } catch {

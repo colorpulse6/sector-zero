@@ -374,6 +374,39 @@ test("Legacy POI outcome APIs fail closed over malformed plain objects", () => {
     ), null, label);
   }
 
+  const invalidTypedCollections: ReadonlyArray<readonly [string, unknown]> = [
+    ["empty colony record", { ...save, colonies: [...save.colonies, {}] }],
+    ["malformed colony population", {
+      ...save,
+      colonies: [{ ...save.colonies[0], population: {} }],
+    }],
+    ["empty planet record", { ...save, planets: [...save.planets, {}] }],
+    ["malformed planet region map", {
+      ...save,
+      planets: [...save.planets, { ...save.planets[0], id: "verdania", regionMap: {} }],
+    }],
+    ["empty shipment record", { ...save, earthShipments: [{}] }],
+    ["empty standing record", { ...save, factionStandings: [{}] }],
+    ["empty bounty record", { ...save, bounties: [{}] }],
+  ];
+  for (const [label, invalidSave] of invalidTypedCollections) {
+    const invalidState = createPoiGameState(
+      dispatched.session,
+      invalidSave as never,
+      "legacy",
+      () => `malformed-typed-collection:${label}`,
+      invalidSave as never,
+      "home",
+    );
+    assert.ok(invalidState.outcomeAttempt, label);
+    assert.equal(preparePoiCompletion(
+      invalidSave as never,
+      active,
+      GameScreen.LEVEL_COMPLETE,
+      invalidState.outcomeAttempt!,
+    ), null, label);
+  }
+
   const attemptWithProto = { ...state.outcomeAttempt! };
   Object.defineProperty(attemptWithProto, "__proto__", {
     configurable: true,

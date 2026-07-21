@@ -2039,6 +2039,17 @@ test("outcome envelopes reject accessor-backed declared fields and prototype ext
   });
   assert.equal(commitOutcome(memoryStore(save).store, campaignWithProto).status, "conflict");
 
+  const payloadWithProto = { ...(campaign.payload as Record<string, unknown>) };
+  Object.defineProperty(payloadWithProto, "__proto__", {
+    configurable: true,
+    enumerable: true,
+    value: { forged: true },
+  });
+  assert.equal(
+    commitOutcome(memoryStore(save).store, { ...campaign, payload: payloadWithProto }).status,
+    "conflict",
+  );
+
   const preparedWithProto = { ...prepared };
   Object.defineProperty(preparedWithProto, "__proto__", {
     configurable: true,
