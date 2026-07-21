@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GameScreen } from "../../app/components/engine/types";
+import { EnemyType, GameScreen } from "../../app/components/engine/types";
 import { migrateSave } from "../../app/components/engine/save";
+import { recordKill } from "../../app/components/engine/bestiary";
 import { colonyReducer } from "../../app/components/colony/shared/colonyReducer";
 import { Events } from "../../app/components/colony/shared/colonyEvents";
 import { dispatchPoi } from "../../app/components/colony/region/poiDispatcher";
@@ -388,6 +389,48 @@ test("Legacy POI outcome APIs fail closed over malformed plain objects", () => {
     ["empty shipment record", { ...save, earthShipments: [{}] }],
     ["empty standing record", { ...save, factionStandings: [{}] }],
     ["empty bounty record", { ...save, bounties: [{}] }],
+    ["population exceeds canonical overflow", {
+      ...save,
+      colonies: [{
+        ...save.colonies[0],
+        population: { ...save.colonies[0].population, total: save.colonies[0].population.capacity + 100 },
+      }],
+    }],
+    ["colony site snapshot diverges from founding node", {
+      ...save,
+      colonies: [{
+        ...save.colonies[0],
+        siteStats: { ...save.colonies[0].siteStats, threat: save.colonies[0].siteStats.threat + 1 },
+      }],
+    }],
+    ["shipment destination does not exist", {
+      ...save,
+      earthShipments: [{
+        id: "shipment-missing-destination",
+        contents: { metal: 10 },
+        eta: { missionCount: 2 },
+        interceptionChance: 0,
+        interceptionTriggered: false,
+        destinationColonyId: "missing-colony",
+        costPaid: 10,
+      }],
+    }],
+    ["standing rank contradicts value", {
+      ...save,
+      factionStandings: [{ ...save.factionStandings[0], standing: 100, rank: "hostile" }],
+    }],
+    ["bounty colony does not exist", {
+      ...save,
+      bounties: [{
+        id: "bounty-missing-colony",
+        colonyId: "missing-colony",
+        amount: 10,
+        reason: "trespass",
+        witnesses: [],
+        issued: { missionCount: 1 },
+        expired: false,
+      }],
+    }],
   ];
   for (const [label, invalidSave] of invalidTypedCollections) {
     const invalidState = createPoiGameState(
@@ -406,6 +449,28 @@ test("Legacy POI outcome APIs fail closed over malformed plain objects", () => {
       invalidState.outcomeAttempt!,
     ), null, label);
   }
+
+  const codeOwnedBestiary = recordKill(
+    save.bestiary,
+    EnemyType.DRONE,
+    "tech-drone",
+    { world: 1 },
+  );
+  const saveAfterCampaignKill = { ...save, bestiary: codeOwnedBestiary };
+  const postKillState = createPoiGameState(
+    dispatched.session,
+    saveAfterCampaignKill,
+    "legacy",
+    () => "poi-after-campaign-kill",
+    saveAfterCampaignKill,
+    "home",
+  );
+  assert.ok(preparePoiCompletion(
+    saveAfterCampaignKill,
+    active,
+    GameScreen.LEVEL_COMPLETE,
+    postKillState.outcomeAttempt!,
+  ));
 
   const attemptWithProto = { ...state.outcomeAttempt! };
   Object.defineProperty(attemptWithProto, "__proto__", {

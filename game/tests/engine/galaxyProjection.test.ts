@@ -362,7 +362,7 @@ test("world-only recordKill Bestiary output crosses the projection boundary", ()
   const recordedEntry = recorded.DRONE!;
   assert.equal(
     Object.prototype.hasOwnProperty.call(recordedEntry, "firstSeenPlanet"),
-    true,
+    false,
   );
   assert.equal(recordedEntry.firstSeenPlanet, undefined);
 

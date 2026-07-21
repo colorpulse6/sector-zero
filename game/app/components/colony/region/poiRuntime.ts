@@ -25,6 +25,8 @@ import { getBoardingSpawn } from "../../engine/boardingLevel";
 import { getSpawnPosition as getGroundSpawn } from "../../engine/groundLevel";
 import { MAX_PILOT_LEVEL } from "../../engine/pilotLevel";
 import { advanceWorldCycle } from "../shared/cycleProcessor";
+import { COLONY_POPULATION_OVERFLOW_LIMIT } from "../shared/colonyAssert";
+import { rankFromStanding } from "../shared/factionLedger";
 import type { ColonyId } from "../shared/colonyTypes";
 import type { MissionDelivery } from "../shared/missionDelivery";
 import { dispatchPoi, type PoiSession } from "./poiDispatcher";
@@ -274,6 +276,8 @@ function isCanonicalPopulation(value: unknown): boolean {
   const population = exactOwnData(value, ["total", "capacity", "namedCount", "growthRate", "recentDeaths"]);
   return population !== null && isNonnegativeSafeInteger(population.total) &&
     isNonnegativeSafeInteger(population.capacity) && isNonnegativeSafeInteger(population.namedCount) &&
+    (population.total as number) <= (population.capacity as number) + COLONY_POPULATION_OVERFLOW_LIMIT &&
+    (population.namedCount as number) <= (population.total as number) &&
     typeof population.growthRate === "number" && Number.isFinite(population.growthRate) &&
     Array.isArray(population.recentDeaths) && population.recentDeaths.length <= 10 &&
     population.recentDeaths.every(isCanonicalDeathRecord);
@@ -418,6 +422,7 @@ function isCanonicalFactionStanding(value: unknown): boolean {
   const standing = exactOwnData(value, ["factionId", "standing", "rank", "permissions"]);
   return standing !== null && typeof standing.factionId === "string" && standing.factionId.length > 0 &&
     isFiniteInRange(standing.standing, -100, 100) && isKnownString(standing.rank, FACTION_RANKS) &&
+    standing.rank === rankFromStanding(standing.standing as number) &&
     isStringArray(standing.permissions);
 }
 
@@ -449,18 +454,22 @@ function hasCanonicalTypedCollections(fields: Record<string, unknown>): boolean 
   for (const colony of colonies) {
     const planet = planets.find((candidate) => candidate.id === colony.planetId);
     const regionMap = planet === undefined ? null : ownDataRecord(planet.regionMap);
-    if (regionMap === null || !Array.isArray(regionMap.nodes) || !regionMap.nodes.some((node) => {
-      const candidate = ownDataRecord(node);
-      return candidate !== null && candidate.id === colony.regionNodeId;
-    })) return false;
+    const foundingNode = regionMap === null || !Array.isArray(regionMap.nodes)
+      ? null
+      : regionMap.nodes.map(ownDataRecord).find((node) => node?.id === colony.regionNodeId) ?? null;
+    if (foundingNode === null || foundingNode.intel !== "claimed" ||
+      !sameDurableData(foundingNode.siteStats, colony.siteStats)) return false;
   }
   const uniqueIds = (entries: Array<Record<string, unknown>>, key: string): boolean => {
     const ids = entries.map((entry) => entry[key] as string);
     return new Set(ids).size === ids.length;
   };
-  return uniqueIds(fields.earthShipments as Array<Record<string, unknown>>, "id") &&
-    uniqueIds(fields.factionStandings as Array<Record<string, unknown>>, "factionId") &&
-    uniqueIds(fields.bounties as Array<Record<string, unknown>>, "id");
+  const shipments = fields.earthShipments as Array<Record<string, unknown>>;
+  const standings = fields.factionStandings as Array<Record<string, unknown>>;
+  const bounties = fields.bounties as Array<Record<string, unknown>>;
+  return uniqueIds(shipments, "id") && shipments.every((shipment) =>
+    colonyIds.has(shipment.destinationColonyId as string)) && uniqueIds(standings, "factionId") &&
+    uniqueIds(bounties, "id") && bounties.every((bounty) => colonyIds.has(bounty.colonyId as string));
 }
 
 function isCanonicalLevelLedger(value: unknown): boolean {

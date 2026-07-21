@@ -1,7 +1,7 @@
 import type { ColonyState } from "./colonyTypes";
 import type { SaveData } from "../../engine/types";
 
-const HABITAT_OVERFLOW = 20;
+export const COLONY_POPULATION_OVERFLOW_LIMIT = 20;
 const isDev = () => process.env.NODE_ENV !== "production";
 
 export function assertColonyInvariant(
@@ -45,7 +45,7 @@ export function runStandardInvariants(colony: ColonyState): void {
   );
   assertColonyInvariant(
     colony,
-    c => c.population.total <= c.population.capacity + HABITAT_OVERFLOW,
+    c => c.population.total <= c.population.capacity + COLONY_POPULATION_OVERFLOW_LIMIT,
     "Population exceeded sane maximum",
   );
   assertColonyInvariant(

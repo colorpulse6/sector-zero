@@ -20,8 +20,8 @@ export function recordKill(
       enemyType,
       classId,
       killCount: 1,
-      firstSeenPlanet: context.planetId,
-      firstSeenWorld: context.world,
+      ...(context.planetId === undefined ? {} : { firstSeenPlanet: context.planetId }),
+      ...(context.world === undefined ? {} : { firstSeenWorld: context.world }),
     },
   };
 }
