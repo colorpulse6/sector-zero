@@ -36,6 +36,7 @@ import { launchOperation } from "../../app/components/engine/operations/operatio
 import { createPoiGameState } from "../../app/components/colony/region/poiRuntime";
 import { createFirstPersonRuinTemplate } from "../../app/components/colony/region/poiTemplates";
 import { createAffinityLabel } from "../../app/components/engine/floatingLabels";
+import { applyColonyFixture, findFixture } from "../../app/components/colony/dev/seedColony";
 
 test("campaign construction consumes and owns a complete non-default launch loadout", () => {
   const save = createHydrationSafeSave();
@@ -507,6 +508,7 @@ test("Galaxy operation adapters attach explicit Galaxy launch authority and all 
     projection,
     authorization.context,
     () => "launch:test:operation",
+    { ...parent, galaxyRun: run },
   );
 
   assert.equal(launched.ok, true, launched.ok ? undefined : launched.availability.reasons.join(","));
@@ -516,6 +518,10 @@ test("Galaxy operation adapters attach explicit Galaxy launch authority and all 
   assert.equal(launched.gameState.launchContext?.persistenceAuthority, "galaxy");
   assert.equal(launched.gameState.launchContext?.entryProvenance, "atlas");
   assert.equal(launched.gameState.launchContext?.returnTarget, "galaxy-atlas");
+  assert.equal(launched.gameState.outcomeAttempt?.routeKind, "operation");
+  assert.equal(launched.gameState.outcomeAttempt?.launchId, "launch:test:operation");
+  assert.equal(launched.gameState.outcomeAttempt?.expectedRevision, parent.saveRevision);
+  assert.deepEqual(launched.gameState.outcomeAttempt?.declaredFields, ["galaxyRun"]);
   assert.deepEqual(launched.gameState.pilotLoadout, {
     upgrades: { hullPlating: 2, engineBoost: 0, weaponCore: 0, munitionsBay: 0, fireControl: 1, shieldGenerator: 0 },
     unlockedEnhancements: ["reinforced-shield"],
@@ -1073,4 +1079,31 @@ test("engine constructors reject mounting the same launch attempt twice", () => 
 
   createGameState(1, 1, launch);
   assert.throws(() => createGameState(1, 1, launch), /duplicate|mounted/i);
+});
+
+test("shell launchers capture terminal authority on every non-POI gameplay attempt", async () => {
+  const shell = await import("../../app/components/Game");
+  const save = createHydrationSafeSave();
+  save.unlockedSpecialMissions = ["kepler-black-box"];
+  const fixture = findFixture("day");
+  assert.ok(fixture);
+  const seeded = applyColonyFixture(save, fixture);
+
+  const campaign = shell.createCampaignLaunchState(save, 1, 1);
+  const planet = shell.createPlanetLaunchState(save, "glaciem");
+  const special = shell.createSpecialLaunchState(save, "kepler-black-box");
+  const colony = shell.createColonyExteriorLaunchState(seeded.save, seeded.colonyId).gameState;
+
+  for (const [label, state, routeKind] of [
+    ["campaign", campaign, "campaign"],
+    ["planet", planet, "planet"],
+    ["special", special, "special"],
+    ["colony", colony, "colony"],
+  ] as const) {
+    assert.ok(state.outcomeAttempt, `${label} owns terminal authority`);
+    assert.equal(state.outcomeAttempt.routeKind, routeKind, label);
+    assert.equal(state.outcomeAttempt.launchId, state.launchContext?.launchId, label);
+    assert.equal(state.outcomeAttempt.persistenceAuthority, state.launchContext?.persistenceAuthority, label);
+    assert.equal(state.outcomeAttempt.returnTarget, state.launchContext?.returnTarget, label);
+  }
 });

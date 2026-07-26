@@ -1020,16 +1020,17 @@ export function recalcPilotLevel(save: SaveData): SaveData {
   };
 }
 
-export function loadSave(): SaveData {
+export function readCanonicalSaveStrict(): SaveData {
   if (typeof window === "undefined") return createDefaultSave();
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return unlockCodexEntries(createDefaultSave());
-    const parsed = JSON.parse(raw);
-    return recalcPilotLevel(unlockCodexEntries(migrateSave(parsed)));
-  } catch {
-    return unlockCodexEntries(createDefaultSave());
-  }
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (!raw) return unlockCodexEntries(createDefaultSave());
+  const parsed = JSON.parse(raw);
+  return recalcPilotLevel(unlockCodexEntries(migrateSave(parsed)));
+}
+
+export function loadSave(): SaveData {
+  try { return readCanonicalSaveStrict(); }
+  catch { return unlockCodexEntries(createDefaultSave()); }
 }
 
 export function saveSave(data: SaveData): void {

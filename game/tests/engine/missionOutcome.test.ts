@@ -15,6 +15,7 @@ import {
   type OutcomeDeclaredField,
 } from "../../app/components/engine/missionOutcome";
 import type {
+  GameState,
   OutcomeAttempt,
   OutcomeRecoveryRecord,
   OutcomeRouteIdentity,
@@ -350,6 +351,185 @@ test("save migration defaults the canonical outcome metadata", () => {
   assert.equal(migrated.saveRevision, 0);
   assert.deepEqual(migrated.appliedOutcomeIds, []);
   assert.deepEqual(migrated.outcomeRecoveryRecords, []);
+});
+
+test("strict canonical reads preserve storage failures for the outcome coordinator", async () => {
+  const saveModule = await import("../../app/components/engine/save") as typeof import("../../app/components/engine/save") & {
+    readCanonicalSaveStrict?: () => SaveData;
+  };
+  const root = globalThis as typeof globalThis & { window?: typeof globalThis; localStorage?: Storage };
+  const priorWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const priorStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: globalThis });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: { getItem: () => { throw new Error("storage unavailable"); } },
+  });
+
+  try {
+    assert.equal(typeof saveModule.readCanonicalSaveStrict, "function");
+    assert.throws(() => saveModule.readCanonicalSaveStrict!(), /storage unavailable/);
+    assert.doesNotThrow(() => saveModule.loadSave());
+  } finally {
+    if (priorWindow) Object.defineProperty(globalThis, "window", priorWindow);
+    else Reflect.deleteProperty(root, "window");
+    if (priorStorage) Object.defineProperty(globalThis, "localStorage", priorStorage);
+    else Reflect.deleteProperty(root, "localStorage");
+  }
+});
+
+test("shell terminal adapter emits only the code-owned payload for each route class", async () => {
+  const coordinator = await import("../../app/components/engine/missionOutcome") as
+    typeof import("../../app/components/engine/missionOutcome") & {
+      createGameStateOutcomeEnvelope?: (
+        state: GameState,
+        terminalKind: "success" | "failure" | "retreat",
+        destinationColonyId?: string | null,
+      ) => SerializedOutcomeEnvelope;
+    };
+  assert.equal(typeof coordinator.createGameStateOutcomeEnvelope, "function");
+  const save = migrateSave({});
+  const state = {
+    score: 240,
+    xp: 35,
+    kills: 2,
+    totalEnemies: 3,
+    deaths: 1,
+    frameCount: 420,
+    player: { hp: 2, maxHp: 4 },
+    pendingBestiaryKills: [{ type: "SCOUT", classId: "swarm" }],
+    firstPersonState: { objectiveCollected: true },
+  } as unknown as GameState;
+  const campaignAttempt = attempt(
+    save,
+    "campaign",
+    "shell-payload-campaign",
+    "legacy",
+    "legacy-star-map",
+    [...ROUTE_FOLD_FIELDS.campaign],
+  );
+  const campaign = coordinator.createGameStateOutcomeEnvelope!(
+    { ...state, outcomeAttempt: campaignAttempt },
+    "success",
+  );
+  assert.deepEqual(campaign.payload, {
+    version: 1,
+    kind: "campaign_result_v1",
+    score: 240,
+    xpEarned: 35,
+    killCount: 2,
+    bestiaryKills: [{ type: "SCOUT", classId: "swarm" }],
+    totalEnemies: 3,
+    deaths: 1,
+    frameCount: 420,
+    playerHp: 2,
+    playerMaxHp: 4,
+  });
+  assert.equal(campaign.outcomeId, "shell-payload-campaign:success");
+
+  const campaignFailure = coordinator.createGameStateOutcomeEnvelope!(
+    { ...state, outcomeAttempt: campaignAttempt },
+    "failure",
+  );
+  assert.deepEqual(campaignFailure.payload, { version: 1, kind: "terminal_noop_v1" });
+  assert.equal(campaignFailure.outcomeId, "shell-payload-campaign:failure");
+
+  const planetAttempt = attempt(
+    save,
+    "planet",
+    "shell-payload-planet",
+    "legacy",
+    "legacy-cockpit",
+    [...ROUTE_FOLD_FIELDS.planet],
+  );
+  assert.deepEqual(coordinator.createGameStateOutcomeEnvelope!(
+    { ...state, outcomeAttempt: planetAttempt },
+    "success",
+  ).payload, {
+    version: 1,
+    kind: "planet_result_v1",
+    bestiaryKills: [{ type: "SCOUT", classId: "swarm" }],
+  });
+
+  const specialAttempt = attempt(
+    save,
+    "special",
+    "shell-payload-special",
+    "legacy",
+    "legacy-cockpit",
+    [...ROUTE_FOLD_FIELDS.special],
+  );
+  assert.deepEqual(coordinator.createGameStateOutcomeEnvelope!(
+    { ...state, outcomeAttempt: specialAttempt },
+    "success",
+  ).payload, {
+    version: 1,
+    kind: "special_result_v1",
+    score: 240,
+    objectiveCollected: true,
+    bestiaryKills: [{ type: "SCOUT", classId: "swarm" }],
+  });
+
+  const colonyAttempt = attempt(
+    save,
+    "colony",
+    "shell-payload-colony",
+    "legacy",
+    "legacy-cockpit",
+    [...ROUTE_FOLD_FIELDS.colony],
+  );
+  assert.deepEqual(coordinator.createGameStateOutcomeEnvelope!(
+    { ...state, outcomeAttempt: colonyAttempt },
+    "success",
+  ).payload, { version: 1, kind: "terminal_noop_v1" });
+
+  const poiAttempt = attempt(
+    save,
+    "poi",
+    "shell-payload-poi",
+    "legacy",
+    "legacy-colony-exterior",
+    [...ROUTE_FOLD_FIELDS.poi],
+  );
+  assert.deepEqual(coordinator.createGameStateOutcomeEnvelope!(
+    { ...state, outcomeAttempt: poiAttempt },
+    "success",
+    "home",
+  ).payload, {
+    version: 2,
+    kind: "poi_result_v2",
+    destinationColonyId: "home",
+  });
+  assert.deepEqual(coordinator.createGameStateOutcomeEnvelope!(
+    { ...state, outcomeAttempt: poiAttempt },
+    "retreat",
+  ).payload, { version: 1, kind: "terminal_noop_v1" });
+
+  assert.throws(
+    () => coordinator.createGameStateOutcomeEnvelope!(state, "success"),
+    /missing terminal outcome authority/i,
+  );
+
+  const operationAttempt = attempt(
+    { ...save, activeExperience: "galaxy", galaxyRun: beginGalaxyExperience(save).galaxyRun },
+    "operation",
+    "shell-payload-operation",
+    "galaxy",
+    "galaxy-atlas",
+    ["galaxyRun"],
+  );
+  operationAttempt.routeIdentity = { kind: "operation", operationId: "op:hostile-picket" };
+  operationAttempt.missionId = "operation:op:hostile-picket";
+  const operation = coordinator.createGameStateOutcomeEnvelope!(
+    { ...state, outcomeAttempt: operationAttempt },
+    "retreat",
+  );
+  assert.deepEqual(operation.payload, {
+    version: 1,
+    kind: "operation_result_v1",
+    result: "retreat",
+    metrics: { frameCount: 420 },
+  });
 });
 
 test("migration locks partially present A3 authority instead of defaulting missing fields", () => {
@@ -1875,6 +2055,92 @@ test("reload return acknowledgement is a fresh canonical write", () => {
     acknowledgeOutcomeReturn(memoryStore(migrateSave({})).store, "never-issued:success").status,
     "conflict",
   );
+});
+
+test("return recovery selects the exact submitted outcome instead of another pending receipt", () => {
+  const initial = migrateSave({});
+  const memory = memoryStore(initial);
+  const first = campaignEnvelope(initial, "exact-return-first", "legacy-star-map");
+  const firstCommit = commitOutcome(memory.store, first);
+  assert.equal(firstCommit.status, "committed");
+  if (firstCommit.status !== "committed") return;
+  const firstReceipt = recoverOutcomeReturn(firstCommit.save);
+  assert.ok(firstReceipt);
+  const secondOutcomeId = "exact-return-second:success";
+  const twoPending = {
+    ...firstCommit.save,
+    saveRevision: firstCommit.save.saveRevision + 1,
+    appliedOutcomeIds: [...firstCommit.save.appliedOutcomeIds, secondOutcomeId],
+    outcomeRecoveryRecords: [
+      firstReceipt,
+      {
+        ...firstReceipt,
+        outcomeId: secondOutcomeId,
+        launchId: "exact-return-second",
+        returnTarget: "legacy-cockpit" as const,
+        appliedRevision: firstCommit.save.saveRevision + 1,
+      },
+    ],
+  };
+
+  assert.equal(recoverOutcomeReturn(twoPending)?.outcomeId, secondOutcomeId);
+  assert.equal(recoverOutcomeReturn(twoPending, first.outcomeId)?.outcomeId, first.outcomeId);
+  assert.equal(recoverOutcomeReturn(twoPending, "missing:success"), null);
+});
+
+test("return mount resolution carries exact route identity and fails closed", async () => {
+  const coordinator = await import("../../app/components/engine/missionOutcome") as
+    typeof import("../../app/components/engine/missionOutcome") & {
+      resolveOutcomeReturnMount?: (receipt: unknown) => unknown;
+    };
+  assert.equal(typeof coordinator.resolveOutcomeReturnMount, "function");
+  const initial = migrateSave({});
+  const committed = commitOutcome(
+    memoryStore(initial).store,
+    campaignEnvelope(initial, "mount-campaign", "legacy-star-map"),
+  );
+  assert.equal(committed.status, "committed");
+  if (committed.status !== "committed") return;
+  const campaignReceipt = recoverOutcomeReturn(committed.save);
+  assert.ok(campaignReceipt);
+  assert.deepEqual(coordinator.resolveOutcomeReturnMount!(campaignReceipt), {
+    surface: "legacy-star-map",
+    world: 1,
+    level: 1,
+  });
+
+  const poiReceipt = {
+    version: 2,
+    kind: "applied_return",
+    outcomeId: "mount-poi:success",
+    launchId: "mount-poi",
+    missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      "galaxy:ashfall-primary",
+    ),
+    routeKind: "poi",
+    routeIdentity: {
+      kind: "poi",
+      originColonyId: "galaxy:ashfall-primary",
+      nodeId: "ashfall-cinder-relay",
+      engine: "firstPerson",
+      templateId: "fp-ruin-cinder-relay",
+      rewardEligible: true,
+    },
+    terminalKind: "success",
+    persistenceAuthority: "galaxy",
+    returnTarget: "galaxy-region",
+    appliedRevision: 4,
+    returnPending: true,
+  };
+  assert.deepEqual(coordinator.resolveOutcomeReturnMount!(poiReceipt), {
+    surface: "galaxy-region",
+    originColonyId: "galaxy:ashfall-primary",
+  });
+  assert.equal(coordinator.resolveOutcomeReturnMount!({
+    ...poiReceipt,
+    returnTarget: "legacy-cockpit",
+  }), null);
 });
 
 test("migration bounds journals without pruning retained acknowledged Galaxy authority", () => {

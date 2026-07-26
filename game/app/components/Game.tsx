@@ -7,26 +7,26 @@ import {
   AudioEvent,
   GameScreen,
   PowerUpType,
+  type AppliedOutcomeReturnRecord,
   type GameState,
   type Keys,
+  type OutcomeAttempt,
+  type OutcomeTerminalKind,
+  type SerializedOutcomeEnvelope,
   type SpecialMissionId,
 } from "./engine/types";
 import { createGameState, createPlanetGameState, createSpecialMissionGameState, updateGame, togglePause } from "./engine/gameEngine";
-import { completePlanet, getPlanetDef } from "./engine/planets";
+import { getPlanetDef } from "./engine/planets";
 import type { PlanetId } from "./engine/types";
 import { drawGame, drawStarMap, drawIntroCrawl, INTRO_TOTAL_FRAMES } from "./engine/renderer";
 import { AudioEngine } from "./engine/audio";
 import {
-  addStoryItem,
-  completeSpecialMission,
   loadSave,
   saveSave,
-  unlockSpecialMission,
-  updateLevelResult,
-  recalcPilotLevel,
   calculateCreditsEarned,
   createHydrationSafeSave,
   getPlayerName,
+  readCanonicalSaveStrict,
   updateSectorZeroProfile,
   type SaveData,
 } from "./engine/save";
@@ -50,11 +50,8 @@ import {
   COCKPIT_HOTSPOTS,
 } from "./engine/cockpit";
 import { applyShopPurchase } from "./engine/consumables";
-import { checkQuestCompletion, type QuestCheckData } from "./engine/sideQuests";
-import { recordKill } from "./engine/bestiary";
 import { allocateNode } from "./engine/skillTree";
 import { drawCockpit } from "./engine/cockpitRenderer";
-import { unlockCodexEntry } from "./engine/codex";
 import {
   drawPreChoice, drawChoiceScreen, drawEnding, drawCredits,
   PRE_CHOICE_TOTAL_FRAMES, DESTROY_TOTAL_FRAMES, MERGE_TOTAL_FRAMES,
@@ -77,13 +74,20 @@ import {
   type LaunchContext,
 } from "./engine/missionContext";
 import {
-  advanceWorldCycle,
+  acknowledgeOutcomeReturn,
+  commitOutcome,
+  createGameStateOutcomeEnvelope,
+  createOutcomeAttempt,
+  createOutcomeEnvelope,
+  recoverOutcomeReturn,
+  resolveOutcomeReturnMount,
+  type CanonicalSaveStore,
+} from "./engine/missionOutcome";
+import {
   colonyReducer,
   colonyMerchantRank,
   enterColonyExploration,
   stepColonyExploration,
-  exitColonyExploration,
-  applyMissionDelivery,
   resolveMissionDelivery,
   deliveryPayloadLabel,
   LandingPadExitMenu,
@@ -93,21 +97,28 @@ import { ColoniesScreen } from "./colony/meta";
 import { PoiOutcomeScreen, RegionMapScreen } from "./colony/meta";
 import { foundOutpost } from "./colony/region/siteEconomy";
 import { dispatchPoi, regionExpeditionRequestId, startRegionExpedition } from "./colony/region/poiDispatcher";
-import { createPoiGameState, preparePoiCompletion, resolvePoiCompletion, type ActivePoiDescriptor, type PendingPoiResolution } from "./colony/region/poiRuntime";
+import {
+  createPoiGameState,
+  preparePoiCompletion,
+  recoverLegacyPoiCompletion,
+  resolvePoiCompletion,
+  type ActivePoiDescriptor,
+  type LegacyPreparedPoiResolution,
+  type PendingPoiResolution,
+} from "./colony/region/poiRuntime";
+import { POI_CARGO } from "./colony/region/poiOutcomes";
 import { applyColonyFixture, findFixture } from "./colony/dev/seedColony";
 import DevPanel from "./DevPanel";
 import { createGradePass } from "./engine/postFx";
 import { selectPreset, type GradeScene } from "./engine/postFx/presets";
 import { GalaxyAtlasScreen, GalaxyExperienceGate } from "./galaxy";
 import {
-  attemptCanonicalPersistence,
   beginGalaxyExperience,
   experienceReturnLabel,
-  galaxyPoiRecoverySurface,
+  galaxyCloseTransition,
   isInteractiveKeyboardTarget,
   mapSurfaceForExperience,
   operationSurfaceLabel,
-  returnSurfaceForOperation,
 } from "./engine/galaxy/experienceFlow";
 import type { ExperienceMode } from "./engine/galaxy/galaxyTypes";
 import type { AtlasTarget, RoutePlan } from "./engine/galaxy/routePlanner";
@@ -119,11 +130,7 @@ import {
 } from "./engine/galaxy/travelResolver";
 import { projectGalaxyRunToLegacySave } from "./engine/galaxy/galaxyProjection";
 import { authorizeOperationLaunch } from "./engine/operations/operationCatalog";
-import {
-  applyOperationOutcome,
-  normalizeOperationOutcome,
-  type OperationResultKind,
-} from "./engine/operations/operationOutcome";
+import type { OperationResultKind } from "./engine/operations/operationOutcome";
 import type {
   OperationId,
   OperationLaunchContext,
@@ -133,11 +140,9 @@ import {
   isGalaxyPoiPreparationFact,
   launchOperation,
   openGalaxyRegion,
-  prepareGalaxyPoiCompletion,
-  recoverGalaxyPoiCompletion,
-  resolveGalaxyPoiCompletion,
+  recoverGalaxyPoiOutcomeAuthority,
+  stageGalaxyPoiOutcomeAuthority,
   startGalaxyRegionExpedition,
-  type GalaxyPendingPoiResolution,
 } from "./engine/operations/operationAdapters";
 import { applyGalaxyFixture, findGalaxyFixture } from "./galaxy/devFixtures";
 
@@ -145,6 +150,18 @@ type RegionMapSurface = {
   mode: "pad" | "view";
   originColonyId: string;
   experience: ExperienceMode;
+};
+
+type OutcomeCommitIssue = {
+  status: "write_failed" | "conflict";
+  message: string;
+  envelope: SerializedOutcomeEnvelope | null;
+  receipt: AppliedOutcomeReturnRecord | null;
+};
+
+type TravelCommitIssue = {
+  candidate: SaveData;
+  successMessage: string;
 };
 
 export function createCampaignLaunchState(
@@ -161,7 +178,8 @@ export function createCampaignLaunchState(
     provenance,
     returnTarget,
   );
-  return createGameState(world, level, context);
+  const state = createGameState(world, level, context);
+  return { ...state, outcomeAttempt: createOutcomeAttempt(save, context, "campaign") };
 }
 
 export function createPlanetLaunchState(save: SaveData, planetId: PlanetId): GameState {
@@ -172,7 +190,8 @@ export function createPlanetLaunchState(save: SaveData, planetId: PlanetId): Gam
     "cockpit",
     "legacy-cockpit",
   );
-  return createPlanetGameState(planetId, context);
+  const state = createPlanetGameState(planetId, context);
+  return { ...state, outcomeAttempt: createOutcomeAttempt(save, context, "planet") };
 }
 
 export function createSpecialLaunchState(
@@ -190,7 +209,8 @@ export function createSpecialLaunchState(
     provenance,
     "legacy-cockpit",
   );
-  return createSpecialMissionGameState(missionId, false, context);
+  const state = createSpecialMissionGameState(missionId, false, context);
+  return { ...state, outcomeAttempt: createOutcomeAttempt(save, context, "special") };
 }
 
 export function createColonyExteriorLaunchState(
@@ -211,6 +231,7 @@ export function createColonyExteriorLaunchState(
     sceneStack: entered.sceneStack,
     gameState: {
       ...baseState,
+      outcomeAttempt: createOutcomeAttempt(save, context, "colony"),
       screen: GameScreen.PLAYING,
       currentMode: "colony-exploration",
       currentPhase: 0,
@@ -260,10 +281,23 @@ export default function Game() {
   const [regionMapSurface, setRegionMapSurface] = useState<RegionMapSurface | null>(null);
   const [activePoi, setActivePoi] = useState<ActivePoiDescriptor | null>(null);
   const [activePoiExperience, setActivePoiExperience] = useState<ExperienceMode | null>(null);
-  const [pendingPoiResolution, setPendingPoiResolution] = useState<PendingPoiResolution | GalaxyPendingPoiResolution | null>(null);
+  const [pendingPoiResolution, setPendingPoiResolution] = useState<PendingPoiResolution | LegacyPreparedPoiResolution | null>(null);
+  const [pendingPoiOutcomeAttempt, setPendingPoiOutcomeAttempt] = useState<OutcomeAttempt | null>(null);
   const [poiOutcomeResolving, setPoiOutcomeResolving] = useState(false);
   const [poiOutcomeError, setPoiOutcomeError] = useState<string | null>(null);
+  const [poiCompletionRetryToken, setPoiCompletionRetryToken] = useState(0);
+  const [outcomeCommitIssue, setOutcomeCommitIssue] = useState<OutcomeCommitIssue | null>(null);
+  const [travelCommitIssue, setTravelCommitIssue] = useState<TravelCommitIssue | null>(null);
+  const [pendingOutcomeReturn, setPendingOutcomeReturn] = useState<AppliedOutcomeReturnRecord | null>(null);
   const saveDataRef = useRef(saveData);
+  const afterOutcomeAcknowledgeRef = useRef<(() => void) | null>(null);
+  const outcomeAcknowledgeInFlightRef = useRef(false);
+  const hydratedOutcomeReturnHandledRef = useRef(false);
+  const submitGameOutcomeRef = useRef<(
+    state: GameState,
+    terminalKind: OutcomeTerminalKind,
+    options?: { afterAcknowledge?: () => void },
+  ) => boolean>(() => false);
   const expeditionRequestRef = useRef<string | null>(null);
   const poiCompletionHandledRef = useRef(false);
   const poiResolutionRef = useRef(false);
@@ -280,11 +314,20 @@ export default function Game() {
     setSaveHydrated(true);
   }, []);
 
-  const persistCanonicalSave = useCallback((next: SaveData) => {
-    saveSave(next);
+  const adoptCanonicalSave = useCallback((next: SaveData) => {
     saveDataRef.current = next;
     setSaveData(next);
   }, []);
+
+  const persistCanonicalSave = useCallback((next: SaveData) => {
+    saveSave(next);
+    adoptCanonicalSave(next);
+  }, [adoptCanonicalSave]);
+
+  const outcomeStore = useMemo<CanonicalSaveStore>(() => ({
+    read: readCanonicalSaveStrict,
+    write: persistCanonicalSave,
+  }), [persistCanonicalSave]);
 
   const keysRef = useRef<Keys>({
     left: false,
@@ -326,6 +369,7 @@ export default function Game() {
   // read React state. Updated every game-loop tick (see below); the present loop
   // reads .currentMode to pick a grade preset. Starts null until the first tick.
   const gameStateRef = useRef(gameState);
+  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
   const ensureAudio = useCallback(() => {
     if (!audioRef.current) {
@@ -349,7 +393,7 @@ export default function Game() {
       if (!saveData.introSeen) {
         const updated = { ...saveData, introSeen: true };
         saveSave(updated);
-        setSaveData(updated);
+        adoptCanonicalSave(updated);
       }
       return;
     }
@@ -359,8 +403,8 @@ export default function Game() {
     resetCockpitKeys();
     const updated = { ...saveData, introSeen: true };
     saveSave(updated);
-    setSaveData(updated);
-  }, [saveData, showStartScreen]);
+    adoptCanonicalSave(updated);
+  }, [adoptCanonicalSave, saveData, showStartScreen]);
 
   const replayIntro = useCallback(() => {
     introFrameRef.current = 0;
@@ -400,12 +444,10 @@ export default function Game() {
   const beginGalaxy = useCallback(() => {
     if (!saveHydrated) return;
     const begun = beginGalaxyExperience(saveDataRef.current);
-    const recovered = begun.galaxyRun?.historyFacts.some(isGalaxyPoiPreparationFact)
-      ? recoverGalaxyPoiCompletion(begun, "contact:ashfall")
-      : { ok: true as const, save: begun, pending: null };
-    const recoverySurface = galaxyPoiRecoverySurface(recovered);
-    const canonical = recovered.ok ? recovered.save : begun;
-    persistCanonicalSave(canonical);
+    const recoveredAttempt = recoverGalaxyPoiOutcomeAuthority(begun);
+    const hasPreparedAuthority = begun.galaxyRun?.historyFacts.some(isGalaxyPoiPreparationFact) === true;
+    const recoveryBlocked = hasPreparedAuthority && recoveredAttempt === null;
+    persistCanonicalSave(begun);
     ensureAudio().switchMusic("menu");
     setShowStartScreen(false);
     setShowIntro(false);
@@ -418,21 +460,28 @@ export default function Game() {
     setActiveOperationContext(null);
     setOperationOutcomeError(null);
     setGalaxyRecoveryError(
-      recoverySurface === "blocked"
+      recoveryBlocked
         ? "ASHFALL OUTCOME JOURNAL COULD NOT BE VERIFIED. THE GALAXY RUN IS LOCKED TO PREVENT LOST CARGO OR DUPLICATE REWARDS."
         : null,
     );
     setActivePoi(null);
-    setActivePoiExperience(recoverySurface === "poi_outcome" ? "galaxy" : null);
-    setPendingPoiResolution(recovered.ok ? recovered.pending : null);
+    setActivePoiExperience(recoveredAttempt ? "galaxy" : null);
+    setPendingPoiOutcomeAttempt(recoveredAttempt);
+    setPendingPoiResolution(recoveredAttempt?.routeIdentity.kind === "poi" ? {
+      originColonyId: recoveredAttempt.routeIdentity.originColonyId,
+      nodeId: recoveredAttempt.routeIdentity.nodeId,
+      baseSave: begun,
+      projectedSave: begun,
+      outcome: null,
+    } : null);
     setPoiOutcomeResolving(false);
     setPoiOutcomeError(null);
     setRegionMapSurface(null);
-    setShowGalaxyAtlas(recoverySurface === "atlas");
+    setShowGalaxyAtlas(!recoveryBlocked && recoveredAttempt === null);
     setAtlasStatusMessage(
-      !recovered.ok
+      recoveryBlocked
         ? "ASHFALL OUTCOME RECOVERY FAILED · JOURNAL REJECTED"
-        : recovered.pending
+        : recoveredAttempt
           ? "ASHFALL OUTCOME RECOVERED · DELIVERY STILL PENDING"
           : null,
     );
@@ -444,8 +493,29 @@ export default function Game() {
     persistCanonicalSave(legacy);
     setGalaxyRecoveryError(null);
     setShowGalaxyAtlas(false);
+    const recovered = recoverLegacyPoiCompletion(legacy);
+    if (recovered !== null) {
+      ensureAudio().switchMusic("menu");
+      setShowStartScreen(false);
+      setShowIntro(false);
+      setShowCockpit(false);
+      setShowMap(false);
+      setGameState(null);
+      setActivePlanetId(null);
+      setActiveSpecialMissionId(null);
+      setActiveOperationId(null);
+      setActiveOperationContext(null);
+      setActivePoi(null);
+      setActivePoiExperience("legacy");
+      setPendingPoiOutcomeAttempt(recovered.preparedEnvelope);
+      setPendingPoiResolution(recovered);
+      setPoiOutcomeResolving(false);
+      setPoiOutcomeError(null);
+      setRegionMapSurface(null);
+      return;
+    }
     openMap();
-  }, [openMap, persistCanonicalSave, saveHydrated]);
+  }, [ensureAudio, openMap, persistCanonicalSave, saveHydrated]);
 
   const restoreAtlasInvokerFocus = useCallback(() => {
     if (!atlasShouldRestoreFocusRef.current) {
@@ -467,23 +537,46 @@ export default function Game() {
     !saveData.unlockedSpecialMissions.includes("kepler-black-box");
   const activeSpecialMission = activeSpecialMissionId ? getSpecialMissionDef(activeSpecialMissionId) : null;
 
-  const travelSave = useCallback((result: ReturnType<typeof commitTravel>) => {
+  const travelSave = useCallback((
+    result: ReturnType<typeof commitTravel>,
+    retrySuccessMessage: string,
+  ) => {
     if (!result.ok) {
       setAtlasStatusMessage(result.errors.map((entry) => entry.message).join(" · "));
       return null;
     }
     const current = saveDataRef.current;
     const next = result.save ?? { ...current, galaxyRun: result.galaxyRun };
-    if (result.changed) persistCanonicalSave(next);
+    if (result.changed) {
+      try { persistCanonicalSave(next); }
+      catch {
+        setTravelCommitIssue({ candidate: next, successMessage: retrySuccessMessage });
+        setAtlasStatusMessage("TRAVEL SAVE FAILED · RETRY");
+        return null;
+      }
+    }
+    setTravelCommitIssue(null);
     return next;
   }, [persistCanonicalSave]);
 
+  const retryTravelSave = useCallback(() => {
+    const issue = travelCommitIssue;
+    if (issue === null) return;
+    try {
+      persistCanonicalSave(issue.candidate);
+      setTravelCommitIssue(null);
+      setAtlasStatusMessage(issue.successMessage);
+    } catch {
+      setAtlasStatusMessage("TRAVEL SAVE FAILED · RETRY");
+    }
+  }, [persistCanonicalSave, travelCommitIssue]);
+
   const handleCommitTravel = useCallback((plan: RoutePlan) => {
     const committed = commitTravel(saveDataRef.current, plan);
-    const committedSave = travelSave(committed);
+    const committedSave = travelSave(committed, "TRAVEL COMMIT SAVED · RESUME TRAVEL");
     if (committedSave === null) return;
     const resumed = resumeTravelToBoundary(committedSave);
-    const resumedSave = travelSave(resumed);
+    const resumedSave = travelSave(resumed, "TRAVEL RESUMED");
     if (resumedSave === null) return;
     const travel = resumedSave.galaxyRun?.activeTravel;
     setAtlasStatusMessage(
@@ -497,18 +590,55 @@ export default function Game() {
 
   const handleResumeTravel = useCallback(() => {
     const resumed = resumeTravelToBoundary(saveDataRef.current);
-    if (travelSave(resumed) !== null) setAtlasStatusMessage("TRAVEL RESUMED");
+    if (travelSave(resumed, "TRAVEL RESUMED") !== null) setAtlasStatusMessage("TRAVEL RESUMED");
   }, [travelSave]);
 
   const handleFinalizeTravel = useCallback(() => {
     const finalized = finalizeTravel(saveDataRef.current);
-    if (travelSave(finalized) !== null) setAtlasStatusMessage("ARRIVAL ACKNOWLEDGED");
+    if (travelSave(finalized, "ARRIVAL ACKNOWLEDGED") !== null) setAtlasStatusMessage("ARRIVAL ACKNOWLEDGED");
   }, [travelSave]);
 
   const handleEmergencyRetreat = useCallback(() => {
     const retreated = emergencyRetreat(saveDataRef.current);
-    if (travelSave(retreated) !== null) setAtlasStatusMessage("EMERGENCY RETREAT COMPLETE · RETURNED TO ORIGIN");
+    if (travelSave(retreated, "EMERGENCY RETREAT COMPLETE · RETURNED TO ORIGIN") !== null) {
+      setAtlasStatusMessage("EMERGENCY RETREAT COMPLETE · RETURNED TO ORIGIN");
+    }
   }, [travelSave]);
+
+  const closeGalaxyToExperienceGate = useCallback(() => {
+    const transition = galaxyCloseTransition();
+    if (transition.surface !== "experience_selector" ||
+      !transition.clearGalaxyOverlays || transition.legacyLaunchersReachable) return;
+    setShowGalaxyAtlas(false);
+    setShowCockpit(false);
+    setShowMap(false);
+    setShowIntro(false);
+    setShowStartScreen(true);
+    setGameState(null);
+    setActivePlanetId(null);
+    setActiveSpecialMissionId(null);
+    setActiveOperationId(null);
+    setActiveOperationContext(null);
+    setOperationOutcomeError(null);
+    setGalaxyRecoveryError(null);
+    setActivePoi(null);
+    setActivePoiExperience(null);
+    setPendingPoiResolution(null);
+    setPendingPoiOutcomeAttempt(null);
+    setPoiOutcomeResolving(false);
+    setPoiOutcomeError(null);
+    setRegionMapSurface(null);
+    setSceneStack(null);
+    setExitMenuOpen(false);
+    setAtlasStatusMessage(null);
+    setAtlasSelectedTarget(undefined);
+    setTravelCommitIssue(null);
+    operationOutcomeHandledRef.current = false;
+    poiCompletionHandledRef.current = false;
+    poiResolutionRef.current = false;
+    expeditionRequestRef.current = null;
+    audioRef.current?.switchMusic("menu");
+  }, []);
 
   const mountAuthorizedOperation = useCallback((
     context: OperationLaunchContext,
@@ -521,7 +651,7 @@ export default function Game() {
     }
     try {
       const projected = projectGalaxyRunToLegacySave(current);
-      const launched = launchOperation(current.galaxyRun, projected, context, retryContext);
+      const launched = launchOperation(current.galaxyRun, projected, context, retryContext, current);
       if (!launched.ok) {
         setAtlasStatusMessage(launched.availability.reasons.join(" · "));
         return false;
@@ -536,6 +666,7 @@ export default function Game() {
       setActivePoi(null);
       setActivePoiExperience(null);
       setPendingPoiResolution(null);
+      setPendingPoiOutcomeAttempt(null);
       setRegionMapSurface(null);
       setShowStartScreen(false);
       setShowCockpit(false);
@@ -568,73 +699,38 @@ export default function Game() {
     context: OperationLaunchContext,
     result: OperationResultKind,
     state: GameState | null,
+    options?: { afterAcknowledge?: () => void },
   ) => {
     if (operationOutcomeHandledRef.current) return false;
-    const current = saveDataRef.current;
-    if (current.galaxyRun === null) {
+    if (state === null || state.outcomeAttempt?.routeKind !== "operation" ||
+      state.outcomeAttempt.routeIdentity.kind !== "operation" ||
+      state.outcomeAttempt.routeIdentity.operationId !== context.operationId) {
       const message = "OPERATION OUTCOME LOST ITS GALAXY RUN";
       setOperationOutcomeError(message);
       setAtlasStatusMessage(message);
       return false;
     }
     operationOutcomeHandledRef.current = true;
-    const completionId = [
-      "operation",
-      context.operationId,
-      context.authorizedCycle,
-      context.travelTransactionId === null ? "standalone" : "travel",
-      result,
-    ].join(":");
-    const normalized = normalizeOperationOutcome(current.galaxyRun, context, {
-      completionId,
-      result,
-      metrics: context.operationId === "op:hostile-picket"
-        ? { frameCount: state?.frameCount ?? 0 }
-        : null,
+    const committed = submitGameOutcomeRef.current(state, result, {
+      afterAcknowledge: () => {
+        setOperationOutcomeError(null);
+        setAtlasStatusMessage(
+          result === "success"
+            ? "OPERATION COMPLETE · OUTCOME JOURNALED"
+            : result === "retreat"
+              ? "OPERATION RETREAT JOURNALED"
+              : "OPERATION FAILED · VESSEL STATUS UPDATED",
+        );
+        options?.afterAcknowledge?.();
+      },
     });
-    if (!normalized.ok) {
-      operationOutcomeHandledRef.current = false;
-      const message = normalized.errors.map((entry) => entry.message).join(" · ");
-      setOperationOutcomeError(message);
-      setAtlasStatusMessage(message);
-      return false;
-    }
-    const applied = applyOperationOutcome(current, normalized.outcome);
-    if (!applied.ok) {
-      operationOutcomeHandledRef.current = false;
-      const message = applied.errors.map((entry) => entry.message).join(" · ");
-      setOperationOutcomeError(message);
-      setAtlasStatusMessage(message);
-      return false;
-    }
-    if (applied.changed && !attemptCanonicalPersistence(applied.save, persistCanonicalSave).ok) {
-      operationOutcomeHandledRef.current = false;
-      const message = "OUTCOME SAVE FAILED · FREE SPACE AND RETRY";
-      setOperationOutcomeError(message);
-      setAtlasStatusMessage(message);
-      return false;
-    }
-    setOperationOutcomeError(null);
-    returnSurfaceForOperation(applied.save);
-    setGameState(null);
-    setActiveOperationId(null);
-    setActiveOperationContext(null);
-    setShowMap(false);
-    setShowCockpit(false);
-    setShowGalaxyAtlas(true);
-    setAtlasStatusMessage(
-      result === "success"
-        ? "OPERATION COMPLETE · OUTCOME JOURNALED"
-        : result === "retreat"
-          ? "OPERATION RETREAT JOURNALED"
-          : "OPERATION FAILED · VESSEL STATUS UPDATED",
-    );
-    audioRef.current?.switchMusic("menu");
-    return true;
-  }, [persistCanonicalSave]);
+    if (!committed) setOperationOutcomeError("OUTCOME COULD NOT BE COMMITTED · RETRY OR RELOAD");
+    return committed;
+  }, []);
 
   const handleTravelRetreat = useCallback(() => {
-    const run = saveDataRef.current.galaxyRun;
+    const canonical = saveDataRef.current;
+    const run = canonical.galaxyRun;
     if (run === null || run.activeTravel?.interruptionOperationId !== "op:hostile-picket") {
       setAtlasStatusMessage("NO RETREATABLE INTERRUPTION IS ACTIVE");
       return;
@@ -644,44 +740,33 @@ export default function Game() {
       setAtlasStatusMessage(authorized.availability.reasons.join(" · "));
       return;
     }
-    operationOutcomeHandledRef.current = false;
-    foldOperationResult(authorized.context, "retreat", null);
-  }, [foldOperationResult]);
-
-  const abandonOperationToAtlas = useCallback(() => {
-    setGameState(null);
-    setActiveOperationId(null);
-    setActiveOperationContext(null);
-    setOperationOutcomeError(null);
-    setShowCockpit(false);
-    setShowMap(false);
-    setShowGalaxyAtlas(true);
-    setAtlasStatusMessage("OPERATION SUSPENDED · NO OUTCOME WAS JOURNALED");
-    operationOutcomeHandledRef.current = false;
-    audioRef.current?.switchMusic("menu");
-  }, []);
-
-  const returnGalaxyPoiToAtlas = useCallback(() => {
-    if (activePoiExperience === "galaxy" && pendingPoiResolution !== null) {
-      setPoiOutcomeError("DELIVERY MUST BE RESOLVED BEFORE RETURNING TO THE ATLAS");
+    const projected = projectGalaxyRunToLegacySave(canonical);
+    const launched = launchOperation(run, projected, authorized.context, undefined, canonical);
+    if (!launched.ok) {
+      setAtlasStatusMessage(launched.availability.reasons.join(" · "));
       return;
     }
-    setGameState(null);
-    setActivePoi(null);
-    setActivePoiExperience(null);
-    setPendingPoiResolution(null);
-    setPoiOutcomeResolving(false);
-    setRegionMapSurface(null);
-    setSceneStack(null);
-    setExitMenuOpen(false);
-    setShowCockpit(false);
-    setShowMap(false);
-    setShowGalaxyAtlas(true);
-    setAtlasStatusMessage("RETURNED FROM ASHFALL REGION");
-    poiCompletionHandledRef.current = false;
-    poiResolutionRef.current = false;
-    audioRef.current?.switchMusic("menu");
-  }, [activePoiExperience, pendingPoiResolution]);
+    operationOutcomeHandledRef.current = false;
+    foldOperationResult(authorized.context, "retreat", launched.gameState);
+  }, [foldOperationResult]);
+
+  const retreatActiveRoute = useCallback(() => {
+    const state = gameStateRef.current;
+    if (state === null) {
+      setOutcomeCommitIssue({
+        status: "conflict",
+        message: "OUTCOME AUTHORITY IS MISSING · RELOAD TO RECONCILE",
+        envelope: null,
+        receipt: null,
+      });
+      return;
+    }
+    if (activeOperationContext !== null) {
+      foldOperationResult(activeOperationContext, "retreat", state);
+      return;
+    }
+    submitGameOutcomeRef.current(state, "retreat");
+  }, [activeOperationContext, foldOperationResult]);
 
   const startLevel = useCallback(
     (world: number, level: number) => {
@@ -754,6 +839,8 @@ export default function Game() {
   }, [commitCockpitState, persistCanonicalSave, startPlanetMission, startSpecialMission]);
 
   const returnToCockpit = useCallback(() => {
+    const canonical = loadSave();
+    adoptCanonicalSave(canonical);
     setGameState(null);
     setActivePlanetId(null);
     setActiveSpecialMissionId(null);
@@ -763,7 +850,6 @@ export default function Game() {
     setEndingChoice(null);
     setShowCockpit(true);
     setShowGalaxyAtlas(false);
-    setSaveData(loadSave());
     setSceneStack(null);
     setExitMenuOpen(false);
     expeditionRequestRef.current = null;
@@ -771,10 +857,175 @@ export default function Game() {
     setActivePoi(null);
     setActivePoiExperience(null);
     setPendingPoiResolution(null);
+    setPendingPoiOutcomeAttempt(null);
     setPoiOutcomeError(null);
     resetCockpitKeys();
     audioRef.current?.switchMusic("menu");
-  }, []);
+  }, [adoptCanonicalSave]);
+
+  const mountOutcomeReturn = useCallback((
+    receipt: AppliedOutcomeReturnRecord,
+    canonical: SaveData,
+  ): boolean => {
+    const failMount = (message: string) => {
+      setOutcomeCommitIssue({
+        status: "conflict",
+        message,
+        envelope: null,
+        receipt,
+      });
+      return false;
+    };
+    const mount = resolveOutcomeReturnMount(receipt);
+    if (mount === null) {
+      return failMount("OUTCOME RETURN COULD NOT BE VERIFIED · RELOAD TO RECONCILE");
+    }
+
+    let colonyLaunch: ReturnType<typeof createColonyExteriorLaunchState> | null = null;
+    if (mount.surface === "legacy-colony-exterior" || mount.surface === "legacy-landing-pad") {
+      try { colonyLaunch = createColonyExteriorLaunchState(canonical, mount.colonyId, "continue"); }
+      catch { return failMount("COLONY RETURN COULD NOT BE MOUNTED · RELOAD TO RECONCILE"); }
+    }
+    if (mount.surface === "galaxy-region") {
+      const opened = openGalaxyRegion(canonical, "contact:ashfall");
+      if (!opened.ok || opened.originColony.id !== mount.originColonyId) {
+        return failMount("GALAXY REGION RETURN COULD NOT BE MOUNTED · RELOAD TO RECONCILE");
+      }
+    }
+
+    adoptCanonicalSave(canonical);
+    setShowStartScreen(false);
+    setShowIntro(false);
+    setShowCockpit(false);
+    setShowMap(false);
+    setShowGalaxyAtlas(false);
+    setGameState(null);
+    setActivePlanetId(null);
+    setActiveSpecialMissionId(null);
+    setActiveOperationId(null);
+    setActiveOperationContext(null);
+    setActivePoi(null);
+    setActivePoiExperience(null);
+    setPendingPoiResolution(null);
+    setPendingPoiOutcomeAttempt(null);
+    setPoiOutcomeResolving(false);
+    setPoiOutcomeError(null);
+    setSceneStack(null);
+    setExitMenuOpen(false);
+    setRegionMapSurface(null);
+    setEndingPhase("off");
+    setEndingChoice(null);
+    setOutcomeCommitIssue(null);
+    operationOutcomeHandledRef.current = false;
+    poiCompletionHandledRef.current = false;
+    poiResolutionRef.current = false;
+
+    switch (mount.surface) {
+      case "legacy-cockpit":
+        commitCockpitState({ ...createCockpitState(), screen: "hub" });
+        resetCockpitKeys();
+        setShowCockpit(true);
+        break;
+      case "legacy-star-map":
+        setStarMapState({
+          ...createStarMapState(),
+          selectedWorld: mount.world,
+          selectedLevel: mount.level,
+          expanded: true,
+        });
+        resetStarMapKeys();
+        setShowMap(true);
+        break;
+      case "legacy-colony-exterior":
+      case "legacy-landing-pad":
+        if (colonyLaunch === null) return false;
+        setGameState(colonyLaunch.gameState);
+        setSceneStack(colonyLaunch.sceneStack);
+        setExitMenuOpen(mount.surface === "legacy-landing-pad");
+        break;
+      case "galaxy-atlas":
+        setShowGalaxyAtlas(true);
+        break;
+      case "galaxy-region":
+        setRegionMapSurface({
+          mode: "pad",
+          originColonyId: mount.originColonyId,
+          experience: "galaxy",
+        });
+        break;
+      case "galaxy-colony-exterior":
+      case "galaxy-landing-pad":
+        return failMount("GALAXY COLONY RETURN IS NOT AVAILABLE · RELOAD TO RECONCILE");
+    }
+    audioRef.current?.switchMusic("menu");
+    return true;
+  }, [adoptCanonicalSave, commitCockpitState]);
+
+  const submitOutcomeEnvelope = useCallback((
+    envelope: SerializedOutcomeEnvelope,
+    options?: { deferReturn?: boolean; afterAcknowledge?: () => void },
+  ): boolean => {
+    if (options?.afterAcknowledge !== undefined) {
+      afterOutcomeAcknowledgeRef.current = options.afterAcknowledge;
+    }
+    const result = commitOutcome(outcomeStore, envelope);
+    if (result.status === "write_failed") {
+      setOutcomeCommitIssue({
+        status: "write_failed",
+        message: "OUTCOME SAVE FAILED · RETRY",
+        envelope,
+        receipt: null,
+      });
+      return false;
+    }
+    if (result.status === "conflict") {
+      adoptCanonicalSave(result.latest);
+      setOutcomeCommitIssue({
+        status: "conflict",
+        message: "OUTCOME CONFLICT · RELOAD TO RECONCILE",
+        envelope,
+        receipt: null,
+      });
+      return false;
+    }
+    adoptCanonicalSave(result.save);
+    const receipt = recoverOutcomeReturn(result.save, envelope.outcomeId);
+    if (receipt === null) {
+      // A duplicate callback after acknowledgement is a durable no-op. It must
+      // never borrow another pending receipt to navigate.
+      afterOutcomeAcknowledgeRef.current = null;
+      return false;
+    }
+    setPendingOutcomeReturn(receipt);
+    setOutcomeCommitIssue(null);
+    return options?.deferReturn === true || mountOutcomeReturn(receipt, result.save);
+  }, [adoptCanonicalSave, mountOutcomeReturn, outcomeStore]);
+
+  const submitGameOutcome = useCallback((
+    state: GameState,
+    terminalKind: OutcomeTerminalKind,
+    options?: {
+      destinationColonyId?: string | null;
+      deferReturn?: boolean;
+      afterAcknowledge?: () => void;
+    },
+  ): boolean => {
+    try {
+      return submitOutcomeEnvelope(
+        createGameStateOutcomeEnvelope(state, terminalKind, options?.destinationColonyId),
+        options,
+      );
+    } catch {
+      setOutcomeCommitIssue({
+        status: "conflict",
+        message: "OUTCOME AUTHORITY IS MISSING · RELOAD TO RECONCILE",
+        envelope: null,
+        receipt: null,
+      });
+      return false;
+    }
+  }, [submitOutcomeEnvelope]);
+  submitGameOutcomeRef.current = submitGameOutcome;
 
   const handleColonyDispatch = useCallback((event: ColonyEvent) => {
     // Read saveData at call time and persist synchronously. Matches the pattern
@@ -784,8 +1035,8 @@ export default function Game() {
     // stale state; in that case, refactor to a separate save effect.
     const next = colonyReducer(saveData, event);
     saveSave(next);
-    setSaveData(next);
-  }, [saveData]);
+    adoptCanonicalSave(next);
+  }, [adoptCanonicalSave, saveData]);
 
   const handleColoniesExit = useCallback(() => {
     commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
@@ -819,7 +1070,14 @@ export default function Game() {
             })()
           : result.save;
         if (engineSave === null) throw new Error("Galaxy region projection unavailable");
-        poiState = createPoiGameState(result.session, engineSave, surface.experience);
+        poiState = createPoiGameState(
+          result.session,
+          engineSave,
+          surface.experience,
+          undefined,
+          result.save,
+          surface.originColonyId,
+        );
       }
       catch { expeditionRequestRef.current = null; return; }
     }
@@ -830,6 +1088,7 @@ export default function Game() {
     poiCompletionHandledRef.current = false;
     poiResolutionRef.current = false;
     setPendingPoiResolution(null);
+    setPendingPoiOutcomeAttempt(null);
     setPoiOutcomeError(null);
     setRegionMapSurface(null);
     setExitMenuOpen(false);
@@ -898,21 +1157,56 @@ export default function Game() {
     return opened.ok ? opened.projectedSave : null;
   }, [activePoiExperience, pendingPoiResolution, saveData]);
 
+  const pendingPoiPresentation = useMemo<PendingPoiResolution | null>(() => {
+    if (pendingPoiResolution === null) return null;
+    const identity = pendingPoiOutcomeAttempt?.routeIdentity;
+    if (identity?.kind !== "poi" || !identity.rewardEligible) return pendingPoiResolution;
+    return {
+      ...pendingPoiResolution,
+      outcome: {
+        originColonyId: identity.originColonyId,
+        nodeId: identity.nodeId,
+        payload: { ...POI_CARGO },
+      },
+    };
+  }, [pendingPoiOutcomeAttempt, pendingPoiResolution]);
+
   useEffect(() => {
     if (!activePoi || !gameState || gameState.screen !== GameScreen.LEVEL_COMPLETE || poiCompletionHandledRef.current) return;
     poiCompletionHandledRef.current = true;
+    const attempt = gameState.outcomeAttempt;
+    if (attempt?.routeKind !== "poi") {
+      setPoiOutcomeError("COMPLETION AUTHORITY IS MISSING — RELOAD TO RECONCILE");
+      return;
+    }
     if (activePoiExperience === "galaxy") {
-      const prepared = prepareGalaxyPoiCompletion(saveDataRef.current, "contact:ashfall", activePoi, gameState.screen);
+      const prepared = stageGalaxyPoiOutcomeAuthority(saveDataRef.current, activePoi, gameState.screen, attempt);
       if (!prepared.ok) { setPoiOutcomeError("COMPLETION COULD NOT BE VERIFIED — NO REWARD WAS SAVED"); return; }
       try { persistCanonicalSave(prepared.save); }
       catch { setPoiOutcomeError("COMPLETION SAVE FAILED — NO REWARD WAS SAVED"); return; }
-      setPendingPoiResolution(prepared.pending);
+      setPendingPoiOutcomeAttempt(prepared.attempt);
+      setPendingPoiResolution(prepared.attempt.routeIdentity.kind === "poi" ? {
+        originColonyId: prepared.attempt.routeIdentity.originColonyId,
+        nodeId: prepared.attempt.routeIdentity.nodeId,
+        baseSave: prepared.save,
+        projectedSave: prepared.save,
+        outcome: null,
+      } : null);
       return;
     }
-    const pending = preparePoiCompletion(saveDataRef.current, activePoi, gameState.screen);
+    const pending = preparePoiCompletion(saveDataRef.current, activePoi, gameState.screen, attempt);
     if (!pending) { setPoiOutcomeError("COMPLETION COULD NOT BE VERIFIED — NO REWARD WAS SAVED"); return; }
+    try { persistCanonicalSave(pending.preparedSave); }
+    catch { setPoiOutcomeError("COMPLETION SAVE FAILED — NO REWARD WAS SAVED"); return; }
+    setPendingPoiOutcomeAttempt(pending.preparedEnvelope);
     setPendingPoiResolution(pending);
-  }, [activePoi, activePoiExperience, gameState?.screen, persistCanonicalSave]);
+  }, [activePoi, activePoiExperience, gameState?.screen, persistCanonicalSave, poiCompletionRetryToken]);
+
+  const retryPoiCompletionSave = useCallback(() => {
+    poiCompletionHandledRef.current = false;
+    setPoiOutcomeError(null);
+    setPoiCompletionRetryToken((value) => value + 1);
+  }, []);
 
   const handlePoiOutcomeConfirm = useCallback((destinationColonyId: string | null) => {
     const pending = pendingPoiResolution;
@@ -920,55 +1214,26 @@ export default function Game() {
     poiResolutionRef.current = true;
     setPoiOutcomeResolving(true);
     setPoiOutcomeError(null);
-    const galaxyPending = activePoiExperience === "galaxy"
-      ? pending as GalaxyPendingPoiResolution
-      : null;
-    const resolved = galaxyPending
-      ? resolveGalaxyPoiCompletion(saveDataRef.current, "contact:ashfall", galaxyPending, destinationColonyId)
-      : resolvePoiCompletion(pending, destinationColonyId);
-    if (!resolved || !resolved.ok) {
-      setPoiOutcomeError(
-        resolved?.reason === "destination_missing"
-          ? "DESTINATION UNAVAILABLE"
-          : galaxyPending
-            ? "OUTCOME VALIDATION FAILED — RETRY OR RELOAD"
-            : "OUTCOME CHANGED — RETURN TO HUB",
-      );
-      poiResolutionRef.current = false; setPoiOutcomeResolving(false); return;
+    let envelope: SerializedOutcomeEnvelope | null = null;
+    if (activePoiExperience === "galaxy") {
+      envelope = pendingPoiOutcomeAttempt?.routeKind === "poi"
+        ? createOutcomeEnvelope(pendingPoiOutcomeAttempt, "success", {
+            version: 2,
+            kind: "poi_result_v2",
+            destinationColonyId,
+          })
+        : null;
+    } else {
+      const resolved = resolvePoiCompletion(pending as LegacyPreparedPoiResolution, destinationColonyId);
+      envelope = resolved?.ok ? resolved.envelope : null;
     }
-    try {
-      if (galaxyPending) {
-        persistCanonicalSave(resolved.save);
-        setGameState(null);
-        setActivePoi(null);
-        setActivePoiExperience(null);
-        setPendingPoiResolution(null);
-        setPoiOutcomeResolving(false);
-        setExitMenuOpen(false);
-        setSceneStack(null);
-        setRegionMapSurface({
-          mode: "pad",
-          originColonyId: pending.originColonyId,
-          experience: "galaxy",
-        });
-        setShowGalaxyAtlas(false);
-        return;
-      }
-      const launched = createColonyExteriorLaunchState(
-        resolved.save,
-        pending.originColonyId,
-        "continue",
-      );
-      saveSave(resolved.save);
-      saveDataRef.current = resolved.save; setSaveData(resolved.save);
-      setSceneStack(launched.sceneStack);
-      setGameState(launched.gameState);
-      setActivePoi(null); setPendingPoiResolution(null); setPoiOutcomeResolving(false); setExitMenuOpen(false);
-    } catch {
-      setPoiOutcomeError("SAVE FAILED — RETRY DELIVERY");
-      poiResolutionRef.current = false; setPoiOutcomeResolving(false);
+    if (envelope === null || !submitOutcomeEnvelope(envelope)) {
+      if (envelope === null) setPoiOutcomeError("OUTCOME VALIDATION FAILED — RETRY OR RELOAD");
+      poiResolutionRef.current = false;
+      setPoiOutcomeResolving(false);
+      return;
     }
-  }, [activePoiExperience, pendingPoiResolution, persistCanonicalSave]);
+  }, [activePoiExperience, pendingPoiOutcomeAttempt, pendingPoiResolution, submitOutcomeEnvelope]);
 
   useEffect(() => {
     if (shouldPromptKeplerMission) {
@@ -984,6 +1249,14 @@ export default function Game() {
     endingFrameRef.current = 0;
   }, []);
 
+  const completeEnding = useCallback(() => {
+    if (pendingOutcomeReturn !== null) {
+      mountOutcomeReturn(pendingOutcomeReturn, saveDataRef.current);
+      return;
+    }
+    returnToCockpit();
+  }, [mountOutcomeReturn, pendingOutcomeReturn, returnToCockpit]);
+
   const advanceEnding = useCallback(() => {
     if (endingPhase === "pre-choice") {
       setEndingPhase("choice");
@@ -992,9 +1265,9 @@ export default function Game() {
       setEndingPhase("credits");
       endingFrameRef.current = 0;
     } else if (endingPhase === "credits") {
-      returnToCockpit();
+      completeEnding();
     }
-  }, [endingPhase, returnToCockpit]);
+  }, [completeEnding, endingPhase]);
 
   const confirmChoice = useCallback((choice: EndingChoice) => {
     setEndingChoice(choice);
@@ -1028,11 +1301,14 @@ export default function Game() {
         setActivePoi({ originColonyId: activePoi.originColonyId, session: dispatched.session });
         poiCompletionHandledRef.current = false;
         setPendingPoiResolution(null);
+        setPendingPoiOutcomeAttempt(null);
         setGameState(createPoiGameState(
           dispatched.session,
           poiSave,
           activePoiExperience ?? "legacy",
           ownedRetry,
+          saveDataRef.current,
+          activePoi.originColonyId,
         ));
       }
       return;
@@ -1045,11 +1321,19 @@ export default function Game() {
       const freshGroundState = isGroundRun ? createTestGroundState() : undefined;
       const groundSpawn = isGroundRun && freshGroundState ? getGroundSpawn(freshGroundState.tileMap) : null;
       if (ownedRetry) claimLaunchContextForGameState(ownedRetry);
+      const retryOutcomeAttempt = ownedRetry && gameState.outcomeAttempt
+        ? createOutcomeAttempt(
+            saveDataRef.current,
+            ownedRetry,
+            gameState.outcomeAttempt.routeKind,
+          )
+        : undefined;
       setGameState({
         ...gameState,
         ...restored,
         ...(ownedRetry ? {
           launchContext: ownedRetry,
+          ...(retryOutcomeAttempt ? { outcomeAttempt: retryOutcomeAttempt } : {}),
           pilotLoadout: ownedRetry.pilot,
           equippedWeaponType: ownedRetry.pilot.equippedWeaponType,
         } : {}),
@@ -1075,19 +1359,22 @@ export default function Game() {
       return;
     }
     if (activeSpecialMissionId) {
-      setGameState(ownedRetry
-        ? createSpecialMissionGameState(activeSpecialMissionId, false, ownedRetry)
-        : createSpecialLaunchState(saveDataRef.current, activeSpecialMissionId));
+      if (ownedRetry) {
+        const state = createSpecialMissionGameState(activeSpecialMissionId, false, ownedRetry);
+        setGameState({ ...state, outcomeAttempt: createOutcomeAttempt(saveDataRef.current, ownedRetry, "special") });
+      } else setGameState(createSpecialLaunchState(saveDataRef.current, activeSpecialMissionId));
     } else if (activePlanetId) {
-      setGameState(ownedRetry
-        ? createPlanetGameState(activePlanetId, ownedRetry)
-        : createPlanetLaunchState(saveDataRef.current, activePlanetId));
+      if (ownedRetry) {
+        const state = createPlanetGameState(activePlanetId, ownedRetry);
+        setGameState({ ...state, outcomeAttempt: createOutcomeAttempt(saveDataRef.current, ownedRetry, "planet") });
+      } else setGameState(createPlanetLaunchState(saveDataRef.current, activePlanetId));
     } else {
       const world = gameState?.currentWorld ?? 1;
       const level = gameState?.currentLevel ?? 1;
-      setGameState(ownedRetry
-        ? createGameState(world, level, ownedRetry)
-        : createCampaignLaunchState(saveDataRef.current, world, level));
+      if (ownedRetry) {
+        const state = createGameState(world, level, ownedRetry);
+        setGameState({ ...state, outcomeAttempt: createOutcomeAttempt(saveDataRef.current, ownedRetry, "campaign") });
+      } else setGameState(createCampaignLaunchState(saveDataRef.current, world, level));
     }
   }, [gameState, activePlanetId, activeSpecialMissionId, activeOperationId, activeOperationContext, activePoi, activePoiExperience, ensureAudio, mountAuthorizedOperation]);
 
@@ -1099,179 +1386,62 @@ export default function Game() {
       return;
     }
 
-    if (activeSpecialMissionId) {
-      let newSave = {
-        ...saveData,
-        credits: saveData.credits + calculateCreditsEarned(gameState.score, 1, gameState.currentWorld),
-      };
-
-      let updatedBestiary = newSave.bestiary;
-      if (gameState.pendingBestiaryKills?.length) {
-        for (const kill of gameState.pendingBestiaryKills) {
-          updatedBestiary = recordKill(updatedBestiary, kill.type, kill.classId, {
-            world: gameState.currentWorld,
-          });
-        }
-      }
-      newSave = { ...newSave, bestiary: updatedBestiary };
-      newSave = completeSpecialMission(newSave, activeSpecialMissionId);
-
-      if (activeSpecialMissionId === "kepler-black-box" && gameState.firstPersonState?.objectiveCollected) {
-        const missionDef = getSpecialMissionDef(activeSpecialMissionId);
-        newSave = addStoryItem(newSave, missionDef.storyItemId);
-        newSave = unlockCodexEntry(newSave, missionDef.storyCodexId);
-      }
-
-      const cycledSave = advanceWorldCycle(newSave);
-      saveSave(cycledSave);
-      setSaveData(cycledSave);
-      returnToCockpit();
+    if (activePlanetId || activeSpecialMissionId) {
+      submitGameOutcome(gameState, "success");
       return;
     }
 
-    // Planet mission completion — award rewards and return to cockpit
-    if (activePlanetId) {
-      let newSave = completePlanet(saveData, activePlanetId);
-      // Flush pending bestiary kills
-      let updatedBestiary = newSave.bestiary;
-      if (gameState?.pendingBestiaryKills?.length) {
-        for (const kill of gameState.pendingBestiaryKills) {
-          updatedBestiary = recordKill(updatedBestiary, kill.type, kill.classId, {
-            world: gameState.currentWorld,
-            planetId: gameState.planetId,
-          });
-        }
+    const continueCampaign = () => {
+      const canonical = saveDataRef.current;
+      if (options?.unlockSpecialMission && options.launchSpecialMission) {
+        startSpecialMission(options.unlockSpecialMission, canonical, "continue");
+        return;
       }
-      newSave = { ...newSave, bestiary: updatedBestiary };
-      // OW-0: planet missions deliver a resource payload to a colony
-      // (the colony on this planet if any, else the player's first colony).
-      newSave = applyMissionDelivery(newSave, activePlanetId).save;
-      const cycledSave = advanceWorldCycle(newSave);
-      saveSave(cycledSave);
-      setSaveData(cycledSave);
-      returnToCockpit();
-      return;
-    }
-
-    // Save level result
-    const stars =
-      gameState.deaths === 0 && gameState.kills / Math.max(1, gameState.totalEnemies) >= 0.8
-        ? 3
-        : gameState.deaths === 0
-          ? 2
-          : 1;
-    let newSave = updateLevelResult(saveData, gameState.currentWorld, gameState.currentLevel, gameState.score, stars, gameState.xp);
-
-    // Perfect clear bonus: 100% enemies killed
-    const isPerfectClear = gameState.totalEnemies > 0 && gameState.kills >= gameState.totalEnemies;
-    if (isPerfectClear) {
-      newSave = { ...newSave, credits: newSave.credits + 500 };
-    }
-
-    const prevLevel = newSave.pilotLevel;
-    newSave = recalcPilotLevel(newSave);
-    if (newSave.pilotLevel > prevLevel) {
-      console.log(`PILOT LEVEL UP! ${prevLevel} → ${newSave.pilotLevel}`);
-    }
-
-    // Check side quest completion
-    const questData: QuestCheckData = {
-      world: gameState.currentWorld,
-      level: gameState.currentLevel,
-      kills: gameState.kills,
-      totalEnemies: gameState.totalEnemies,
-      deaths: gameState.deaths,
-      frameCount: gameState.frameCount,
-      playerHp: gameState.player.hp,
-      playerMaxHp: gameState.player.maxHp,
-    };
-    const questResult = checkQuestCompletion(newSave, questData);
-    newSave = questResult.newSave;
-
-    // Flush pending bestiary kills
-    let updatedBestiary = newSave.bestiary;
-    if (gameState?.pendingBestiaryKills?.length) {
-      for (const kill of gameState.pendingBestiaryKills) {
-        updatedBestiary = recordKill(updatedBestiary, kill.type, kill.classId, {
-          world: gameState.currentWorld,
-          planetId: gameState.planetId,
+      const maxLevels = getWorldLevelCount(gameState.currentWorld);
+      const nextLevelNumber = gameState.currentLevel + 1;
+      const campaignReturnTarget = gameState.launchContext?.returnTarget === "legacy-cockpit"
+        ? "legacy-cockpit"
+        : "legacy-star-map";
+      const carryForward = (newState: GameState) => {
+        setShowMap(false);
+        setShowCockpit(false);
+        setGameState({
+          ...newState,
+          score: gameState.score,
+          lives: gameState.lives,
+          kills: gameState.kills,
+          deaths: gameState.deaths,
+          maxCombo: gameState.maxCombo,
+          devInvincible: gameState.devInvincible,
+          activePowerUps: gameState.activePowerUps,
+          player: { ...newState.player, weaponLevel: gameState.player.weaponLevel },
         });
+        audioRef.current?.switchMusic("game");
+      };
+      if (nextLevelNumber <= maxLevels) {
+        carryForward(createCampaignLaunchState(
+          canonical,
+          gameState.currentWorld,
+          nextLevelNumber,
+          "continue",
+          campaignReturnTarget,
+        ));
+        return;
       }
-    }
-    newSave = { ...newSave, bestiary: updatedBestiary };
-
-    // Award multi-phase completion rewards (deduplicated per material)
-    const multiPhaseData = getMultiPhaseLevelData(gameState.currentWorld, gameState.currentLevel);
-    if (multiPhaseData?.completionRewards && gameState.currentPhase >= gameState.totalPhases - 1) {
-      for (const matId of multiPhaseData.completionRewards) {
-        if (!newSave.materials.includes(matId)) {
-          newSave = { ...newSave, materials: [...newSave.materials, matId] };
-        }
-      }
-    }
-
-    if (options?.unlockSpecialMission) {
-      newSave = unlockSpecialMission(newSave, options.unlockSpecialMission);
-    }
-
-    const cycledSave = advanceWorldCycle(newSave);
-    saveSave(cycledSave);
-    setSaveData(cycledSave);
-
-    if (options?.unlockSpecialMission && options.launchSpecialMission) {
-      startSpecialMission(options.unlockSpecialMission, cycledSave, "continue");
-      return;
-    }
-
-    const maxLevels = getWorldLevelCount(gameState.currentWorld);
-    const nextLv = gameState.currentLevel + 1;
-    const campaignReturnTarget = gameState.launchContext?.returnTarget === "legacy-cockpit"
-      ? "legacy-cockpit"
-      : "legacy-star-map";
-
-    // Carry forward state across levels in the same world
-    const carryForward = (newState: GameState) => {
-      setGameState({
-        ...newState,
-        score: gameState.score,
-        lives: gameState.lives,
-        kills: gameState.kills,
-        deaths: gameState.deaths,
-        maxCombo: gameState.maxCombo,
-        devInvincible: gameState.devInvincible,
-        activePowerUps: gameState.activePowerUps,
-        player: { ...newState.player, weaponLevel: gameState.player.weaponLevel },
-      });
-    };
-
-    if (nextLv <= maxLevels) {
-      // Next level in same world
-      carryForward(createCampaignLaunchState(
-        cycledSave,
-        gameState.currentWorld,
-        nextLv,
-        "continue",
-        campaignReturnTarget,
-      ));
-    } else {
-      // World complete — try advancing to next world
       let nextWorld = gameState.currentWorld + 1;
-      while (nextWorld <= 8 && getWorldLevelCount(nextWorld) === 0) {
-        nextWorld++;
-      }
+      while (nextWorld <= 8 && getWorldLevelCount(nextWorld) === 0) nextWorld += 1;
       if (nextWorld <= 8 && getWorldLevelCount(nextWorld) > 0) {
         carryForward(createCampaignLaunchState(
-          cycledSave,
+          canonical,
           nextWorld,
           1,
           "continue",
           campaignReturnTarget,
         ));
-      } else {
-        startEnding();
       }
-    }
-  }, [gameState, activePlanetId, activeSpecialMissionId, activeOperationId, activeOperationContext, saveData, foldOperationResult, returnToCockpit, startEnding, startSpecialMission]);
+    };
+    submitGameOutcome(gameState, "success", { afterAcknowledge: continueCampaign });
+  }, [gameState, activePlanetId, activeSpecialMissionId, activeOperationId, activeOperationContext, foldOperationResult, startSpecialMission, submitGameOutcome]);
 
   const handleDevAction = useCallback(
     (action: string) => {
@@ -1295,6 +1465,7 @@ export default function Game() {
         setActivePoi(null);
         setActivePoiExperience(null);
         setPendingPoiResolution(null);
+        setPendingPoiOutcomeAttempt(null);
         setPoiOutcomeError(null);
         setPoiOutcomeResolving(false);
         setRegionMapSurface(null);
@@ -1360,10 +1531,10 @@ export default function Game() {
         if (!fx) return;
         const { save: seeded, colonyId } = applyColonyFixture(saveData, fx);
         saveSave(seeded);
-        saveDataRef.current = seeded;
-        setSaveData(seeded);
+        adoptCanonicalSave(seeded);
         setActivePoi(null);
         setPendingPoiResolution(null);
+        setPendingPoiOutcomeAttempt(null);
         setRegionMapSurface(null);
         setExitMenuOpen(false);
         ensureAudio();
@@ -1648,10 +1819,8 @@ export default function Game() {
           } else if (gameState?.screen === GameScreen.GAME_OVER) {
             if (activeOperationContext) {
               foldOperationResult(activeOperationContext, "failure", gameState);
-            } else if (activePoiExperience === "galaxy") {
-              returnGalaxyPoiToAtlas();
             } else {
-              returnToCockpit();
+              submitGameOutcome(gameState, "failure");
             }
           } else if (gameState?.screen === GameScreen.LEVEL_COMPLETE) {
             if (activePoi) return;
@@ -1675,11 +1844,9 @@ export default function Game() {
             setShowCockpit(true);
             resetCockpitKeys();
           } else if (gameState?.screen === GameScreen.PAUSED) {
-            if (activeOperationId) abandonOperationToAtlas();
-            else if (activePoiExperience === "galaxy") returnGalaxyPoiToAtlas();
-            else returnToCockpit();
+            retreatActiveRoute();
           } else if (gameState?.screen === GameScreen.GAME_OVER || gameState?.screen === GameScreen.LEVEL_COMPLETE) {
-            if (activePoi) {
+            if (activePoi && gameState.screen === GameScreen.LEVEL_COMPLETE) {
               return;
             } else if (activeOperationContext) {
               foldOperationResult(
@@ -1687,10 +1854,11 @@ export default function Game() {
                 gameState.screen === GameScreen.LEVEL_COMPLETE ? "success" : "failure",
                 gameState,
               );
-            } else if (activePoiExperience === "galaxy") {
-              returnGalaxyPoiToAtlas();
             } else {
-              returnToCockpit();
+              submitGameOutcome(
+                gameState,
+                gameState.screen === GameScreen.LEVEL_COMPLETE ? "success" : "failure",
+              );
             }
           } else if (gameState?.screen === GameScreen.PLAYING || gameState?.screen === GameScreen.BOSS_FIGHT) {
             setGameState((prev) => (prev ? togglePause(prev) : null));
@@ -1761,7 +1929,7 @@ export default function Game() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, abandonOperationToAtlas, returnGalaxyPoiToAtlas, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi]);
+  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, retreatActiveRoute, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi, submitGameOutcome]);
 
   // Grade-scene menu detection: whenever gameplay isn't the active surface
   // (start screen, intro, cockpit, star map, ending) the grade preset eases
@@ -1911,8 +2079,7 @@ export default function Game() {
         }
       } else if (gameState?.screen === GameScreen.GAME_OVER) {
         if (activeOperationContext) foldOperationResult(activeOperationContext, "failure", gameState);
-        else if (activePoiExperience === "galaxy") returnGalaxyPoiToAtlas();
-        else returnToCockpit();
+        else submitGameOutcome(gameState, "failure");
       } else if (gameState?.screen === GameScreen.LEVEL_COMPLETE) {
         if (activePoi) return;
         if (shouldPromptKeplerMission) {
@@ -1936,7 +2103,7 @@ export default function Game() {
       canvas.removeEventListener("touchmove", handleTouchMove);
       canvas.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [showStartScreen, showIntro, endingPhase, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationContext, activePoi, activePoiExperience, openExperienceMap, finishIntro, advanceEnding, confirmChoice, foldOperationResult, returnGalaxyPoiToAtlas, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, commitCockpitState, handleMissionBoardPoint]);
+  }, [showStartScreen, showIntro, endingPhase, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationContext, activePoi, activePoiExperience, openExperienceMap, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, commitCockpitState, handleMissionBoardPoint, submitGameOutcome]);
 
   // Intro crawl loop
   useEffect(() => {
@@ -2001,7 +2168,7 @@ export default function Game() {
       } else if (endingPhase === "credits") {
         drawCredits(ctx, frame, endingChoice);
         if (frame >= getCreditsFrameCount(endingChoice)) {
-          returnToCockpit();
+          completeEnding();
           return;
         }
       }
@@ -2016,7 +2183,7 @@ export default function Game() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [endingPhase, endingChoice, choiceHover, showGalaxyAtlas, advanceEnding, returnToCockpit]);
+  }, [endingPhase, endingChoice, choiceHover, showGalaxyAtlas, advanceEnding, completeEnding]);
 
   // Star map loop
   useEffect(() => {
@@ -2257,7 +2424,7 @@ export default function Game() {
           const nextSave = applyShopPurchase(saveData, buyReq, buyRank);
           if (nextSave) {
             saveSave(nextSave);
-            setSaveData(nextSave);
+            adoptCanonicalSave(nextSave);
           } else if (fpBuy.dialogState) {
             fpBuy.dialogState.shopFlashFrames = 90;
           }
@@ -2282,51 +2449,14 @@ export default function Game() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface]);
+  }, [adoptCanonicalSave, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface]);
 
   // Auto-trigger ending when game engine sets ENDING screen (final boss defeated)
   useEffect(() => {
     if (gameState?.screen === GameScreen.ENDING && endingPhase === "off" && activeOperationId === null) {
-      // Save the final level result before transitioning
-      const stars =
-        gameState.deaths === 0 && gameState.kills / Math.max(1, gameState.totalEnemies) >= 0.8
-          ? 3
-          : gameState.deaths === 0
-            ? 2
-            : 1;
-      let finalSave = updateLevelResult(saveData, gameState.currentWorld, gameState.currentLevel, gameState.score, stars, gameState.xp);
-      const finalPrevLevel = finalSave.pilotLevel;
-      finalSave = recalcPilotLevel(finalSave);
-      if (finalSave.pilotLevel > finalPrevLevel) {
-        console.log(`PILOT LEVEL UP! ${finalPrevLevel} → ${finalSave.pilotLevel}`);
-      }
-      const questData: QuestCheckData = {
-        world: gameState.currentWorld,
-        level: gameState.currentLevel,
-        kills: gameState.kills,
-        totalEnemies: gameState.totalEnemies,
-        deaths: gameState.deaths,
-        frameCount: gameState.frameCount,
-        playerHp: gameState.player.hp,
-        playerMaxHp: gameState.player.maxHp,
-      };
-      finalSave = checkQuestCompletion(finalSave, questData).newSave;
-      // Flush pending bestiary kills
-      let finalBestiary = finalSave.bestiary;
-      if (gameState?.pendingBestiaryKills?.length) {
-        for (const kill of gameState.pendingBestiaryKills) {
-          finalBestiary = recordKill(finalBestiary, kill.type, kill.classId, {
-            world: gameState.currentWorld,
-            planetId: gameState.planetId,
-          });
-        }
-      }
-      finalSave = { ...finalSave, bestiary: finalBestiary };
-      saveSave(finalSave);
-      setSaveData(finalSave);
-      startEnding();
+      if (submitGameOutcome(gameState, "success", { deferReturn: true })) startEnding();
     }
-  }, [gameState?.screen, endingPhase, activeOperationId, gameState, saveData, startEnding]);
+  }, [gameState?.screen, endingPhase, activeOperationId, gameState, startEnding, submitGameOutcome]);
 
   // Draw non-playing screens
   useEffect(() => {
@@ -2351,10 +2481,99 @@ export default function Game() {
     }
   }, [gameState?.screen, gameState?.score, activeOperationId, activePoiExperience]);
 
+  useEffect(() => {
+    if (!saveHydrated || hydratedOutcomeReturnHandledRef.current) return;
+    hydratedOutcomeReturnHandledRef.current = true;
+    const receipt = recoverOutcomeReturn(saveDataRef.current);
+    if (receipt === null) return;
+    setPendingOutcomeReturn(receipt);
+    const isFinalCampaign = receipt.terminalKind === "success" &&
+      receipt.routeIdentity.kind === "campaign" &&
+      receipt.routeIdentity.world === 8 &&
+      receipt.routeIdentity.level === getWorldLevelCount(8);
+    if (isFinalCampaign) {
+      setShowStartScreen(false);
+      startEnding();
+      return;
+    }
+    mountOutcomeReturn(receipt, saveDataRef.current);
+  }, [mountOutcomeReturn, saveHydrated, startEnding]);
+
+  useEffect(() => {
+    const receipt = pendingOutcomeReturn;
+    if (receipt === null || endingPhase !== "off" || outcomeAcknowledgeInFlightRef.current ||
+      outcomeCommitIssue?.receipt != null) return;
+    const mount = resolveOutcomeReturnMount(receipt);
+    if (mount === null) return;
+    const mounted = mount.surface === "legacy-cockpit"
+      ? showCockpit && cockpitState.screen === "hub"
+      : mount.surface === "legacy-star-map"
+        ? showMap && starMapState.selectedWorld === mount.world &&
+          starMapState.selectedLevel === mount.level && starMapState.expanded
+        : mount.surface === "legacy-colony-exterior" || mount.surface === "legacy-landing-pad"
+          ? sceneStack?.colonyId === mount.colonyId && gameState?.currentMode === "colony-exploration" &&
+            (mount.surface !== "legacy-landing-pad" || exitMenuOpen)
+          : mount.surface === "galaxy-atlas"
+            ? showGalaxyAtlas
+            : mount.surface === "galaxy-region"
+              ? regionMapSurface?.experience === "galaxy" &&
+                regionMapSurface.originColonyId === mount.originColonyId
+              : false;
+    if (!mounted) return;
+    outcomeAcknowledgeInFlightRef.current = true;
+    const frame = requestAnimationFrame(() => {
+      const result = acknowledgeOutcomeReturn(outcomeStore, receipt.outcomeId);
+      outcomeAcknowledgeInFlightRef.current = false;
+      if (result.status === "write_failed") {
+        setOutcomeCommitIssue({
+          status: "write_failed",
+          message: "OUTCOME RETURN SAVE FAILED · RETRY",
+          envelope: null,
+          receipt,
+        });
+        return;
+      }
+      if (result.status === "conflict") {
+        adoptCanonicalSave(result.latest);
+        setOutcomeCommitIssue({
+          status: "conflict",
+          message: "OUTCOME RETURN CONFLICT · RELOAD TO RECONCILE",
+          envelope: null,
+          receipt,
+        });
+        return;
+      }
+      adoptCanonicalSave(result.save);
+      setPendingOutcomeReturn(null);
+      setOutcomeCommitIssue(null);
+      const afterAcknowledge = afterOutcomeAcknowledgeRef.current;
+      afterOutcomeAcknowledgeRef.current = null;
+      afterAcknowledge?.();
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      outcomeAcknowledgeInFlightRef.current = false;
+    };
+  }, [
+    adoptCanonicalSave,
+    cockpitState.screen,
+    endingPhase,
+    exitMenuOpen,
+    gameState?.currentMode,
+    outcomeCommitIssue?.receipt,
+    outcomeStore,
+    pendingOutcomeReturn,
+    regionMapSurface,
+    sceneStack?.colonyId,
+    showCockpit,
+    showGalaxyAtlas,
+    showMap,
+    starMapState,
+  ]);
+
   // Load player name and preload sprites
   useEffect(() => {
     setPlayerName(getPlayerName());
-    setSaveData(loadSave());
     preloadAll();
   }, []);
 
@@ -2549,12 +2768,9 @@ export default function Game() {
           onFinalizeTravel={handleFinalizeTravel}
           onOpenAshfallRegion={handleOpenAshfallRegion}
           onRestoreFocus={restoreAtlasInvokerFocus}
-          onClose={() => {
-            setShowGalaxyAtlas(false);
-            setShowCockpit(true);
-            commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
-            resetCockpitKeys();
-          }}
+          onClose={outcomeCommitIssue !== null || travelCommitIssue !== null || pendingOutcomeReturn !== null
+            ? () => {}
+            : closeGalaxyToExperienceGate}
         />
       )}
 
@@ -2630,11 +2846,7 @@ export default function Game() {
                 RESUME
               </button>
               <button
-                onClick={activeOperationId
-                  ? abandonOperationToAtlas
-                  : activePoiExperience === "galaxy"
-                    ? returnGalaxyPoiToAtlas
-                    : returnToCockpit}
+                onClick={retreatActiveRoute}
                 className="px-8 py-3 border-2 border-gray-600 text-gray-400 text-lg hover:bg-gray-600 hover:text-white transition-colors tracking-wider w-56"
               >
                 {experienceReturnLabel(Boolean(activeOperationId || activePoiExperience === "galaxy"))}
@@ -2852,7 +3064,7 @@ export default function Game() {
             )}
             {!activeOperationId && (
               <button
-                onClick={returnToCockpit}
+                onClick={() => submitGameOutcome(gameState, "success")}
                 className="px-6 py-4 border-2 border-gray-600 text-gray-400 text-lg hover:bg-gray-600 hover:text-white transition-colors tracking-wider"
               >
                 HUB
@@ -2887,7 +3099,14 @@ export default function Game() {
           </div>
           <div className="flex gap-4">
             <button
-              onClick={() => restartGame()}
+              onClick={() => {
+                if (activeOperationContext) {
+                  foldOperationResult(activeOperationContext, "failure", gameState, {
+                    afterAcknowledge: () => restartGame(),
+                  });
+                }
+                else submitGameOutcome(gameState, "failure", { afterAcknowledge: () => restartGame() });
+              }}
               className="px-8 py-4 border-2 border-cyan-400 text-cyan-400 text-lg hover:bg-cyan-400 hover:text-black transition-colors tracking-wider"
             >
               TRY AGAIN
@@ -2895,7 +3114,7 @@ export default function Game() {
             {gameState.currentPhase > 0 && !activeOperationId && (
               <button
                 onClick={() => {
-                  restartGame(true);
+                  submitGameOutcome(gameState, "failure", { afterAcknowledge: () => restartGame(true) });
                 }}
                 className="px-6 py-4 border-2 border-yellow-600 text-yellow-400 text-lg hover:bg-yellow-600 hover:text-black transition-colors tracking-wider"
               >
@@ -2919,14 +3138,14 @@ export default function Game() {
               </>
             ) : activePoiExperience === "galaxy" ? (
               <button
-                onClick={returnGalaxyPoiToAtlas}
+                onClick={() => submitGameOutcome(gameState, "failure")}
                 className="px-6 py-4 border-2 border-gray-600 text-gray-400 text-lg hover:bg-gray-600 hover:text-white transition-colors tracking-wider"
               >
                 ATLAS
               </button>
             ) : (
               <button
-                onClick={returnToCockpit}
+                onClick={() => submitGameOutcome(gameState, "failure")}
                 className="px-6 py-4 border-2 border-gray-600 text-gray-400 text-lg hover:bg-gray-600 hover:text-white transition-colors tracking-wider"
               >
                 HUB
@@ -2986,10 +3205,7 @@ export default function Game() {
       {exitMenuOpen && sceneStack && (
         <LandingPadExitMenu
           onTakeOff={() => {
-            setExitMenuOpen(false);
-            exitColonyExploration(sceneStack);
-            setSceneStack(null);
-            returnToCockpit();
+            if (gameState) submitGameOutcome(gameState, "success");
           }}
           onStay={() => setExitMenuOpen(false)}
           onRegionMap={() => {
@@ -3017,9 +3233,9 @@ export default function Game() {
           onFound={handleFoundRegionOutpost}
         />
       )}
-      {pendingPoiResolution && (
+      {pendingPoiPresentation && (
         <PoiOutcomeScreen
-          pending={pendingPoiResolution}
+          pending={pendingPoiPresentation}
           colonies={(galaxyOutcomeProjection ?? saveData).colonies}
           resolving={poiOutcomeResolving}
           error={poiOutcomeError}
@@ -3032,9 +3248,60 @@ export default function Game() {
           <div className="max-w-md border border-red-500 p-8 text-center">
             <h2 className="mb-4 text-xl text-red-400">OUTCOME LOCKED</h2>
             <p className="mb-6 text-sm">{poiOutcomeError}</p>
-            <button onClick={activePoiExperience === "galaxy" ? returnGalaxyPoiToAtlas : returnToCockpit} className="border border-cyan-400 px-6 py-3 text-cyan-300">
-              {experienceReturnLabel(activePoiExperience === "galaxy")}
-            </button>
+            <div className="flex justify-center gap-3">
+              {poiOutcomeError.startsWith("COMPLETION SAVE FAILED") && (
+                <button onClick={retryPoiCompletionSave} className="border border-cyan-400 px-6 py-3 text-cyan-300">
+                  RETRY OUTCOME SAVE
+                </button>
+              )}
+              <button onClick={() => window.location.reload()} className="border border-gray-500 px-6 py-3 text-gray-300">
+                RELOAD TO RECONCILE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {outcomeCommitIssue && (
+        <div role="alert" aria-label="Outcome persistence status" className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/90 px-6 text-white">
+          <div className="max-w-lg border border-red-500 bg-slate-950 p-8 text-center">
+            <h2 className="mb-4 text-2xl tracking-wider text-red-400">OUTCOME LOCKED</h2>
+            <p className="mb-6 text-sm text-gray-200">{outcomeCommitIssue.message}</p>
+            <div className="flex justify-center gap-3">
+              {outcomeCommitIssue.status === "write_failed" && (
+                <button
+                  onClick={() => {
+                    const issue = outcomeCommitIssue;
+                    setOutcomeCommitIssue(null);
+                    if (issue.envelope !== null) submitOutcomeEnvelope(issue.envelope);
+                  }}
+                  className="border border-cyan-400 px-6 py-3 text-cyan-300"
+                >
+                  RETRY OUTCOME
+                </button>
+              )}
+              <button
+                onClick={() => window.location.reload()}
+                className="border border-gray-500 px-6 py-3 text-gray-200"
+              >
+                RELOAD TO RECONCILE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {travelCommitIssue && (
+        <div role="alert" aria-label="Travel persistence status" className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/90 px-6 text-white">
+          <div className="max-w-lg border border-red-500 bg-slate-950 p-8 text-center">
+            <h2 className="mb-4 text-2xl tracking-wider text-red-400">TRAVEL SAVE LOCKED</h2>
+            <p className="mb-6 text-sm text-gray-200">TRAVEL SAVE FAILED · RETRY</p>
+            <div className="flex justify-center gap-3">
+              <button onClick={retryTravelSave} className="border border-cyan-400 px-6 py-3 text-cyan-300">
+                RETRY TRAVEL SAVE
+              </button>
+              <button onClick={() => window.location.reload()} className="border border-gray-500 px-6 py-3 text-gray-300">
+                RELOAD TO RECONCILE
+              </button>
+            </div>
           </div>
         </div>
       )}

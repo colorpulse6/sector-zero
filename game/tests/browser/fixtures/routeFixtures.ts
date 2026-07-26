@@ -11,8 +11,20 @@ import { migrateSave } from "../../../app/components/engine/save";
 import { SPECIAL_MISSIONS } from "../../../app/components/engine/specialMissions";
 import {
   DEFAULT_UPGRADES,
+  GameScreen,
+  type OutcomeAttempt,
   type SaveData,
 } from "../../../app/components/engine/types";
+import {
+  commitOutcome,
+  createOutcomeEnvelope,
+} from "../../../app/components/engine/missionOutcome";
+import { poiOutcomeMissionId } from "../../../app/components/engine/missionContext";
+import {
+  stageGalaxyPoiOutcomeAuthority,
+} from "../../../app/components/engine/operations/operationAdapters";
+import { projectGalaxyRunToLegacyState } from "../../../app/components/engine/galaxy/galaxyProjection";
+import { dispatchPoi } from "../../../app/components/colony/region/poiDispatcher";
 import {
   advanceTravelCheckpoint,
   finalizeTravel,
@@ -110,6 +122,68 @@ function buildGalaxyAtAshfall(): SaveData {
 }
 
 export const galaxyAtAshfall = buildGalaxyAtAshfall();
+
+export function pendingGalaxyPoiReturn(): SaveData {
+  if (!galaxyAtAshfall.galaxyRun) throw new Error("Ashfall fixture has no Galaxy run");
+  const run = structuredClone(galaxyAtAshfall.galaxyRun);
+  run.planets = run.planets.map((planet) => ({
+    ...planet,
+    regionMap: {
+      ...planet.regionMap,
+      nodes: planet.regionMap.nodes.map((node) => node.id === "ashfall-cinder-relay"
+        ? { ...node, intel: "surveyed" as const }
+        : node),
+    },
+  }));
+  const save = canonical({ ...galaxyAtAshfall, galaxyRun: run });
+  const projected = projectGalaxyRunToLegacyState(run);
+  const dispatched = dispatchPoi(projected, "galaxy:ashfall-primary", "ashfall-cinder-relay");
+  if (!dispatched.ok) throw new Error("Ashfall POI fixture could not be dispatched");
+  const routeIdentity = {
+    kind: "poi" as const,
+    originColonyId: "galaxy:ashfall-primary",
+    nodeId: "ashfall-cinder-relay",
+    engine: "firstPerson" as const,
+    templateId: "fp-ruin-cinder-relay",
+    rewardEligible: true,
+  };
+  const attempt: OutcomeAttempt = {
+    version: 1,
+    routeKind: "poi",
+    missionId: poiOutcomeMissionId(
+      "poi:20:fp-ruin-cinder-relay:20:ashfall-cinder-relay",
+      routeIdentity.originColonyId,
+    ),
+    routeIdentity,
+    launchId: "browser-galaxy-poi-return",
+    expectedRevision: save.saveRevision,
+    persistenceAuthority: "galaxy",
+    returnTarget: "galaxy-region",
+    declaredFields: ["galaxyRun"],
+    launchSnapshot: { galaxyRun: structuredClone(run) },
+  };
+  const staged = stageGalaxyPoiOutcomeAuthority(
+    save,
+    { originColonyId: routeIdentity.originColonyId, session: dispatched.session },
+    GameScreen.LEVEL_COMPLETE,
+    attempt,
+  );
+  if (!staged.ok) throw new Error(`Ashfall POI fixture could not be staged: ${staged.reason}`);
+  const terminal = createOutcomeEnvelope(staged.attempt, "success", {
+    version: 2,
+    kind: "poi_result_v2",
+    destinationColonyId: routeIdentity.originColonyId,
+  });
+  let canonicalSave = staged.save;
+  const committed = commitOutcome({
+    read: () => canonicalSave,
+    write: (next) => { canonicalSave = next; },
+  }, terminal);
+  if (committed.status !== "committed") {
+    throw new Error(`Ashfall POI fixture could not be committed: ${committed.status}`);
+  }
+  return canonical(committed.save as unknown as Record<string, unknown>);
+}
 
 const founded = applyColonyFixture(freshLegacy, requireColonyFixture("grown"));
 export const colonyFounded = canonical(founded.save as unknown as Record<string, unknown>);

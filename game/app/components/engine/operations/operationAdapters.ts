@@ -52,6 +52,7 @@ import type {
 } from "../types";
 import { GameScreen } from "../types";
 import {
+  createOutcomeAttempt,
   snapshotOutcomeIdJournal,
   snapshotOutcomeRootAuthority,
 } from "../missionOutcome";
@@ -462,6 +463,7 @@ export function launchOperation(
   projection: SaveData,
   context: OperationLaunchContext,
   launchIdFactoryOrRetry?: LaunchIdFactory | LaunchContext,
+  canonicalParent?: SaveData,
 ): OperationLaunchResult {
   let safeContext: OperationLaunchContext | null = null;
   try {
@@ -563,6 +565,17 @@ export function launchOperation(
       id: authorization.operation.id,
       label: operationDisplayLabel(authorization.operation.id),
     };
+    if (canonicalParent !== undefined) {
+      if (canonicalParent.activeExperience !== "galaxy" || canonicalParent.galaxyRun === null ||
+        !samePlainData(canonicalParent.galaxyRun, safeRun) || gameState.launchContext === undefined) {
+        return fail(safeContext, "malformed_run");
+      }
+      gameState.outcomeAttempt = createOutcomeAttempt(
+        canonicalParent,
+        gameState.launchContext,
+        "operation",
+      );
+    }
     return { ok: true, context: structuredClone(authorization.context), gameState };
   } catch {
     return fail(safeContext, "malformed_run");
@@ -648,7 +661,8 @@ export function isGalaxyPoiPreparationFact(
   fact: Pick<HistoricalFact, "id" | "kind">,
 ): boolean {
   return fact.kind === "poi_completion_prepared" ||
-    (typeof fact.id === "string" && fact.id.startsWith("history:poi-prepared:"));
+    (typeof fact.id === "string" &&
+      (fact.id.startsWith("history:poi-prepared:") || fact.id.startsWith("history:poi-prepared-v2:")));
 }
 
 interface OpenAshfallProjection {

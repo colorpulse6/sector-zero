@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   attemptCanonicalPersistence,
   beginGalaxyExperience,
+  galaxyCloseTransition,
   experienceReturnLabel,
   galaxyPoiRecoverySurface,
   isInteractiveKeyboardTarget,
@@ -59,6 +60,14 @@ test("beginning an existing galaxy experience resumes its canonical run", () => 
 test("experience selector routes legacy to the numbered map and galaxy to the Atlas", () => {
   assert.equal(mapSurfaceForExperience("legacy"), "legacy_star_map");
   assert.equal(mapSurfaceForExperience("galaxy"), "galaxy_atlas");
+});
+
+test("closing the Galaxy Atlas exits to the selector without exposing Legacy launchers", () => {
+  assert.deepEqual(galaxyCloseTransition(), {
+    surface: "experience_selector",
+    clearGalaxyOverlays: true,
+    legacyLaunchersReachable: false,
+  });
 });
 
 test("a galaxy operation returns to the Atlas without changing legacy progression", () => {

@@ -4,6 +4,21 @@ import type { ExperienceMode } from "./galaxyTypes";
 
 export type ExperienceMapSurface = "legacy_star_map" | "galaxy_atlas";
 
+export interface GalaxyCloseTransition {
+  surface: "experience_selector";
+  clearGalaxyOverlays: true;
+  legacyLaunchersReachable: false;
+}
+
+/** Atlas close is an experience boundary, never an implicit Legacy-mode switch. */
+export function galaxyCloseTransition(): GalaxyCloseTransition {
+  return {
+    surface: "experience_selector",
+    clearGalaxyOverlays: true,
+    legacyLaunchersReachable: false,
+  };
+}
+
 interface KeyboardTargetLike {
   tagName?: unknown;
   isContentEditable?: unknown;

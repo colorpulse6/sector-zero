@@ -1,6 +1,7 @@
 import { OUTCOME_JOURNAL_LIMIT, OUTCOME_RECOVERY_LIMIT } from "./save";
 import type {
   AppliedOutcomeReturnRecord,
+  GameState,
   OutcomeAttempt,
   OutcomeRecoveryRecord,
   OutcomeRouteKind,
@@ -35,6 +36,16 @@ export type CommitOutcomeResult =
   | { status: "already_applied"; save: SaveData }
   | { status: "conflict"; latest: SaveData }
   | { status: "write_failed"; error: Error };
+
+export type OutcomeReturnMount =
+  | { surface: "legacy-cockpit" }
+  | { surface: "legacy-star-map"; world: number; level: number }
+  | { surface: "legacy-colony-exterior"; colonyId: string }
+  | { surface: "legacy-landing-pad"; colonyId: string }
+  | { surface: "galaxy-atlas" }
+  | { surface: "galaxy-region"; originColonyId: string }
+  | { surface: "galaxy-colony-exterior"; colonyId: string }
+  | { surface: "galaxy-landing-pad"; colonyId: string };
 
 const TERMINAL_KINDS = new Set<OutcomeTerminalKind>(["success", "failure", "retreat"]);
 const ROUTE_KINDS = new Set<OutcomeRouteKind>(["campaign", "planet", "special", "operation", "colony", "poi"]);
@@ -591,6 +602,79 @@ export function createOutcomeEnvelope(
   }) as SerializedOutcomeEnvelope;
 }
 
+export function createGameStateOutcomeEnvelope(
+  state: GameState,
+  terminalKind: OutcomeTerminalKind,
+  destinationColonyId?: string | null,
+): SerializedOutcomeEnvelope {
+  const attempt = state.outcomeAttempt;
+  if (attempt === undefined) throw new Error("Gameplay state is missing terminal outcome authority.");
+  let payload: unknown;
+  if (attempt.routeKind !== "operation" && terminalKind !== "success") {
+    payload = { version: 1, kind: "terminal_noop_v1" };
+  } else {
+    switch (attempt.routeKind) {
+      case "campaign":
+        payload = {
+          version: 1,
+          kind: "campaign_result_v1",
+          score: state.score,
+          xpEarned: state.xp,
+          killCount: state.kills,
+          bestiaryKills: structuredClone(state.pendingBestiaryKills ?? []),
+          totalEnemies: state.totalEnemies,
+          deaths: state.deaths,
+          frameCount: state.frameCount,
+          playerHp: state.player.hp,
+          playerMaxHp: state.player.maxHp,
+        };
+        break;
+      case "planet":
+        payload = {
+          version: 1,
+          kind: "planet_result_v1",
+          bestiaryKills: structuredClone(state.pendingBestiaryKills ?? []),
+        };
+        break;
+      case "special":
+        payload = {
+          version: 1,
+          kind: "special_result_v1",
+          score: state.score,
+          objectiveCollected: state.firstPersonState?.objectiveCollected === true,
+          bestiaryKills: structuredClone(state.pendingBestiaryKills ?? []),
+        };
+        break;
+      case "operation":
+        payload = {
+          version: 1,
+          kind: "operation_result_v1",
+          result: terminalKind,
+          metrics: attempt.routeIdentity.kind === "operation" &&
+            attempt.routeIdentity.operationId === "op:hostile-picket"
+            ? { frameCount: state.frameCount }
+            : null,
+        };
+        break;
+      case "colony":
+        payload = { version: 1, kind: "terminal_noop_v1" };
+        break;
+      case "poi":
+        payload = {
+          version: 2,
+          kind: "poi_result_v2",
+          destinationColonyId: destinationColonyId ?? null,
+        };
+        break;
+      default: {
+        const exhaustive: never = attempt.routeKind;
+        throw new Error(`Unknown outcome route ${String(exhaustive)}.`);
+      }
+    }
+  }
+  return createOutcomeEnvelope(attempt, terminalKind, payload);
+}
+
 export function createOutcomeAttempt(
   save: SaveData,
   context: LaunchContext,
@@ -923,9 +1007,21 @@ export function commitOutcome(
   }
 }
 
-function recoverOutcomeReturnImpl(save: SaveData): AppliedOutcomeReturnRecord | null {
+function recoverOutcomeReturnImpl(
+  save: SaveData,
+  outcomeId?: string,
+): AppliedOutcomeReturnRecord | null {
   const root = validateRoot(save);
   if (root === null || root.locked) return null;
+  if (outcomeId !== undefined) {
+    if (typeof outcomeId !== "string" || outcomeId.length === 0 ||
+      !root.appliedOutcomeIds.includes(outcomeId)) return null;
+    const matches = root.outcomeRecoveryRecords.filter(
+      (record): record is AppliedOutcomeReturnRecord =>
+        record.kind === "applied_return" && record.returnPending && record.outcomeId === outcomeId,
+    );
+    return matches.length === 1 ? structuredClone(matches[0]) : null;
+  }
   for (let index = root.outcomeRecoveryRecords.length - 1; index >= 0; index -= 1) {
     const record = root.outcomeRecoveryRecords[index];
     if (record.kind === "applied_return" && record.returnPending &&
@@ -934,9 +1030,52 @@ function recoverOutcomeReturnImpl(save: SaveData): AppliedOutcomeReturnRecord | 
   return null;
 }
 
-export function recoverOutcomeReturn(save: SaveData): AppliedOutcomeReturnRecord | null {
-  try { return recoverOutcomeReturnImpl(save); }
+export function recoverOutcomeReturn(
+  save: SaveData,
+  outcomeId?: string,
+): AppliedOutcomeReturnRecord | null {
+  try { return recoverOutcomeReturnImpl(save, outcomeId); }
   catch { return null; }
+}
+
+export function resolveOutcomeReturnMount(value: unknown): OutcomeReturnMount | null {
+  const receipt = snapshotAppliedReturn(value);
+  if (receipt === null || !receipt.returnPending) return null;
+  const identity = receipt.routeIdentity;
+  switch (receipt.returnTarget) {
+    case "legacy-cockpit":
+      return { surface: "legacy-cockpit" };
+    case "legacy-star-map":
+      return identity.kind === "campaign"
+        ? { surface: "legacy-star-map", world: identity.world, level: identity.level }
+        : null;
+    case "legacy-colony-exterior":
+      return identity.kind === "poi"
+        ? { surface: "legacy-colony-exterior", colonyId: identity.originColonyId }
+        : identity.kind === "colony"
+          ? { surface: "legacy-colony-exterior", colonyId: identity.colonyId }
+          : null;
+    case "legacy-landing-pad":
+      return identity.kind === "colony"
+        ? { surface: "legacy-landing-pad", colonyId: identity.colonyId }
+        : null;
+    case "galaxy-atlas":
+      return { surface: "galaxy-atlas" };
+    case "galaxy-region":
+      return identity.kind === "poi"
+        ? { surface: "galaxy-region", originColonyId: identity.originColonyId }
+        : null;
+    case "galaxy-colony-exterior":
+      return identity.kind === "colony"
+        ? { surface: "galaxy-colony-exterior", colonyId: identity.colonyId }
+        : null;
+    case "galaxy-landing-pad":
+      return identity.kind === "colony"
+        ? { surface: "galaxy-landing-pad", colonyId: identity.colonyId }
+        : null;
+    default:
+      return null;
+  }
 }
 
 function acknowledgeOutcomeReturnImpl(
