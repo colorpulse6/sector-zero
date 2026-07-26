@@ -59,7 +59,7 @@ async function launchAndPauseAshfallOperation(page: Page): Promise<void> {
   await expect.poll(() => readCanvasTexts(page)).toContain("ASHFALL SORTIE");
   await page.keyboard.press("Enter");
   await expect.poll(() => readCanvasTexts(page)).toContain("SURVIVE");
-  await page.keyboard.press("p");
+  await page.getByRole("button", { name: "⏸" }).click();
   await expect(page.getByRole("heading", { name: "PAUSED" })).toBeVisible();
   await expect(page.getByRole("button", { name: "RETURN TO ATLAS" })).toBeVisible();
 }
@@ -77,7 +77,7 @@ test("@pointer Galaxy operation retreat retries one outcome and acknowledges onl
   await installOutcomeWriteProbe(page, { commit: 1, acknowledgement: 1 });
   await launchAndPauseAshfallOperation(page);
 
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "RETURN TO ATLAS" }).click();
   const status = page.getByRole("alert", { name: "Outcome persistence status" });
   await expect(status).toContainText("OUTCOME SAVE FAILED · RETRY");
   const firstCommit = (await readOutcomeWriteObservations(page)).find((entry) =>
@@ -154,7 +154,7 @@ test("@pointer stale Galaxy operation retreat preserves the newer save and reloa
     };
   }, SAVE_STORAGE_KEY);
 
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "RETURN TO ATLAS" }).click();
   const status = page.getByRole("alert", { name: "Outcome persistence status" });
   await expect(status).toContainText("OUTCOME CONFLICT · RELOAD TO RECONCILE");
   await expect(status.getByRole("button", { name: "RETRY OUTCOME" })).toHaveCount(0);
