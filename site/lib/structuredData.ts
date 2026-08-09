@@ -5,7 +5,7 @@
 // identifier would declare a different person on each site and leave search
 // engines with several near-duplicate entities instead of one.
 
-export const SITE_URL = "https://colorpulse6.github.io/knicks-knacks/sector-zero";
+export const SITE_URL = "https://colorpulse6.github.io/sector-zero";
 export const CREATOR_ID = "https://nichalasbarnes.com/#person";
 
 export const CREATOR = {
