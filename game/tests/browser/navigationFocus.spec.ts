@@ -172,6 +172,34 @@ test("@keyboard Atlas repeated arrows retain selected-contact focus and trap Tab
   });
 });
 
+test("@keyboard plotted Atlas coordinates keep contacts reachable without changing the target on Tab", async ({ page }, info) => {
+  await receipt(info, "keyboard", "galaxyAtAshfall", "Atlas -> plot custom coordinate -> Tab to contacts -> repeated arrows -> Escape", "Plotting keeps a contact in the Tab order without changing the plotted target on focus; arrows select from the focused contact and Escape restores Continue Galaxy.", async () => {
+    const atlas = await openAtlas(page);
+    await atlas.getByRole("spinbutton", { name: "LOCAL X", exact: true }).fill("123");
+    await atlas.getByRole("spinbutton", { name: "LOCAL Y", exact: true }).fill("456");
+    const plot = atlas.getByRole("button", { name: "PLOT", exact: true });
+    await plot.focus();
+    await page.keyboard.press("Enter");
+    const options = atlas.getByRole("option");
+    await expect(atlas.locator('[role="option"][aria-selected="true"]')).toHaveCount(0);
+    const details = atlas.locator('[aria-labelledby="atlas-target-heading"]');
+    const plottedTarget = await details.getAttribute("data-selected-target");
+    expect(plottedTarget).not.toBeNull();
+    await page.keyboard.press("Tab");
+    await expect(options.first()).toBeFocused();
+    await expect(details).toHaveAttribute("data-selected-target", plottedTarget!);
+    await page.keyboard.press("ArrowDown");
+    await expect(options.nth(1)).toBeFocused();
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowUp");
+    await expect(options.first()).toBeFocused();
+    await expect(options.first()).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Escape");
+    await expect(atlas).toBeHidden();
+    await expect(page.getByRole("button", { name: "CONTINUE GALAXY", exact: true })).toBeFocused();
+  });
+});
+
 test("@keyboard Colonies initial focus trap and Escape restore cockpit invoker", async ({ page }, info) => {
   await receipt(info, "keyboard", "colonyFounded + introSeen", "Legacy cockpit -> Colonies -> Tab trap -> Escape", "Colonies owns initial focus and traps both Tab directions; Escape restores the cockpit Colonies button.", async () => {
     await openColonies(page);

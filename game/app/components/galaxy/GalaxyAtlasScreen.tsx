@@ -395,6 +395,11 @@ export function GalaxyAtlasScreen({
   const currentSelectedId = selectedTarget === null
     ? null
     : selectedTargetIdFor(selectedTarget);
+  // A plotted coordinate can be outside this list. Keep a keyboard entry
+  // without changing the route target just because a contact receives focus.
+  const contactTabStopId = contacts.some((contact) => contact.targetId === currentSelectedId)
+    ? currentSelectedId
+    : contacts[0]?.targetId;
 
   useModalFocus({ active: focusActive, rootRef, onEscape: onClose, restoreFocus: onRestoreFocus,
     initialFocus: () => rootRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ?? null });
@@ -836,7 +841,7 @@ export function GalaxyAtlasScreen({
                     type="button"
                     role="option"
                     aria-selected={selected}
-                    tabIndex={selected ? 0 : -1}
+                    tabIndex={contact.targetId === contactTabStopId ? 0 : -1}
                     data-atlas-contact={contact.targetId}
                     data-target-kind={contact.target.kind}
                     data-selected-target={selected ? currentSelectedId ?? undefined : undefined}
@@ -849,7 +854,7 @@ export function GalaxyAtlasScreen({
                       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
                       event.preventDefault();
                       const target = targetFromKeyboardContact(
-                        currentSelectedId,
+                        contact.targetId,
                         event.key === "ArrowDown" ? "next" : "previous",
                         contacts,
                       );
