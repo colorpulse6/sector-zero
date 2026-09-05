@@ -18,7 +18,8 @@
 - A3.1 accepted: the pure durable outcome coordinator, save migration, journal/recovery validation, route folds, and Legacy/Galaxy POI preparation are accepted at code `8ccfa3d345fbb330cac7c9185fc7e6507a72d519`.
 - A3.1 passed 81 focused reviewer tests, 404 engine, 288 Colony, 4 sprite, and 20 browser tests; TypeScript, the empty-base production export, and the `/sector-zero` deployment-parity export passed; independent specification and quality/integration reviews returned PASS with no findings.
 - A3.2 and A3.3 are implemented at code `b85fb3d381ae28f00c2559f351c0979129c655e6` on `codex/a3-resume`. Exact clean-code gates passed: TypeScript, 425 engine, 288 Colony, 4 sprite, 37 browser, and both production exports. Independent final-runtime specification and quality reviews passed.
-- The current continuation is `docs/handoffs/2026-09-05-a3-outcome-checkpoint.md`; its manifest records the separate evidence commit's repeated gates and fresh reviews. Require its matching evidence SHA and PASS verdict before treating A3 as a package candidate or starting B1.
+- A3 closure is recorded in `docs/handoffs/2026-09-05-a3-outcome-checkpoint.md`; its matching PASS evidence is `e5495fe770adfd33c3cb7978ae4e3656eb3a2394`, the B1 base.
+- B1 is implemented at code `e9d4cf261c2b3445a0f4cadda7588dd3dbb6f1d1` on `codex/b1-input-mapping`. Its exact clean-code gates pass: 439 engine, 288 Colony, 4 sprite, 41 browser tests, TypeScript and both production exports. Current continuation: `docs/handoffs/2026-09-05-b1-input-checkpoint.md`. Require its matching PASS evidence-SHA gate/review manifest before accepting B1 or starting B2. The handoff retains initial failure/rerun evidence and proof limits.
 - Conductor correction: a saved Galaxy operation failure resolves that catalog operation. Remove the unavailable operation TRY AGAIN promise from the old shell handoff; retain failure-to-Atlas and retreat without changing lifecycle/journal policy. Legacy and POI gameplay retries remain available.
 - Full authored POI success/preparation/delivery is a disclosed F1 live-integration row, not an additional A3 gate. A3 proves preparation authority and exact mounted receipt recovery; fixtures do not prove the full authored playthrough.
 - A1's all-ten real-surface launch/live-play row remains open because A2's accepted browser matrix is intentionally Kepler-focused. F1 must launch all ten through the repaired board and live-play the required objective sample without test-only runtime mutation.
@@ -392,14 +393,14 @@ The conductor keeps the original browser ownership role but splits its single pl
 
 ### B1.1 — Map physical input by active mode
 
-- [ ] Add pure table tests for keyboard mapping in shooter, ground, boarding, first-person/Colony, turret, UI surfaces, and pause.
-- [ ] Assert one physical event maps to at most one gameplay intent unless an explicit chord is declared.
-- [ ] Record the current Space shoot+jump failure.
-- [ ] Implement pure mapping helpers and adapt shell key handlers.
-- [ ] Selected Space policy: shooter/turret primary; ground jump; boarding dash; first-person/Colony primary interaction. Z/Shift remains primary fire where applicable.
-- [ ] Clear held intents on key/touch cancel, blur, visibility loss, pause, and route transition.
-- [ ] Browser-test keydown/keyup/blur without changing touch UI yet.
-- [ ] Complete the closure protocol; candidate message: `fix(input): map physical controls to semantic intents`.
+- [x] Add pure table tests for keyboard mapping in shooter, ground, boarding, first-person/Colony, turret, UI surfaces, and pause.
+- [x] Assert one physical event maps to at most one gameplay intent unless an explicit chord is declared.
+- [x] Record the current Space shoot+jump failure.
+- [x] Implement pure mapping helpers and adapt shell key handlers.
+- [x] Selected Space policy: shooter/turret primary; ground jump; boarding dash; first-person/Colony primary interaction. Z/Shift remains primary fire where applicable.
+- [x] Clear held intents on key/touch cancel, blur, visibility loss, pause, and route transition.
+- [x] Browser-test keydown/keyup/blur without changing touch UI yet.
+- [x] Commit code as `e9d4cf261c2b3445a0f4cadda7588dd3dbb6f1d1` and pass its exact clean-code gates. Evidence-SHA closure requires the matching PASS gate/review manifest linked by the dated handoff; the general closure protocol remains mandatory.
 
 ## Package B2 — Pointer and visible touch gameplay controls
 

@@ -5,7 +5,7 @@
 **Authority:** The live repository and dated acceptance receipts; this document governs synchronization sequencing, not game vision
 **Companion audit:** `docs/audits/2026-07-19-game-engine-synchronization-audit.md`
 
-**Execution checkpoint — 2026-09-05:** H0, A1, A2, and A3.1 remain accepted. A3.2/A3.3 implementation and clean-code gates pass at `b85fb3d381ae28f00c2559f351c0979129c655e6`; the dated A3 handoff identifies the evidence-commit gate/review verdict required before B1. Resolved Galaxy operations do not offer gameplay retry; failure/retreat retain their accepted catalog folds. Full authored POI delivery and the complete route/device matrix remain F1 proof rows. Exact SHAs, gate totals, and asset reservations are recorded in the implementation plan.
+**Execution checkpoint — 2026-09-05:** H0 through A3 are accepted; A3 evidence `e5495fe770adfd33c3cb7978ae4e3656eb3a2394` is the B1 base. B1 implementation and exact clean-code gates pass at `e9d4cf261c2b3445a0f4cadda7588dd3dbb6f1d1`; the dated B1 handoff identifies the matching evidence-commit gate/review verdict required before B2. Resolved Galaxy operations do not offer gameplay retry; failure/retreat retain their accepted catalog folds. Visible touch controls remain B2, general focus/navigation B3, and full authored POI delivery plus the complete route/device matrix F1. Exact SHAs, gate totals, proof limits and asset reservations are recorded in the implementation plan and handoffs.
 
 ## Purpose
 
