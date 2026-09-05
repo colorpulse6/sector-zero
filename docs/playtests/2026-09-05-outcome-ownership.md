@@ -29,7 +29,7 @@ Pending return recovery covers campaign, planet, special, operation, Colony, and
 
 The `development/` subtree retains baseline/focused logs and expected assertion failures. Meaningful RED observations included: retry leaving the cockpit mounted, global and Region Escape dismissing pending returns, focused RESUME bypassing an overlay, and the unavailable operation retry control. The ending diagnostic under `sector-zero-a3-ending-repeat-submit-red/` recorded two writes for one outcome before any manual retry (first failed, second successful). The final guarded ending test passes.
 
-The 15 added canonical-transition tests cover exact base/candidate equality, property order, detached snapshots, unreadable/throwing stores, same-ID drift, post-write throws, and Legacy/Galaxy POI preparation candidates. Focused green coverage is retained in `development/updated-focused-node.log`; the full current coverage is in `code-engine.log`.
+The 15 added canonical-transition tests cover exact base/candidate equality, property order, detached snapshots, unreadable/throwing stores, same-ID drift, post-write throws, and Galaxy travel and Legacy POI preparation candidates. Focused green coverage is retained in `development/updated-focused-node.log`; the full current coverage is in `code-engine.log`.
 
 Early runs with invalid fixture-derived pilot/codex fields, a wrong failure envelope, or an assertion made before dismissing the retry briefing were corrected at the fixture/input boundary. Those failures are not reported as product defects. The raw byte-preservation assertions remain intact.
 
