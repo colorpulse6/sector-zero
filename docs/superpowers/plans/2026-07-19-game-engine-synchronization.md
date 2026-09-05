@@ -466,7 +466,7 @@ The conductor keeps the original browser ownership role but splits its single pl
 - `game/app/components/colony/meta/ColonyHeader.tsx` (mark the selected colony's primary action for initial focus)
 - `game/tests/browser/navigationFocus.spec.ts` (new)
 - existing browser assertions affected by corrected Resume/provenance copy or covered-control focus containment (the outcome retry test must observe focus rejection before deliberately activating Retry; outcome/save assertions remain)
-- `game/tests/browser/inputIntents.spec.ts`, `touchGameplay.spec.ts` (conductor verification correction: recover Ground world displacement from forwarded drawing arguments, isolate Boarding direction/aim legs through native DevPanel controls, and fixture-test Boarding projectile observations across one to three engine ticks per rendered frame; preserve thresholds, signed trajectory and action isolation)
+- `game/tests/browser/inputIntents.spec.ts`, `touchGameplay.spec.ts` (conductor verification correction: recover Ground world displacement from forwarded drawing arguments, isolate the Ground keyboard pause leg and Boarding direction/aim legs through native DevPanel controls, and fixture-test Boarding projectile observations across one to three engine ticks per rendered frame; preserve thresholds, signed trajectory and action isolation)
 - existing static screen tests only when markup contracts change
 - `docs/playtests/2026-07-19-navigation-focus.md` (new)
 - this plan, the conductor design status, and `docs/handoffs/2026-09-05-b3-navigation-checkpoint.md` (closure evidence)

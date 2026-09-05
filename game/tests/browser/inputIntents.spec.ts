@@ -89,18 +89,25 @@ test.afterEach(async ({ page }, testInfo) => {
 
 test("@keyboard blur and pause clear held movement until a fresh press", async ({ page }, testInfo) => {
   await openGround(page);
+  const movingStart = await page.evaluate(() => ({ index: window.inputObservations.length, worldX: window.inputObservations.at(-1)!.worldX }));
   await page.keyboard.down("ArrowRight");
-  const moving = await observeFrames(page, 12);
-  expect(moving.at(-1)!.worldX).toBeGreaterThan(moving[0].worldX);
+  await page.waitForFunction(({ index, worldX }) => window.inputObservations.slice(index).some((frame) => frame.worldX > worldX + 1), movingStart);
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   const blurred = await observeFrames(page, 12);
   expect(blurred.at(-1)!.worldX).toBeCloseTo(blurred[0].worldX, 3);
   expect(blurred.every((frame) => frame.sprite.endsWith("player-idle.png"))).toBe(true);
   await page.keyboard.up("ArrowRight");
-  await page.keyboard.down("ArrowRight");
-  await observeFrames(page, 8);
-  // Exercise a scrolling world: the screen can keep easing after input stops.
-  await page.waitForFunction(() => (window.inputObservations.at(-1)?.cameraX ?? 0) > 5);
+
+  // Keep combat from interrupting the separate pause/old-hold observation.
+  // Enter through the shipped controls and face the safe edge of the entrance.
+  await page.getByRole("button", { name: "DEV", exact: true }).click();
+  await page.getByRole("button", { name: "GROUND RUN", exact: true }).click();
+  await page.getByRole("button", { name: "X", exact: true }).click();
+  await page.locator("#sector-zero-game-canvas").focus();
+  await page.waitForFunction(() => window.inputObservations.at(-1)?.sprite.endsWith("player-idle.png"));
+  const leftStart = await page.evaluate(() => ({ index: window.inputObservations.length, worldX: window.inputObservations.at(-1)!.worldX }));
+  await page.keyboard.down("ArrowLeft");
+  await page.waitForFunction(({ index, worldX }) => window.inputObservations.slice(index).some((frame) => frame.worldX < worldX - 1), leftStart);
   await page.keyboard.press("p");
   await expect(page.getByRole("button", { name: "RESUME", exact: true })).toBeVisible();
   await page.keyboard.press("p");
@@ -108,20 +115,25 @@ test("@keyboard blur and pause clear held movement until a fresh press", async (
   const resumed = await observeFrames(page, 12);
   expect(resumed.at(-1)!.worldX).toBeCloseTo(resumed[0].worldX, 3);
   expect(resumed.every((frame) => frame.sprite.endsWith("player-idle.png"))).toBe(true);
-  await page.keyboard.down("ArrowRight"); // browser repeat of the old physical hold
+  await page.keyboard.down("ArrowLeft"); // browser repeat of the old physical hold
   const repeated = await observeFrames(page, 8);
   expect(repeated.at(-1)!.worldX).toBeCloseTo(repeated[0].worldX, 3);
   expect(repeated.every((frame) => frame.sprite.endsWith("player-idle.png"))).toBe(true);
-  await page.keyboard.up("ArrowRight");
-  const freshStart = await page.evaluate(() => ({ index: window.inputObservations.length, worldX: window.inputObservations.at(-1)!.worldX }));
+  await page.keyboard.up("ArrowLeft");
+  const freshLeftStart = await page.evaluate(() => window.inputObservations.length);
+  await page.keyboard.down("ArrowLeft");
+  // A boundary can prevent displacement, but a running pose proves that this
+  // same physical key re-armed only after release and a fresh press.
+  await page.waitForFunction(index => window.inputObservations.slice(index).some(frame => frame.sprite.includes("/ground/player-run-")), freshLeftStart);
+  await page.keyboard.up("ArrowLeft");
+  const freshRightStart = await page.evaluate(() => ({ index: window.inputObservations.length, worldX: window.inputObservations.at(-1)!.worldX }));
   await page.keyboard.down("ArrowRight");
-  // Observe the first fresh movement, before continued input can reach a pit.
-  await page.waitForFunction(({ index, worldX }) => window.inputObservations.slice(index).some((frame) => frame.worldX > worldX + 1), freshStart);
+  await page.waitForFunction(({ index, worldX }) => window.inputObservations.slice(index).some((frame) => frame.worldX > worldX + 1), freshRightStart);
   await page.keyboard.up("ArrowRight");
   await attachBrowserReceipt(testInfo, {
-    route: "ground-run -> blur -> pause/resume -> fresh keydown", inputMethod: "keyboard", saveFixture: "freshLegacy",
-    expectedOutcome: "Blur and pause clear held movement; a fresh physical press re-arms it.",
-    observedOutcome: "Player stopped after blur and resume despite the old key remaining down, and moved on a fresh press.",
+    route: "ground-run -> blur -> native DevPanel Ground entry -> Left pause/resume -> repeated Left -> fresh Left/Right", inputMethod: "keyboard", saveFixture: "freshLegacy",
+    expectedOutcome: "Blur and pause clear held movement; the old repeated key stays idle; release and a fresh physical press re-arm it.",
+    observedOutcome: "World position and idle poses remained stable after blur/resume/repeat; fresh Left resumed running and fresh Right moved after the native Ground relaunch.",
   });
 });
 
