@@ -19,7 +19,8 @@
 - A3.1 passed 81 focused reviewer tests, 404 engine, 288 Colony, 4 sprite, and 20 browser tests; TypeScript, the empty-base production export, and the `/sector-zero` deployment-parity export passed; independent specification and quality/integration reviews returned PASS with no findings.
 - A3.2 and A3.3 are implemented at code `b85fb3d381ae28f00c2559f351c0979129c655e6` on `codex/a3-resume`. Exact clean-code gates passed: TypeScript, 425 engine, 288 Colony, 4 sprite, 37 browser, and both production exports. Independent final-runtime specification and quality reviews passed.
 - A3 closure is recorded in `docs/handoffs/2026-09-05-a3-outcome-checkpoint.md`; its matching PASS evidence is `e5495fe770adfd33c3cb7978ae4e3656eb3a2394`, the B1 base.
-- B1 is implemented at code `2bf65f253a6bef845199f493b3211de3049810df` on `codex/b1-input-mapping`. Its exact clean-code gates pass: 448 engine, 288 Colony, 4 sprite, 41 browser tests, TypeScript and both production exports. This includes the tested correction for a P2 catch-up input leak found during quality review of the earlier evidence checkpoint. Current continuation: `docs/handoffs/2026-09-05-b1-input-checkpoint.md`. Require its matching PASS evidence-SHA gate/review manifest before accepting B1 or starting B2. The handoff retains initial failure/rerun evidence and proof limits.
+- B1 is accepted at evidence `1b87545a6cdb0bb3991c27de8cc606fe707d448d`, code `2bf65f253a6bef845199f493b3211de3049810df`. Its matching PASS manifest records exact clean-code/evidence gates: 448 engine, 288 Colony, 4 sprite, 41 browser tests, TypeScript and both production exports, with fresh sequential specification and quality reviews. This includes the correction for a P2 catch-up input leak; `docs/handoffs/2026-09-05-b1-input-checkpoint.md` retains the history and proof limits.
+- B2 is implemented at code `9822d726c6fa556d3fb2fa55ba9f2de7c1c8f45a` on `codex/b2-touch-gameplay`. Exact clean-code gates pass under Node 20.20.1: TypeScript, 473 engine, 288 Colony, 4 sprite, 62 Chromium tests (59 verified exact-SHA route receipts and three fixtures, zero retries), and both production exports. Visible controls occupy a reserved footer; native multi-touch and a real Colony exterior/interior round trip pass. Current continuation: `docs/handoffs/2026-09-05-b2-touch-checkpoint.md`. Require its matching PASS evidence-SHA gate/review manifest before accepting B2 or starting B3. The handoff retains rejected code/test runs, the Node 23 worker stall, visual review and physical-device proof limits.
 - Conductor correction: a saved Galaxy operation failure resolves that catalog operation. Remove the unavailable operation TRY AGAIN promise from the old shell handoff; retain failure-to-Atlas and retreat without changing lifecycle/journal policy. Legacy and POI gameplay retries remain available.
 - Full authored POI success/preparation/delivery is a disclosed F1 live-integration row, not an additional A3 gate. A3 proves preparation authority and exact mounted receipt recovery; fixtures do not prove the full authored playthrough.
 - A1's all-ten real-surface launch/live-play row remains open because A2's accepted browser matrix is intentionally Kepler-focused. F1 must launch all ten through the repaired board and live-play the required objective sample without test-only runtime mutation.
@@ -432,19 +433,19 @@ The conductor keeps the original browser ownership role but splits its single pl
 
 ### B2.1 — Render the selected control profiles
 
-- [ ] Add browser tests that fail because visible accessible controls are absent for each gameplay mode.
-- [ ] Implement `TouchControls` using named DOM buttons/pads in a reserved footer and an aligned turret aim overlay, respecting safe-area insets and 44px minimum targets.
-- [ ] Implement exactly the design table: shooter move/fire/bomb; ground move+aim/fire/jump; boarding 8-way/fire/dash; FP/Colony move+strafe/look/fire-interact; turret position/fire.
-- [ ] Keep drag-to-position for shooter and set turret crosshair from explicit normalized aim input.
-- [ ] Briefing/control copy identifies the active profile; no required action is gesture-only.
+- [x] Add browser tests that fail because visible accessible controls are absent for each gameplay mode.
+- [x] Implement `TouchControls` using named DOM buttons/pads in a reserved footer and an aligned turret aim overlay, respecting safe-area insets and 44px minimum targets.
+- [x] Implement exactly the design table: shooter move/fire/bomb; ground move+aim/fire/jump; boarding 8-way/fire/dash; FP/Colony move+strafe/look/fire-interact; turret position/fire.
+- [x] Keep drag-to-position for shooter and set turret crosshair from explicit normalized aim input.
+- [x] Briefing/control copy identifies the active profile; no required action is gesture-only.
 
 ### B2.2 — Prove real touch play
 
-- [ ] With Playwright touchscreen events, move and perform each action in all five mode profiles.
-- [ ] Assert unrelated action counters/state do not change.
-- [ ] Verify multi-touch, `touchcancel`, pointer cancel, pause, and surface transition release all held controls.
-- [ ] At 480×854, traverse one campaign, planet, Galaxy operation, Colony exterior/interior, ground, boarding, first-person, and turret route.
-- [ ] Complete the closure protocol; candidate message: `fix(input): add accessible touch gameplay controls`.
+- [x] With Playwright touchscreen events, move and perform each action in all five mode profiles.
+- [x] Assert unrelated action counters/state do not change.
+- [x] Verify multi-touch, `touchcancel`, pointer cancel, pause, and surface transition release all held controls.
+- [x] At 480×854, traverse one campaign, planet, Galaxy operation, Colony exterior/interior, ground, boarding, first-person, and turret route.
+- [x] Commit corrected code as `9822d726c6fa556d3fb2fa55ba9f2de7c1c8f45a` and pass its exact clean-code gates. Evidence-SHA closure requires the matching PASS gate/review manifest linked by the dated handoff; the general closure protocol remains mandatory.
 
 ## Package B3 — Navigation activation, modal focus, and provenance
 
