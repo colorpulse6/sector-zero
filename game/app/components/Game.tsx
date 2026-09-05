@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
@@ -16,6 +16,11 @@ import {
   type SpecialMissionId,
 } from "./engine/types";
 import { createGameState, createPlanetGameState, createSpecialMissionGameState, updateGame, togglePause } from "./engine/gameEngine";
+import {
+  createEmptyInputState, keyboardInputSource, mapKeyboardIntent,
+  pressInputSource, releaseInputSource, toEngineKeys,
+  type HeldInputState, type InputContext,
+} from "./engine/inputIntents";
 import { getPlanetDef } from "./engine/planets";
 import type { PlanetId } from "./engine/types";
 import { drawGame, drawStarMap, drawIntroCrawl, INTRO_TOTAL_FRAMES } from "./engine/renderer";
@@ -335,19 +340,21 @@ export default function Game() {
     write: persistCanonicalSave,
   }), [persistCanonicalSave]);
 
-  const keysRef = useRef<Keys>({
-    left: false,
-    right: false,
-    up: false,
-    down: false,
-    strafeLeft: false,
-    strafeRight: false,
-    shoot: false,
-    bomb: false,
-    jump: false,
-  });
+  const heldInputRef = useRef(createEmptyInputState());
+  const keysRef = useRef<Keys>(toEngineKeys(heldInputRef.current));
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
+  const touchActiveRef = useRef(false);
   const mouseRef = useRef<{ x: number; y: number; down: boolean }>({ x: 0.5, y: 0.5, down: false });
+  const commitHeldInput = useCallback((next: HeldInputState) => {
+    heldInputRef.current = next;
+    keysRef.current = toEngineKeys(next);
+  }, []);
+  const clearHeldInput = useCallback(() => {
+    commitHeldInput(createEmptyInputState());
+    mouseRef.current.down = false;
+    touchPosRef.current = null;
+    touchActiveRef.current = false;
+  }, [commitHeldInput]);
   // Last mouse position already applied to the turret crosshair — lets keyboard
   // aiming coexist with the mouse (an idle mouse must not stomp arrow-key aim
   // back to its own position every frame).
@@ -1783,75 +1790,61 @@ export default function Game() {
     [commitCockpitState, gameState?.devInvincible, ensureAudio, persistCanonicalSave, startPlanetMission]
   );
 
+  // The mounted surface owns input even when a previous gameplay state remains.
+  const canvasInputBlocked = outcomeCommitIssue !== null || travelCommitIssue !== null ||
+    (pendingOutcomeReturn !== null && endingPhase === "off") || showGalaxyAtlas ||
+    (showCockpit && cockpitState.screen === "colonies") || !!regionMapSurface ||
+    !!pendingPoiResolution || exitMenuOpen;
+  const inputContext: InputContext = canvasInputBlocked ? { surface: "blocked" }
+    : showStartScreen || showIntro || showCockpit || showMap || endingPhase !== "off" || !gameState
+      ? { surface: "ui" }
+      : gameState.screen === GameScreen.PAUSED ? { surface: "paused" }
+        : gameState.screen === GameScreen.PLAYING || gameState.screen === GameScreen.BOSS_FIGHT
+          ? { surface: "gameplay", mode: gameState.screen === GameScreen.BOSS_FIGHT ? "shooter" : gameState.currentMode }
+          : { surface: "ui" };
+
+  // Clear before the next simulation frame. Depend on route identities, never
+  // the frame-by-frame game/scene objects, so ordinary held movement stays held.
+  useLayoutEffect(() => {
+    clearHeldInput();
+  }, [clearHeldInput, canvasInputBlocked, showStartScreen, showIntro, showCockpit,
+    cockpitState.screen, showMap, showGalaxyAtlas, endingPhase, gameState?.screen,
+    gameState?.currentMode, gameState?.currentPhase, gameState?.currentWorld,
+    gameState?.currentLevel, gameState?.planetId, gameState?.launchContext?.launchId,
+    activeOperationId, sceneStack?.colonyId, sceneStack?.current.kind,
+    sceneStack?.current.buildingId]);
+
   // Keyboard input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isInteractiveKeyboardTarget(e.target)) return;
-      if (outcomeCommitIssue !== null || travelCommitIssue !== null ||
-        (pendingOutcomeReturn !== null && endingPhase === "off")) return;
-      if (showGalaxyAtlas) return;
-      // Colonies screen uses a DOM overlay for input — let the overlay handle keys.
-      if (showCockpit && cockpitState.screen === "colonies") return;
-      if (regionMapSurface || pendingPoiResolution) return;
-      // Landing-pad exit menu is a DOM overlay on top of canvas — let DOM handle keys.
-      if (exitMenuOpen) return;
+      const intent = mapKeyboardIntent(e, inputContext);
+      if (intent === null) return;
+      e.preventDefault();
+      const hold = () => commitHeldInput(pressInputSource(
+        heldInputRef.current, keyboardInputSource(e), intent,
+      ));
 
-      const isFirstPerson =
-        gameState?.currentMode === "first-person" ||
-        gameState?.currentMode === "colony-exploration";
-
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
-        e.preventDefault();
-      }
-
-      switch (e.key) {
-        case "ArrowLeft":
-          keysRef.current.left = true;
+      switch (intent) {
+        case "ui-left":
+          hold();
           if (shouldPromptKeplerMission) setSpecialPromptChoice(0);
           break;
-        case "ArrowRight":
-          keysRef.current.right = true;
+        case "ui-right":
+          hold();
           if (shouldPromptKeplerMission) setSpecialPromptChoice(1);
           break;
-        case "a":
-          if (isFirstPerson) {
-            keysRef.current.strafeLeft = true;
-          } else {
-            keysRef.current.left = true;
-          }
-          break;
-        case "d":
-          if (isFirstPerson) {
-            keysRef.current.strafeRight = true;
-          } else {
-            keysRef.current.right = true;
-          }
-          break;
-        case "ArrowUp":
-        case "w":
-          keysRef.current.up = true;
+        case "ui-up":
+          hold();
           if (endingPhase === "choice") setChoiceHover(0);
           if (shouldPromptKeplerMission) setSpecialPromptChoice(0);
           break;
-        case "ArrowDown":
-        case "s":
-          keysRef.current.down = true;
+        case "ui-down":
+          hold();
           if (endingPhase === "choice") setChoiceHover(1);
           if (shouldPromptKeplerMission) setSpecialPromptChoice(1);
           break;
-        case " ":
-          keysRef.current.shoot = true;
-          keysRef.current.jump = true;
-          break;
-        case "z":
-        case "Z":
-        case "Shift":
-          keysRef.current.shoot = true;
-          break;
-        case "b":
-          keysRef.current.bomb = true;
-          break;
-        case "Enter":
+        case "activate":
           if (showStartScreen) {
             return;
           } else if (showIntro) {
@@ -1860,10 +1853,10 @@ export default function Game() {
             advanceEnding();
           } else if (endingPhase === "choice") {
             confirmChoice(choiceHover === 0 ? "destroy" : "merge");
-          } else if (showCockpit) {
-            keysRef.current.shoot = true;
-          } else if (showMap) {
-            keysRef.current.shoot = true;
+          } else if (showCockpit || showMap) {
+            hold();
+          } else if (gameState?.screen === GameScreen.PAUSED) {
+            setGameState((prev) => prev ? togglePause(prev) : null);
           } else if (gameState?.screen === GameScreen.BRIEFING) {
             setGameState((prev) => prev ? { ...prev, briefingTimer: 0 } : null);
           } else if (gameState?.screen === GameScreen.PHASE_TRANSITION) {
@@ -1890,7 +1883,7 @@ export default function Game() {
             }
           }
           break;
-        case "Escape":
+        case "back":
           if (showCockpit) {
             setShowCockpit(false);
             setShowStartScreen(true);
@@ -1919,62 +1912,24 @@ export default function Game() {
             setGameState((prev) => (prev ? togglePause(prev) : null));
           }
           break;
-        case "p":
-          if (gameState && gameState.screen === GameScreen.PLAYING) {
-            setGameState((prev) => (prev ? togglePause(prev) : null));
-          } else if (gameState?.screen === GameScreen.PAUSED) {
-            setGameState((prev) => (prev ? togglePause(prev) : null));
-          }
+        case "pause":
+          clearHeldInput();
+          setGameState((prev) => (prev ? togglePause(prev) : null));
           break;
-        case "m":
+        case "mute":
           if (audioRef.current) {
             const nowMuted = audioRef.current.toggleMute();
             setMuted(nowMuted);
           }
           break;
+        default:
+          hold();
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case "ArrowLeft":
-          keysRef.current.left = false;
-          break;
-        case "ArrowRight":
-          keysRef.current.right = false;
-          break;
-        case "a":
-          keysRef.current.left = false;
-          keysRef.current.strafeLeft = false;
-          break;
-        case "d":
-          keysRef.current.right = false;
-          keysRef.current.strafeRight = false;
-          break;
-        case "ArrowUp":
-        case "w":
-          keysRef.current.up = false;
-          break;
-        case "ArrowDown":
-        case "s":
-          keysRef.current.down = false;
-          break;
-        case " ":
-          keysRef.current.shoot = false;
-          keysRef.current.jump = false;
-          break;
-        case "z":
-        case "Z":
-        case "Shift":
-          keysRef.current.shoot = false;
-          break;
-        case "b":
-          keysRef.current.bomb = false;
-          break;
-        case "Enter":
-          keysRef.current.shoot = false;
-          break;
-      }
+      // Release the captured physical source, regardless of current focus/mode.
+      commitHeldInput(releaseInputSource(heldInputRef.current, keyboardInputSource(e)));
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -1984,7 +1939,7 @@ export default function Game() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, retreatActiveRoute, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi, submitGameOutcome, outcomeCommitIssue, travelCommitIssue, pendingOutcomeReturn]);
+  }, [inputContext, commitHeldInput, clearHeldInput, showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, retreatActiveRoute, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi, submitGameOutcome, outcomeCommitIssue, travelCommitIssue, pendingOutcomeReturn]);
 
   // Grade-scene menu detection: whenever gameplay isn't the active surface
   // (start screen, intro, cockpit, star map, ending) the grade preset eases
@@ -2006,17 +1961,6 @@ export default function Game() {
       cancelAnimationFrame(presentRafRef.current);
       presentRafRef.current = null;
     }
-    keysRef.current.left = false;
-    keysRef.current.right = false;
-    keysRef.current.up = false;
-    keysRef.current.down = false;
-    keysRef.current.strafeLeft = false;
-    keysRef.current.strafeRight = false;
-    keysRef.current.shoot = false;
-    keysRef.current.bomb = false;
-    keysRef.current.jump = false;
-    mouseRef.current.down = false;
-    touchPosRef.current = null;
   }, [showGalaxyAtlas]);
 
   // Held-input reset on focus loss. keyup/mouseup are delivered to whatever
@@ -2024,14 +1968,6 @@ export default function Game() {
   // key would otherwise leave keysRef stuck true (ship slides + auto-fires until
   // the key is pressed again). Mount-once: only refs are touched.
   useEffect(() => {
-    const clearHeldInput = () => {
-      const k = keysRef.current;
-      k.left = k.right = k.up = k.down = false;
-      k.strafeLeft = k.strafeRight = false;
-      k.shoot = k.bomb = k.jump = false;
-      mouseRef.current.down = false;
-      touchPosRef.current = null;
-    };
     const onVisibilityChange = () => {
       if (document.hidden) clearHeldInput();
     };
@@ -2041,7 +1977,7 @@ export default function Game() {
       window.removeEventListener("blur", clearHeldInput);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, []);
+  }, [clearHeldInput]);
 
   // Touch input
   useEffect(() => {
@@ -2059,30 +1995,47 @@ export default function Game() {
       };
     };
 
-    const handleTouchStart = (e: TouchEvent) => {
-      e.preventDefault();
+    const releaseTouch = () => {
+      commitHeldInput(releaseInputSource(releaseInputSource(
+        heldInputRef.current, "touch:primary",
+      ), "touch:secondary"));
+      touchPosRef.current = null;
+      touchActiveRef.current = false;
+    };
+    const touchAllowed = inputContext.surface !== "blocked" && inputContext.surface !== "paused";
+    const syncTouch = (e: TouchEvent) => {
       const touch = e.touches[0];
+      if (!touch) { releaseTouch(); return; }
       touchPosRef.current = getCanvasPos(touch.clientX, touch.clientY);
-      if (!showCockpit) {
-        keysRef.current.shoot = true;
-        // Two-finger tap activates bomb
-        if (e.touches.length >= 2) {
-          keysRef.current.bomb = true;
-        }
+      let next = heldInputRef.current;
+      if (inputContext.surface === "gameplay" || showMap) {
+        next = pressInputSource(next, "touch:primary", showMap ? "activate" : "primary");
+        // Existing two-finger bomb gesture; visible controls belong to B2.
+        next = e.touches.length >= 2 && inputContext.surface === "gameplay"
+          ? pressInputSource(next, "touch:secondary", "secondary")
+          : releaseInputSource(next, "touch:secondary");
       }
+      commitHeldInput(next);
+    };
+    const handleTouchStart = (e: TouchEvent) => {
+      if (!touchAllowed || e.touches.length === 0) return;
+      e.preventDefault();
+      touchActiveRef.current = true;
+      syncTouch(e);
     };
 
     const handleTouchMove = (e: TouchEvent) => {
+      if (!touchAllowed || !touchActiveRef.current) return;
       e.preventDefault();
-      const touch = e.touches[0];
-      touchPosRef.current = getCanvasPos(touch.clientX, touch.clientY);
+      syncTouch(e);
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
       e.preventDefault();
-      touchPosRef.current = null;
-      keysRef.current.shoot = false;
-      keysRef.current.bomb = false;
+      const wasActive = touchActiveRef.current;
+      if (touchAllowed && wasActive && e.touches.length > 0) { syncTouch(e); return; }
+      releaseTouch();
+      if (!touchAllowed || !wasActive) return;
 
       if (showStartScreen) {
         return;
@@ -2152,13 +2105,16 @@ export default function Game() {
     canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
     canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
     canvas.addEventListener("touchend", handleTouchEnd, { passive: false });
+    // Cancellation releases only this device; it must never activate navigation.
+    canvas.addEventListener("touchcancel", releaseTouch);
 
     return () => {
       canvas.removeEventListener("touchstart", handleTouchStart);
       canvas.removeEventListener("touchmove", handleTouchMove);
       canvas.removeEventListener("touchend", handleTouchEnd);
+      canvas.removeEventListener("touchcancel", releaseTouch);
     };
-  }, [showStartScreen, showIntro, endingPhase, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationContext, activePoi, activePoiExperience, openExperienceMap, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, commitCockpitState, handleMissionBoardPoint, submitGameOutcome]);
+  }, [inputContext, commitHeldInput, showStartScreen, showIntro, endingPhase, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationContext, activePoi, activePoiExperience, openExperienceMap, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, commitCockpitState, handleMissionBoardPoint, submitGameOutcome]);
 
   // Intro crawl loop
   useEffect(() => {
@@ -2708,7 +2664,7 @@ export default function Game() {
             mouseRef.current.y = (e.clientY - rect.top) * scaleY / CANVAS_HEIGHT;
           }}
           onMouseDown={(e) => {
-            if (showGalaxyAtlas) return;
+            if (inputContext.surface !== "gameplay") return;
             if (e.button === 0) mouseRef.current.down = true;
           }}
           onMouseUp={(e) => {

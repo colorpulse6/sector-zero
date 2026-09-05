@@ -376,7 +376,7 @@ The conductor keeps the original browser ownership role but splits its single pl
 
 ## Package B1 — Pure semantic input mapping
 
-**Branch/worktree:** `fix/sync-input-intents` in `/private/tmp/sector-zero-sync-input-intents`
+**Branch/worktree:** `codex/b1-input-mapping` in `/Users/nichalasbarnes/.config/superpowers/worktrees/sector-zero/b1-input-mapping`, from accepted A3 evidence `e5495fe770adfd33c3cb7978ae4e3656eb3a2394`.
 **Depends on:** A3.
 **Owned files:**
 
@@ -384,7 +384,11 @@ The conductor keeps the original browser ownership role but splits its single pl
 - `game/app/components/engine/types.ts`
 - `game/app/components/engine/inputIntents.ts` (new)
 - `game/tests/engine/inputIntents.test.ts` (new)
+- `game/tests/browser/inputIntents.spec.ts` (new; conductor ownership reconciliation for B1's required browser proof)
+- `game/tests/browser/outcomeEnding.spec.ts` (conductor reconciliation: start firing after the boss introduction, because B1 clears input at that transition)
+- `game/tests/browser/outcomeAuthority.spec.ts` (conductor reconciliation: retain diagnostics at the first retry-mount assertion)
 - `docs/playtests/2026-07-19-input-intents.md` (new)
+- `docs/handoffs/2026-09-05-b1-input-checkpoint.md` (new; dated continuation evidence)
 
 ### B1.1 — Map physical input by active mode
 

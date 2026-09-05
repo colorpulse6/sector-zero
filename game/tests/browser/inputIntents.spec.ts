@@ -1,0 +1,165 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import { freshLegacy } from "./fixtures/routeFixtures";
+import { attachBrowserReceipt } from "./helpers/receipt";
+import { installSaveFixture } from "./helpers/saveFixture";
+
+type GroundObservation = { sprite: string; x: number; y: number; bullets: number };
+declare global {
+  interface Window { inputObservations: GroundObservation[] }
+}
+
+// Read-only rendering observation: no game state access or test-only controls.
+async function openGround(page: Page) {
+  await installSaveFixture(page, freshLegacy);
+  await page.addInitScript(() => {
+    window.inputObservations = [];
+    let bullets = 0;
+    const fillRect = CanvasRenderingContext2D.prototype.fillRect;
+    CanvasRenderingContext2D.prototype.fillRect = function (x, y, w, h) {
+      if (this.canvas.id === "sector-zero-game-canvas" && this.fillStyle === "#00ffff" && w === 10 && h === 6) bullets++;
+      return fillRect.call(this, x, y, w, h);
+    };
+    const drawImage = CanvasRenderingContext2D.prototype.drawImage;
+    CanvasRenderingContext2D.prototype.drawImage = function (sprite: CanvasImageSource, x: number, y: number, ...dimensions: number[]) {
+      if (this.canvas.id === "sector-zero-game-canvas" && sprite instanceof HTMLImageElement && sprite.src.includes("/ground/player-")) {
+        window.inputObservations.push({ sprite: sprite.src, x, y, bullets });
+        bullets = 0;
+      }
+      return Reflect.apply(drawImage, this, [sprite, x, y, ...dimensions]);
+    };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "DEV", exact: true }).click();
+  await page.getByRole("button", { name: "GROUND RUN", exact: true }).click();
+  await page.getByRole("button", { name: "X", exact: true }).click();
+  await page.locator("#sector-zero-game-canvas").focus();
+  await page.waitForFunction(() => window.inputObservations.at(-1)?.sprite.endsWith("player-idle.png"));
+}
+
+async function observeFrames(page: Page, count = 25): Promise<GroundObservation[]> {
+  const start = await page.evaluate(() => window.inputObservations.length);
+  await page.waitForFunction(({ start, count }) => window.inputObservations.length >= start + count, { start, count });
+  return page.evaluate((start) => window.inputObservations.slice(start), start);
+}
+
+test("@keyboard ground Space jumps without firing; fire aliases survive keyup", async ({ page }, testInfo) => {
+  await openGround(page);
+  await page.keyboard.down("Space");
+  const jump = await observeFrames(page, 15);
+  await page.keyboard.up("Space");
+  expect(jump.some((frame) => frame.sprite.endsWith("player-jump.png"))).toBe(true);
+  expect(jump.every((frame) => frame.bullets === 0), "Space must not also spawn player projectiles").toBe(true);
+  await page.waitForFunction(() => window.inputObservations.at(-1)?.sprite.endsWith("player-idle.png"));
+
+  await page.keyboard.down("z");
+  await page.keyboard.down("Shift");
+  await page.keyboard.up("z");
+  const fire = await observeFrames(page, 35);
+  expect(fire.some((frame) => frame.sprite.endsWith("player-shoot.png"))).toBe(true);
+  expect(fire.some((frame) => frame.bullets > 0)).toBe(true);
+  expect(fire.every((frame) => !frame.sprite.endsWith("player-jump.png"))).toBe(true);
+  await page.keyboard.up("Shift");
+  await observeFrames(page, 25);
+  const released = await observeFrames(page, 25);
+  expect(released.every((frame) => !frame.sprite.endsWith("player-shoot.png"))).toBe(true);
+  await attachBrowserReceipt(testInfo, {
+    route: "DevPanel -> ground-run -> jump/fire -> release", inputMethod: "keyboard", saveFixture: "freshLegacy",
+    expectedOutcome: "Space only jumps; Z/Shift only fire; releasing one alias preserves the other; final release stops new shots.",
+    observedOutcome: "Rendered jump had no player projectiles; Shift kept firing after Z release; final release stopped shooting animation.",
+  });
+});
+
+test("@keyboard blur and pause clear held movement until a fresh press", async ({ page }, testInfo) => {
+  await openGround(page);
+  await page.keyboard.down("ArrowRight");
+  const moving = await observeFrames(page, 12);
+  expect(moving.at(-1)!.x).toBeGreaterThan(moving[0].x);
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  const blurred = await observeFrames(page, 12);
+  expect(blurred.at(-1)!.x).toBeCloseTo(blurred[0].x, 3);
+  await page.keyboard.up("ArrowRight");
+  await page.keyboard.down("ArrowRight");
+  await observeFrames(page, 8);
+  await page.keyboard.press("p");
+  await expect(page.getByRole("button", { name: "RESUME", exact: true })).toBeVisible();
+  await page.keyboard.press("p");
+  await expect(page.getByRole("button", { name: "RESUME", exact: true })).toBeHidden();
+  const resumed = await observeFrames(page, 12);
+  expect(resumed.at(-1)!.x).toBeCloseTo(resumed[0].x, 3);
+  await page.keyboard.down("ArrowRight"); // browser repeat of the old physical hold
+  const repeated = await observeFrames(page, 8);
+  expect(repeated.at(-1)!.x).toBeCloseTo(repeated[0].x, 3);
+  await page.keyboard.up("ArrowRight");
+  await page.keyboard.down("ArrowRight");
+  const fresh = await observeFrames(page, 8);
+  expect(fresh.at(-1)!.x).toBeGreaterThan(fresh[0].x);
+  await page.keyboard.up("ArrowRight");
+  await attachBrowserReceipt(testInfo, {
+    route: "ground-run -> blur -> pause/resume -> fresh keydown", inputMethod: "keyboard", saveFixture: "freshLegacy",
+    expectedOutcome: "Blur and pause clear held movement; a fresh physical press re-arms it.",
+    observedOutcome: "Player stopped after blur and resume despite the old key remaining down, and moved on a fresh press.",
+  });
+});
+
+test("@keyboard visibility loss and mode transitions discard old physical holds", async ({ page }, testInfo) => {
+  await openGround(page);
+  await page.keyboard.down("ArrowRight");
+  await observeFrames(page, 8);
+  // Simulate the browser's hidden-document boundary without changing game state.
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Reflect.deleteProperty(document, "hidden");
+  });
+  const hidden = await observeFrames(page, 12);
+  expect(hidden.at(-1)!.x).toBeCloseTo(hidden[0].x, 3);
+  await page.keyboard.up("ArrowRight");
+  await page.keyboard.down("ArrowRight");
+  await page.getByRole("button", { name: "DEV", exact: true }).click();
+  await page.getByRole("button", { name: "BOARDING", exact: true }).click();
+  await page.getByRole("button", { name: "GROUND RUN", exact: true }).click();
+  await page.getByRole("button", { name: "X", exact: true }).click();
+  await page.locator("#sector-zero-game-canvas").focus();
+  await page.waitForFunction(() => window.inputObservations.at(-1)?.sprite.endsWith("player-idle.png"));
+  const returned = await observeFrames(page, 12);
+  expect(returned.at(-1)!.x).toBeCloseTo(returned[0].x, 3);
+  await page.keyboard.up("ArrowRight");
+  await attachBrowserReceipt(testInfo, {
+    route: "ground-run -> simulated document hidden -> boarding -> ground-run", inputMethod: "keyboard", saveFixture: "freshLegacy",
+    expectedOutcome: "Visibility loss and mode changes clear old held keys.",
+    observedOutcome: "Player stayed stationary after both boundaries while the old key remained physically down.",
+  });
+});
+
+test("@touch cancel releases canvas fire without cancelling a keyboard owner", async ({ page }, testInfo) => {
+  await openGround(page);
+  const box = await page.locator("#sector-zero-game-canvas").boundingBox();
+  expect(box).not.toBeNull();
+  const session = await page.context().newCDPSession(page);
+  const startTouch = () => session.send("Input.dispatchTouchEvent", {
+    type: "touchStart", touchPoints: [{ x: box!.x + box!.width * 0.75, y: box!.y + box!.height * 0.5 }],
+  });
+  const cancelTouch = () => session.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+  await page.keyboard.down("z");
+  await startTouch();
+  await observeFrames(page, 8);
+  await cancelTouch();
+  const keyboardOwned = await observeFrames(page, 30);
+  expect(keyboardOwned.some((frame) => frame.sprite.endsWith("player-shoot.png"))).toBe(true);
+  await page.keyboard.up("z");
+  await observeFrames(page, 25);
+  await startTouch();
+  const touchOwned = await observeFrames(page, 25);
+  expect(touchOwned.some((frame) => frame.bullets > 0)).toBe(true);
+  await cancelTouch();
+  await observeFrames(page, 25);
+  const cancelled = await observeFrames(page, 25);
+  expect(cancelled.every((frame) => !frame.sprite.endsWith("player-shoot.png"))).toBe(true);
+  await session.detach();
+  await attachBrowserReceipt(testInfo, {
+    route: "ground-run -> keyboard + canvas touch -> touchcancel -> touch only -> touchcancel", inputMethod: "touch", saveFixture: "freshLegacy",
+    expectedOutcome: "A native touch cancellation releases touch fire, preserving any held keyboard fire.",
+    observedOutcome: "Keyboard shooting survived the first cancellation; touch-only shooting stopped after cancellation at 480x854.",
+  });
+});

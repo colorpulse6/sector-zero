@@ -297,7 +297,13 @@ test("@pointer Legacy planet TRY AGAIN remounts gameplay with a new owned termin
     returnPending: false,
     routeIdentity: { kind: "planet", planetId: "ossuary" },
   });
-  await expect.poll(() => readCanvasTexts(page)).toContain("WORLD 4 - LEVEL 1");
+  await expect.poll(() => readCanvasTexts(page)).toContain("WORLD 4 - LEVEL 1").catch(async (error) => {
+    await testInfo.attach("retry-mount-diagnostics", {
+      body: JSON.stringify({ pageErrors, save: await readInstalledSave(page), texts: await readCanvasTexts(page) }, null, 2),
+      contentType: "application/json",
+    });
+    throw error;
+  });
   await page.keyboard.press("Enter");
   await expect.poll(() => readCanvasTexts(page)).toContain("DEFEND").catch(async (error) => {
     await testInfo.attach("retry-page-errors", {

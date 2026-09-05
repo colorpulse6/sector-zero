@@ -59,6 +59,9 @@ test("@pointer final campaign save retry preserves the ending until its return i
   await page.getByRole("button", { name: "MAX WPN", exact: true }).click();
   await page.getByRole("button", { name: "SKIP BRIEF", exact: true }).click();
   await page.getByRole("button", { name: "SPAWN BOSS", exact: true }).click();
+  // Input belongs to the active surface; a press during the boss introduction
+  // must not carry through its transition into combat.
+  await expect(page.getByText("BOSS_FIGHT", { exact: true })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "X", exact: true }).click();
   await page.locator(CANVAS).focus();
   await page.keyboard.down("z");
