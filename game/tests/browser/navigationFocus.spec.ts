@@ -81,7 +81,12 @@ async function key(page: Page, key: string) {
   await page.waitForTimeout(50);
 }
 async function activate(page: Page, target: Locator, method: Method) {
-  if (method === "keyboard") { await target.focus(); await page.keyboard.press("Enter"); }
+  if (method === "keyboard") {
+    await expect(target).toBeEnabled();
+    await target.focus();
+    await expect(target).toBeFocused();
+    await page.keyboard.press("Enter");
+  }
   else if (method === "pointer") await target.click();
   else await target.tap();
 }

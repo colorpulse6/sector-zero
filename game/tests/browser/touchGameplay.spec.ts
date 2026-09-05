@@ -18,6 +18,7 @@ type NativeEvidence = {
   touches?: number[]; changed?: number[]; seq: number; fp?: Point; heading?: Point; mapSize?: number;
 };
 declare global { interface Window { touchEvidence: { frames: Frame[]; texts: string[]; events: NativeEvidence[]; pointerCancels: number } } }
+declare global { interface Window { touchGradeContextRequests?: string[] } }
 
 // Observe only pixels' drawing arguments. No application state, clock, or
 // simulation function is replaced. Every intercepted draw is forwarded intact.
@@ -190,8 +191,8 @@ class Fingers {
 }
 
 const action = (page: Page, label: string) => page.getByRole("button", { name: label, exact: true });
-async function frames(page: Page, kind: Motion, count = 10): Promise<Frame[]> {
-  const seq = await page.evaluate(() => window.touchEvidence.frames.at(-1)?.seq ?? 0);
+async function frames(page: Page, kind: Motion, count = 10, afterSeq?: number): Promise<Frame[]> {
+  const seq = afterSeq ?? await page.evaluate(() => window.touchEvidence.frames.at(-1)?.seq ?? 0);
   await page.waitForFunction(({ seq, kind, count }) => window.touchEvidence.frames.filter((f) => f.seq > seq && f[kind]).length >= count, { seq, kind, count });
   return page.evaluate(({ seq, kind }) => window.touchEvidence.frames.filter((f) => f.seq > seq && f[kind]), { seq, kind });
 }
@@ -346,9 +347,33 @@ const profiles = [
   { launch: "DAY", name: "Colony", actions: ["Move forward", "Move backward", "Strafe left", "Strafe right", "Look left", "Look right", "Interact"] },
 ] as const;
 
-for (const profile of profiles) {
-  test(`@touch ${profile.name} exposes its visible control profile at 480x854`, async ({ page }, testInfo) => {
+const controlProfileCases = [
+  ...profiles.map((profile) => ({ ...profile, withoutWebGL: false })),
+  { ...profiles[4], withoutWebGL: true },
+];
+
+for (const profile of controlProfileCases) {
+  test(`@touch ${profile.name} exposes its visible control profile at 480x854${profile.withoutWebGL ? " without WebGL" : ""}`, async ({ page }, testInfo) => {
+    if (profile.withoutWebGL) {
+      // Environmental fault injection only: unavailable GL contexts exercise
+      // the shipped grade fallback. The 2D renderer and game state are intact.
+      await page.addInitScript(() => {
+        window.touchGradeContextRequests = [];
+        const getContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, contextId: string, ...args: unknown[]) {
+          if (["webgl", "webgl2", "experimental-webgl"].includes(contextId)) {
+            window.touchGradeContextRequests!.push(contextId);
+            return null;
+          }
+          return Reflect.apply(getContext, this, [contextId, ...args]);
+        } as typeof HTMLCanvasElement.prototype.getContext;
+      });
+    }
     await openMode(page, profile.launch);
+    if (profile.withoutWebGL) {
+      expect(await page.evaluate(() => window.touchGradeContextRequests)).toContain("webgl");
+      await expect(page.locator(CANVAS).locator("..").locator("canvas").nth(1)).toHaveCSS("display", "none");
+    }
     const controls = page.getByRole("group", { name: `${profile.name} controls`, exact: true });
     await expect(controls).toBeVisible();
     for (const label of profile.actions) {
@@ -373,13 +398,31 @@ for (const profile of profiles) {
         expect(overlap, `Control targets ${i} and ${j} overlap`).toBe(false);
       }
     }
+    const gradeObservations: Array<{ viewport: string; presentation: "graded" | "raw-2d" }> = [];
     const assertClearGameImage = async () => {
-      const canvas = (await page.locator(CANVAS).boundingBox())!;
-      const grade = (await page.locator(CANVAS).locator("..").locator("canvas").nth(1).boundingBox())!;
-      for (const axis of ["x", "y", "width", "height"] as const) {
-        expect(Math.abs(grade[axis] - canvas[axis]), `Color-grade ${axis} must match the game image`).toBeLessThanOrEqual(0.5);
-      }
+      const gameCanvas = page.locator(CANVAS);
+      await expect(gameCanvas).toBeVisible();
+      const canvas = (await gameCanvas.boundingBox())!;
+      expect(canvas).not.toBeNull();
+      expect(canvas.width).toBeGreaterThan(0);
+      expect(canvas.height).toBeGreaterThan(0);
+      const gradeOverlay = gameCanvas.locator("..").locator("canvas").nth(1);
+      await expect(gradeOverlay).toHaveCount(1);
+      const grade = await gradeOverlay.boundingBox();
       const viewport = page.viewportSize()!;
+      if (grade === null) {
+        // createGradePass deliberately hides this overlay when GL is unavailable,
+        // lost, disabled, or over budget. Require that exact runtime-owned
+        // fallback, rather than accepting a missing canvas or arbitrary hiding.
+        expect(await gradeOverlay.evaluate((node) => (node as HTMLCanvasElement).style.display)).toBe("none");
+        await expect(gradeOverlay).toHaveCSS("display", "none");
+        await expect(gradeOverlay).toHaveCSS("pointer-events", "none");
+      } else {
+        for (const axis of ["x", "y", "width", "height"] as const) {
+          expect(Math.abs(grade[axis] - canvas[axis]), `Color-grade ${axis} must match the game image`).toBeLessThanOrEqual(0.5);
+        }
+      }
+      gradeObservations.push({ viewport: `${viewport.width}x${viewport.height}`, presentation: grade === null ? "raw-2d" : "graded" });
       const layout = await Promise.all(targets.map(async (target) => ({
         label: await target.getAttribute("aria-label"), box: (await target.boundingBox())!,
       })));
@@ -424,11 +467,19 @@ for (const profile of profiles) {
     const screenshotPath = testInfo.outputPath(`${profile.name}-controls-480x854.png`);
     await page.screenshot({ path: screenshotPath });
     await testInfo.attach(`${profile.name}-controls-480x854`, { path: screenshotPath, contentType: "image/png" });
+    await testInfo.attach("grade-layout-observations", {
+      body: Buffer.from(JSON.stringify({
+        forcedWebGLUnavailable: profile.withoutWebGL,
+        contextRequests: await page.evaluate(() => window.touchGradeContextRequests ?? []),
+        gradeObservations,
+      }, null, 2)),
+      contentType: "application/json",
+    });
     await attachBrowserReceipt(testInfo, {
-      route: `DevPanel -> ${profile.launch} -> visible ${profile.name} controls`,
+      route: `DevPanel -> ${profile.launch} -> visible ${profile.name} controls${profile.withoutWebGL ? " with WebGL context creation unavailable" : ""}`,
       inputMethod: "touch", saveFixture: "freshLegacy",
-      expectedOutcome: "The active profile exposes labeled, non-overlapping 44px controls without obscuring gameplay, dashboard or dialogue; canvas, grade and turret aim stay aligned.",
-      observedOutcome: `${profile.name} controls and all ${profile.actions.length} required action targets remain visible, unobstructed and aligned at 480x854 and 375x667; screenshot restored to 480x854.`,
+      expectedOutcome: "The active profile exposes labeled, non-overlapping 44px controls without obscuring gameplay, dashboard or dialogue; turret aim aligns with the visible base canvas, and the grade overlay is aligned when visible or explicitly hidden by the supported raw-2D fallback.",
+      observedOutcome: `${profile.name} controls and all ${profile.actions.length} required action targets remain visible, unobstructed and aligned at 480x854 and 375x667; grade presentation: ${gradeObservations.map((entry) => `${entry.viewport} ${entry.presentation}`).join(", ")}; screenshot restored to 480x854.`,
     });
   });
 }
@@ -683,8 +734,11 @@ test("@touch boarding covers eight directions retained facing fire and dash", as
     const dash = await frames(page, "board", 6);
     expect(dash.some((f) => f.dash)).toBe(true);
     expect(displacement(dash, "board").x).toBeGreaterThan(0.4);
+    // Capture before the native command: its round trip can otherwise discard
+    // the first shot and leave only empty renders between fire cooldowns.
+    const movingFireStart = await page.evaluate(() => window.touchEvidence.frames.at(-1)?.seq ?? 0);
     await fingers.down(2, action(page, "Fire"));
-    expect((await frames(page, "board", 8)).some((f) => f.boardShots.length > 0)).toBe(true);
+    expect((await frames(page, "board", 8, movingFireStart)).some((f) => f.boardShots.length > 0)).toBe(true);
     await fingers.up(1);
     await fingers.up(3);
     still(await freshFireCycle(page, "board"), "board");

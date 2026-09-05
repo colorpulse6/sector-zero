@@ -390,9 +390,23 @@ test("@pointer Legacy planet TRY AGAIN remounts gameplay with a new owned termin
   await expect(page.getByRole("heading", { name: "PAUSED" })).toBeVisible();
   await page.getByRole("button", { name: "RETURN TO HUB" }).click();
   await expect(page.getByRole("heading", { name: "PAUSED" })).toBeHidden();
+  const hubInvoker = page.locator("#cockpit-colonies-invoker");
+  await expect(hubInvoker).toBeVisible();
+  await expect(hubInvoker).toHaveAttribute("tabindex", "0");
+  const committedRetreat = (await readInstalledSave(page)).outcomeRecoveryRecords.find((record) =>
+    record.kind === "applied_return" && record.outcomeId.endsWith(":retreat"));
+  if (committedRetreat?.kind !== "applied_return") throw new Error("Retry did not commit its retreat receipt");
+  const retreatId = committedRetreat.outcomeId;
+  await expect.poll(async () => (await readInstalledSave(page)).outcomeRecoveryRecords.find((record) =>
+    record.kind === "applied_return" && record.outcomeId === retreatId)).toMatchObject({
+    kind: "applied_return",
+    returnPending: false,
+    returnTarget: "legacy-cockpit",
+    routeIdentity: { kind: "planet", planetId: "ossuary" },
+  });
   const retried = await readInstalledSave(page);
   const retreat = retried.outcomeRecoveryRecords.find((record) =>
-    record.kind === "applied_return" && record.outcomeId.endsWith(":retreat"));
+    record.kind === "applied_return" && record.outcomeId === retreatId);
   expect(retreat).toMatchObject({
     kind: "applied_return",
     returnPending: false,

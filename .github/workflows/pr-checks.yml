@@ -67,7 +67,17 @@ jobs:
       - name: Install Playwright Chromium
         run: cd game && yarn playwright install --with-deps chromium
       - name: Browser tests
-        run: cd game && yarn browser:test
+        run: cd game && yarn browser:test --workers=1 --retries=0 --trace=retain-on-failure --reporter=list,json
+        env:
+          PLAYWRIGHT_OUTPUT_DIR: ${{ runner.temp }}/sector-zero-browser-results
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/sector-zero-browser-results/report.json
+      - name: Retain browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-browser-results
+          path: ${{ runner.temp }}/sector-zero-browser-results
+          retention-days: 7
 
   game-build:
     name: Game · Next build
