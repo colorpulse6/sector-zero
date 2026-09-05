@@ -75,9 +75,16 @@ export function useModalFocus(options: ModalFocusOptions): void {
     };
     document.addEventListener("keydown", keydown, true);
     document.addEventListener("focusin", focusin, true);
+    // Removing the focused control does not emit focusin (for example, Found
+    // becomes Descend). Recover after DOM updates without stealing child focus.
+    const contentObserver = new MutationObserver(() => {
+      if ((latest.current.active ?? true) && root.isConnected && !root.contains(document.activeElement)) focusInitial();
+    });
+    contentObserver.observe(root, { childList: true, subtree: true });
     return () => {
       document.removeEventListener("keydown", keydown, true);
       document.removeEventListener("focusin", focusin, true);
+      contentObserver.disconnect();
     };
   }, [active, options.rootRef]);
 

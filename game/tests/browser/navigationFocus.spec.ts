@@ -185,6 +185,26 @@ test("@keyboard Colonies initial focus trap and Escape restore cockpit invoker",
   });
 });
 
+test("@keyboard founding the first colony retains primary focus and the cockpit invoker", async ({ page }, info) => {
+  await receipt(info, "keyboard", "freshLegacy + introSeen", "Legacy cockpit -> empty Colonies -> Enter to Found -> Descend focus -> Tab trap -> Escape", "Found Colony initially owns focus; native Enter creates the colony and moves focus to Descend; Tab stays contained and Escape restores the cockpit Colonies invoker.", async () => {
+    await openLegacy(page, canonical({ ...freshLegacy, introSeen: true }));
+    await key(page, "ArrowLeft");
+    await key(page, "Enter");
+    const colonies = page.getByRole("dialog", { name: "Colonies", exact: true });
+    await expect(colonies.getByRole("button", { name: "Found Colony at Ashfall", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
+    const descend = colonies.getByRole("button", { name: "DESCEND TO COLONY", exact: true });
+    await expect(descend).toBeVisible();
+    await expect(descend).toBeFocused();
+    expect((await readInstalledSave(page)).colonies).toHaveLength(1);
+    await proveTrap(page, colonies);
+    await page.keyboard.press("Escape");
+    await expect(colonies).toBeHidden();
+    await expect(page.locator("#cockpit-colonies-invoker")).toBeFocused();
+    await expectDraw(page, "UEC VANGUARD — BRIDGE");
+  });
+});
+
 test("@keyboard cockpit Region has honest source and restores its exact nested invoker", async ({ page }, info) => {
   await receipt(info, "keyboard", "colonyFounded + introSeen", "Colonies -> view-only Region -> repeated arrows -> Tab trap -> Escape", "Region identifies Cockpit, keeps actions unavailable, tracks repeated-arrow focus, and restores REGION — VIEW ONLY without closing Colonies.", async () => {
     await openColonies(page);

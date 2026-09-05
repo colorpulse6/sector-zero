@@ -7,7 +7,7 @@ const CANVAS = "#sector-zero-game-canvas";
 type Point = { x: number; y: number };
 type Motion = "ship" | "ground" | "board" | "fp" | "turret";
 type Frame = {
-  seq: number; ship?: Point; ground?: Point & { sprite: string }; board?: Point;
+  seq: number; ship?: Point; ground?: Point & { worldX: number; sprite: string }; board?: Point;
   fp?: Point; heading?: Point; turret?: Point; mapSize?: number; boardPlayer?: Point;
   shipShots: Point[]; groundShots: Point[]; boardShots: Point[];
   dash: boolean; gun: boolean; turretFire: boolean; bombs: number | null;
@@ -63,6 +63,14 @@ async function installObservation(page: Page) {
     let miniMap: Point | undefined;
     let fpDot: Point | undefined;
     const active = (ctx: CanvasRenderingContext2D) => ctx.canvas.id === "sector-zero-game-canvas";
+    let groundCameraX = 0;
+    const translate = CanvasRenderingContext2D.prototype.translate;
+    CanvasRenderingContext2D.prototype.translate = function (x, y) {
+      // Ground's effects translate by -cameraX immediately before its player
+      // draw. Ignore the negative half of mirrored sprite transforms.
+      if (active(this) && x <= 0 && y === 0 && this.getTransform().a === 1) groundCameraX = -x;
+      translate.call(this, x, y);
+    };
     const drawImage = CanvasRenderingContext2D.prototype.drawImage;
     CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, source: CanvasImageSource, ...args: number[]) {
       if (active(this) && source instanceof HTMLImageElement) {
@@ -72,7 +80,7 @@ async function installObservation(page: Page) {
         const point = { x: args[offset], y: args[offset + 1] };
         if (src.endsWith("/ships/player.png")) pending.ship = point;
         else if (src.endsWith("/bullets/player-bullets.png")) pending.shipShots.push(point);
-        else if (src.includes("/ground/player-")) pending.ground = { ...point, sprite: src };
+        else if (src.includes("/ground/player-")) pending.ground = { ...point, worldX: point.x + groundCameraX, sprite: src };
         else if (src.includes("/boarding/player-")) {
           if (this.globalAlpha < 0.4) pending.dash = true;
           else pending.boardPlayer = point;
@@ -190,7 +198,8 @@ async function frames(page: Page, kind: Motion, count = 10): Promise<Frame[]> {
 function displacement(observed: Frame[], kind: Motion): Point {
   const first = observed[0][kind]!;
   const last = observed.at(-1)![kind]!;
-  return { x: last.x - first.x, y: last.y - first.y };
+  const x = kind === "ground" ? observed.at(-1)!.ground!.worldX - observed[0].ground!.worldX : last.x - first.x;
+  return { x, y: last.y - first.y };
 }
 function still(observed: Frame[], kind: Motion, tolerance = 0.001) {
   const delta = displacement(observed, kind);
@@ -219,8 +228,25 @@ async function freshFireCycle(page: Page, kind: Motion): Promise<Frame[]> {
 }
 
 // Follow a visible projectile through three consecutive rendered frames.
-// Ground renders may contain one, two, or three fixed simulation ticks.
+// Renders may contain one, two, or three fixed simulation ticks.
 function hasProjectileTrajectory(observed: Frame[], field: "groundShots" | "boardShots", xSign: -1 | 0 | 1, ySign: -1 | 1): boolean {
+  if (field === "boardShots") {
+    const component = 7 / Math.sqrt(xSign * xSign + ySign * ySign);
+    const advances = (first: Point, second: Point) => {
+      const measuredTicks = (second.y - first.y) * ySign / component;
+      const ticks = Math.round(measuredTicks);
+      return ticks >= 1 && ticks <= 3 && Math.abs(measuredTicks - ticks) < 0.0001 &&
+        Math.abs(second.x - first.x - component * xSign * ticks) < 0.0001;
+    };
+    for (let i = 0; i < observed.length - 2; i++) {
+      for (const first of observed[i].boardShots) for (const second of observed[i + 1].boardShots) {
+        // The 14-tick firing interval separates shots by 98px. A 1–3 tick
+        // advance cannot accidentally jump to a different projectile.
+        if (advances(first, second) && observed[i + 2].boardShots.some((third) => advances(second, third))) return true;
+      }
+    }
+    return false;
+  }
   if (field === "groundShots" && xSign === 0) {
     const advances = (first: Point, second: Point) => {
       const measuredTicks = (second.y - first.y) * ySign / 10;
@@ -262,6 +288,27 @@ test("@fixture ground projectile observation respects signed engine ticks across
       dash: false, gun: false, turretFire: false, bombs: null,
     }));
     expect.soft(hasProjectileTrajectory(observed, "groundShots", 0, 1), entry.name).toBe(entry.expected);
+  }
+});
+
+test("@fixture boarding projectile observation follows one diagonal shot across uneven rendered ticks", () => {
+  const step = 7 / Math.sqrt(2);
+  const cases: { name: string; points: [number, number][]; expected: boolean }[] = [
+    { name: "one tick then two ticks", points: [[0, 0], [step, -step], [step * 3, -step * 3]], expected: true },
+    { name: "three ticks then one tick", points: [[0, 0], [step * 3, -step * 3], [step * 4, -step * 4]], expected: true },
+    { name: "two ticks then three ticks", points: [[0, 0], [step * 2, -step * 2], [step * 5, -step * 5]], expected: true },
+    { name: "stationary", points: [[0, 0], [0, 0], [0, 0]], expected: false },
+    { name: "opposite diagonal", points: [[0, 0], [-step, step], [-step * 2, step * 2]], expected: false },
+    { name: "wrong angle", points: [[0, 0], [step, -step / 2], [step * 2, -step]], expected: false },
+    { name: "wrong speed", points: [[0, 0], [step * 1.5, -step * 1.5], [step * 3, -step * 3]], expected: false },
+    { name: "more than three ticks", points: [[0, 0], [step * 4, -step * 4], [step * 8, -step * 8]], expected: false },
+    { name: "different shots separated by a firing cycle", points: [[0, 0], [step * 14, -step * 14], [step * 28, -step * 28]], expected: false },
+  ];
+  for (const entry of cases) {
+    const observed: Frame[] = entry.points.map(([x, y], index) => ({
+      seq: index, shipShots: [], groundShots: [], boardShots: [{ x, y }], dash: false, gun: false, turretFire: false, bombs: null,
+    }));
+    expect.soft(hasProjectileTrajectory(observed, "boardShots", 1, -1), entry.name).toBe(entry.expected);
   }
 });
 
@@ -568,36 +615,69 @@ test("@touch ground move aim fire and jump stay distinct and support three finge
 });
 
 test("@touch boarding covers eight directions retained facing fire and dash", async ({ page }, testInfo) => {
+  test.setTimeout(60_000); // Each independent gesture now enters through the real menu.
   await installObservation(page);
   await openMode(page, "BOARDING");
   await withFingers(page, async (fingers) => {
+    const freshEntry = async () => {
+      await fingers.tap(9, action(page, "DEV"));
+      await fingers.tap(9, action(page, "BOARDING"));
+      await fingers.tap(9, action(page, "X"));
+      const spawn = (await frames(page, "board", 3)).at(-1)!.board!;
+      expect(spawn.x).toBeCloseTo(68 / 32, 3);
+      expect(spawn.y).toBeCloseTo(68 / 32, 3);
+    };
     const directions = [["up", 0, -1], ["down", 0, 1], ["left", -1, 0], ["right", 1, 0], ["up left", -1, -1], ["down right", 1, 1], ["down left", -1, 1], ["up right", 1, -1]] as const;
     for (const [direction, x, y] of directions) {
-      await fingers.down(1, action(page, `Move ${direction}`));
-      const movement = await frames(page, "board", 5);
+      // Unequal browser round-trip times otherwise accumulate movement until
+      // a later gesture starts against a wall. Observe the entire native hold.
+      if (direction !== "up") await freshEntry();
+      const target = await center(action(page, `Move ${direction}`));
+      const baseline = (await frames(page, "board", 1)).at(-1)!;
+      await fingers.down(1, target);
+      await page.waitForFunction(({ first, x, y }) => {
+        const observed = window.touchEvidence.frames.filter((frame) => frame.seq > first.seq && frame.board);
+        return observed.length >= 5 && observed.some((frame) => (!x || (frame.board!.x - first.board!.x) * x > 0.05) &&
+          (!y || (frame.board!.y - first.board!.y) * y > 0.05));
+      }, { first: baseline, x, y });
+      await fingers.up(1);
+      const movement = await page.evaluate((first) => [first, ...window.touchEvidence.frames.filter((frame) => frame.seq > first.seq && frame.board)], baseline);
       const delta = displacement(movement, "board");
       if (x) expect(delta.x * x, direction).toBeGreaterThan(0.05);
       else expect(Math.abs(delta.x)).toBeLessThan(0.001);
       if (y) expect(delta.y * y, direction).toBeGreaterThan(0.05);
       else expect(Math.abs(delta.y)).toBeLessThan(0.001);
       expect(movement.every((f) => !f.dash && f.boardShots.length === 0)).toBe(true);
-      await fingers.up(1);
     }
+    // Start retained aim separately, with space for a visible diagonal shot.
+    // Reach the entry bay's bottom-left corner using its actual touch control.
+    await freshEntry();
+    await fingers.down(1, action(page, "Move down left"));
+    await page.waitForFunction(() => {
+      const position = window.touchEvidence.frames.at(-1)?.board;
+      return position && Math.abs(position.x - 1) < 0.001 && Math.abs(position.y - 104 / 32) < 0.001;
+    });
+    await fingers.up(1);
+    const aimTarget = await center(action(page, "Move up right"));
+    const aimStart = (await frames(page, "board", 1)).at(-1)!;
+    await fingers.down(1, aimTarget);
+    await page.waitForFunction((first) => window.touchEvidence.frames.some((frame) => frame.seq > first.seq && frame.board &&
+      frame.board.x - first.board!.x > 0.05 && first.board!.y - frame.board.y > 0.05), aimStart);
+    await fingers.up(1);
+    const aimReleased = await frames(page, "board", 2);
+    still(aimReleased, "board");
+    expect(aimReleased[0].board!.y * 32, "The native aim pulse must leave room above for three projectile renders").toBeGreaterThanOrEqual(84);
+    const fireStart = aimReleased.at(-1)!;
     await fingers.down(2, action(page, "Fire"));
-    const fire = await frames(page, "board", 18);
+    await page.waitForFunction((seq) => window.touchEvidence.frames.filter((frame) => frame.seq > seq && frame.board).length >= 18, fireStart.seq);
+    await fingers.up(2);
+    const fire = await page.evaluate((first) => [first, ...window.touchEvidence.frames.filter((frame) => frame.seq > first.seq && frame.board)], fireStart);
     still(fire, "board");
     expect(fire.some((f) => f.boardShots.length > 0)).toBe(true);
     expect(fire.every((f) => !f.dash)).toBe(true);
     expect(hasProjectileTrajectory(fire, "boardShots", 1, -1), "Released up-right movement must retain positive-X, negative-Y projectile aim").toBe(true);
-    await fingers.up(2);
-    // The direction tour can end against an entry-bay wall. Relaunch through
-    // the real menu so the separate dash/fire leg uses row 2's eastward doorway.
-    await fingers.tap(9, action(page, "DEV"));
-    await fingers.tap(9, action(page, "BOARDING"));
-    await fingers.tap(9, action(page, "X"));
-    const respawn = (await frames(page, "board", 3)).at(-1)!.board!;
-    expect(respawn.x).toBeCloseTo(68 / 32, 3);
-    expect(respawn.y).toBeCloseTo(68 / 32, 3);
+    // The separate dash/fire leg uses row 2's eastward doorway.
+    await freshEntry();
     await fingers.down(1, action(page, "Move right"));
     await fingers.down(3, action(page, "Dash"));
     const dash = await frames(page, "board", 6);
@@ -611,9 +691,7 @@ test("@touch boarding covers eight directions retained facing fire and dash", as
     // A separate fresh entry keeps enemy aggro/death from changing position
     // during the cancellation observation. All actions below are real touches.
     await fingers.up(2);
-    await fingers.tap(9, action(page, "DEV"));
-    await fingers.tap(9, action(page, "BOARDING"));
-    await fingers.tap(9, action(page, "X"));
+    await freshEntry();
     await fingers.down(1, action(page, "Move up"));
     await fingers.down(2, action(page, "Fire"));
     await fingers.down(3, action(page, "Dash"));
@@ -632,7 +710,7 @@ test("@touch boarding covers eight directions retained facing fire and dash", as
     }
     expect(cancelled.every((frame) => frame.boardShots.length === 0 && !frame.dash)).toBe(true);
   });
-  await receipt(page, testInfo, "DevPanel -> boarding -> eight directions -> retained facing -> DevPanel BOARDING relaunch -> fire/dash", "freshLegacy", "All eight directions move correctly without firing or dashing; stationary fire retains diagonal aim; moving dash and three-finger fire work in the entry corridor; cancelling all three held actions stops movement and fresh firing/dashing.");
+  await receipt(page, testInfo, "DevPanel BOARDING -> eight directions with native entry between each -> fresh entry, down-left positioning and released up-right aim -> fresh entry fire/dash -> fresh entry cancel", "freshLegacy", "All eight directions move correctly without firing or dashing from independent native entries; stationary fire retains diagonal aim across three rendered frames; moving dash and three-finger fire work in the entry corridor; cancelling all three held actions stops movement and fresh firing/dashing.");
 });
 
 test("@touch first person separates forward strafe look and fire with simultaneous input", async ({ page }, testInfo) => {
@@ -791,10 +869,8 @@ test("@touch cancel blur pause and mode changes discard old control holds until 
     await fingers.move(2, action(page, "Fire"));
     await frames(page, "ground", 18);
     const resumed = await frames(page, "ground", 8);
-    // The rendered coordinate includes the camera's easing toward its target
-    // after world movement stops; allow less than one pixel of residual easing.
     try {
-      still(resumed, "ground", 1);
+      still(resumed, "ground");
       expect(resumed.every((f) => !f.ground!.sprite.endsWith("player-shoot.png"))).toBe(true);
       // A wall can hide displacement from leaked Left input, but its running
       // animation still exposes that input before collision resolution.

@@ -466,11 +466,14 @@ The conductor keeps the original browser ownership role but splits its single pl
 - `game/app/components/colony/meta/ColonyHeader.tsx` (mark the selected colony's primary action for initial focus)
 - `game/tests/browser/navigationFocus.spec.ts` (new)
 - existing browser assertions affected by corrected Resume/provenance copy or covered-control focus containment (the outcome retry test must observe focus rejection before deliberately activating Retry; outcome/save assertions remain)
+- `game/tests/browser/inputIntents.spec.ts`, `touchGameplay.spec.ts` (conductor verification correction: recover Ground world displacement from forwarded drawing arguments, isolate Boarding direction/aim legs through native DevPanel controls, and fixture-test Boarding projectile observations across one to three engine ticks per rendered frame; preserve thresholds, signed trajectory and action isolation)
 - existing static screen tests only when markup contracts change
 - `docs/playtests/2026-07-19-navigation-focus.md` (new)
 - this plan, the conductor design status, and `docs/handoffs/2026-09-05-b3-navigation-checkpoint.md` (closure evidence)
 
 **B3 conductor allocation:** independent workers own (1) cockpit hit geometry/activation and its unit regressions, (2) the shared focus lifecycle and five DOM surfaces, and (3) navigation browser proofs. The conductor alone owns Game integration and evidence. Region source is independent of action permission; covered surfaces suspend focus containment while retaining their real invokers. Persistence recovery takes precedence over all navigation focus. No engine outcome, save authority, mission presentation, or asset changes are allocated here.
+
+**Verification correction allocation — 2026-09-05:** Exact code `6206698` passed all 16 B3 routes but failed three inherited movement observations. All three also failed on clean accepted B2 `fdb0334`. Ground screen displacement includes camera easing; Boarding's accumulated direction tour can reach entry-bay walls, and its trajectory observer incorrectly requires equal tick counts in adjacent rendered frames. Allocate only the two browser observers/route fixtures above to distinguish player movement from camera movement and preserve open space for each direction and retained-aim proof. Retain failed artifacts and meaningful RED/GREEN evidence; no gameplay runtime change or reduced threshold is authorized by this correction. A separate bounded focus audit identified the empty-to-founded Colony replacement removing its focused primary button; the already-owned shared focus hook and navigation test must prove and correct that transition before closure.
 
 ### B3.1 — Complete click/touch navigation
 

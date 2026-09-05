@@ -4,7 +4,7 @@ import { freshLegacy } from "./fixtures/routeFixtures";
 import { attachBrowserReceipt } from "./helpers/receipt";
 import { installSaveFixture } from "./helpers/saveFixture";
 
-type GroundObservation = { sprite: string; x: number; y: number; bullets: number; time: number };
+type GroundObservation = { sprite: string; x: number; worldX: number; cameraX: number; y: number; bullets: number; time: number };
 declare global {
   interface Window { inputObservations: GroundObservation[] }
 }
@@ -15,6 +15,14 @@ async function openGround(page: Page) {
   await page.addInitScript(() => {
     window.inputObservations = [];
     let bullets = 0;
+    let cameraX = 0;
+    const translate = CanvasRenderingContext2D.prototype.translate;
+    CanvasRenderingContext2D.prototype.translate = function (x, y) {
+      // The effects pass draws in world space immediately before the player.
+      // Ignore the mirrored sprite transform; forward every draw unchanged.
+      if (this.canvas.id === "sector-zero-game-canvas" && x <= 0 && y === 0 && this.getTransform().a === 1) cameraX = -x;
+      return translate.call(this, x, y);
+    };
     const fillRect = CanvasRenderingContext2D.prototype.fillRect;
     CanvasRenderingContext2D.prototype.fillRect = function (x, y, w, h) {
       if (this.canvas.id === "sector-zero-game-canvas" && this.fillStyle === "#00ffff" && w === 10 && h === 6) bullets++;
@@ -23,7 +31,7 @@ async function openGround(page: Page) {
     const drawImage = CanvasRenderingContext2D.prototype.drawImage;
     CanvasRenderingContext2D.prototype.drawImage = function (sprite: CanvasImageSource, x: number, y: number, ...dimensions: number[]) {
       if (this.canvas.id === "sector-zero-game-canvas" && sprite instanceof HTMLImageElement && sprite.src.includes("/ground/player-")) {
-        window.inputObservations.push({ sprite: sprite.src, x, y, bullets, time: performance.now() });
+        window.inputObservations.push({ sprite: sprite.src, x, worldX: x + cameraX, cameraX, y, bullets, time: performance.now() });
         bullets = 0;
       }
       return Reflect.apply(drawImage, this, [sprite, x, y, ...dimensions]);
@@ -40,7 +48,7 @@ async function openGround(page: Page) {
 async function observeFrames(page: Page, count = 25): Promise<GroundObservation[]> {
   const start = await page.evaluate(() => window.inputObservations.length);
   await page.waitForFunction(({ start, count }) => window.inputObservations.length >= start + count, { start, count });
-  return page.evaluate((start) => window.inputObservations.slice(start), start);
+  return page.evaluate(({ start, count }) => window.inputObservations.slice(start, start + count), { start, count });
 }
 
 test("@keyboard ground Space jumps without firing; fire aliases survive keyup", async ({ page }, testInfo) => {
@@ -70,30 +78,45 @@ test("@keyboard ground Space jumps without firing; fire aliases survive keyup", 
   });
 });
 
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    await testInfo.attach("ground-render-observations", {
+      contentType: "application/json",
+      body: JSON.stringify(await page.evaluate(() => window.inputObservations?.slice(-300))),
+    });
+  }
+});
+
 test("@keyboard blur and pause clear held movement until a fresh press", async ({ page }, testInfo) => {
   await openGround(page);
   await page.keyboard.down("ArrowRight");
   const moving = await observeFrames(page, 12);
-  expect(moving.at(-1)!.x).toBeGreaterThan(moving[0].x);
+  expect(moving.at(-1)!.worldX).toBeGreaterThan(moving[0].worldX);
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   const blurred = await observeFrames(page, 12);
-  expect(blurred.at(-1)!.x).toBeCloseTo(blurred[0].x, 3);
+  expect(blurred.at(-1)!.worldX).toBeCloseTo(blurred[0].worldX, 3);
+  expect(blurred.every((frame) => frame.sprite.endsWith("player-idle.png"))).toBe(true);
   await page.keyboard.up("ArrowRight");
   await page.keyboard.down("ArrowRight");
   await observeFrames(page, 8);
+  // Exercise a scrolling world: the screen can keep easing after input stops.
+  await page.waitForFunction(() => (window.inputObservations.at(-1)?.cameraX ?? 0) > 5);
   await page.keyboard.press("p");
   await expect(page.getByRole("button", { name: "RESUME", exact: true })).toBeVisible();
   await page.keyboard.press("p");
   await expect(page.getByRole("button", { name: "RESUME", exact: true })).toBeHidden();
   const resumed = await observeFrames(page, 12);
-  expect(resumed.at(-1)!.x).toBeCloseTo(resumed[0].x, 3);
+  expect(resumed.at(-1)!.worldX).toBeCloseTo(resumed[0].worldX, 3);
+  expect(resumed.every((frame) => frame.sprite.endsWith("player-idle.png"))).toBe(true);
   await page.keyboard.down("ArrowRight"); // browser repeat of the old physical hold
   const repeated = await observeFrames(page, 8);
-  expect(repeated.at(-1)!.x).toBeCloseTo(repeated[0].x, 3);
+  expect(repeated.at(-1)!.worldX).toBeCloseTo(repeated[0].worldX, 3);
+  expect(repeated.every((frame) => frame.sprite.endsWith("player-idle.png"))).toBe(true);
   await page.keyboard.up("ArrowRight");
+  const freshStart = await page.evaluate(() => ({ index: window.inputObservations.length, worldX: window.inputObservations.at(-1)!.worldX }));
   await page.keyboard.down("ArrowRight");
-  const fresh = await observeFrames(page, 8);
-  expect(fresh.at(-1)!.x).toBeGreaterThan(fresh[0].x);
+  // Observe the first fresh movement, before continued input can reach a pit.
+  await page.waitForFunction(({ index, worldX }) => window.inputObservations.slice(index).some((frame) => frame.worldX > worldX + 1), freshStart);
   await page.keyboard.up("ArrowRight");
   await attachBrowserReceipt(testInfo, {
     route: "ground-run -> blur -> pause/resume -> fresh keydown", inputMethod: "keyboard", saveFixture: "freshLegacy",
@@ -113,7 +136,8 @@ test("@keyboard visibility loss and mode transitions discard old physical holds"
     Reflect.deleteProperty(document, "hidden");
   });
   const hidden = await observeFrames(page, 12);
-  expect(hidden.at(-1)!.x).toBeCloseTo(hidden[0].x, 3);
+  expect(hidden.at(-1)!.worldX).toBeCloseTo(hidden[0].worldX, 3);
+  expect(hidden.every((frame) => frame.sprite.endsWith("player-idle.png"))).toBe(true);
   await page.keyboard.up("ArrowRight");
   await page.keyboard.down("ArrowRight");
   await page.getByRole("button", { name: "DEV", exact: true }).click();
@@ -123,7 +147,8 @@ test("@keyboard visibility loss and mode transitions discard old physical holds"
   await page.locator("#sector-zero-game-canvas").focus();
   await page.waitForFunction(() => window.inputObservations.at(-1)?.sprite.endsWith("player-idle.png"));
   const returned = await observeFrames(page, 12);
-  expect(returned.at(-1)!.x).toBeCloseTo(returned[0].x, 3);
+  expect(returned.at(-1)!.worldX).toBeCloseTo(returned[0].worldX, 3);
+  expect(returned.every((frame) => frame.sprite.endsWith("player-idle.png"))).toBe(true);
   await page.keyboard.up("ArrowRight");
   await attachBrowserReceipt(testInfo, {
     route: "ground-run -> simulated document hidden -> boarding -> ground-run", inputMethod: "keyboard", saveFixture: "freshLegacy",
