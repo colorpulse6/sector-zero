@@ -59,6 +59,7 @@ async function installObservation(page: Page) {
     let bombs: number | null = null;
     const empty = (): Frame => ({ seq: 0, shipShots: [], groundShots: [], boardShots: [], dash: false, gun: false, turretFire: false, bombs });
     let pending = empty();
+    let groundFrameDrawn = false;
     let miniMap: Point | undefined;
     let fpDot: Point | undefined;
     const active = (ctx: CanvasRenderingContext2D) => ctx.canvas.id === "sector-zero-game-canvas";
@@ -66,6 +67,7 @@ async function installObservation(page: Page) {
     CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, source: CanvasImageSource, ...args: number[]) {
       if (active(this) && source instanceof HTMLImageElement) {
         const src = source.currentSrc || source.src;
+        if (src.includes("/ground/")) groundFrameDrawn = true;
         const offset = args.length === 8 ? 4 : 0;
         const point = { x: args[offset], y: args[offset + 1] };
         if (src.endsWith("/ships/player.png")) pending.ship = point;
@@ -125,12 +127,15 @@ async function installObservation(page: Page) {
       else fillText.call(this, value, x, y, maxWidth);
     };
     const sample = () => {
-      if (pending.ship || pending.ground || pending.board || pending.fp || pending.turret) {
+      // Ground scenery still draws while the invincible player blinks. Keep
+      // those frames, including empty projectile frames, to preserve continuity.
+      if (pending.ship || pending.ground || pending.board || pending.fp || pending.turret || groundFrameDrawn || pending.groundShots.length > 0) {
         pending.seq = ++seq;
         evidence.frames.push(pending);
         if (evidence.frames.length > 3_000) evidence.frames.splice(0, 1_000);
       }
       pending = empty();
+      groundFrameDrawn = false;
       fpDot = undefined;
       requestAnimationFrame(sample);
     };
@@ -213,9 +218,23 @@ async function freshFireCycle(page: Page, kind: Motion): Promise<Frame[]> {
   return page.evaluate(({ seq, kind }) => window.touchEvidence.frames.filter((frame) => frame.seq > seq && frame[kind]), { seq, kind });
 }
 
-// Follow the same visible point through three consecutive frames with a stable
-// velocity. This measures projectile motion, independently of player animation.
+// Follow a visible projectile through three consecutive rendered frames.
+// Ground renders may contain one, two, or three fixed simulation ticks.
 function hasProjectileTrajectory(observed: Frame[], field: "groundShots" | "boardShots", xSign: -1 | 0 | 1, ySign: -1 | 1): boolean {
+  if (field === "groundShots" && xSign === 0) {
+    const advances = (first: Point, second: Point) => {
+      const measuredTicks = (second.y - first.y) * ySign / 10;
+      const ticks = Math.round(measuredTicks);
+      return Math.abs(second.x - first.x) <= 0.1 && ticks >= 1 && ticks <= 3 &&
+        Math.abs(measuredTicks - ticks) < 0.0001;
+    };
+    for (let i = 0; i < observed.length - 2; i++) {
+      for (const first of observed[i].groundShots) for (const second of observed[i + 1].groundShots) {
+        if (advances(first, second) && observed[i + 2].groundShots.some((third) => advances(second, third))) return true;
+      }
+    }
+    return false;
+  }
   for (let i = 0; i < observed.length - 2; i++) {
     for (const first of observed[i][field]) for (const second of observed[i + 1][field]) {
       const dx = second.x - first.x; const dy = second.y - first.y;
@@ -226,6 +245,26 @@ function hasProjectileTrajectory(observed: Frame[], field: "groundShots" | "boar
   }
   return false;
 }
+
+test("@fixture ground projectile observation respects signed engine ticks across uneven rendered frames", () => {
+  const cases: { name: string; points: [number, number][]; expected: boolean }[] = [
+    { name: "one tick then two ticks", points: [[40, 0], [40, 10], [40, 30]], expected: true },
+    { name: "three ticks then one tick", points: [[40, 0], [40, 30], [40, 40]], expected: true },
+    { name: "stationary", points: [[40, 0], [40, 0], [40, 0]], expected: false },
+    { name: "upward", points: [[40, 40], [40, 30], [40, 10]], expected: false },
+    { name: "lateral drift", points: [[40, 0], [41, 10], [42, 30]], expected: false },
+    { name: "non-tick motion", points: [[40, 0], [40, 11], [40, 22]], expected: false },
+    { name: "more than three ticks in one render", points: [[40, 0], [40, 40], [40, 50]], expected: false },
+  ];
+  for (const entry of cases) {
+    const observed: Frame[] = entry.points.map(([x, y], index) => ({
+      seq: index + 1, groundShots: [{ x, y }], shipShots: [], boardShots: [],
+      dash: false, gun: false, turretFire: false, bombs: null,
+    }));
+    expect.soft(hasProjectileTrajectory(observed, "groundShots", 0, 1), entry.name).toBe(entry.expected);
+  }
+});
+
 async function receipt(page: Page, testInfo: TestInfo, route: string, fixture: string, outcome: string, inputMethod: "touch" | "pointer" = "touch") {
   const screenshotPath = testInfo.outputPath("gameplay-controls.png");
   await page.screenshot({ path: screenshotPath });
@@ -287,14 +326,51 @@ for (const profile of profiles) {
         expect(overlap, `Control targets ${i} and ${j} overlap`).toBe(false);
       }
     }
+    const assertClearGameImage = async () => {
+      const canvas = (await page.locator(CANVAS).boundingBox())!;
+      const grade = (await page.locator(CANVAS).locator("..").locator("canvas").nth(1).boundingBox())!;
+      for (const axis of ["x", "y", "width", "height"] as const) {
+        expect(Math.abs(grade[axis] - canvas[axis]), `Color-grade ${axis} must match the game image`).toBeLessThanOrEqual(0.5);
+      }
+      const viewport = page.viewportSize()!;
+      const layout = await Promise.all(targets.map(async (target) => ({
+        label: await target.getAttribute("aria-label"), box: (await target.boundingBox())!,
+      })));
+      for (const { label, box } of layout) {
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+        expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+        if (label === "Aim turret") {
+          expect(Math.abs(box.x - canvas.x)).toBeLessThanOrEqual(0.5);
+          expect(Math.abs(box.width - canvas.width)).toBeLessThanOrEqual(0.5);
+          expect(Math.abs(box.height - canvas.height * 714 / 854)).toBeLessThanOrEqual(0.5);
+        } else {
+          expect(box.y, `${label} must not obscure the game image or dashboard`).toBeGreaterThanOrEqual(canvas.y + canvas.height);
+        }
+      }
+      for (let i = 0; i < layout.length; i++) for (let j = i + 1; j < layout.length; j++) {
+        const a = layout[i].box; const b = layout[j].box;
+        expect(Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 0.5 &&
+          Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > 0.5,
+        `${layout[i].label} overlaps ${layout[j].label} at ${viewport.width}x${viewport.height}`).toBe(false);
+      }
+    };
+    await assertClearGameImage();
+    await page.setViewportSize({ width: 375, height: 667 });
+    await assertClearGameImage();
+    await page.setViewportSize({ width: 480, height: 854 });
+    await assertClearGameImage();
     const screenshotPath = testInfo.outputPath(`${profile.name}-controls-480x854.png`);
     await page.screenshot({ path: screenshotPath });
     await testInfo.attach(`${profile.name}-controls-480x854`, { path: screenshotPath, contentType: "image/png" });
     await attachBrowserReceipt(testInfo, {
       route: `DevPanel -> ${profile.launch} -> visible ${profile.name} controls`,
       inputMethod: "touch", saveFixture: "freshLegacy",
-      expectedOutcome: "The active profile exposes labeled, visible controls with at least 44px targets inside the touch viewport.",
-      observedOutcome: `${profile.name} controls and all ${profile.actions.length} required action targets are visible and inside 480x854.`,
+      expectedOutcome: "The active profile exposes labeled, non-overlapping 44px controls without obscuring gameplay, dashboard or dialogue; canvas, grade and turret aim stay aligned.",
+      observedOutcome: `${profile.name} controls and all ${profile.actions.length} required action targets remain visible, unobstructed and aligned at 480x854 and 375x667; screenshot restored to 480x854.`,
     });
   });
 }
@@ -423,6 +499,11 @@ test("@touch ground move aim fire and jump stay distinct and support three finge
     await fingers.up(1);
     expect(jump.some((f) => f.ground!.sprite.endsWith("player-jump.png"))).toBe(true);
     expect(jump.every((f) => f.groundShots.length === 0)).toBe(true);
+    // Start the compound aiming leg through the real touch route, before the
+    // earlier movement and waiting expose it to accumulated combat damage.
+    await action(page, "DEV").tap();
+    await action(page, "GROUND RUN").tap();
+    await action(page, "X").tap();
     await page.waitForFunction(() => window.touchEvidence.frames.at(-1)?.ground?.sprite.endsWith("player-idle.png"));
     await fingers.down(2, action(page, "Fire"));
     const firing = await frames(page, "ground", 18);
@@ -433,11 +514,33 @@ test("@touch ground move aim fire and jump stay distinct and support three finge
     const up = await frames(page, "ground", 20);
     expect(up.some((f) => f.groundShots.some((shot) => shot.y < f.ground!.y - 15))).toBe(true);
     expect(up.every((f) => !f.ground!.sprite.endsWith("player-jump.png"))).toBe(true);
+    const downSeq = await page.evaluate(() => window.touchEvidence.frames.at(-1)?.seq ?? 0);
     await fingers.move(1, action(page, "Aim down"));
     await fingers.down(3, action(page, "Jump"));
-    const down = await frames(page, "ground", 15);
-    expect(down.some((f) => f.ground!.sprite.endsWith("player-jump.png") && f.groundShots.some((shot) => shot.y > f.ground!.y + 50))).toBe(true);
-    expect(hasProjectileTrajectory(down, "groundShots", 0, 1), "Downward projectile must advance in positive canvas Y through three frames").toBe(true);
+    let down: Frame[] = [];
+    try {
+      await expect.poll(async () => {
+        down = await page.evaluate((seq) => window.touchEvidence.frames.filter((frame) => frame.seq > seq), downSeq);
+        return hasProjectileTrajectory(down, "groundShots", 0, 1);
+      }, {
+        message: "Downward projectile must advance in positive canvas Y through three rendered frames",
+        timeout: 5_000, intervals: [50, 100, 200],
+      }).toBe(true);
+      expect(down.some((f) => f.ground?.sprite.endsWith("player-jump.png") && f.groundShots.some((shot) => shot.y > f.ground!.y + 50))).toBe(true);
+    } catch (error) {
+      const observed = await page.evaluate(() => ({
+        frames: window.touchEvidence.frames.slice(-250),
+        events: window.touchEvidence.events.slice(-150),
+        texts: window.touchEvidence.texts,
+        controls: [...document.querySelectorAll('[role="group"][aria-label="Ground controls"] button')].map((node) => ({
+          label: node.getAttribute("aria-label"), pressed: node.getAttribute("aria-pressed"),
+        })),
+      }));
+      await testInfo.attach("ground-downward-projectile-observations", {
+        body: Buffer.from(JSON.stringify({ downSeq, down, ...observed }, null, 2)), contentType: "application/json",
+      });
+      throw error;
+    }
     await fingers.up(3);
     await fingers.up(1);
     await page.waitForFunction(() => {
@@ -450,7 +553,7 @@ test("@touch ground move aim fire and jump stay distinct and support three finge
     const ended = await frames(page, "ground", 12);
     expect(ended.every((f) => !f.ground!.sprite.endsWith("player-shoot.png"))).toBe(true);
   });
-  await receipt(page, testInfo, "DevPanel -> ground -> movement/aim/jump/fire -> three fingers -> cancel", "freshLegacy", "Movement and aiming do not shoot or jump; Jump does not shoot; Fire does not jump; up/down aim changes real projectile direction; firing survives release of the other fingers and stops on cancellation.");
+  await receipt(page, testInfo, "DevPanel -> ground movement/aim/jump -> DevPanel Ground relaunch -> fire/aim -> three fingers -> cancel", "freshLegacy", "Movement and aiming do not shoot or jump; Jump does not shoot; Fire does not jump; up/down aim changes real projectile direction; firing survives release of the other fingers and stops on cancellation.");
 });
 
 test("@touch boarding covers eight directions retained facing fire and dash", async ({ page }, testInfo) => {

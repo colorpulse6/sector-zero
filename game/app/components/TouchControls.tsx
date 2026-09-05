@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
-import { CANVAS_HEIGHT, GAME_AREA_HEIGHT, type GameMode } from "./engine/types";
+import { CANVAS_WIDTH, CANVAS_HEIGHT, GAME_AREA_HEIGHT, type GameMode } from "./engine/types";
 import type { InputIntent } from "./engine/inputIntents";
 export { getTouchControlHint } from "./engine/inputIntents";
+
+export const TOUCH_CONTROLS_FOOTER_HEIGHT = "calc(164px + max(12px, env(safe-area-inset-bottom)))";
+export const TOUCH_GAMEPLAY_CANVAS_MAX_HEIGHT = `calc(100dvh - ${TOUCH_CONTROLS_FOOTER_HEIGHT})`;
+export const TOUCH_GAMEPLAY_CANVAS_WIDTH = `min(${CANVAS_WIDTH}px, 100vw, calc(${TOUCH_GAMEPLAY_CANVAS_MAX_HEIGHT} * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`;
 
 export interface TouchControlsProps {
   mode: GameMode;
@@ -290,52 +294,54 @@ export default function TouchControls({ mode, onPress, onRelease, onAim }: Touch
       style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2, fontFamily: "monospace", lineHeight: 1.2 }}
     >
       {mode === "turret" ? (
-        <button
-          type="button"
-          aria-label="Aim turret"
-          aria-description="Drag to aim. When focused, use the arrow keys to adjust aim. Firing has a separate button."
-          style={{ position: "absolute", top: 0, left: 0, width: "100%", height: `${GAME_AREA_HEIGHT / CANVAS_HEIGHT * 100}%`, background: "transparent", border: 0, padding: 0, pointerEvents: "auto", touchAction: "none", cursor: "crosshair" }}
-          onPointerDown={(event) => {
-            if (event.pointerType === "mouse" && event.button !== 0) return;
-            event.preventDefault();
-            event.stopPropagation();
-            finishPointer(event.pointerId);
-            const aim = pointInAimArea(event);
-            pointers.current.set(event.pointerId, { target: event.currentTarget, pad: null, control: null, sources: [], aim });
-            event.currentTarget.setPointerCapture(event.pointerId);
-            callbacks.current.onAim(aim, true);
-            updatePressed();
-          }}
-          onPointerMove={(event) => {
-            const owner = pointers.current.get(event.pointerId);
-            if (owner?.aim) {
+        <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: TOUCH_GAMEPLAY_CANVAS_WIDTH, height: `calc(100% - ${TOUCH_CONTROLS_FOOTER_HEIGHT})` }}>
+          <button
+            type="button"
+            aria-label="Aim turret"
+            aria-description="Drag to aim. When focused, use the arrow keys to adjust aim. Firing has a separate button."
+            style={{ position: "absolute", top: 0, left: 0, width: "100%", height: `${GAME_AREA_HEIGHT / CANVAS_HEIGHT * 100}%`, background: "transparent", border: 0, padding: 0, pointerEvents: "auto", touchAction: "none", cursor: "crosshair" }}
+            onPointerDown={(event) => {
+              if (event.pointerType === "mouse" && event.button !== 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              finishPointer(event.pointerId);
               const aim = pointInAimArea(event);
-              owner.aim = aim;
-              // Keep the most recently moved owner last for multi-touch release.
-              pointers.current.delete(event.pointerId);
-              pointers.current.set(event.pointerId, owner);
+              pointers.current.set(event.pointerId, { target: event.currentTarget, pad: null, control: null, sources: [], aim });
+              event.currentTarget.setPointerCapture(event.pointerId);
               callbacks.current.onAim(aim, true);
-            } else if (event.pointerType === "mouse" && event.buttons === 0 && ![...pointers.current.values()].some((item) => item.aim)) {
-              callbacks.current.onAim(pointInAimArea(event), false);
-            }
-          }}
-          onPointerUp={(event) => finishPointer(event.pointerId)}
-          onPointerCancel={(event) => finishPointer(event.pointerId)}
-          onLostPointerCapture={(event) => finishPointer(event.pointerId)}
-          onPointerLeave={() => {
-            if (![...pointers.current.values()].some((item) => item.aim)) callbacks.current.onAim(null, false);
-          }}
-          onKeyDown={(event) => {
-            const direction = TURRET_AIM_KEYS[event.key];
-            if (direction) pressKey(event, direction);
-          }}
-          onBlur={() => releaseControlKeys("Aim turret")}
-          onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
-        >
-          <span style={{ ...LABEL_STYLE, position: "absolute", left: "max(12px, env(safe-area-inset-left))", top: "max(12px, env(safe-area-inset-top))", padding: "5px 7px", background: "#021016b3", pointerEvents: "none" }}>
-            {pressed.has("Aim turret") ? "AIMING" : "DRAG TO AIM · ARROW KEYS"}
-          </span>
-        </button>
+              updatePressed();
+            }}
+            onPointerMove={(event) => {
+              const owner = pointers.current.get(event.pointerId);
+              if (owner?.aim) {
+                const aim = pointInAimArea(event);
+                owner.aim = aim;
+                // Keep the most recently moved owner last for multi-touch release.
+                pointers.current.delete(event.pointerId);
+                pointers.current.set(event.pointerId, owner);
+                callbacks.current.onAim(aim, true);
+              } else if (event.pointerType === "mouse" && event.buttons === 0 && ![...pointers.current.values()].some((item) => item.aim)) {
+                callbacks.current.onAim(pointInAimArea(event), false);
+              }
+            }}
+            onPointerUp={(event) => finishPointer(event.pointerId)}
+            onPointerCancel={(event) => finishPointer(event.pointerId)}
+            onLostPointerCapture={(event) => finishPointer(event.pointerId)}
+            onPointerLeave={() => {
+              if (![...pointers.current.values()].some((item) => item.aim)) callbacks.current.onAim(null, false);
+            }}
+            onKeyDown={(event) => {
+              const direction = TURRET_AIM_KEYS[event.key];
+              if (direction) pressKey(event, direction);
+            }}
+            onBlur={() => releaseControlKeys("Aim turret")}
+            onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+          >
+            <span style={{ ...LABEL_STYLE, position: "absolute", left: "max(12px, env(safe-area-inset-left))", top: "max(12px, env(safe-area-inset-top))", padding: "5px 7px", background: "#021016b3", pointerEvents: "none" }}>
+              {pressed.has("Aim turret") ? "AIMING" : "DRAG TO AIM · ARROW KEYS"}
+            </span>
+          </button>
+        </div>
       ) : (
         <div style={{ position: "absolute", left: "max(12px, env(safe-area-inset-left))", bottom: "max(12px, env(safe-area-inset-bottom))" }}>
           <div style={LABEL_STYLE}>{firstPerson ? "MOVE / STRAFE" : mode === "ground-run" ? "MOVE / AIM" : "MOVE"}</div>

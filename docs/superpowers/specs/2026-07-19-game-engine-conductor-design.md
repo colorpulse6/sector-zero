@@ -208,7 +208,7 @@ type GameplayIntent =
 
 Active surfaces decide what intents they support. A physical key or gesture does not directly set multiple engine booleans. Focus follows the interaction model: navigation retains its control loop; activation may move focus to newly opened content; closing restores the actual invoker.
 
-The selected touch contract uses visible, accessible DOM controls over the canvas:
+The selected touch contract uses visible, accessible DOM controls paired with the canvas. Movement and action clusters occupy a reserved footer so they do not obscure the dashboard, dialogue or player; turret aiming remains an overlay aligned to the actual gameplay image. The footer keeps its own width while the canvas scales to the available height, including on narrower phones.
 
 | Mode | Movement/aim | Primary | Secondary |
 |---|---|---|---|

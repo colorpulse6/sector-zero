@@ -22,7 +22,10 @@ import {
   pressInputSource, releaseInputSource, toEngineKeys,
   type HeldInputState, type InputContext,
 } from "./engine/inputIntents";
-import TouchControls, { getTouchControlHint } from "./TouchControls";
+import TouchControls, {
+  getTouchControlHint, TOUCH_CONTROLS_FOOTER_HEIGHT,
+  TOUCH_GAMEPLAY_CANVAS_MAX_HEIGHT, TOUCH_GAMEPLAY_CANVAS_WIDTH,
+} from "./TouchControls";
 import { getPlanetDef } from "./engine/planets";
 import type { PlanetId } from "./engine/types";
 import { drawGame, drawStarMap, drawIntroCrawl, INTRO_TOTAL_FRAMES } from "./engine/renderer";
@@ -2634,9 +2637,12 @@ export default function Game() {
     };
   }, [showGalaxyAtlas]);
 
+  const showGameplayControls = inputContext.surface === "gameplay" && gameState !== null;
+
   return (
     <div
       className="relative w-full h-screen flex items-center justify-center bg-black"
+      style={showGameplayControls ? { height: "100dvh" } : undefined}
       onClickCapture={(event) => {
         const locked = outcomeCommitIssue !== null || travelCommitIssue !== null ||
           (pendingOutcomeReturn !== null && endingPhase === "off");
@@ -2647,123 +2653,130 @@ export default function Game() {
         event.stopPropagation();
       }}
     >
-      {/* Grade-pass mount: this position:relative wrapper shrink-wraps the 2D
-          canvas (it keeps its own maxHeight/maxWidth/objectFit sizing), giving the
-          absolutely-positioned WebGL overlay below a definite box to fill. */}
-      <div style={{ position: "relative", display: "inline-flex", lineHeight: 0 }}>
-        <canvas
-          id="sector-zero-game-canvas"
-          tabIndex={-1}
-          ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          className="border border-white/10"
-          style={{
-            maxHeight: "100vh",
-            maxWidth: "100vw",
-            objectFit: "contain",
-            cursor: gameState?.currentMode === "turret" ? "none" : "default",
-          }}
-          onClick={(e) => {
-            if (showGalaxyAtlas) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const scaleX = CANVAS_WIDTH / rect.width;
-            const scaleY = CANVAS_HEIGHT / rect.height;
-            const cx = (e.clientX - rect.left) * scaleX;
-            const cy = (e.clientY - rect.top) * scaleY;
+      {/* Keep the footer wide enough for touch targets even when the canvas
+          shrinks vertically. The inner frame aligns both rendering layers. */}
+      <div style={{
+        position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "center", lineHeight: 0,
+        width: showGameplayControls ? `min(${CANVAS_WIDTH}px, 100vw)` : undefined,
+        paddingBottom: showGameplayControls ? TOUCH_CONTROLS_FOOTER_HEIGHT : undefined,
+      }}>
+        <div style={{ position: "relative", display: "inline-flex", lineHeight: 0 }}>
+          <canvas
+            id="sector-zero-game-canvas"
+            tabIndex={-1}
+            ref={canvasRef}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            className="border border-white/10"
+            style={{
+              width: showGameplayControls ? TOUCH_GAMEPLAY_CANVAS_WIDTH : undefined,
+              height: "auto",
+              maxHeight: showGameplayControls ? TOUCH_GAMEPLAY_CANVAS_MAX_HEIGHT : "100vh",
+              maxWidth: "100vw",
+              objectFit: "contain",
+              cursor: gameState?.currentMode === "turret" ? "none" : "default",
+            }}
+            onClick={(e) => {
+              if (showGalaxyAtlas) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const scaleX = CANVAS_WIDTH / rect.width;
+              const scaleY = CANVAS_HEIGHT / rect.height;
+              const cx = (e.clientX - rect.left) * scaleX;
+              const cy = (e.clientY - rect.top) * scaleY;
 
-            // Intro crawl / ending sequence — mirror the touch handlers so a
-            // mouse-only desktop player isn't stuck on keyboard-only flows
-            // (the DESTROY/MERGE boxes are drawn at y 320-420 / 460-560).
-            if (showIntro) {
-              finishIntro();
-              return;
-            }
-            if (endingPhase === "choice") {
-              if (cy >= 320 && cy < 420) confirmChoice("destroy");
-              else if (cy >= 460 && cy < 560) confirmChoice("merge");
-              return;
-            }
-            if (endingPhase === "pre-choice" || endingPhase === "ending" || endingPhase === "credits") {
-              advanceEnding();
-              return;
-            }
+              // Intro crawl / ending sequence — mirror the touch handlers so a
+              // mouse-only desktop player isn't stuck on keyboard-only flows
+              // (the DESTROY/MERGE boxes are drawn at y 320-420 / 460-560).
+              if (showIntro) {
+                finishIntro();
+                return;
+              }
+              if (endingPhase === "choice") {
+                if (cy >= 320 && cy < 420) confirmChoice("destroy");
+                else if (cy >= 460 && cy < 560) confirmChoice("merge");
+                return;
+              }
+              if (endingPhase === "pre-choice" || endingPhase === "ending" || endingPhase === "credits") {
+                advanceEnding();
+                return;
+              }
 
-            // Cockpit hub — click on hotspots
-            if (showCockpit && cockpitState.screen === "hub") {
-              for (let i = 0; i < COCKPIT_HOTSPOTS.length; i++) {
-                const h = COCKPIT_HOTSPOTS[i];
-                if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
-                  // "starmap" is not a cockpit sub-screen (drawCockpit has no
-                  // branch for it — setting it freezes the hub frame): open the
-                  // star map overlay instead, mirroring the touch path above.
-                  if (h.id === "starmap") {
-                    openExperienceMap();
-                  } else {
-                    commitCockpitState({
-                      ...cockpitStateRef.current,
-                      screen: h.id,
-                      selectedHotspot: i,
-                    });
+              // Cockpit hub — click on hotspots
+              if (showCockpit && cockpitState.screen === "hub") {
+                for (let i = 0; i < COCKPIT_HOTSPOTS.length; i++) {
+                  const h = COCKPIT_HOTSPOTS[i];
+                  if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
+                    // "starmap" is not a cockpit sub-screen (drawCockpit has no
+                    // branch for it — setting it freezes the hub frame): open the
+                    // star map overlay instead, mirroring the touch path above.
+                    if (h.id === "starmap") {
+                      openExperienceMap();
+                    } else {
+                      commitCockpitState({
+                        ...cockpitStateRef.current,
+                        screen: h.id,
+                        selectedHotspot: i,
+                      });
+                    }
+                    break;
                   }
-                  break;
                 }
               }
-            }
 
-            // Mission Board owns tab/row/back geometry for every pointing device.
-            if (showCockpit && cockpitState.screen === "missions") {
-              handleMissionBoardPoint(cx, cy);
-              return;
-            }
-
-            // Other cockpit sub-screens — click near top-left to go back
-            if (showCockpit && cockpitState.screen !== "hub") {
-              if (cx < 60 && cy < 50) {
-                commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
+              // Mission Board owns tab/row/back geometry for every pointing device.
+              if (showCockpit && cockpitState.screen === "missions") {
+                handleMissionBoardPoint(cx, cy);
+                return;
               }
-            }
 
-            // Star map — click on world nodes to select
-            if (showMap && starMapState) {
-              const worldNodes = getWorldNodes(saveData);
-              for (const node of worldNodes) {
-                if (!node.unlocked) continue;
-                const dx = cx - node.x;
-                const dy = cy - node.y;
-                if (dx * dx + dy * dy < 30 * 30) {
-                  if (starMapState.selectedWorld === node.world && !starMapState.expanded) {
-                    // Double-click to expand
-                    setStarMapState((prev) => prev ? { ...prev, expanded: true, selectedLevel: 1 } : prev);
-                  } else {
-                    setStarMapState((prev) => prev ? { ...prev, selectedWorld: node.world, expanded: false } : prev);
-                  }
-                  break;
+              // Other cockpit sub-screens — click near top-left to go back
+              if (showCockpit && cockpitState.screen !== "hub") {
+                if (cx < 60 && cy < 50) {
+                  commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
                 }
               }
-            }
-          }}
-        />
-        {/* WebGL color-grade overlay — a sibling of the 2D canvas, painted on its
-            own rAF loop (presentRafRef). Fixed 480x854 backing store (no
-            devicePixelRatio scaling — the 2D game canvas uses none, so matching it
-            keeps the two layers pixel-aligned). pointerEvents:none so every
-            mouse/touch still reaches the 2D canvas beneath; inset:0 + 100%/100%
-            makes it track that canvas box exactly. The DOM UI overlays are
-            later-in-source siblings of this wrapper, so they still paint above the
-            overlay and stay ungraded. */}
-        <canvas
-          ref={glCanvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-          }}
-        />
+
+              // Star map — click on world nodes to select
+              if (showMap && starMapState) {
+                const worldNodes = getWorldNodes(saveData);
+                for (const node of worldNodes) {
+                  if (!node.unlocked) continue;
+                  const dx = cx - node.x;
+                  const dy = cy - node.y;
+                  if (dx * dx + dy * dy < 30 * 30) {
+                    if (starMapState.selectedWorld === node.world && !starMapState.expanded) {
+                      // Double-click to expand
+                      setStarMapState((prev) => prev ? { ...prev, expanded: true, selectedLevel: 1 } : prev);
+                    } else {
+                      setStarMapState((prev) => prev ? { ...prev, selectedWorld: node.world, expanded: false } : prev);
+                    }
+                    break;
+                  }
+                }
+              }
+            }}
+          />
+          {/* WebGL color-grade overlay — a sibling of the 2D canvas, painted on its
+              own rAF loop (presentRafRef). Fixed 480x854 backing store (no
+              devicePixelRatio scaling — the 2D game canvas uses none, so matching it
+              keeps the two layers pixel-aligned). pointerEvents:none so every
+              mouse/touch still reaches the 2D canvas beneath; inset:0 + 100%/100%
+              makes it track that canvas box exactly. The DOM UI overlays are
+              later-in-source siblings of this wrapper, so they still paint above the
+              overlay and stay ungraded. */}
+          <canvas
+            ref={glCanvasRef}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
         {inputContext.surface === "gameplay" && gameState && (
           <TouchControls
             key={[gameState.screen, gameState.currentMode, gameState.currentPhase,
