@@ -1,5 +1,7 @@
 # A3 outcome shell resume — 2026-07-23
 
+> Historical snapshot. Superseded by [the 2026-09-05 checkpoint](2026-09-05-a3-outcome-checkpoint.md), which contains the current branch, tested code, gates, and continuation. The operation TRY AGAIN instruction below is corrected there: a journaled operation failure resolves the catalog entry, so the unavailable gameplay-retry control is removed rather than bypassing that authority.
+
 ## Resume location
 
 - Code worktree: `/private/tmp/sector-zero-sync-outcome-2`

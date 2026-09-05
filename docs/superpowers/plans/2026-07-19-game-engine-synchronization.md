@@ -8,7 +8,7 @@
 **Audit:** `docs/audits/2026-07-19-game-engine-synchronization-audit.md`
 **Planning baseline:** `main` at `6744a49`; each package records its actual base SHA.
 
-## Execution status — 2026-07-21
+## Execution status — 2026-09-05
 
 - H0 accepted: code `7fbc4d1629872e60c48b3b7461262900adf027f0`, evidence `4422be8b3d014baa6a7038fe0b8ec0ab94095b7e`.
 - A1 accepted: code `eb7926e566e921bd79f7ede499238ba3770f1ca3`, evidence `72b46743afd9bd0184fd2531ecd2a0b838e5bf7e`.
@@ -17,7 +17,10 @@
 - A2 closed the Mission Board activation defect and moved planet hazards, spawn policy, build caches, IDs, route identity, and retry lineage into attempt-owned contracts. B1-B3 still own general gameplay input, visible touch controls, modal focus, and navigation provenance.
 - A3.1 accepted: the pure durable outcome coordinator, save migration, journal/recovery validation, route folds, and Legacy/Galaxy POI preparation are accepted at code `8ccfa3d345fbb330cac7c9185fc7e6507a72d519`.
 - A3.1 passed 81 focused reviewer tests, 404 engine, 288 Colony, 4 sprite, and 20 browser tests; TypeScript, the empty-base production export, and the `/sector-zero` deployment-parity export passed; independent specification and quality/integration reviews returned PASS with no findings.
-- A3.2 is active. A3 is not a package candidate until the shell routes terminal outcomes through the accepted coordinator, restores return surfaces from durable receipts, and completes the A3.3 Galaxy escape/failure receipts.
+- A3.2 and A3.3 are implemented at code `b85fb3d381ae28f00c2559f351c0979129c655e6` on `codex/a3-resume`. Exact clean-code gates passed: TypeScript, 425 engine, 288 Colony, 4 sprite, 37 browser, and both production exports. Independent final-runtime specification and quality reviews passed.
+- The current continuation is `docs/handoffs/2026-09-05-a3-outcome-checkpoint.md`; its manifest records the separate evidence commit's repeated gates and fresh reviews. Require its matching evidence SHA and PASS verdict before treating A3 as a package candidate or starting B1.
+- Conductor correction: a saved Galaxy operation failure resolves that catalog operation. Remove the unavailable operation TRY AGAIN promise from the old shell handoff; retain failure-to-Atlas and retreat without changing lifecycle/journal policy. Legacy and POI gameplay retries remain available.
+- Full authored POI success/preparation/delivery is a disclosed F1 live-integration row, not an additional A3 gate. A3 proves preparation authority and exact mounted receipt recovery; fixtures do not prove the full authored playthrough.
 - A1's all-ten real-surface launch/live-play row remains open because A2's accepted browser matrix is intentionally Kepler-focused. F1 must launch all ten through the repaired board and live-play the required objective sample without test-only runtime mutation.
 - `ASSET_ACCEPTED_REF` remains unset. The M3 lane remains reserved and unintegrated.
 
@@ -278,7 +281,7 @@ H0 browser harness + fixtures
 
 ## Package A3 — Idempotent outcome persistence and experience-owned return
 
-**Branch/worktree:** `fix/sync-outcome-ownership` in `/private/tmp/sector-zero-sync-outcome-2`
+**Branch/worktree:** `codex/a3-resume` in `/Users/nichalasbarnes/.config/superpowers/worktrees/sector-zero/a3-resume` (recovered from the historical `fix/sync-outcome-ownership` stack)
 **Depends on:** A2.
 **Owned files:**
 
@@ -310,8 +313,18 @@ H0 browser harness + fixtures
 - `game/tests/colony/reducerInsertionOrder.test.ts` (root outcome metadata fixture only)
 - `game/tests/colony/poiOutcomes.test.ts`
 - `game/tests/colony/regionFlow.test.ts`
-- `game/tests/browser/outcomeRoutes.spec.ts` (new)
-- `docs/playtests/2026-07-19-outcome-ownership.md` (new)
+- `game/tests/browser/outcomeAuthority.spec.ts`
+- `game/tests/browser/outcomeEnding.spec.ts`
+- `game/tests/browser/outcomeReload.spec.ts`
+- `game/tests/browser/galaxyPersistence.spec.ts`
+- `game/tests/browser/fixtures/routeFixtures.ts`
+- `game/tests/browser/fixtures/outcomeFixtures.ts`
+- `game/tests/browser/helpers/saveFixture.ts`
+- `game/tests/browser/helpers/outcomeWriteProbe.ts`
+- `game/tests/browser/helpers/travelWriteProbe.ts`
+- `docs/playtests/2026-09-05-outcome-ownership.md`
+
+The conductor keeps the original browser ownership role but splits its single planned outcome test file into focused route, ending, reload, and travel files plus shared fixtures/probes. The dated handoff, plan, and design checkpoint are conductor-owned evidence updates.
 
 ### A3.1 — Add save migration and pure coordinator tests
 
@@ -343,23 +356,23 @@ H0 browser harness + fixtures
 
 ### A3.2 — Route shell outcomes through the coordinator
 
-- [ ] Replace route-specific durable application in `Game.tsx` with adapters into the coordinator; retain route-specific pure effect calculation.
-- [ ] Do not show completion/navigation until write succeeds.
-- [ ] Show recoverable retry on `write_failed`; show reload/reconcile action on `conflict`.
-- [ ] If outcome is `already_applied`, restore the exact return surface from the durable receipt's validated route identity without re-awarding; acknowledge the receipt only after that surface mounts.
-- [ ] Ensure Galaxy paths mutate only Galaxy authority and legacy/Colony paths only their inherited authority.
-- [ ] Route the final `ENDING` campaign result through the same coordinator; remove the reduced duplicate save sequence.
-- [ ] Prevent HUB/Escape from leaving a campaign, planet, or special `LEVEL_COMPLETE` surface before its outcome is durably committed. POI failure returns to the inherited A2 surface (Legacy Colony exterior or Galaxy Region), not the generic cockpit/Atlas fallback.
+- [x] Replace route-specific durable application in `Game.tsx` with adapters into the coordinator; retain route-specific pure effect calculation.
+- [x] Do not show completion/navigation until write succeeds.
+- [x] Show recoverable retry on `write_failed`; show reload/reconcile action on `conflict`.
+- [x] If outcome is `already_applied`, restore the exact return surface from the durable receipt's validated route identity without re-awarding; acknowledge the receipt only after that surface mounts.
+- [x] Ensure Galaxy paths mutate only Galaxy authority and legacy/Colony paths only their inherited authority.
+- [x] Route the final `ENDING` campaign result through the same coordinator; remove the reduced duplicate save sequence.
+- [x] Prevent HUB/Escape from leaving a campaign, planet, or special `LEVEL_COMPLETE` surface before its outcome is durably committed. POI failure returns to the inherited A2 surface (Legacy Colony exterior or Galaxy Region), not the generic cockpit/Atlas fallback.
 
 ### A3.3 — Close Galaxy escape and persistence failure paths
 
-- [ ] Add a transition table that fails for Atlas close exposing Legacy cockpit under Galaxy authority.
-- [ ] Selected close behavior: return to the experience selector and clear Galaxy-owned overlays; changing to Legacy requires the explicit selector action.
-- [ ] Cover travel commit/resume/finalize/retreat write failure and retry through the same result presentation.
-- [ ] Browser-test byte-for-byte legacy fields across Galaxy close/back and outcome routes.
-- [ ] Reload after each durable outcome class.
-- [ ] Keep Galaxy prepared POI identity in its canonical Galaxy history record. Because staging mutates `galaxyRun`, validate the unique versioned prepared fact and its exact prepared revision before rebinding the staged snapshot; any intervening write or one-sided root/nested journal evidence conflicts instead of replaying.
-- [ ] Complete the closure protocol; candidate message: `fix(engine): commit outcomes through owned authority`.
+- [x] Add a transition table that fails for Atlas close exposing Legacy cockpit under Galaxy authority.
+- [x] Selected close behavior: return to the experience selector and clear Galaxy-owned overlays; changing to Legacy requires the explicit selector action.
+- [x] Cover travel commit/resume/finalize/retreat write failure and retry through the same result presentation.
+- [x] Browser-test byte-for-byte legacy fields across Galaxy close/back and outcome routes.
+- [x] Reload after each durable outcome class.
+- [x] Keep Galaxy prepared POI identity in its canonical Galaxy history record. Because staging mutates `galaxyRun`, validate the unique versioned prepared fact and its exact prepared revision before rebinding the staged snapshot; any intervening write or one-sided root/nested journal evidence conflicts instead of replaying.
+- [x] Commit the code and pass its exact clean-code gates at `b85fb3d381ae28f00c2559f351c0979129c655e6`. Complete evidence-SHA closure only with the matching PASS gate/review manifest linked by the dated handoff; the general closure protocol remains mandatory.
 
 ## Package B1 — Pure semantic input mapping
 
