@@ -730,14 +730,19 @@ test("@touch boarding covers eight directions retained facing fire and dash", as
     // The separate dash/fire leg uses row 2's eastward doorway.
     await freshEntry();
     await fingers.down(1, action(page, "Move right"));
+    const dashStart = (await frames(page, "board", 1)).at(-1)!;
     await fingers.down(3, action(page, "Dash"));
-    const dash = await frames(page, "board", 6);
+    // A native command can return after the short dash has finished. Keep the
+    // whole gesture's drawing history, including frames rendered before its reply.
+    await page.waitForFunction((seq) => window.touchEvidence.frames.some((frame) => frame.seq > seq && frame.board && frame.dash), dashStart.seq);
+    const dash = [dashStart, ...await frames(page, "board", 6, dashStart.seq)];
     expect(dash.some((f) => f.dash)).toBe(true);
     expect(displacement(dash, "board").x).toBeGreaterThan(0.4);
     // Capture before the native command: its round trip can otherwise discard
     // the first shot and leave only empty renders between fire cooldowns.
     const movingFireStart = await page.evaluate(() => window.touchEvidence.frames.at(-1)?.seq ?? 0);
     await fingers.down(2, action(page, "Fire"));
+    await page.waitForFunction((seq) => window.touchEvidence.frames.some((frame) => frame.seq > seq && frame.board && frame.boardShots.length > 0), movingFireStart);
     expect((await frames(page, "board", 8, movingFireStart)).some((f) => f.boardShots.length > 0)).toBe(true);
     await fingers.up(1);
     await fingers.up(3);
@@ -748,8 +753,9 @@ test("@touch boarding covers eight directions retained facing fire and dash", as
     await freshEntry();
     await fingers.down(1, action(page, "Move up"));
     await fingers.down(2, action(page, "Fire"));
+    const cancelDashStart = await page.evaluate(() => window.touchEvidence.frames.at(-1)?.seq ?? 0);
     await fingers.down(3, action(page, "Dash"));
-    await page.waitForFunction(() => window.touchEvidence.frames.at(-1)?.dash === true);
+    await page.waitForFunction((seq) => window.touchEvidence.frames.some((frame) => frame.seq > seq && frame.board && frame.dash), cancelDashStart);
     await fingers.cancel();
     await page.waitForFunction(() => {
       const frame = window.touchEvidence.frames.at(-1);
@@ -763,6 +769,12 @@ test("@touch boarding covers eight directions retained facing fire and dash", as
       throw new Error(JSON.stringify({ events, pressed, first: cancelled[0], last: cancelled.at(-1) }), { cause: error });
     }
     expect(cancelled.every((frame) => frame.boardShots.length === 0 && !frame.dash)).toBe(true);
+  }).catch(async (error) => {
+    const observed = await page.evaluate(() => window.touchEvidence);
+    await testInfo.attach("boarding-observations", {
+      body: Buffer.from(JSON.stringify(observed)), contentType: "application/json",
+    });
+    throw error;
   });
   await receipt(page, testInfo, "DevPanel BOARDING -> eight directions with native entry between each -> fresh entry, down-left positioning and released up-right aim -> fresh entry fire/dash -> fresh entry cancel", "freshLegacy", "All eight directions move correctly without firing or dashing from independent native entries; stationary fire retains diagonal aim across three rendered frames; moving dash and three-finger fire work in the entry corridor; cancelling all three held actions stops movement and fresh firing/dashing.");
 });
