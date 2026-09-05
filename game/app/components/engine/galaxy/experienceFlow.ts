@@ -1,4 +1,5 @@
 import type { SaveData } from "../types";
+import type { CanonicalSaveStore } from "../missionOutcome";
 import { createFreshGalaxyRun } from "./galaxyRun";
 import type { ExperienceMode } from "./galaxyTypes";
 
@@ -139,6 +140,58 @@ export function attemptCanonicalPersistence<T>(
     return { ok: true };
   } catch {
     return { ok: false };
+  }
+}
+
+export type CanonicalTransitionPersistenceResult =
+  | { status: "saved"; save: SaveData }
+  | { status: "conflict"; latest: SaveData }
+  | { status: "write_failed"; error: Error };
+
+/** SaveData is app-owned JSON; object key order is not persistence authority. */
+function canonicalSaveJson(save: SaveData): string {
+  return JSON.stringify(save, (_key, value: unknown) => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+    return Object.fromEntries(Object.entries(value).sort(([left], [right]) =>
+      left < right ? -1 : left > right ? 1 : 0));
+  });
+}
+
+/** A retained whole-save transition may write only against its exact saved base. */
+export function attemptCanonicalTransitionPersistence(
+  store: CanonicalSaveStore,
+  expectedBase: SaveData,
+  candidate: SaveData,
+): CanonicalTransitionPersistenceResult {
+  try {
+    const retainedCandidate = structuredClone(candidate);
+    const expectedJson = canonicalSaveJson(expectedBase);
+    const candidateJson = canonicalSaveJson(retainedCandidate);
+    const latest = structuredClone(store.read());
+    const latestJson = canonicalSaveJson(latest);
+    if (latestJson === candidateJson) return { status: "saved", save: latest };
+    if (latestJson !== expectedJson) return { status: "conflict", latest };
+
+    try {
+      store.write(structuredClone(retainedCandidate));
+    } catch (error) {
+      // Storage can succeed before a later subscriber throws. Never replay it.
+      try {
+        const persisted = structuredClone(store.read());
+        if (canonicalSaveJson(persisted) === candidateJson) {
+          return { status: "saved", save: persisted };
+        }
+      } catch {
+        // An unreadable store cannot establish that the write succeeded.
+      }
+      throw error;
+    }
+    return { status: "saved", save: retainedCandidate };
+  } catch (error) {
+    return {
+      status: "write_failed",
+      error: error instanceof Error ? error : new Error("Canonical transition persistence failed."),
+    };
   }
 }
 

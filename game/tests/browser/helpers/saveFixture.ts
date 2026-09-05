@@ -31,3 +31,22 @@ export async function readInstalledSave(page: Page): Promise<SaveData> {
   if (!raw) throw new Error(`No save installed under ${SAVE_STORAGE_KEY}`);
   return migrateSave(JSON.parse(raw) as Record<string, unknown>);
 }
+
+/** Compare serialized Legacy domain fields directly, before save migration. */
+export function readLegacyDomainBytes(page: Page): Promise<string> {
+  return page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    if (raw === null) throw new Error("No installed save to inspect");
+    const save = JSON.parse(raw) as Record<string, unknown>;
+    // The experience selector, Galaxy state, and coordinator journal are shared
+    // authority metadata. Every remaining field belongs to Legacy progression.
+    for (const field of [
+      "activeExperience", "galaxyRun", "saveRevision", "appliedOutcomeIds", "outcomeRecoveryRecords",
+    ]) delete save[field];
+    return JSON.stringify(save);
+  }, SAVE_STORAGE_KEY);
+}
+
+export function readInstalledSaveBytes(page: Page): Promise<string | null> {
+  return page.evaluate((key) => localStorage.getItem(key), SAVE_STORAGE_KEY);
+}

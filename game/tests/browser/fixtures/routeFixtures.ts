@@ -7,7 +7,8 @@ import {
   findGalaxyFixture,
 } from "../../../app/components/galaxy/devFixtures";
 import { PLANET_DEFS } from "../../../app/components/engine/planets";
-import { migrateSave } from "../../../app/components/engine/save";
+import { migrateSave, recalcPilotLevel } from "../../../app/components/engine/save";
+import { unlockCodexEntries } from "../../../app/components/engine/codex";
 import { SPECIAL_MISSIONS } from "../../../app/components/engine/specialMissions";
 import {
   DEFAULT_UPGRADES,
@@ -17,9 +18,14 @@ import {
 } from "../../../app/components/engine/types";
 import {
   commitOutcome,
+  createOutcomeAttempt,
   createOutcomeEnvelope,
 } from "../../../app/components/engine/missionOutcome";
-import { poiOutcomeMissionId } from "../../../app/components/engine/missionContext";
+import {
+  launchContextFromSave,
+  planetMissionDescriptor,
+  poiOutcomeMissionId,
+} from "../../../app/components/engine/missionContext";
 import {
   stageGalaxyPoiOutcomeAuthority,
 } from "../../../app/components/engine/operations/operationAdapters";
@@ -28,6 +34,8 @@ import { dispatchPoi } from "../../../app/components/colony/region/poiDispatcher
 import {
   advanceTravelCheckpoint,
   finalizeTravel,
+  resolveTravelInterruption,
+  resumeTravelToBoundary,
   type TravelTransitionResult,
 } from "../../../app/components/engine/galaxy/travelResolver";
 
@@ -122,6 +130,58 @@ function buildGalaxyAtAshfall(): SaveData {
 }
 
 export const galaxyAtAshfall = buildGalaxyAtAshfall();
+
+export function galaxyWithLegacyProgression(source: SaveData): SaveData {
+  // Match the canonical reader's derived Legacy fields before the browser
+  // starts, so byte checks isolate Galaxy writes from fixture normalization.
+  return recalcPilotLevel(unlockCodexEntries(canonical({
+    ...allPlanetsLaunchable,
+    activeExperience: source.activeExperience,
+    galaxyRun: source.galaxyRun,
+    saveRevision: source.saveRevision,
+    appliedOutcomeIds: source.appliedOutcomeIds,
+    outcomeRecoveryRecords: source.outcomeRecoveryRecords,
+  })));
+}
+
+export function galaxyTravelFixture(stage: "committed" | "arrived" | "diverted"): SaveData {
+  const committed = applyGalaxyFixture(
+    allPlanetsLaunchable,
+    requireGalaxyFixture(stage === "diverted" ? "hostile-route" : "known-route"),
+  );
+  if (committed.galaxyRun === null) throw new Error("Travel fixture has no Galaxy run");
+  if (stage === "committed") return canonical(committed as unknown as Record<string, unknown>);
+  const resumed = requireTravel(resumeTravelToBoundary(committed.galaxyRun));
+  const run = stage === "arrived" ? resumed : requireTravel(
+    resolveTravelInterruption(resumed, "op:hostile-picket", "failed"),
+  );
+  return canonical({ ...committed, galaxyRun: run });
+}
+
+export function pendingLegacyPlanetReturn(): SaveData {
+  const save = structuredClone(allPlanetsLaunchable);
+  const context = launchContextFromSave(
+    save,
+    planetMissionDescriptor("ossuary"),
+    "legacy",
+    "cockpit",
+    "legacy-cockpit",
+    () => "browser-legacy-planet-return",
+  );
+  const terminal = createOutcomeEnvelope(createOutcomeAttempt(save, context, "planet"), "failure", {
+    version: 1,
+    kind: "terminal_noop_v1",
+  });
+  let canonicalSave = save;
+  const committed = commitOutcome({
+    read: () => canonicalSave,
+    write: (next) => { canonicalSave = next; },
+  }, terminal);
+  if (committed.status !== "committed") {
+    throw new Error(`Legacy planet fixture could not be committed: ${committed.status}`);
+  }
+  return canonical(committed.save as unknown as Record<string, unknown>);
+}
 
 export function pendingGalaxyPoiReturn(): SaveData {
   if (!galaxyAtAshfall.galaxyRun) throw new Error("Ashfall fixture has no Galaxy run");
