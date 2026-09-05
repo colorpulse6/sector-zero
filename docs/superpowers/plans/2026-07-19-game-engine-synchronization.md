@@ -20,7 +20,8 @@
 - A3.2 and A3.3 are implemented at code `b85fb3d381ae28f00c2559f351c0979129c655e6` on `codex/a3-resume`. Exact clean-code gates passed: TypeScript, 425 engine, 288 Colony, 4 sprite, 37 browser, and both production exports. Independent final-runtime specification and quality reviews passed.
 - A3 closure is recorded in `docs/handoffs/2026-09-05-a3-outcome-checkpoint.md`; its matching PASS evidence is `e5495fe770adfd33c3cb7978ae4e3656eb3a2394`, the B1 base.
 - B1 is accepted at evidence `1b87545a6cdb0bb3991c27de8cc606fe707d448d`, code `2bf65f253a6bef845199f493b3211de3049810df`. Its matching PASS manifest records exact clean-code/evidence gates: 448 engine, 288 Colony, 4 sprite, 41 browser tests, TypeScript and both production exports, with fresh sequential specification and quality reviews. This includes the correction for a P2 catch-up input leak; `docs/handoffs/2026-09-05-b1-input-checkpoint.md` retains the history and proof limits.
-- B2 is implemented at code `9268bfe7f72da557bcbd725a0d4489af9bb8f653` on `codex/b2-touch-gameplay`. Exact clean-code gates pass under Node 20.20.1: TypeScript, 473 engine, 288 Colony, 4 sprite, 62 Chromium tests (59 verified exact-SHA route receipts and three fixtures, zero retries), and both production exports. All visible `TouchControls` content, including the turret hint, occupies a reserved footer; hint separation is checked at 480×854 and 375×667. Native multi-touch and a real Colony exterior/interior round trip pass. Current continuation: `docs/handoffs/2026-09-05-b2-touch-checkpoint.md`. Require its matching PASS evidence-SHA gate/review manifest before accepting B2 or starting B3. Prior evidence `c024680f185a0e0a1383009552a3bcf1ea0fc13f` passed automated gates but failed fresh specification review because the opaque turret hint covered KILLS; no quality review was started. The handoff retains that rejection, earlier failures, the Node 23 worker stall and physical-device proof limits.
+- B2 is accepted at evidence `fdb0334836aeb863becab6b6e37adb40a4bb4f41`, code `9268bfe7f72da557bcbd725a0d4489af9bb8f653`, with its matching PASS gate/review manifest. This is the B3 base. Its 765-unit/62-browser exact gates, turret-hint correction, prior rejected evidence and physical-device limits remain in `docs/handoffs/2026-09-05-b2-touch-checkpoint.md`.
+- B3 is implemented at code `e6e394663d07ad9e57911bdcb57fcc265c1c1dc1` on `codex/b3-navigation-focus`. Exact clean-code gates pass under Node 20.20.1: TypeScript, 486 engine, 290 Colony, 4 sprite, 80 Chromium tests (76 exact-SHA receipts and four observer/fixture rows, zero retries), and both production exports. B3 adds actual-target cockpit/Star Map activation, shared modal focus with true-invoker restoration and founding-content replacement, Region provenance, and recovery focus precedence. `docs/handoffs/2026-09-05-b3-navigation-checkpoint.md` preserves initial code `6206698` failing three inherited movement observations, their reproduction on accepted B2, scoped observer corrections, and the founding-focus RED/GREEN. Require the handoff's matching PASS evidence-SHA gate/review manifest before accepting B3 or starting C1.
 - Conductor correction: a saved Galaxy operation failure resolves that catalog operation. Remove the unavailable operation TRY AGAIN promise from the old shell handoff; retain failure-to-Atlas and retreat without changing lifecycle/journal policy. Legacy and POI gameplay retries remain available.
 - Full authored POI success/preparation/delivery is a disclosed F1 live-integration row, not an additional A3 gate. A3 proves preparation authority and exact mounted receipt recovery; fixtures do not prove the full authored playthrough.
 - A1's all-ten real-surface launch/live-play row remains open because A2's accepted browser matrix is intentionally Kepler-focused. F1 must launch all ten through the repaired board and live-play the required objective sample without test-only runtime mutation.
@@ -477,24 +478,24 @@ The conductor keeps the original browser ownership role but splits its single pl
 
 ### B3.1 — Complete click/touch navigation
 
-- [ ] Add failing browser routes for cockpit subscreens, Star Map world+level activation, Atlas contacts, Region POIs, Colony descent/return, and outcome actions.
-- [ ] Activate the hit target under the pointer/touch rather than the preselected item.
-- [ ] Keep keyboard selection and pointer hover independent until activation.
+- [x] Add failing browser routes for cockpit subscreens, Star Map world+level activation, Atlas contacts, Region POIs, Colony descent/return, and outcome actions.
+- [x] Activate the hit target under the pointer/touch rather than the preselected item.
+- [x] Keep keyboard selection and pointer hover independent until activation.
 
 ### B3.2 — Apply one modal focus contract
 
-- [ ] Add failing browser tests for initial focus, repeated Arrow Up/Down, Tab/Shift-Tab containment, Escape policy, close, and true-invoker restoration.
-- [ ] Test the pinned policy:
+- [x] Add failing browser tests for initial focus, repeated Arrow Up/Down, Tab/Shift-Tab containment, Escape policy, close, and true-invoker restoration.
+- [x] Test the pinned policy:
   - Atlas: full-screen contained navigation, selected contact focus, Escape/Close → selector, focus Galaxy choice.
   - Region: modal/trapped, selected option focus, Escape → actual Atlas/landing-pad/cockpit invoker.
   - Colonies: modal/trapped, selected action focus, Escape → cockpit Colonies invoker.
   - POI Outcome: mandatory modal/trapped, primary resolution focus, Escape blocked with status; resolved return follows inherited authority.
   - Exit Menu: modal/trapped, Resume focus, Escape → focusable exploration canvas.
-- [ ] Keep Atlas list focus during selection changes; update details without stealing it.
-- [ ] Capture Region invoker before moving focus and restore only if connected.
-- [ ] Apply dialog semantics and focus containment exactly as pinned in the surface policy above.
-- [ ] Split source (`atlas`, `landing-pad`, `cockpit`) from `actionsEnabled`; render accurate labels/back targets.
-- [ ] Complete the closure protocol; candidate message: `fix(navigation): unify activation and focus ownership`.
+- [x] Keep Atlas list focus during selection changes; update details without stealing it.
+- [x] Capture Region invoker before moving focus and restore only if connected.
+- [x] Apply dialog semantics and focus containment exactly as pinned in the surface policy above.
+- [x] Split source (`atlas`, `landing-pad`, `cockpit`) from `actionsEnabled`; render accurate labels/back targets.
+- [x] Commit B3 runtime and corrections as `6206698`, `14b212c` and `e6e3946`, and pass the latter exact clean-code gates. Evidence-SHA closure still requires the matching PASS gate/review manifest linked by the dated handoff; the general closure protocol remains mandatory.
 
 ## Package C1 — Mission presentation and dialogue lifecycle
 
