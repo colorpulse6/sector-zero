@@ -152,11 +152,14 @@ test("visited Ashfall opens the galaxy-owned origin through a disposable RegionM
   const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
     save: opened.projectedSave,
     originColonyId: opened.originColony.id,
-    mode: "pad",
+    source: "atlas",
+    actionsEnabled: true,
     onClose() {},
   }));
   assert.match(html, /ASHFALL REGION/);
   assert.match(html, /Forward Camp/);
+  assert.match(html, /ATLAS LINK/);
+  assert.doesNotMatch(html, /PAD LINK|COCKPIT VIEW/);
 });
 
 test("region opening rejects non-Ashfall, non-visited, legacy, and reflective inputs", () => {

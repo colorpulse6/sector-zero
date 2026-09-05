@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useRef, useState } from "react";
+import { useModalFocus } from "../../ui/ModalFocus";
 import type { SaveData } from "../../engine/types";
 import type { ColonyEvent } from "../shared/colonyEvents";
 import { Events } from "../shared/colonyEvents";
@@ -16,6 +17,8 @@ export interface ColoniesScreenProps {
   onExit: () => void;
   onDescend?: (colonyId: string) => void;
   onRegionMap?: (colonyId: string) => void;
+  focusActive?: boolean;
+  onRestoreFocus?: () => void;
 }
 
 export function bootstrapColonyEvent(save: SaveData): ColonyEvent {
@@ -30,25 +33,17 @@ export function bootstrapColonyEvent(save: SaveData): ColonyEvent {
   });
 }
 
-export function ColoniesScreen({ save, onDispatch, onExit, onDescend, onRegionMap }: ColoniesScreenProps) {
-  // Escape key to exit
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onExit();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onExit]);
+export function ColoniesScreen({ save, onDispatch, onExit, onDescend, onRegionMap, focusActive = true, onRestoreFocus }: ColoniesScreenProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useModalFocus({ active: focusActive, rootRef, onEscape: onExit, restoreFocus: onRestoreFocus,
+    initialFocus: () => rootRef.current?.querySelector<HTMLElement>("[data-modal-initial]") ?? null });
 
   const handleFound = () => {
     onDispatch(bootstrapColonyEvent(save));
   };
 
   return (
-    <div style={{
+    <div ref={rootRef} role="dialog" aria-modal="true" aria-label="Colonies" tabIndex={-1} style={{
       position: "fixed",
       top: 0,
       left: 0,

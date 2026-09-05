@@ -32,6 +32,7 @@ test("ColoniesScreen renders empty state without throwing", () => {
   }));
   assert.ok(html.includes("NO COLONIES FOUNDED"), "should render the empty-state heading");
   assert.ok(html.includes("Found Colony at Ashfall"), "should render the found button");
+  assert.match(html, /role="dialog"[^>]*aria-modal="true"[^>]*aria-label="Colonies"/);
 });
 
 test("ColoniesScreen renders populated state without throwing", () => {
@@ -84,4 +85,5 @@ test("ColoniesScreen exposes every founded colony for selection", () => {
   }));
   assert.ok(html.includes("Alpha Camp"));
   assert.ok(html.includes("Basalt Basin"), "new outposts must be selectable so their landing pads remain reachable");
+  assert.match(html, /<button[^>]*data-modal-initial="true"[^>]*>DESCEND TO COLONY<\/button>/);
 });

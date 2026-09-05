@@ -449,8 +449,8 @@ The conductor keeps the original browser ownership role but splits its single pl
 
 ## Package B3 — Navigation activation, modal focus, and provenance
 
-**Branch/worktree:** `fix/sync-navigation-focus` in `/private/tmp/sector-zero-sync-navigation`
-**Depends on:** B2.
+**Branch/worktree:** `codex/b3-navigation-focus` in `/Users/nichalasbarnes/.config/superpowers/worktrees/sector-zero/b3-navigation-focus`
+**Depends on:** B2, accepted at evidence `fdb0334836aeb863becab6b6e37adb40a4bb4f41` (matching external PASS gate/review manifest). This is the B3 base; its 765-test and TypeScript baseline passes under Node 20.20.1.
 **Owned files:**
 
 - `game/app/components/Game.tsx`
@@ -460,9 +460,17 @@ The conductor keeps the original browser ownership role but splits its single pl
 - `game/app/components/colony/meta/PoiOutcomeScreen.tsx`
 - `game/app/components/colony/exploration/exitMenu.tsx`
 - `game/app/components/ui/ModalFocus.tsx` (new if shared behavior is needed)
+- `game/app/components/engine/cockpit.ts`, `cockpitRenderer.ts` (shared visible menu hit geometry and activation; conductor allocation for B3.1)
+- `game/tests/engine/cockpitNavigation.test.ts` (new; hit-target regressions)
+- `game/app/components/colony/meta/ColonyEmptyState.tsx` (remove competing initial-focus ownership)
+- `game/app/components/colony/meta/ColonyHeader.tsx` (mark the selected colony's primary action for initial focus)
 - `game/tests/browser/navigationFocus.spec.ts` (new)
+- existing browser assertions affected by corrected Resume/provenance copy or covered-control focus containment (the outcome retry test must observe focus rejection before deliberately activating Retry; outcome/save assertions remain)
 - existing static screen tests only when markup contracts change
 - `docs/playtests/2026-07-19-navigation-focus.md` (new)
+- this plan, the conductor design status, and `docs/handoffs/2026-09-05-b3-navigation-checkpoint.md` (closure evidence)
+
+**B3 conductor allocation:** independent workers own (1) cockpit hit geometry/activation and its unit regressions, (2) the shared focus lifecycle and five DOM surfaces, and (3) navigation browser proofs. The conductor alone owns Game integration and evidence. Region source is independent of action permission; covered surfaces suspend focus containment while retaining their real invokers. Persistence recovery takes precedence over all navigation focus. No engine outcome, save authority, mission presentation, or asset changes are allocated here.
 
 ### B3.1 — Complete click/touch navigation
 

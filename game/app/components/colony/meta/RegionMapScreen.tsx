@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { SaveData } from "../../engine/types";
+import { useModalFocus } from "../../ui/ModalFocus";
 import type { RegionNode } from "../shared/colonyTypes";
 import { poiEncounterLabel } from "../region/poiCatalog";
 import {
@@ -18,7 +19,9 @@ import {
 export interface RegionMapScreenProps {
   save: SaveData;
   originColonyId: string;
-  mode: "pad" | "view";
+  source: "atlas" | "landing-pad" | "cockpit";
+  actionsEnabled: boolean;
+  focusActive?: boolean;
   onClose: () => void;
   onSurvey?: (nodeId: string) => void;
   onTravel?: (nodeId: string) => void;
@@ -50,10 +53,10 @@ function selectedAction(
   save: SaveData,
   originColonyId: string,
   node: RegionNode,
-  mode: "pad" | "view",
+  actionsEnabled: boolean,
   callbacks: Pick<RegionMapScreenProps, "onSurvey" | "onTravel" | "onFound">,
 ): SelectedAction | null {
-  if (mode !== "pad" || node.intel === "unknown") return null;
+  if (!actionsEnabled || node.intel === "unknown") return null;
   const label = nodeLabel(node);
   if (checkRegionAction(save, originColonyId, node.id, "survey").allowed) {
     return { kind: "survey", label: `Survey ${label}`, onActivate: callbacks.onSurvey ? () => callbacks.onSurvey?.(node.id) : undefined };
@@ -72,9 +75,12 @@ function unavailableCopy(
   originColonyId: string,
   originNodeId: string,
   node: RegionNode,
-  mode: "pad" | "view",
+  source: RegionMapScreenProps["source"],
+  actionsEnabled: boolean,
 ): string {
-  if (mode === "view") return "COCKPIT VIEW — REGION ACTIONS ARE UNAVAILABLE. DESCEND TO A COLONY LANDING PAD TO CONTINUE.";
+  if (!actionsEnabled) return source === "cockpit"
+    ? "COCKPIT VIEW — REGION ACTIONS ARE UNAVAILABLE. DESCEND TO A COLONY LANDING PAD TO CONTINUE."
+    : "REGION ACTIONS ARE UNAVAILABLE FROM THIS LINK.";
   if (node.intel === "unknown") return "INTEL INSUFFICIENT — DESTINATION DETAILS AND ACTIONS ARE UNAVAILABLE.";
   if (node.id === originNodeId) return "ORIGIN NODE — NO ACTION AVAILABLE.";
   const checks = (["survey", "travel", "found"] as const).map(action => checkRegionAction(save, originColonyId, node.id, action));
@@ -101,7 +107,9 @@ function primaryBlockReason(
 export function RegionMapScreen({
   save,
   originColonyId,
-  mode,
+  source,
+  actionsEnabled,
+  focusActive = true,
   onClose,
   onSurvey,
   onTravel,
@@ -111,8 +119,6 @@ export function RegionMapScreen({
   const dialogRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef(new Map<string, HTMLElement>());
   const actionRef = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
 
   const colony = save.colonies.find(entry => entry.id === originColonyId) ?? save.colonies[0];
   const planet = save.planets.find(entry => entry.id === colony?.planetId);
@@ -131,49 +137,13 @@ export function RegionMapScreen({
     setSelectedNodeId(current => reconcileRegionSelection(current, visibleNodeIds, originNodeId));
   }, [visibleNodeKey, originNodeId]);
 
-  useEffect(() => {
-    if (!selectedNodeId) return;
-    const option = optionRefs.current.get(selectedNodeId);
-    option?.focus();
-  }, [selectedNodeId]);
-
-  useEffect(() => {
-    const root = dialogRef.current;
-    if (!root) return;
-    const invokingControl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusable = () => [...root.querySelectorAll<HTMLElement>('button:not([disabled]), [role="option"][tabindex="0"]')];
-    optionRefs.current.get(selectedNodeId ?? "")?.focus();
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = focusable();
-      if (!items.length) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    root.addEventListener("keydown", handler);
-    return () => {
-      root.removeEventListener("keydown", handler);
-      if (invokingControl?.isConnected) invokingControl.focus();
-    };
-  }, []);
+  useModalFocus({ active: focusActive, rootRef: dialogRef,
+    initialFocus: () => optionRefs.current.get(selectedNodeId ?? "") ?? null, onEscape: onClose });
 
   if (!planet || !colony) return null;
   const selectedNode = visibleNodes.find(node => node.id === selectedNodeId) ?? visibleNodes[0] ?? null;
   const action = selectedNode
-    ? selectedAction(save, colony.id, selectedNode, mode, { onSurvey, onTravel, onFound })
+    ? selectedAction(save, colony.id, selectedNode, actionsEnabled, { onSurvey, onTravel, onFound })
     : null;
   const visibleIds = new Set(visibleNodeIds);
 
@@ -196,16 +166,17 @@ export function RegionMapScreen({
   return (
     <div
       ref={dialogRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label="Region map"
       style={{ position: "fixed", inset: 0, zIndex: 1200, overflow: "auto", background: "#070b12", color: "#e0e6ed", fontFamily: "ui-monospace, Menlo, monospace", padding: 20 }}
     >
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${CYAN}`, paddingBottom: 12 }}>
-        <button onClick={onClose}>← BACK</button>
+        <button onClick={onClose}>← {source === "atlas" ? "RETURN TO ATLAS" : source === "landing-pad" ? "RETURN TO LANDING PAD" : "RETURN TO COLONIES"}</button>
         <div>
           <h1 style={{ margin: 0, color: CYAN }}>ASHFALL REGION</h1>
-          <small>{mode === "pad" ? `PAD LINK — ${colony.name}` : "COCKPIT VIEW — ACTIONS LOCKED"}</small>
+          <small>{source === "atlas" ? `ATLAS LINK — ${colony.name}` : source === "landing-pad" ? `PAD LINK — ${colony.name}` : "COCKPIT VIEW"}{!actionsEnabled ? " — ACTIONS LOCKED" : ""}</small>
         </div>
       </header>
 
@@ -316,7 +287,7 @@ export function RegionMapScreen({
                     </button>
                   ) : (
                     <p style={{ margin: 0, color: "#a9bdc8" }} data-region-block-reason={primaryBlockReason(save, colony.id, selectedNode) ?? undefined}>
-                      {unavailableCopy(save, colony.id, originNodeId, selectedNode, mode)}
+                      {unavailableCopy(save, colony.id, originNodeId, selectedNode, source, actionsEnabled)}
                     </p>
                   )}
                 </div>

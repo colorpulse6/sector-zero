@@ -29,7 +29,7 @@ test("@pointer Galaxy Region back and Atlas close preserve Legacy bytes through 
   await page.getByRole("button", { name: "OPEN ASHFALL REGION" }).click();
   const region = page.getByRole("dialog", { name: "Region map" });
   await expect(region).toBeVisible();
-  await region.getByRole("button", { name: "← BACK" }).click();
+  await region.getByRole("button", { name: "← RETURN TO ATLAS" }).click();
   await expect(region).toBeHidden();
   await expect(atlas).toBeVisible();
   await atlas.getByRole("button", { name: "← CLOSE ATLAS" }).click();

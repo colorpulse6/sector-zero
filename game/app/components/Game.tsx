@@ -48,17 +48,22 @@ import {
   updateStarMap,
   resetStarMapKeys,
   getWorldNodes,
+  getLevelNodes,
 } from "./engine/starMap";
 import {
   type CockpitHubState,
+  type CockpitAction,
   createCockpitState,
   updateCockpit,
   resetCockpitKeys,
   getCockpitTouchHotspot,
   hitTestMissionBoard,
   applyMissionBoardHit,
+  hitTestCockpitScreen,
+  applyCockpitScreenHit,
   COCKPIT_HOTSPOTS,
 } from "./engine/cockpit";
+import { useModalFocus } from "./ui/ModalFocus";
 import { applyShopPurchase } from "./engine/consumables";
 import { allocateNode } from "./engine/skillTree";
 import { drawCockpit } from "./engine/cockpitRenderer";
@@ -158,10 +163,13 @@ import {
 import { applyGalaxyFixture, findGalaxyFixture } from "./galaxy/devFixtures";
 
 type RegionMapSurface = {
-  mode: "pad" | "view";
+  source: "atlas" | "landing-pad" | "cockpit";
+  actionsEnabled: boolean;
   originColonyId: string;
   experience: ExperienceMode;
 };
+
+const COLONIES_HOTSPOT = COCKPIT_HOTSPOTS.find(hotspot => hotspot.id === "colonies")!;
 
 type OutcomeCommitIssue = {
   status: "write_failed" | "conflict";
@@ -263,6 +271,9 @@ export function createRetryLaunchContext(state: GameState): LaunchContext | unde
 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const coloniesInvokerRef = useRef<HTMLButtonElement>(null);
+  const outcomeRecoveryRef = useRef<HTMLDivElement>(null);
+  const travelRecoveryRef = useRef<HTMLDivElement>(null);
   // WebGL overlay canvas that presents the graded frame over the 2D game canvas.
   const glCanvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -276,6 +287,7 @@ export default function Game() {
   const [atlasSelectedTarget, setAtlasSelectedTarget] = useState<AtlasTarget | undefined>();
   const [atlasStatusMessage, setAtlasStatusMessage] = useState<string | null>(null);
   const [starMapState, setStarMapState] = useState<StarMapState>(createStarMapState());
+  const starMapStateRef = useRef(starMapState);
   const [saveData, setSaveData] = useState<SaveData>(createHydrationSafeSave);
   const [saveHydrated, setSaveHydrated] = useState(false);
   const [endingPhase, setEndingPhase] = useState<"off" | "pre-choice" | "choice" | "ending" | "credits">("off");
@@ -318,7 +330,6 @@ export default function Game() {
   const poiCompletionHandledRef = useRef(false);
   const poiResolutionRef = useRef(false);
   const operationOutcomeHandledRef = useRef(false);
-  const atlasReturnFocusIdRef = useRef("sector-zero-game-canvas");
   const atlasShouldRestoreFocusRef = useRef(true);
 
   useEffect(() => { saveDataRef.current = saveData; }, [saveData]);
@@ -382,6 +393,8 @@ export default function Game() {
   const animationFrameRef = useRef<number | null>(null);
   const cockpitRafRef = useRef<number | null>(null);
   const cockpitLoopGenerationRef = useRef(0);
+  const starMapRafRef = useRef<number | null>(null);
+  const starMapLoopGenerationRef = useRef(0);
   // Dedicated rAF handle for the grade-pass present loop. MUST stay separate from
   // animationFrameRef, which is shared/clobbered across the game/intro/ending loops.
   const presentRafRef = useRef<number | null>(null);
@@ -413,8 +426,16 @@ export default function Game() {
   }, []);
 
   const commitCockpitState = useCallback((next: CockpitHubState) => {
+    if (next.screen === "colonies" && cockpitStateRef.current.screen !== "colonies") {
+      coloniesInvokerRef.current?.focus();
+    }
     cockpitStateRef.current = next;
     setCockpitState(next);
+  }, []);
+
+  const commitStarMapState = useCallback((next: StarMapState) => {
+    starMapStateRef.current = next;
+    setStarMapState(next);
   }, []);
 
   const finishIntro = useCallback(() => {
@@ -556,7 +577,7 @@ export default function Game() {
       return;
     }
     requestAnimationFrame(() => {
-      document.getElementById(atlasReturnFocusIdRef.current)?.focus();
+      document.querySelector<HTMLElement>('[aria-labelledby="experience-gate-title"] button')?.focus();
     });
   }, []);
 
@@ -827,6 +848,30 @@ export default function Game() {
     [ensureAudio]
   );
 
+  const handleStarMapPoint = useCallback((x: number, y: number) => {
+    if (persistenceNavigationLocked) return;
+    const current = starMapStateRef.current;
+    const save = saveDataRef.current;
+    const worlds = getWorldNodes(save);
+    const selected = worlds.find(node => node.world === current.selectedWorld);
+    if (current.expanded && selected) {
+      const level = getLevelNodes(selected.world, selected, save).find(node =>
+        x >= node.x - 16 && x <= Math.min(CANVAS_WIDTH, node.x + 130) && Math.abs(y - node.y) <= 16,
+      );
+      if (level) {
+        if (level.unlocked) {
+          commitStarMapState({ ...current, selectedLevel: level.level });
+          startLevel(level.world, level.level);
+        }
+        return;
+      }
+    }
+    const world = worlds.find(node => Math.hypot(x - node.x, y - node.y) < 30);
+    if (world?.unlocked) {
+      commitStarMapState({ ...current, selectedWorld: world.world, selectedLevel: 1, expanded: true });
+    }
+  }, [commitStarMapState, persistenceNavigationLocked, startLevel]);
+
   const startPlanetMission = useCallback(
     (planetId: PlanetId) => {
       const audio = ensureAudio();
@@ -864,26 +909,40 @@ export default function Game() {
     [ensureAudio]
   );
 
-  const handleMissionBoardPoint = useCallback((x: number, y: number): boolean => {
+  const applyCockpitAction = useCallback((action: CockpitAction): boolean => {
+    if (action.type === "open-starmap") { openExperienceMap(); return true; }
+    if (action.type === "save-updated") persistCanonicalSave(action.save);
+    else if (action.type === "launch-planet") { setShowCockpit(false); startPlanetMission(action.planetId); return true; }
+    else if (action.type === "launch-special-mission") { startSpecialMission(action.missionId); return true; }
+    else if (action.type === "allocate-skill") {
+      const save = saveDataRef.current;
+      const allocated = allocateNode(action.nodeId, save.allocatedSkills, save.skillPoints);
+      if (allocated) persistCanonicalSave({ ...save, allocatedSkills: allocated.allocated, skillPoints: allocated.pointsRemaining });
+    }
+    return false;
+  }, [openExperienceMap, persistCanonicalSave, startPlanetMission, startSpecialMission]);
+
+  const handleCockpitPoint = useCallback((x: number, y: number): boolean => {
     const currentState = cockpitStateRef.current;
-    if (currentState.screen !== "missions") return false;
-    const currentSave = saveDataRef.current;
-    const hit = hitTestMissionBoard(currentState, currentSave, x, y);
-    if (!hit) return false;
-    const result = applyMissionBoardHit(currentState, currentSave, hit);
+    if (persistenceNavigationLocked) return false;
+    if (currentState.screen === "hub") {
+      const index = getCockpitTouchHotspot(x, y);
+      const hotspot = COCKPIT_HOTSPOTS[index];
+      if (!hotspot) return false;
+      if (hotspot.id === "starmap") openExperienceMap();
+      else commitCockpitState({ ...currentState, screen: hotspot.id, selectedHotspot: index });
+      return true;
+    }
+    const save = saveDataRef.current;
+    const result = currentState.screen === "missions"
+      ? (() => { const hit = hitTestMissionBoard(currentState, save, x, y); return hit ? applyMissionBoardHit(currentState, save, hit) : null; })()
+      : (() => { const hit = hitTestCockpitScreen(currentState, save, x, y); return hit ? applyCockpitScreenHit(currentState, save, hit) : null; })();
+    if (!result) return false;
     commitCockpitState(result.newState);
     for (const event of result.newState.audioEvents) audioRef.current?.play(event);
-
-    if (result.action.type === "save-updated") {
-      persistCanonicalSave(result.action.save);
-    } else if (result.action.type === "launch-planet") {
-      setShowCockpit(false);
-      startPlanetMission(result.action.planetId);
-    } else if (result.action.type === "launch-special-mission") {
-      startSpecialMission(result.action.missionId);
-    }
+    applyCockpitAction(result.action);
     return true;
-  }, [commitCockpitState, persistCanonicalSave, startPlanetMission, startSpecialMission]);
+  }, [commitCockpitState, applyCockpitAction, openExperienceMap, persistenceNavigationLocked]);
 
   const returnToCockpit = useCallback(() => {
     const canonical = loadSave();
@@ -974,7 +1033,7 @@ export default function Game() {
         setShowCockpit(true);
         break;
       case "legacy-star-map":
-        setStarMapState({
+        commitStarMapState({
           ...createStarMapState(),
           selectedWorld: mount.world,
           selectedLevel: mount.level,
@@ -995,7 +1054,8 @@ export default function Game() {
         break;
       case "galaxy-region":
         setRegionMapSurface({
-          mode: "pad",
+          source: "atlas",
+          actionsEnabled: true,
           originColonyId: mount.originColonyId,
           experience: "galaxy",
         });
@@ -1005,8 +1065,11 @@ export default function Game() {
         return failMount("GALAXY COLONY RETURN IS NOT AVAILABLE · RELOAD TO RECONCILE");
     }
     audioRef.current?.switchMusic("menu");
+    if (mount.surface === "legacy-cockpit" || mount.surface === "legacy-star-map" || mount.surface === "legacy-colony-exterior") {
+      requestAnimationFrame(() => { if (!document.querySelector('[data-persistence-recovery]')) canvasRef.current?.focus(); });
+    }
     return true;
-  }, [adoptCanonicalSave, commitCockpitState]);
+  }, [adoptCanonicalSave, commitCockpitState, commitStarMapState]);
 
   const submitOutcomeEnvelope = useCallback((
     envelope: SerializedOutcomeEnvelope,
@@ -1101,11 +1164,12 @@ export default function Game() {
     setSceneStack(launched.sceneStack);
     setShowCockpit(false);
     commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
+    requestAnimationFrame(() => canvasRef.current?.focus());
   }, [commitCockpitState, ensureAudio]);
 
   const handleRegionExpedition = useCallback((kind: "survey" | "poi", targetNodeId: string) => {
     const surface = regionMapSurface;
-    if (!surface || surface.mode !== "pad" || expeditionRequestRef.current) return;
+    if (!surface || !surface.actionsEnabled || expeditionRequestRef.current) return;
     const request = { kind, originColonyId: surface.originColonyId, targetNodeId } as const;
     expeditionRequestRef.current = regionExpeditionRequestId(request);
     const result = surface.experience === "galaxy"
@@ -1156,7 +1220,7 @@ export default function Game() {
 
   const handleFoundRegionOutpost = useCallback((targetNodeId: string) => {
     const surface = regionMapSurface;
-    if (!surface || surface.mode !== "pad" || expeditionRequestRef.current) return;
+    if (!surface || !surface.actionsEnabled || expeditionRequestRef.current) return;
     expeditionRequestRef.current = `found:${surface.originColonyId}:${targetNodeId}`;
     const current = saveDataRef.current;
     const regionSave = surface.experience === "galaxy"
@@ -1185,12 +1249,12 @@ export default function Game() {
       return;
     }
     setRegionMapSurface({
-      mode: "pad",
+      source: "atlas",
+      actionsEnabled: true,
       originColonyId: opened.originColony.id,
       experience: "galaxy",
     });
-    atlasShouldRestoreFocusRef.current = false;
-    setShowGalaxyAtlas(false);
+    // Keep the Atlas invoker connected while its Region dialog owns focus.
   }, []);
 
   const galaxyRegionView = useMemo(() => {
@@ -2035,9 +2099,6 @@ export default function Game() {
       const touch = Array.from(e.targetTouches).find((candidate) => candidate.identifier === canvasTouchIdRef.current);
       if (!touch) { releaseTouch(); return; }
       touchPosRef.current = positionalTouch ? getCanvasPos(touch.clientX, touch.clientY) : null;
-      if (showMap) {
-        commitHeldInput(pressInputSource(heldInputRef.current, "touch:primary", "activate"));
-      }
     };
     const handleTouchStart = (e: TouchEvent) => {
       if (!touchAllowed || e.changedTouches.length === 0) return;
@@ -2085,26 +2146,13 @@ export default function Game() {
         const touch = e.changedTouches[0];
         if (touch) {
           const pos = getCanvasPos(touch.clientX, touch.clientY);
-          if (cockpitState.screen === "hub") {
-            const hotspotIndex = getCockpitTouchHotspot(pos.x, pos.y);
-            if (hotspotIndex >= 0) {
-              const hotspot = COCKPIT_HOTSPOTS[hotspotIndex];
-              if (hotspot.id === "starmap") {
-                openExperienceMap();
-              } else {
-                commitCockpitState({
-                  ...cockpitStateRef.current,
-                  screen: hotspot.id,
-                  selectedHotspot: hotspotIndex,
-                });
-              }
-            }
-          } else if (cockpitState.screen === "missions") {
-            handleMissionBoardPoint(pos.x, pos.y);
-          } else {
-            // In sub-screen, tap to go back to hub
-            commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
-          }
+          handleCockpitPoint(pos.x, pos.y);
+        }
+      } else if (showMap) {
+        const touch = e.changedTouches[0];
+        if (touch) {
+          const pos = getCanvasPos(touch.clientX, touch.clientY);
+          handleStarMapPoint(pos.x, pos.y);
         }
       } else if (gameState?.screen === GameScreen.BRIEFING) {
         setGameState((prev) => prev ? { ...prev, briefingTimer: 0 } : null);
@@ -2141,7 +2189,7 @@ export default function Game() {
       canvas.removeEventListener("touchend", handleTouchEnd);
       canvas.removeEventListener("touchcancel", releaseTouch);
     };
-  }, [inputContext, commitHeldInput, showStartScreen, showIntro, endingPhase, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationContext, activePoi, activePoiExperience, openExperienceMap, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, commitCockpitState, handleMissionBoardPoint, submitGameOutcome]);
+  }, [inputContext, commitHeldInput, showStartScreen, showIntro, endingPhase, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationContext, activePoi, activePoiExperience, openExperienceMap, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, shouldPromptKeplerMission, specialPromptChoice, commitCockpitState, handleCockpitPoint, handleStarMapPoint, submitGameOutcome]);
 
   // Intro crawl loop
   useEffect(() => {
@@ -2231,10 +2279,13 @@ export default function Game() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const generation = ++starMapLoopGenerationRef.current;
 
     const mapLoop = () => {
-      const { newState, action } = updateStarMap(starMapState, keysRef.current, saveData);
-      setStarMapState(newState);
+      if (generation !== starMapLoopGenerationRef.current) return;
+      const currentSave = saveDataRef.current;
+      const { newState, action } = updateStarMap(starMapStateRef.current, keysRef.current, currentSave);
+      commitStarMapState(newState);
 
       if (action.type === "select-level" && action.world && action.level) {
         startLevel(action.world, action.level);
@@ -2247,18 +2298,20 @@ export default function Game() {
         return;
       }
 
-      drawStarMap(ctx, newState, saveData);
-      animationFrameRef.current = requestAnimationFrame(mapLoop);
+      drawStarMap(ctx, newState, currentSave);
+      starMapRafRef.current = requestAnimationFrame(mapLoop);
     };
 
-    animationFrameRef.current = requestAnimationFrame(mapLoop);
+    starMapRafRef.current = requestAnimationFrame(mapLoop);
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      if (generation === starMapLoopGenerationRef.current) starMapLoopGenerationRef.current += 1;
+      if (starMapRafRef.current !== null) {
+        cancelAnimationFrame(starMapRafRef.current);
+        starMapRafRef.current = null;
       }
     };
-  }, [showMap, showGalaxyAtlas, starMapState, saveData, startLevel]);
+  }, [showMap, showGalaxyAtlas, commitStarMapState, startLevel]);
 
   // Cockpit hub loop
   useEffect(() => {
@@ -2285,37 +2338,7 @@ export default function Game() {
         audioRef.current?.play(event);
       }
 
-      if (action.type === "open-starmap") {
-        openExperienceMap();
-        return;
-      }
-
-      if (action.type === "launch-planet" && action.planetId) {
-        setShowCockpit(false);
-        startPlanetMission(action.planetId);
-        return;
-      }
-
-      if (action.type === "launch-special-mission" && action.missionId) {
-        startSpecialMission(action.missionId);
-        return;
-      }
-
-      if (action.type === "save-updated" && action.save) {
-        persistCanonicalSave(action.save);
-      }
-
-      if (action.type === "allocate-skill") {
-        const result = allocateNode(action.nodeId, currentSave.allocatedSkills, currentSave.skillPoints);
-        if (result) {
-          const newSave = {
-            ...currentSave,
-            allocatedSkills: result.allocated,
-            skillPoints: result.pointsRemaining,
-          };
-          persistCanonicalSave(newSave);
-        }
-      }
+      if (applyCockpitAction(action)) return;
 
       drawCockpit(
         ctx,
@@ -2338,7 +2361,7 @@ export default function Game() {
         cockpitRafRef.current = null;
       }
     };
-  }, [showCockpit, showGalaxyAtlas, commitCockpitState, openExperienceMap, persistCanonicalSave, startPlanetMission, startSpecialMission]);
+  }, [showCockpit, showGalaxyAtlas, commitCockpitState, applyCockpitAction]);
 
   // Game loop
   useEffect(() => {
@@ -2637,6 +2660,10 @@ export default function Game() {
     };
   }, [showGalaxyAtlas]);
 
+  useModalFocus({ active: outcomeCommitIssue !== null && travelCommitIssue === null,
+    rootRef: outcomeRecoveryRef, restoreFocus: false });
+  useModalFocus({ active: travelCommitIssue !== null, rootRef: travelRecoveryRef, restoreFocus: false });
+
   const showGameplayControls = inputContext.surface === "gameplay" && gameState !== null;
 
   return (
@@ -2701,59 +2728,44 @@ export default function Game() {
                 return;
               }
 
-              // Cockpit hub — click on hotspots
-              if (showCockpit && cockpitState.screen === "hub") {
-                for (let i = 0; i < COCKPIT_HOTSPOTS.length; i++) {
-                  const h = COCKPIT_HOTSPOTS[i];
-                  if (cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h) {
-                    // "starmap" is not a cockpit sub-screen (drawCockpit has no
-                    // branch for it — setting it freezes the hub frame): open the
-                    // star map overlay instead, mirroring the touch path above.
-                    if (h.id === "starmap") {
-                      openExperienceMap();
-                    } else {
-                      commitCockpitState({
-                        ...cockpitStateRef.current,
-                        screen: h.id,
-                        selectedHotspot: i,
-                      });
-                    }
-                    break;
-                  }
-                }
+              if (showCockpit) { handleCockpitPoint(cx, cy); return; }
+              if (showMap) handleStarMapPoint(cx, cy);
+            }}
+          />
+          {showMap && <button
+            aria-label="RETURN TO COCKPIT"
+            onClick={() => {
+              if (persistenceNavigationLocked) return;
+              setShowMap(false);
+              commitCockpitState({ ...cockpitStateRef.current, screen: "hub", selectedHotspot: 0 });
+              setShowCockpit(true);
+              resetCockpitKeys();
+              requestAnimationFrame(() => canvasRef.current?.focus());
+            }}
+            style={{ position: "absolute", top: 8, left: 8, width: 88, minHeight: 44,
+              border: "1px solid #44ccff66", background: "#07131d", color: "#c9e8ee",
+              font: "10px monospace", cursor: "pointer", lineHeight: 1.2 }}
+          >← COCKPIT</button>}
+          <button
+            ref={coloniesInvokerRef}
+            id="cockpit-colonies-invoker"
+            aria-label="Colonies"
+            tabIndex={showCockpit && cockpitState.screen === "hub" ? 0 : -1}
+            onClick={() => handleCockpitPoint(COLONIES_HOTSPOT.x + COLONIES_HOTSPOT.w / 2, COLONIES_HOTSPOT.y + COLONIES_HOTSPOT.h / 2)}
+            onKeyDown={(event) => {
+              const intent = mapKeyboardIntent(event.nativeEvent, { surface: "ui" });
+              if (intent && ["ui-left", "ui-right", "ui-up", "ui-down"].includes(intent)) {
+                event.preventDefault();
+                canvasRef.current?.focus();
+                commitHeldInput(pressInputSource(heldInputRef.current, keyboardInputSource(event.nativeEvent), intent));
               }
-
-              // Mission Board owns tab/row/back geometry for every pointing device.
-              if (showCockpit && cockpitState.screen === "missions") {
-                handleMissionBoardPoint(cx, cy);
-                return;
-              }
-
-              // Other cockpit sub-screens — click near top-left to go back
-              if (showCockpit && cockpitState.screen !== "hub") {
-                if (cx < 60 && cy < 50) {
-                  commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
-                }
-              }
-
-              // Star map — click on world nodes to select
-              if (showMap && starMapState) {
-                const worldNodes = getWorldNodes(saveData);
-                for (const node of worldNodes) {
-                  if (!node.unlocked) continue;
-                  const dx = cx - node.x;
-                  const dy = cy - node.y;
-                  if (dx * dx + dy * dy < 30 * 30) {
-                    if (starMapState.selectedWorld === node.world && !starMapState.expanded) {
-                      // Double-click to expand
-                      setStarMapState((prev) => prev ? { ...prev, expanded: true, selectedLevel: 1 } : prev);
-                    } else {
-                      setStarMapState((prev) => prev ? { ...prev, selectedWorld: node.world, expanded: false } : prev);
-                    }
-                    break;
-                  }
-                }
-              }
+            }}
+            style={{
+              display: showCockpit && (cockpitState.screen === "hub" || cockpitState.screen === "colonies") ? "block" : "none",
+              position: "absolute", left: `${COLONIES_HOTSPOT.x / CANVAS_WIDTH * 100}%`, top: `${COLONIES_HOTSPOT.y / CANVAS_HEIGHT * 100}%`,
+              width: `${COLONIES_HOTSPOT.w / CANVAS_WIDTH * 100}%`, height: `${COLONIES_HOTSPOT.h / CANVAS_HEIGHT * 100}%`,
+              background: "transparent", border: 0, cursor: "pointer",
+              pointerEvents: cockpitState.screen === "hub" ? "auto" : "none",
             }}
           />
           {/* WebGL color-grade overlay — a sibling of the 2D canvas, painted on its
@@ -2803,6 +2815,7 @@ export default function Game() {
 
       {showGalaxyAtlas && (
         <GalaxyAtlasScreen
+          focusActive={!regionMapSurface && !pendingPoiPresentation && !persistenceNavigationLocked}
           run={saveData.galaxyRun}
           initialTarget={atlasSelectedTarget}
           statusMessage={atlasStatusMessage}
@@ -3238,17 +3251,21 @@ export default function Game() {
       {/* Colonies DOM overlay — mounts over the canvas when cockpit screen is "colonies" */}
       {showCockpit && cockpitState.screen === "colonies" && (
         <ColoniesScreen
+          focusActive={!regionMapSurface && !pendingPoiPresentation && !persistenceNavigationLocked}
+          onRestoreFocus={() => { if (coloniesInvokerRef.current?.getClientRects().length) coloniesInvokerRef.current.focus(); }}
           save={saveData}
           onDispatch={handleColonyDispatch}
           onExit={handleColoniesExit}
           onDescend={handleDescend}
-          onRegionMap={(colonyId) => setRegionMapSurface({ mode: "view", originColonyId: colonyId, experience: "legacy" })}
+          onRegionMap={(colonyId) => setRegionMapSurface({ source: "cockpit", actionsEnabled: false, originColonyId: colonyId, experience: "legacy" })}
         />
       )}
 
       {/* Landing-pad exit menu — mounts over the canvas during colony-exploration */}
       {exitMenuOpen && sceneStack && (
         <LandingPadExitMenu
+          focusActive={!regionMapSurface && !pendingPoiPresentation && !persistenceNavigationLocked}
+          onRestoreFocus={() => { if (!document.querySelector('[role="dialog"], [data-persistence-recovery]')) canvasRef.current?.focus(); }}
           onTakeOff={() => {
             if (persistenceNavigationLocked) return;
             if (gameState) submitGameOutcome(gameState, "success");
@@ -3258,23 +3275,23 @@ export default function Game() {
             if (persistenceNavigationLocked) return;
             const originColonyId = sceneStack.current.state.colonyContext?.colonyId;
             if (!originColonyId) return;
-            setExitMenuOpen(false);
-            setRegionMapSurface({ mode: "pad", originColonyId, experience: "legacy" });
+            setRegionMapSurface({ source: "landing-pad", actionsEnabled: true, originColonyId, experience: "legacy" });
           }}
         />
       )}
       {regionMapSurface && regionScreenSave && (
         <RegionMapScreen
+          focusActive={!pendingPoiPresentation && !persistenceNavigationLocked}
           save={regionScreenSave}
           originColonyId={regionMapSurface.originColonyId}
-          mode={regionMapSurface.mode}
+          source={regionMapSurface.source}
+          actionsEnabled={regionMapSurface.actionsEnabled}
           onClose={() => {
             if (persistenceNavigationLocked) return;
-            const wasPad = regionMapSurface.mode === "pad";
-            const wasGalaxy = regionMapSurface.experience === "galaxy";
+            const source = regionMapSurface.source;
             setRegionMapSurface(null);
-            if (wasGalaxy) setShowGalaxyAtlas(true);
-            else if (wasPad) setExitMenuOpen(true);
+            if (source === "atlas") setShowGalaxyAtlas(true);
+            else if (source === "landing-pad") setExitMenuOpen(true);
           }}
           onSurvey={(id) => { if (!persistenceNavigationLocked) handleRegionExpedition("survey", id); }}
           onTravel={(id) => { if (!persistenceNavigationLocked) handleRegionExpedition("poi", id); }}
@@ -3283,6 +3300,7 @@ export default function Game() {
       )}
       {pendingPoiPresentation && (
         <PoiOutcomeScreen
+          focusActive={!persistenceNavigationLocked}
           pending={pendingPoiPresentation}
           colonies={(galaxyOutcomeProjection ?? saveData).colonies}
           resolving={poiOutcomeResolving}
@@ -3310,7 +3328,7 @@ export default function Game() {
         </div>
       )}
       {outcomeCommitIssue && (
-        <div data-persistence-recovery role="alert" aria-label="Outcome persistence status" className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/90 px-6 text-white">
+        <div ref={outcomeRecoveryRef} tabIndex={-1} data-persistence-recovery role="alert" aria-label="Outcome persistence status" className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/90 px-6 text-white">
           <div className="max-w-lg border border-red-500 bg-slate-950 p-8 text-center">
             <h2 className="mb-4 text-2xl tracking-wider text-red-400">OUTCOME LOCKED</h2>
             <p className="mb-6 text-sm text-gray-200">{outcomeCommitIssue.message}</p>
@@ -3340,7 +3358,7 @@ export default function Game() {
         </div>
       )}
       {travelCommitIssue && (
-        <div data-persistence-recovery role="alert" aria-label="Travel persistence status" className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/90 px-6 text-white">
+        <div ref={travelRecoveryRef} tabIndex={-1} data-persistence-recovery role="alert" aria-label="Travel persistence status" className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/90 px-6 text-white">
           <div className="max-w-lg border border-red-500 bg-slate-950 p-8 text-center">
             <h2 className="mb-4 text-2xl tracking-wider text-red-400">TRAVEL SAVE LOCKED</h2>
             <p className="mb-6 text-sm text-gray-200">{travelCommitIssue.status === "conflict"

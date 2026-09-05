@@ -90,9 +90,15 @@ test("@pointer Galaxy operation retreat retries one outcome and acknowledges onl
     entry.kind === "commit" && entry.failed);
   expect(firstCommit?.outcomeId).toMatch(/:retreat$/);
   expect(pendingReceipt(await readInstalledSave(page))).toBeUndefined();
+  const lockedSave = await readInstalledSave(page);
+  const lockedWrites = await readOutcomeWriteObservations(page);
   await page.getByRole("button", { name: "RESUME", exact: true }).focus();
-  await page.keyboard.press("Enter");
+  // Recovery now contains focus: a covered Resume cannot become the keyboard
+  // target. Deliberately activate Retry only after proving the lock stayed put.
+  await expect(status.getByRole("button", { name: "RETRY OUTCOME" })).toBeFocused();
   await expect(page.getByRole("heading", { name: "PAUSED" })).toBeVisible();
+  expect(await readInstalledSave(page)).toEqual(lockedSave);
+  expect(await readOutcomeWriteObservations(page)).toEqual(lockedWrites);
 
   await status.getByRole("button", { name: "RETRY OUTCOME" }).click();
   await expect(status).toContainText("OUTCOME RETURN SAVE FAILED · RETRY");
@@ -289,7 +295,7 @@ test("@pointer pending Galaxy POI return reloads the exact Ashfall Region before
   const region = page.getByRole("dialog", { name: "Region map" });
   await expect(region).toBeAttached();
   await expect(region.getByRole("heading", { name: "ASHFALL REGION" })).toBeVisible();
-  await expect(region.getByText(/PAD LINK —/)).toBeVisible();
+  await expect(region.getByText(/ATLAS LINK —/)).toBeVisible();
   const status = page.getByRole("alert", { name: "Outcome persistence status" });
   await expect(status).toContainText("OUTCOME RETURN SAVE FAILED · RETRY");
   const legacyBytes = await readLegacyDomainBytes(page);

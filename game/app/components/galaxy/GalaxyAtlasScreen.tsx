@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useModalFocus, restoreModalFocus } from "../ui/ModalFocus";
 import { getGalaxyRunAvailability } from "../engine/galaxy/galaxyRun";
 import type {
   AtlasCellFact,
@@ -50,6 +51,7 @@ export interface GalaxyAtlasScreenProps {
   run: GalaxyRunState | null;
   onClose: () => void;
   onRestoreFocus?: () => void;
+  focusActive?: boolean;
   initialTarget?: AtlasTarget;
   statusMessage?: string | null;
   onSelectTarget?: (target: AtlasTarget) => void;
@@ -260,11 +262,7 @@ export function restoreAtlasFocus(
   onRestoreFocus: (() => void) | undefined,
   fallback: Pick<HTMLElement, "focus" | "isConnected"> | null,
 ): void {
-  if (onRestoreFocus !== undefined) {
-    onRestoreFocus();
-    return;
-  }
-  if (fallback?.isConnected) fallback.focus();
+  restoreModalFocus(onRestoreFocus, fallback);
 }
 
 function touchDistance(left: React.Touch, right: React.Touch): number {
@@ -332,6 +330,7 @@ export function GalaxyAtlasScreen({
   onResumeTravel,
   onFinalizeTravel,
   onOpenAshfallRegion,
+  focusActive = true,
 }: GalaxyAtlasScreenProps) {
   const contacts = useMemo(() => contactViews(run), [run]);
   const firstTarget = atlasSelectionForRun(
@@ -357,14 +356,12 @@ export function GalaxyAtlasScreen({
   const [formError, setFormError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detailsHeadingRef = useRef<HTMLHeadingElement>(null);
-  const invokingControlRef = useRef<HTMLElement | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const pendingControlFocusRef = useRef<HTMLElement | null>(null);
   const pointerGestureRef = useRef<PointerGesture | null>(null);
   const touchGestureRef = useRef<TouchGesture | null>(null);
   const onCloseRef = useRef(onClose);
-  const onRestoreFocusRef = useRef(onRestoreFocus);
   onCloseRef.current = onClose;
-  onRestoreFocusRef.current = onRestoreFocus;
 
   const availability = useMemo(() => getGalaxyRunAvailability(run), [run]);
   const generationCopy = unavailableGenerationCopy(availability);
@@ -399,18 +396,8 @@ export function GalaxyAtlasScreen({
     ? null
     : selectedTargetIdFor(selectedTarget);
 
-  useEffect(() => {
-    invokingControlRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    return () => {
-      restoreAtlasFocus(onRestoreFocusRef.current, invokingControlRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (selectedTarget === null) return;
-    detailsHeadingRef.current?.focus();
-  }, [currentSelectedId, selectedTarget]);
+  useModalFocus({ active: focusActive, rootRef, onEscape: onClose, restoreFocus: onRestoreFocus,
+    initialFocus: () => rootRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ?? null });
 
   useEffect(() => {
     const control = pendingControlFocusRef.current;
@@ -651,7 +638,9 @@ export function GalaxyAtlasScreen({
 
   if (run === null) {
     return (
-      <section
+      <div
+        ref={rootRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Galaxy Atlas"
@@ -660,7 +649,7 @@ export function GalaxyAtlasScreen({
         <h1 style={{ color: CYAN }}>NO GALAXY RUN IS ACTIVE</h1>
         <p>Begin a galaxy expedition from the experience selector. Legacy progress remains preserved.</p>
         <Button onClick={onCloseRef.current}>RETURN TO EXPERIENCE SELECTOR</Button>
-      </section>
+      </div>
     );
   }
 
@@ -669,7 +658,9 @@ export function GalaxyAtlasScreen({
       ? run.identity.generationVersion
       : run.identity.authoredAnchorRegistryVersion;
     return (
-      <section
+      <div
+        ref={rootRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Galaxy Atlas unavailable"
@@ -682,7 +673,7 @@ export function GalaxyAtlasScreen({
         </h1>
         <p>{generationCopy}</p>
         <Button onClick={onCloseRef.current}>RETURN SAFELY</Button>
-      </section>
+      </div>
     );
   }
 
@@ -693,6 +684,8 @@ export function GalaxyAtlasScreen({
 
   return (
     <div
+      ref={rootRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label="Galaxy Atlas"
@@ -843,6 +836,7 @@ export function GalaxyAtlasScreen({
                     type="button"
                     role="option"
                     aria-selected={selected}
+                    tabIndex={selected ? 0 : -1}
                     data-atlas-contact={contact.targetId}
                     data-target-kind={contact.target.kind}
                     data-selected-target={selected ? currentSelectedId ?? undefined : undefined}
@@ -859,7 +853,14 @@ export function GalaxyAtlasScreen({
                         event.key === "ArrowDown" ? "next" : "previous",
                         contacts,
                       );
-                      if (target !== null) selectTarget(target);
+                      if (target !== null && !run.activeTravel) {
+                        selectTarget(target);
+                        const id = selectedTargetIdFor(target);
+                        const option = [...(rootRef.current?.querySelectorAll<HTMLElement>("[data-atlas-contact]") ?? [])]
+                          .find(element => element.dataset.atlasContact === id);
+                        option?.focus();
+                        option?.scrollIntoView({ block: "nearest" });
+                      }
                     }}
                     style={{
                       minHeight: 50,

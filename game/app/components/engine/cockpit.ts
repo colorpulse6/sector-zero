@@ -844,3 +844,198 @@ export function getCockpitTouchHotspot(x: number, y: number): number {
   }
   return -1;
 }
+
+export type CockpitScreenHit =
+  | { view: string; kind: "back" | "primary" }
+  | { view: string; kind: "tab" | "row"; index: number }
+  | { view: string; kind: "page"; direction: -1 | 1 };
+
+export interface CockpitScreenLayout {
+  view: string;
+  back: MissionBoardRect | null;
+  tabs: Array<MissionBoardRect & { index: number }>;
+  rows: Array<MissionBoardRect & { index: number }>;
+  primary: MissionBoardRect | null;
+  previous: MissionBoardRect | null;
+  next: MissionBoardRect | null;
+  listX: number;
+  listY: number;
+  listW: number;
+  rowH: number;
+  maxVisible: number;
+  scrollOffset: number;
+  itemCount: number;
+}
+
+/** Canvas drawing and pointer activation consume the same visible geometry. */
+export function getCockpitScreenLayout(state: CockpitHubState, save: SaveData): CockpitScreenLayout {
+  const layout: CockpitScreenLayout = {
+    view: state.screen,
+    back: null,
+    tabs: [],
+    rows: [],
+    primary: null,
+    previous: null,
+    next: null,
+    listX: 16,
+    listY: 70,
+    listW: CANVAS_WIDTH - 32,
+    rowH: 44,
+    maxVisible: 0,
+    scrollOffset: 0,
+    itemCount: 0,
+  };
+  if (!["armory", "crew", "codex", "bestiary", "pilot"].includes(state.screen)) return layout;
+  layout.back = { x: 0, y: 0, w: 86, h: 50 };
+  let selected = 0;
+  if (state.screen === "armory") {
+    layout.rowH = 56;
+    layout.itemCount = layout.maxVisible = UPGRADE_DEFS.length;
+    const def = UPGRADE_DEFS[state.armorySelected];
+    if (def && getUpgradeCost(def, save.upgrades[def.id]) !== null) {
+      layout.primary = { x: CANVAS_WIDTH / 2 - 90, y: 70 + UPGRADE_DEFS.length * 56 + 102, w: 180, h: 30 };
+    }
+  } else if (state.screen === "crew") {
+    layout.view = `crew:${state.crewSelected}:${state.crewDialogActive ? "dialog" : "list"}`;
+    if (state.crewDialogActive) {
+      layout.back.h = 44;
+      layout.primary = { x: 120, y: CANVAS_HEIGHT - 102, w: 240, h: 44 };
+      return layout;
+    }
+    const cardW = 130;
+    const spacing = 14;
+    const startX = (CANVAS_WIDTH - CREW.length * cardW - (CREW.length - 1) * spacing) / 2;
+    layout.tabs = CREW.map((_, index) => ({ x: startX + index * (cardW + spacing), y: 62, w: cardW, h: 160, index }));
+    layout.listX = 20;
+    layout.listY = 256;
+    layout.listW = CANVAS_WIDTH - 40;
+    layout.rowH = 48;
+    layout.maxVisible = 8;
+    const crew = CREW[state.crewSelected];
+    layout.itemCount = crew ? getAvailableConversations(crew.id, save).length : 0;
+    selected = state.crewConvoIndex;
+  } else if (state.screen === "codex") {
+    layout.view = `codex:${state.codexCategory}:${state.codexReading ? "reading" : "list"}`;
+    if (state.codexReading) {
+      layout.back.h = 44;
+      layout.primary = { x: 120, y: CANVAS_HEIGHT - 62, w: 240, h: 44 };
+      return layout;
+    }
+    const tabW = (CANVAS_WIDTH - 20 - (CODEX_CATEGORIES.length - 1) * 4) / CODEX_CATEGORIES.length;
+    layout.tabs = CODEX_CATEGORIES.map((_, index) => ({ x: 10 + index * (tabW + 4), y: 56, w: tabW, h: 28, index }));
+    layout.listX = 12;
+    layout.listY = 92;
+    layout.listW = CANVAS_WIDTH - 24;
+    layout.rowH = 44;
+    layout.maxVisible = Math.floor((CANVAS_HEIGHT - layout.listY - 60) / layout.rowH);
+    const category = CODEX_CATEGORIES[state.codexCategory];
+    layout.itemCount = category ? getEntriesForCategory(category.id, save).length : 0;
+    selected = state.codexSelected;
+  } else if (state.screen === "bestiary") {
+    layout.view = `bestiary:${state.bestiaryReading ? "reading" : "list"}`;
+    if (state.bestiaryReading) {
+      // The detail has no header back arrow; its visible footer owns close.
+      layout.back = null;
+      layout.primary = { x: 120, y: CANVAS_HEIGHT - 47, w: 240, h: 44 };
+      return layout;
+    }
+    layout.rowH = 42;
+    layout.maxVisible = Math.floor((CANVAS_HEIGHT - 140 - layout.listY) / layout.rowH);
+    layout.itemCount = getBestiaryList(save.bestiary).length;
+    selected = state.bestiarySelected;
+  } else {
+    layout.listY = 200;
+    layout.rowH = 52;
+    layout.itemCount = layout.maxVisible = getTreeNodes("combat").length;
+  }
+  layout.scrollOffset = Math.max(0, selected - layout.maxVisible + 1);
+  layout.rows = Array.from({ length: Math.min(layout.maxVisible, Math.max(0, layout.itemCount - layout.scrollOffset)) }, (_, visibleIndex) => ({
+    x: layout.listX,
+    y: layout.listY + visibleIndex * layout.rowH,
+    w: layout.listW,
+    h: layout.rowH - 4,
+    index: layout.scrollOffset + visibleIndex,
+  }));
+  if (layout.itemCount > layout.maxVisible) {
+    if (layout.scrollOffset > 0) layout.previous = { x: 16, y: CANVAS_HEIGHT - 48, w: 80, h: 44 };
+    if (layout.scrollOffset + layout.maxVisible < layout.itemCount) layout.next = { x: CANVAS_WIDTH - 96, y: CANVAS_HEIGHT - 48, w: 80, h: 44 };
+  }
+  return layout;
+}
+
+export function hitTestCockpitScreen(
+  state: CockpitHubState,
+  save: SaveData,
+  x: number,
+  y: number,
+): CockpitScreenHit | null {
+  const layout = getCockpitScreenLayout(state, save);
+  const view = layout.view;
+  if (layout.back && contains(layout.back, x, y)) return { view, kind: "back" };
+  if (layout.primary && contains(layout.primary, x, y)) return { view, kind: "primary" };
+  if (layout.previous && contains(layout.previous, x, y)) return { view, kind: "page", direction: -1 };
+  if (layout.next && contains(layout.next, x, y)) return { view, kind: "page", direction: 1 };
+  const tab = layout.tabs.find((candidate) => contains(candidate, x, y));
+  if (tab) return { view, kind: "tab", index: tab.index };
+  const row = layout.rows.find((candidate) => contains(candidate, x, y));
+  if (row) return { view, kind: "row", index: row.index };
+  return null;
+}
+
+export function applyCockpitScreenHit(
+  state: CockpitHubState,
+  save: SaveData,
+  hit: CockpitScreenHit,
+): { newState: CockpitHubState; action: CockpitAction } {
+  const layout = getCockpitScreenLayout(state, save);
+  const s = { ...state, audioEvents: [] as AudioEvent[] };
+  const none = (): { newState: CockpitHubState; action: CockpitAction } => ({ newState: s, action: { type: "none" } });
+  if (hit.view !== layout.view) return none();
+  if (hit.kind === "back") {
+    if (!layout.back) return none();
+    if (s.screen === "crew" && s.crewDialogActive) return updateCrew(s, { left: true }, save);
+    if (s.screen === "codex" && s.codexReading) return updateCodex(s, { left: true }, save);
+    s.screen = "hub";
+    s.transitionTimer = TRANSITION_FRAMES;
+    s.audioEvents.push(AudioEvent.COCKPIT_BACK);
+    return none();
+  }
+  if (hit.kind === "tab") {
+    if (!layout.tabs.some((tab) => tab.index === hit.index)) return none();
+    if (s.screen === "crew") {
+      s.crewSelected = hit.index;
+      s.crewConvoIndex = 0;
+    } else if (s.screen === "codex") {
+      s.codexCategory = hit.index;
+      s.codexSelected = 0;
+    }
+    s.audioEvents.push(AudioEvent.COCKPIT_NAV);
+    return none();
+  }
+  if (hit.kind === "page") {
+    if (!(hit.direction === -1 ? layout.previous : layout.next)) return none();
+    const selected = s.screen === "crew" ? s.crewConvoIndex : s.screen === "codex" ? s.codexSelected : s.bestiarySelected;
+    const index = Math.max(0, Math.min(layout.itemCount - 1, selected + hit.direction * layout.maxVisible));
+    if (s.screen === "crew") s.crewConvoIndex = index;
+    else if (s.screen === "codex") s.codexSelected = index;
+    else s.bestiarySelected = index;
+    s.audioEvents.push(AudioEvent.COCKPIT_NAV);
+    return none();
+  }
+  if (hit.kind === "primary" && !layout.primary) return none();
+  if (hit.kind === "row") {
+    if (!layout.rows.some((row) => row.index === hit.index)) return none();
+    if (s.screen === "armory") s.armorySelected = hit.index;
+    else if (s.screen === "crew") s.crewConvoIndex = hit.index;
+    else if (s.screen === "codex") s.codexSelected = hit.index;
+    else if (s.screen === "bestiary") s.bestiarySelected = hit.index;
+    else if (s.screen === "pilot") s.pilotTreeSelected = hit.index;
+  }
+  // Invoke the same action path as keyboard activation, without changing its edge history.
+  if (s.screen === "armory") return updateArmory(s, { shoot: true }, save);
+  if (s.screen === "crew") return updateCrew(s, { shoot: true }, save);
+  if (s.screen === "codex") return updateCodex(s, { shoot: true }, save);
+  if (s.screen === "bestiary") return updateBestiary(s, { shoot: true }, save);
+  if (s.screen === "pilot") return updatePilot(s, { shoot: true }, save);
+  return none();
+}

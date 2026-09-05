@@ -35,6 +35,7 @@ export function ColonyHeader({ colony, missionsSinceStart, onBack, onDescend }: 
       {onDescend && (
         <button
           onClick={onDescend}
+          data-modal-initial
           style={{
             background: "transparent",
             color: hudColors.cyanAccent,
