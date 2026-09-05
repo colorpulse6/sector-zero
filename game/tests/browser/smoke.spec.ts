@@ -67,7 +67,7 @@ test("@fixture route saves migrate and round-trip through current registries", (
   const colony = colonyFounded.colonies.find((entry) => entry.id === colonyFoundedId);
   const interiorBuilding = colony?.buildings.find((building) => building.status === "operational");
   expect(interiorBuilding).toBeDefined();
-  const interior = generateInteriorState(interiorBuilding!, colony!.layoutSeed);
+  const interior = generateInteriorState(interiorBuilding!, colony!.layoutSeed, colonyFounded.gameClock.hour);
   expect(interior.colonyContext?.mode).toBe("interior");
 });
 

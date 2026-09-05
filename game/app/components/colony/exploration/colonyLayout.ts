@@ -10,6 +10,7 @@ import type { FirstPersonState, BoardingTileType, BoardingMap } from "../../engi
 import { SPRITES } from "../../engine/sprites";
 import { OUTPOST_TEMPLATE, type Slot, type SlotId } from "./outpostTemplate";
 import { BUILDING_FOOTPRINTS, INTERIOR_TEMPLATES } from "./buildingTiles";
+import { generateInteriorNpcs } from "./interiorNpcs";
 import { tintForHour } from "./dayNightTint";
 import type { ColonyContext, DoorInteractResult, LandingPadResult } from "./colonyContext";
 
@@ -292,7 +293,7 @@ export function generateExteriorState(colony: ColonyState, gameClock: GameClock)
   };
 }
 
-export function generateInteriorState(building: ColonyBuilding, seed: number): FirstPersonState {
+export function generateInteriorState(building: ColonyBuilding, seed: number, entryHour: number): FirstPersonState {
   const fp = BUILDING_FOOTPRINTS[building.type];
   if (!fp) throw new Error(`[colonyLayout] no footprint for building type ${building.type}`);
   const template = INTERIOR_TEMPLATES[fp.interiorTemplateId];
@@ -338,12 +339,19 @@ export function generateInteriorState(building: ColonyBuilding, seed: number): F
     scale: p.scale,
   }));
 
-  // Interior floor sprite — single source for BOTH environmentArt.floorSprite
-  // and the per-tile floorTextureMap fill below, so they can't silently
-  // diverge. Per-template variety (e.g. distinct floors per building type) is
-  // future data, not new code — the map already supports per-tile overrides
-  // the day that art lands.
-  const interiorFloorSprite = SPRITES.EXPLORE_OUTPOST_FLOOR_METAL;
+  const interiorEnvironmentArt = template.environmentArt
+    ? {
+        wallSprite: template.environmentArt.wallSpriteId,
+        floorSprite: template.environmentArt.floorSpriteId,
+        ceilingSprite: template.environmentArt.ceilingSpriteId,
+        skySprite: template.environmentArt.skySpriteId,
+      }
+    : {
+        skySprite: SPRITES.EXPLORE_OUTPOST_SKY,
+        wallSprite: SPRITES.EXPLORE_OUTPOST_WALL_INTERIOR,
+        floorSprite: SPRITES.EXPLORE_OUTPOST_FLOOR_METAL,
+      };
+  const interiorFloorSprite = interiorEnvironmentArt.floorSprite;
   const floorTextureMap: (string | null)[][] = Array.from(
     { length: template.height },
     () => new Array(template.width).fill(interiorFloorSprite),
@@ -367,14 +375,9 @@ export function generateInteriorState(building: ColonyBuilding, seed: number): F
     enemies: [],
     gunFireTimer: 0,
     gunCooldown: 0,
-    npcs: [],
+    npcs: generateInteriorNpcs(template.npcSlots ?? [], entryHour, seed),
     dialogState: null,
-    environmentArt: {
-      // Interior: neutral lighting, no tint (Phase 2 decision)
-      skySprite: SPRITES.EXPLORE_OUTPOST_SKY,
-      wallSprite: SPRITES.EXPLORE_OUTPOST_WALL_INTERIOR,
-      floorSprite: interiorFloorSprite,
-    },
+    environmentArt: interiorEnvironmentArt,
     props,
     colonyContext,
     colonyInteractArmed: false,   // orchestrator just swapped in; require key release before fire

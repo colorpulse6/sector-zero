@@ -6,6 +6,7 @@ import {
 } from "./types";
 import { drawDashboard } from "./dashboard";
 import { getSprite, SPRITES } from "./sprites";
+import { planFPDialogLayout } from "./fpDialogLayout";
 import {
   drawFirstPersonPixel,
   currentFrame,
@@ -295,10 +296,11 @@ function drawGunHUD(
 
 // ─── Dialog Box ─────────────────────────────────────────────────────
 
-function drawDialogBox(
+export function drawFPDialogBox(
   ctx: CanvasRenderingContext2D,
   fp: FirstPersonState,
-  frameCount: number
+  frameCount: number,
+  spriteLookup: typeof getSprite = getSprite,
 ): void {
   const ds = fp.dialogState;
   if (!ds || !ds.active) return;
@@ -409,12 +411,12 @@ function drawDialogBox(
       ctx.fillText("LEAVE", boxX + 16, ly + 7);
     }
 
-    // Transient generic "purchase unavailable" flash (§I)
+    // Transient purchase feedback (§I + typed services)
     if ((ds.shopFlashFrames ?? 0) > 0) {
-      ctx.fillStyle = "#ff6666";
+      ctx.fillStyle = ds.shopFlashTone === "success" ? "#66ff99" : "#ff6666";
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "center";
-      ctx.fillText("PURCHASE UNAVAILABLE", boxX + boxW / 2, boxY + boxH - 14);
+      ctx.fillText(ds.shopFlashText ?? "PURCHASE UNAVAILABLE", boxX + boxW / 2, boxY + boxH - 14);
       ctx.textAlign = "left";
     }
   } else {
@@ -422,32 +424,54 @@ function drawDialogBox(
     const line = ds.lines[ds.currentLine];
     if (!line) return;
 
+    const layoutPlan = planFPDialogLayout(
+      { x: boxX, y: boxY, width: boxW, height: boxH },
+      line.portraitKey,
+    );
+    let contentLayout = layoutPlan.textOnly;
+    if (layoutPlan.portraitPath) {
+      const portrait = spriteLookup(layoutPlan.portraitPath);
+      if (portrait) {
+        contentLayout = layoutPlan.withPortrait;
+        const portraitRect = contentLayout.portrait;
+        if (portraitRect) {
+          ctx.drawImage(
+            portrait,
+            portraitRect.x,
+            portraitRect.y,
+            portraitRect.width,
+            portraitRect.height,
+          );
+        }
+      }
+    }
+
     // Speaker name
     ctx.fillStyle = borderColor;
     ctx.font = "bold 11px monospace";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText(line.speaker, boxX + 12, boxY + 12);
+    ctx.fillText(line.speaker, contentLayout.text.x, contentLayout.text.y);
 
     // Dialog text — word wrap
     ctx.fillStyle = "#cccccc";
     ctx.font = "12px monospace";
     const words = line.text.split(" ");
     let textLine = "";
-    let ty = boxY + 32;
-    const maxWidth = boxW - 24;
+    let ty = contentLayout.text.y + 20;
+    const maxWidth = contentLayout.text.width;
 
     for (const word of words) {
       const test = textLine + (textLine ? " " : "") + word;
       if (ctx.measureText(test).width > maxWidth && textLine) {
-        ctx.fillText(textLine, boxX + 12, ty);
+        ctx.fillText(textLine, contentLayout.text.x, ty);
         textLine = word;
         ty += 18;
       } else {
         textLine = test;
       }
     }
-    if (textLine) ctx.fillText(textLine, boxX + 12, ty);
+    if (textLine) ctx.fillText(textLine, contentLayout.text.x, ty);
 
     // Advance prompt. At end-of-dialog a merchant's shop opens while it hasn't
     // been shown this session (§I per-session gate), so key off ds.shopSeen — this
@@ -560,7 +584,7 @@ export function drawFirstPerson(
 
   // ── Dialog box ──
   if (fp.dialogState?.active) {
-    drawDialogBox(ctx, fp, state.frameCount);
+    drawFPDialogBox(ctx, fp, state.frameCount);
   }
 
   // ── Controls hint ──
