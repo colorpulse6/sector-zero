@@ -1,7 +1,7 @@
 # B2 touch gameplay — 2026-09-05
 
 The filename `docs/playtests/2026-07-19-touch-gameplay.md` follows the conductor plan; this receipt records September 5 work.
-Code checkpoint: `9822d726c6fa556d3fb2fa55ba9f2de7c1c8f45a`. Game tree: `b679b3dbb16effa121b7366121efe0f938b9f0bd`.
+Code checkpoint: `9268bfe7f72da557bcbd725a0d4489af9bb8f653`. Game tree: `622d82f57ee775b3fb960bea8d24af0a2795f32e`.
 Worktree: `/Users/nichalasbarnes/.config/superpowers/worktrees/sector-zero/b2-touch-gameplay`.
 Accepted B1 base: `1b87545a6cdb0bb3991c27de8cc606fe707d448d`.
 
@@ -20,7 +20,7 @@ This is a local implementation receipt. Acceptance requires the matching post-ev
 Five profiles produce six mounted presentations because First-person and Colony have distinct action labels.
 Named DOM buttons provide held-state feedback, safe-area placement and targets of at least 44×44 in a reserved footer below the entire canvas, including its dashboard and dialogue.
 The footer reserves 164px plus the greater of 12px or the bottom safe-area inset: normally 176px. Its independent width, capped at 480px, preserves button space on a 375px viewport while the canvas scales proportionally to the remaining height.
-The game and color-grade canvases share one aligned box. Transparent turret aim remains over the gameplay image at the 714/854 height ratio; Fire stays in the footer.
+The game and color-grade canvases share one aligned box. All visible `TouchControls` content, including the aim hint in the left turret footer, remains below the canvas and separate from Fire. Only the transparent turret aim target overlays gameplay, retaining the 714/854 height ratio and its handlers.
 Briefing copy names the active profile. Pause has a 44×44 target and accessible name.
 Pause/Resume accept a released third finger while movement and Fire remain held, and enforce existing save/recovery locks.
 
@@ -31,7 +31,7 @@ The final complete result is **62 passed**, with retries disabled: 12 keyboard/f
 
 | Route / entry | Fixture and input | Proof |
 | --- | --- | --- |
-| DevPanel → six profile screens | `freshLegacy`; native touch | At 480×854 and 375×667, targets are visible, at least 44×44, in bounds and non-overlapping; action buttons sit below the whole canvas. Game/grade boxes and turret aim dimensions align. Screenshots attach at 480×854. |
+| DevPanel → six profile screens | `freshLegacy`; native touch | At 480×854 and 375×667, targets are visible, at least 44×44, in bounds and non-overlapping; action buttons and the visible turret hint sit below the whole canvas. The hint is in bounds and separate from Fire; game/grade boxes and turret aim dimensions align. Screenshots attach at 480×854. |
 | DevPanel → campaign briefing | `freshLegacy`; touch | Move/Fire/Bomb copy appears before skip; the removed two-finger bomb instruction is absent. |
 | Campaign, planet and Galaxy operation → shooter | Campaign: DevPanel 1-1 / `freshLegacy`; planet: DevPanel Ashfall / `allPlanetsLaunchable`; Galaxy: Continue Galaxy → Launch Operation / `galaxyAtAshfall` | Four movement directions do not fire/bomb. Move+Fire coexist; releasing movement preserves fresh fire. Bomb alone spends exactly one bomb without firing. |
 | Campaign → canvas drag + pad | `freshLegacy`; simultaneous native touches | Drag controls position without fire/bomb; releasing drag restores the held pad. Moving outside the pad releases its movement. |
@@ -78,21 +78,23 @@ After the old contacts release, a fresh Right touch must move. Failure-only fram
 | `resume-lock-red.log`; `resume-lock-green.log` | RED lost PAUSED after the old Resume contact released through a failed-save overlay. The touch-end guard now matches click capture, including the ending exception; GREEN passed in 2.3s with save/pending/write checks. |
 | `lifecycle-trace.log`; `lifecycle-isolated-green.log` | Three unchanged diagnostic reruns passed. The isolated, stronger lifecycle test then passed in 8.9s. |
 | `code-gates.json` / code `6440acc4c087dbc47dce2efe79b7493d9e5d4979` | Exact TypeScript and 765 units passed; browser finished 60 passed / one ground-trajectory failure. The runner stopped before both builds. This code gate remains **FAIL**. |
-| `footer-code-gates.json` / current code `9822d726c6fa556d3fb2fa55ba9f2de7c1c8f45a` | TypeScript/engine passed; the Node 23 sprite worker stalled and was terminated by the conductor. No assertion failure was observed. The record remains **FAIL**; later browser/build gates were not reached. |
+| `footer-code-gates.json` / prior code `9822d726c6fa556d3fb2fa55ba9f2de7c1c8f45a` | TypeScript/engine passed; the Node 23 sprite worker stalled and was terminated by the conductor. No assertion failure was observed. The record remains **FAIL**; later browser/build gates were not reached. |
 | `footer-red.log`; `footer-gameplay-green.log` | New separation/alignment assertions failed on all six profiles, then passed at 480×854 and 375×667. The corrected B2 file passed all 20 cases: one fixture, two pointer and 17 touch, including Ground, Colony and lifecycle. |
 | `projectile-observer-red.log` | Reproduced rejected valid unequal steps and wrongly accepted 11px motion. The corrected pure fixture passes with the B2 file. This repairs observation, without engine/clock/health changes. |
+| Prior code `9822d726c6fa556d3fb2fa55ba9f2de7c1c8f45a` / evidence `c024680f185a0e0a1383009552a3bcf1ea0fc13f` | Both `node20-*` automated gate and receipt records PASS. Fresh specification review nevertheless returned FAIL/P2: the opaque turret hint covered KILLS. Quality review was not started. `superseded-c024680-spec-review.md` and `superseded-c024680-manifest.json` retain that rejection. |
+| `aim-hint-red.log`; `aim-hint-green.log` | RED: hint y12.796875 was above canvas end y677.203125. Moving only the visible hint to the left turret footer passes four targeted tests plus TypeScript; existing profile assertions now check hint bounds and separation from canvas/Fire at both required sizes. Aim geometry/handlers are unchanged. |
 
 The ground failure was a 196.8px jump; its screenshot showed two lives and full HP, consistent with a respawn from the initial three-life attempt. Exact timing remains unproven because that run lacked frame attachments. Test isolation changes no runtime, combat, health, camera or invincibility behavior.
 Early React border warnings and the framework development badge intercepted controls; consistent border properties and disabling that badge resolve those obstructions while retaining the game's DevPanel.
 Interim test review strengthened fresh-fire checks, signed aim, all movement directions, cancellation and native route entry. Interim review verdicts do not replace final evidence-SHA reviews.
-Visual review found a P2 obstruction of HUD/dialogue by the original overlays. The reconciled footer separates controls from the whole canvas; [footer-visual-review.md](/Users/nichalasbarnes/.codex/visualizations/2026/09/05/01a07127-3e6a-7ae1-b54b-436d683ef1c1/sector-zero-b2-evidence/footer-visual-review.md) confirms the obstruction is resolved in inspected Shooter, Ground, Colony and Turret screenshots at 480×854, without moving controls over the Ground avatar. At 375×667, geometry passed but screenshots were not independently inspected.
+Visual review found a P2 obstruction of HUD/dialogue by the original overlays. The reconciled footer separates controls from the whole canvas; [footer-visual-review.md](/Users/nichalasbarnes/.codex/visualizations/2026/09/05/01a07127-3e6a-7ae1-b54b-436d683ef1c1/sector-zero-b2-evidence/footer-visual-review.md) confirmed bottom-dashboard/hull and Ground-avatar clearance in four inspected 480×854 screenshots; it did not cover the later top-left KILLS obstruction. The conductor-inspected corrected Turret PNG now shows WAVE/KILLS and the hint at bottom-left, separate from Fire. At 375×667, geometry passed but screenshots were not independently inspected.
 The exact ground-trajectory failure sequence was not retained. Unsupported equal-step/maximum-distance assumptions and dropped blink frames were reproduced separately; the receipt does not claim they establish that failure's exact timing. The live compound leg now polls actual trajectories after a native Ground relaunch, with no runtime or health mutation.
 `footer-node23-sprite-hang.sample.txt` shows the stalled worker waiting in a V8 task-queue drain. Four sprite tests pass under explicit Node 20.20.1, matching CI's Node 20 major. The observed wait and successful alternate-runtime check do not establish the stall's root cause.
 Full diagnosis history is retained in [review-history.md](/Users/nichalasbarnes/.codex/visualizations/2026/09/05/01a07127-3e6a-7ae1-b54b-436d683ef1c1/sector-zero-b2-evidence/review-history.md).
 
 ## Exact-checkpoint results
 
-The complete Node 20.20.1 code PASS is `node20-code-gates.json`, with `node20-code-receipt-verification.json` proving all receipt identities. Post-evidence gates use `node20-evidence-gates.json`. Both earlier `code-gates.json` and `footer-code-gates.json` FAIL records remain in the history.
+The current Node 20.20.1 code PASS is `aim-hint-code-gates.json`, with `aim-hint-code-receipt-verification.json` proving all receipt identities. Post-evidence gates use `aim-hint-evidence-gates.json`. Preserve the prior `node20-*` automated PASS records and rejected evidence review/manifest, plus both earlier `code-gates.json` and `footer-code-gates.json` FAIL records.
 Prefix gate commands with `PATH=/Users/nichalasbarnes/.nvm/versions/node/v20.20.1/bin:$PATH COREPACK_ENABLE_AUTO_PIN=0 COREPACK_ENABLE_PROJECT_SPEC=0` to reproduce the environment.
 
 | Required gate | Exact clean-code result |
@@ -100,7 +102,7 @@ Prefix gate commands with `PATH=/Users/nichalasbarnes/.nvm/versions/node/v20.20.
 | Clean-code TypeScript and unit suites under Node 20.20.1 | PASS: TypeScript and 765 units (473 engine + 288 Colony + 4 sprite) |
 | Complete Chromium matrix, retries disabled; exact receipt identities | PASS: 62, with 59 exact-SHA route receipts and three fixture rows; zero retries |
 | Empty-base and `/sector-zero` production exports | PASS |
-| Ownership/diff checks and clean state before/after gates | PASS: 17 owned cumulative files; clean before/after every gate |
+| Ownership/diff checks and clean state before/after gates | PASS: 19 owned cumulative files; clean before/after every gate |
 | Separate evidence commit, its exact gates and sequential fresh reviews | External matching PASS manifest required |
 
 ## Limits
