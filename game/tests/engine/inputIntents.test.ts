@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  advanceInputFrame,
   createEmptyInputState,
   keyboardInputSource,
   mapKeyboardIntent,
@@ -11,7 +12,8 @@ import {
   type InputIntent,
   type KeyboardInput,
 } from "../../app/components/engine/inputIntents";
-import type { GameMode, Keys } from "../../app/components/engine/types";
+import { createGameState, updateGame } from "../../app/components/engine/gameEngine";
+import { AudioEvent, GameScreen, type GameMode, type GameState, type Keys } from "../../app/components/engine/types";
 
 const modes: GameMode[] = [
   "shooter", "ground-run", "boarding", "first-person", "turret",
@@ -233,4 +235,107 @@ test("source helpers do not mutate previous states and engine projections are de
   keys.left = false;
   keys.shoot = true;
   assert.deepEqual(toEngineKeys(held), { ...emptyKeys, left: true });
+});
+
+for (const [key, intent] of [["ArrowRight", "ui-right"], [" ", "activate"]] as const) {
+  test(`catch-up stops UI ${intent} at the real briefing-to-playing boundary`, () => {
+    const state = createGameState(1, 1);
+    state.briefingTimer = 1;
+    assert.equal(state.screen, GameScreen.BRIEFING);
+    assert.equal(mapKeyboardIntent({ key }, { surface: "ui" }), intent);
+    const heldKeys = toEngineKeys(pressInputSource(createEmptyInputState(), keyboardInputSource({ key }), intent));
+    const initialX = state.player.x;
+    const stepMs = 1000 / 60;
+    const availableMs = stepMs * 3;
+    const result = advanceInputFrame(state, availableMs, stepMs, (current) =>
+      updateGame(current, heldKeys, null, null, stepMs));
+
+    assert.equal(result.state.player.x, initialX, "UI direction must not move the player after briefing ends");
+    assert.equal(result.state.playerBullets.length, 0, "UI activation must not fire after briefing ends");
+    assert.equal(result.state.audioEvents.includes(AudioEvent.PLAYER_SHOOT), false);
+    assert.equal(result.state.screen, GameScreen.PLAYING);
+    assert.equal(result.state.frameCount, 1);
+    assert.equal(result.boundaryChanged, true);
+    assert.equal(result.simulatedMs, stepMs);
+    assert.equal(result.remainingMs, availableMs - stepMs);
+
+    const resumed = advanceInputFrame(result.state, result.remainingMs, stepMs, (current) =>
+      updateGame(current, toEngineKeys(createEmptyInputState()), null, null, stepMs));
+    assert.equal(resumed.state.frameCount, 2, "retained time can advance after the caller clears input");
+    assert.equal(resumed.state.player.x, initialX);
+    assert.equal(resumed.state.playerBullets.length, 0);
+    assert.equal(resumed.boundaryChanged, false);
+  });
+}
+
+type TickState = Pick<GameState, "screen" | "currentMode" | "currentPhase"> & { ticks: number };
+
+function tickState(): TickState {
+  return { screen: GameScreen.PLAYING, currentMode: "shooter", currentPhase: 0, ticks: 0 };
+}
+
+const boundaryChanges: [string, (state: TickState) => void][] = [
+  ["screen", (state) => { state.screen = GameScreen.PHASE_TRANSITION; }],
+  ["mode", (state) => { state.currentMode = "ground-run"; }],
+  ["phase", (state) => { state.currentPhase += 1; }],
+];
+
+for (const [label, change] of boundaryChanges) {
+  test(`catch-up detects a ${label} boundary when update mutates the same state object`, () => {
+    const state = tickState();
+    const result = advanceInputFrame(state, 30, 10, (current) => {
+      current.ticks += 1;
+      change(current);
+      return current;
+    });
+
+    assert.equal(result.state.ticks, 1, "no later tick may consume input from the previous boundary");
+    assert.equal(result.state, state);
+    assert.equal(result.boundaryChanged, true);
+    assert.equal(result.simulatedMs, 10);
+    assert.equal(result.remainingMs, 20);
+  });
+}
+
+test("catch-up advances all ordinary whole ticks and retains the fractional remainder", () => {
+  const initial = Object.freeze(tickState());
+  const result = advanceInputFrame(initial, 55, 10, (current) => ({ ...current, ticks: current.ticks + 1 }));
+  assert.equal(result.state.ticks, 5);
+  assert.equal(initial.ticks, 0);
+  assert.equal(result.simulatedMs, 50);
+  assert.equal(result.remainingMs, 5);
+  assert.equal(result.boundaryChanged, false);
+});
+
+test("catch-up preserves the existing repeated-subtraction arithmetic at 60Hz", () => {
+  const stepMs = 1000 / 60;
+  const result = advanceInputFrame(tickState(), 50, stepMs, (current) => ({ ...current, ticks: current.ticks + 1 }));
+  assert.equal(result.state.ticks, 2, "flooring 50 / stepMs would incorrectly introduce a third tick");
+  assert.equal(result.simulatedMs, stepMs + stepMs);
+  assert.equal(result.remainingMs, (50 - stepMs) - stepMs);
+  assert.equal(result.boundaryChanged, false);
+});
+
+test("catch-up with no whole tick preserves state identity and does not call update", () => {
+  const state = Object.freeze(tickState());
+  for (const availableMs of [0, 4.5]) {
+    const result = advanceInputFrame(state, availableMs, 10, () => assert.fail("no update is due"));
+    assert.equal(result.state, state);
+    assert.equal(result.remainingMs, availableMs);
+    assert.equal(result.simulatedMs, 0);
+    assert.equal(result.boundaryChanged, false);
+  }
+});
+
+test("catch-up rejects invalid or non-progressing time values before calling update", () => {
+  const cases: [number, number][] = [
+    [-1, 10], [NaN, 10], [Infinity, 10], [-Infinity, 10],
+    [20, 0], [20, -1], [20, NaN], [20, Infinity], [20, -Infinity],
+    [1, Number.MIN_VALUE],
+  ];
+  for (const [availableMs, stepMs] of cases) {
+    assert.throws(() => advanceInputFrame(tickState(), availableMs, stepMs, () => {
+      throw new Error("invalid timing reached update");
+    }), RangeError, `${availableMs}, ${stepMs}`);
+  }
 });

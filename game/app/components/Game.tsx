@@ -17,7 +17,7 @@ import {
 } from "./engine/types";
 import { createGameState, createPlanetGameState, createSpecialMissionGameState, updateGame, togglePause } from "./engine/gameEngine";
 import {
-  createEmptyInputState, keyboardInputSource, mapKeyboardIntent,
+  advanceInputFrame, createEmptyInputState, keyboardInputSource, mapKeyboardIntent,
   pressInputSource, releaseInputSource, toEngineKeys,
   type HeldInputState, type InputContext,
 } from "./engine/inputIntents";
@@ -2367,26 +2367,26 @@ export default function Game() {
           ? { ...keysRef.current, shoot: true }
           : keysRef.current;
 
-      // Consume whole fixed ticks. Zero ticks (fast display, no tick due yet)
-      // → newState === gameState, setGameState bails on the identical
-      // reference, and this same rAF loop just runs again next callback.
-      let newState = gameState;
-      let simMs = 0; // sim time consumed this callback (feeds the colony step)
-      while (simAccumulatorRef.current >= STEP_MS) {
-        simAccumulatorRef.current -= STEP_MS;
-        simMs += STEP_MS;
-        newState = updateGame(
-          newState,
+      // End catch-up at an input boundary so later ticks cannot reuse keys
+      // captured on the previous surface. Retain their time for the next frame.
+      const frame = advanceInputFrame(gameState, simAccumulatorRef.current, STEP_MS, (state) => {
+        const next = updateGame(
+          state,
           effectiveKeys,
           touchPosRef.current?.x ?? null,
           touchPosRef.current?.y ?? null,
           STEP_MS
         );
         // Play audio per tick — catch-up ticks each carry their own events.
-        for (const event of newState.audioEvents) {
+        for (const event of next.audioEvents) {
           audioRef.current?.play(event);
         }
-      }
+        return next;
+      });
+      simAccumulatorRef.current = frame.remainingMs;
+      let newState = frame.state;
+      const simMs = frame.simulatedMs;
+      if (frame.boundaryChanged) clearHeldInput();
       if (newState === gameState) {
         // No tick this callback: nothing changed, skip the React commit and
         // redraw entirely.
@@ -2460,7 +2460,7 @@ export default function Game() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [adoptCanonicalSave, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface]);
+  }, [adoptCanonicalSave, clearHeldInput, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface]);
 
   // Auto-trigger ending when game engine sets ENDING screen (final boss defeated)
   useEffect(() => {

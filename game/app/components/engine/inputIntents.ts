@@ -1,4 +1,4 @@
-import type { GameMode, Keys } from "./types";
+import type { GameMode, GameState, Keys } from "./types";
 
 export type InputContext =
   | { surface: "gameplay"; mode: GameMode }
@@ -134,4 +134,36 @@ export function toEngineKeys(state: HeldInputState): Keys {
     if (flag) keys[flag] = true;
   }
   return keys;
+}
+
+export function advanceInputFrame<T extends Pick<GameState, "screen" | "currentMode" | "currentPhase">>(
+  state: T,
+  availableMs: number,
+  stepMs: number,
+  update: (state: T) => T,
+): { state: T; remainingMs: number; simulatedMs: number; boundaryChanged: boolean } {
+  if (!Number.isFinite(availableMs) || availableMs < 0) {
+    throw new RangeError("availableMs must be finite and nonnegative");
+  }
+  if (!Number.isFinite(stepMs) || stepMs <= 0) {
+    throw new RangeError("stepMs must be finite and positive");
+  }
+  if (availableMs >= stepMs && availableMs - stepMs === availableMs) {
+    throw new RangeError("stepMs must reduce availableMs");
+  }
+  let remainingMs = availableMs;
+  let simulatedMs = 0;
+  let boundaryChanged = false;
+  while (remainingMs >= stepMs) {
+    // Capture primitives: an engine update may mutate and return the same object.
+    const { screen, currentMode, currentPhase } = state;
+    remainingMs -= stepMs;
+    simulatedMs += stepMs;
+    state = update(state);
+    if (state.screen !== screen || state.currentMode !== currentMode || state.currentPhase !== currentPhase) {
+      boundaryChanged = true;
+      break;
+    }
+  }
+  return { state, remainingMs, simulatedMs, boundaryChanged };
 }
