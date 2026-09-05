@@ -357,6 +357,17 @@ for (const profile of profiles) {
           Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > 0.5,
         `${layout[i].label} overlaps ${layout[j].label} at ${viewport.width}x${viewport.height}`).toBe(false);
       }
+      if (profile.name === "Turret") {
+        const hint = controls.getByText("DRAG TO AIM · ARROW KEYS", { exact: true });
+        await expect(hint).toBeVisible();
+        const box = (await hint.boundingBox())!;
+        expect(box.y, "Visible turret aim instructions must not cover wave/kill counters or gameplay").toBeGreaterThanOrEqual(canvas.y + canvas.height);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+        expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+        const fire = layout.find((item) => item.label === "Fire")!.box;
+        expect(box.x + box.width, "Turret instructions must leave Fire unobstructed").toBeLessThanOrEqual(fire.x);
+      }
     };
     await assertClearGameImage();
     await page.setViewportSize({ width: 375, height: 667 });

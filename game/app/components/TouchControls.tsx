@@ -336,11 +336,7 @@ export default function TouchControls({ mode, onPress, onRelease, onAim }: Touch
             }}
             onBlur={() => releaseControlKeys("Aim turret")}
             onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
-          >
-            <span style={{ ...LABEL_STYLE, position: "absolute", left: "max(12px, env(safe-area-inset-left))", top: "max(12px, env(safe-area-inset-top))", padding: "5px 7px", background: "#021016b3", pointerEvents: "none" }}>
-              {pressed.has("Aim turret") ? "AIMING" : "DRAG TO AIM · ARROW KEYS"}
-            </span>
-          </button>
+          />
         </div>
       ) : (
         <div style={{ position: "absolute", left: "max(12px, env(safe-area-inset-left))", bottom: "max(12px, env(safe-area-inset-bottom))" }}>
@@ -365,6 +361,11 @@ export default function TouchControls({ mode, onPress, onRelease, onAim }: Touch
             {cells.map((item, index) => item ? renderButton(item, { fontSize: item.text.length > 2 ? 9 : 24 }) : <span key={`empty-${index}`} aria-hidden="true" />)}
           </div>
         </div>
+      )}
+      {mode === "turret" && (
+        <span style={{ ...LABEL_STYLE, position: "absolute", left: "max(12px, env(safe-area-inset-left))", bottom: "max(12px, env(safe-area-inset-bottom))", maxWidth: "calc(100% - 164px)", marginBottom: 0, pointerEvents: "none" }}>
+          {pressed.has("Aim turret") ? "AIMING" : "DRAG TO AIM · ARROW KEYS"}
+        </span>
       )}
       <div style={{ position: "absolute", right: "max(12px, env(safe-area-inset-right))", bottom: "max(12px, env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 8, width: 116 }}>
         {firstPerson && (
