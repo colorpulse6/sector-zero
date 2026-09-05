@@ -5,8 +5,8 @@
 - Branch: `codex/b3-navigation-focus`
 - Worktree: `/Users/nichalasbarnes/.config/superpowers/worktrees/sector-zero/b3-navigation-focus`
 - Accepted B2 base: `fdb0334836aeb863becab6b6e37adb40a4bb4f41`
-- Code checkpoint: `e6e394663d07ad9e57911bdcb57fcc265c1c1dc1`
-- Game tree: `1c20ca03d54287143ed50beb6e1f058aca66c5b8`
+- Code checkpoint: `09180a921d0ced3f462da2933e136842cde37ec7`
+- Game tree: `5147ef832ae9823d077f392b1c376270a0ca1f58`
 - Receipt: `docs/playtests/2026-07-19-navigation-focus.md`
 - Next package after accepted B3 closure: **C1 — Mission presentation and dialogue lifecycle**.
 
@@ -17,7 +17,7 @@ This is a local implementation checkpoint. Acceptance requires the matching post
 - Cockpit Armory, Crew, Codex, Bestiary and Pilot now hit-test the displayed rows, tabs and explicit actions. They reuse keyboard purchase/read/conversation/skill rules. Renderer and hit testing share geometry; pointer hover does not change keyboard selection. Mission Board keeps its existing canonical activation path.
 - Mouse and native touch share shell point activation. An arbitrary tap inside a subscreen no longer returns to the hub. Star Map contacts expand the actual world and launch the actual unlocked level; a visible cockpit-return button completes the pointer/touch round trip. Its frame loop uses current state and its own cancellation generation so a stale frame cannot overwrite a point selection.
 - A shared focus lifecycle captures the invoker before initial focus, contains both Tab directions and outside focus, consumes each screen's Escape policy, and restores connected invokers. StrictMode effect replay does not simulate a close. Covered surfaces suspend containment while retaining their controls.
-- Atlas initially focuses its selected contact; repeated arrows move selection and focus together without the detail heading taking focus. Close/Escape restores the Galaxy selector choice.
+- Atlas initially focuses its selected contact; repeated arrows move selection and focus together without the detail heading taking focus. Plotting a coordinate outside the contact list retains a fallback contact Tab stop without changing the route target on focus; arrows start from the focused contact. Close/Escape restores the Galaxy selector choice.
 - Region keeps source (`atlas`, `landing-pad`, `cockpit`) independent of action permission. Its labels and back controls identify the actual source. Atlas and Exit Menu stay mounted underneath Region so the true Region invoker survives.
 - Colonies has dialog semantics, primary-action initial focus and restoration to a real focusable cockpit Colonies hotspot. Exit Menu focuses Resume and returns to the exploration canvas. POI Outcome focuses its resolution button and explains why Escape cannot dismiss pending cargo.
 - Outcome/travel recovery owns focus above the other screens. The existing recovery regression now proves that a covered Resume is rejected as a focus target and leaves save/write observations unchanged before a deliberate Retry. Save, outcome, reward and return authority are unchanged.
@@ -31,14 +31,14 @@ Exact clean-code gates for the code identity above: **PASS**, Node **20.20.1**.
 | TypeScript | PASS |
 | Engine | 486 passed |
 | Colony / sprites | 290 / 4 passed |
-| Complete Chromium matrix | 80 passed, zero retries: 20 keyboard/fixture, 30 pointer, 30 touch |
-| Exact-SHA browser receipts | 76 verified; four fixture rows correctly emit none |
+| Complete Chromium matrix | 81 passed, zero retries: 21 keyboard/fixture, 30 pointer, 30 touch |
+| Exact-SHA browser receipts | 77 verified; four fixture rows correctly emit none |
 | Production exports | Empty base path and `/sector-zero` both PASS |
-| Ownership and cleanliness | 23 cumulative code files within conductor allocation; clean before/after exact gates |
+| Ownership and cleanliness | 26 cumulative package files within conductor allocation; clean before/after exact gates |
 
-The 17 B3 browser rows cover all five canvas subscreens, Star Map launch/return, the five focus policies, all three Region sources, Colony descent/Resume/takeoff, restored POI delivery and recovery above Region. Existing A3/B1/B2 routes remain in the complete matrix.
+The 18 B3 browser rows cover all five canvas subscreens, Star Map launch/return, the five focus policies, all three Region sources, Colony descent/Resume/takeoff, restored POI delivery and recovery above Region. Existing A3/B1/B2 routes remain in the complete matrix.
 
-Evidence root: `/Users/nichalasbarnes/.codex/visualizations/2026/09/05/01a07127-3e6a-7ae1-b54b-436d683ef1c1/sector-zero-b3-evidence`. Exact gates and receipt identities are in `entry-code-gates.json`, `entry-code-receipt-verification.json`, followed by `final-evidence-gates.json` and `final-evidence-receipt-verification.json`. The final manifest owns the evidence-SHA and sequential-review verdict.
+Evidence root: `/Users/nichalasbarnes/.codex/visualizations/2026/09/05/01a07127-3e6a-7ae1-b54b-436d683ef1c1/sector-zero-b3-evidence`. Exact gates and receipt identities are in `coordinate-code-gates.json`, `coordinate-code-receipt-verification.json`, followed by `coordinate-evidence-gates.json` and `coordinate-evidence-receipt-verification.json`. The final manifest owns the evidence-SHA and sequential-review verdict.
 
 ## Retained development history
 
@@ -53,6 +53,7 @@ Evidence root: `/Users/nichalasbarnes/.codex/visualizations/2026/09/05/01a07127-
 - Intermediate code `14b212c` passed TypeScript, 780 units and 79/80 browser rows; `corrected-code-gates.json` remains FAIL and builds were not reached. Its keyboard repeat observation was interrupted by death: `keyboard-entry-diagnosis.json` captures eight idle frames at world anchor 356.9406 followed by spawn anchor 60 and the airborne spawn animation. The corrected route uses a fresh native Ground entry and short Left hold; strict idle/world checks still detect a leaked hold at the boundary, fresh same-key Left must resume its running pose, and fresh Right must move more than one world pixel. No forced travel into combat remains. This is route isolation, with the shipped simulation, health and collision rules unchanged.
 - A bounded focus audit found that founding the first Colony removed the focused Found button without focusing Descend. The added native Enter route reproduced the missing Descend focus before correction; the shared hook now keeps focus contained across that content replacement. The exact correction and focused evidence are recorded in `founding-focus-*` artifacts.
 - Evidence `66d71b0` was superseded during verification after the specification reviewer found two newly committed EOF blank lines. Its interrupted `evidence-gates.json` is retained as FAIL; it is not an accepted gate. The replacement evidence removes the whitespace and the external runner now checks the cumulative base-to-evidence diff as well as worktree cleanliness. `superseded-66d71b0-spec-note.md` records that preliminary finding; fresh final reviews must identify the replacement evidence SHA.
+- Evidence `8b5adac` passed all exact automated gates and specification review but was rejected by quality review: plotting `123,456` removed all Atlas contacts from the Tab order. The native production-export reproduction and rejected reviews remain in `quality-atlas-coordinate-repro.*` and `superseded-8b5adac-*`. `coordinate-tab-red.log` reproduced the missing Tab entry; after adding the fallback, `coordinate-arrow-red.log` separately reproduced Down using the wrong origin. Code `09180a9` preserves the plotted route on focus and uses the focused contact for arrow selection. `coordinate-green.log` passes all 18 focused navigation rows. The replacement requires new exact code/evidence gates and both fresh sequential reviews; old verdicts are not reused.
 - Three implementation workers stopped at the account usage limit. The conductor completed and verified the saved work. This history does not substitute for the required fresh final reviews.
 
 ## Scope and proof limits
