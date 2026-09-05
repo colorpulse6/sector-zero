@@ -15,6 +15,7 @@ import { attachBrowserReceipt } from "./helpers/receipt";
 import {
   installSaveFixture,
   readInstalledSave,
+  readInstalledSaveBytes,
   readLegacyDomainBytes,
   SAVE_STORAGE_KEY,
 } from "./helpers/saveFixture";
@@ -63,7 +64,7 @@ async function launchAndPauseAshfallOperation(page: Page): Promise<void> {
   await expect.poll(() => readCanvasTexts(page)).toContain("ASHFALL SORTIE");
   await page.keyboard.press("Enter");
   await expect.poll(() => readCanvasTexts(page)).toContain("SURVIVE");
-  await page.getByRole("button", { name: "⏸" }).click();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.getByRole("heading", { name: "PAUSED" })).toBeVisible();
   await expect(page.getByRole("button", { name: "RETURN TO ATLAS" })).toBeVisible();
 }
@@ -149,6 +150,73 @@ test("@pointer Galaxy operation retreat retries one outcome and acknowledges onl
     expectedOutcome: "A failed retreat write retries the identical outcome, mounts the exact Atlas return, and keeps the receipt pending until acknowledgement succeeds.",
     observedOutcome: `Commit retry and mounted acknowledgement used ${pending.outcomeId}; the receipt closed only after RETRY OUTCOME. Legacy bytes were unchanged through retreat, retries, and reload.`,
   });
+});
+
+test("@touch held Resume release preserves the failed Galaxy retreat lock with hybrid pointer input", async ({
+  page,
+}, testInfo: TestInfo) => {
+  await observeCanvasText(page);
+  await installSaveFixture(page, galaxyWithLegacyProgression(galaxyAtAshfall));
+  await installOutcomeWriteProbe(page, { commit: 1 });
+  // Pointer navigation and Enter establish the paused operation. The regression
+  // itself combines a native touch held on Resume with a pointer retreat.
+  await launchAndPauseAshfallOperation(page);
+  const baselineBytes = await readInstalledSaveBytes(page);
+  const baselinePending = pendingReceipt(await readInstalledSave(page));
+  expect(baselineBytes).not.toBeNull();
+  expect(baselinePending).toBeUndefined();
+
+  const resume = page.getByRole("button", { name: "RESUME", exact: true });
+  const bounds = await resume.boundingBox();
+  if (!bounds) throw new Error("Paused Resume button has no touch target");
+  const touch = await page.context().newCDPSession(page);
+  try {
+    // Start before the failure overlay exists so the native touchend retains
+    // Resume as its origin target even after the overlay is mounted.
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{
+        id: 1,
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+        radiusX: 2,
+        radiusY: 2,
+        force: 1,
+      }],
+    });
+    await page.getByRole("button", { name: "RETURN TO ATLAS" }).click();
+    const status = page.getByRole("alert", { name: "Outcome persistence status" });
+    await expect(status).toContainText("OUTCOME SAVE FAILED · RETRY");
+    await expect(page.getByRole("heading", { name: "PAUSED" })).toBeVisible();
+    const failedWrites = await readOutcomeWriteObservations(page);
+    const failedCommits = failedWrites.filter((entry) => entry.kind === "commit");
+    expect(failedCommits).toHaveLength(1);
+    expect(failedCommits[0]).toMatchObject({ failed: true });
+    expect(failedCommits[0].outcomeId).toMatch(/:retreat$/);
+    expect(await readInstalledSaveBytes(page)).toBe(baselineBytes);
+    expect(pendingReceipt(await readInstalledSave(page))).toEqual(baselinePending);
+
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+    await expect(page.getByRole("heading", { name: "PAUSED" })).toBeVisible();
+    await expect(status).toContainText("OUTCOME SAVE FAILED · RETRY");
+    expect(await readInstalledSaveBytes(page)).toBe(baselineBytes);
+    expect(pendingReceipt(await readInstalledSave(page))).toEqual(baselinePending);
+    expect(await readOutcomeWriteObservations(page)).toEqual(failedWrites);
+
+    await attachBrowserReceipt(testInfo, {
+      route: "Galaxy Atlas -> Ashfall operation -> pause -> native Resume hold -> pointer retreat failure -> native Resume release",
+      inputMethod: "touch",
+      saveFixture: "galaxyWithLegacyProgression(galaxyAtAshfall)",
+      expectedOutcome: "A native Resume release cannot bypass the navigation lock after a failed retreat commit; the paused state, error, save bytes, and pending receipt remain unchanged.",
+      observedOutcome: "Hybrid setup used pointer navigation and Enter, followed by native CDP touchStart on Resume, a mouse click on RETURN TO ATLAS, and native touchEnd on the original Resume target. PAUSED and the failure alert remained visible; save bytes, pending receipt, and write observations were unchanged after release.",
+    });
+  } finally {
+    await touch.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] }).catch(() => undefined);
+    await touch.detach().catch(() => undefined);
+  }
 });
 
 test("@pointer stale Galaxy operation retreat preserves the newer save and reloads it", async ({
@@ -312,7 +380,7 @@ test("@pointer Legacy planet TRY AGAIN remounts gameplay with a new owned termin
     });
     throw error;
   });
-  await page.getByRole("button", { name: "⏸" }).click();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.getByRole("heading", { name: "PAUSED" })).toBeVisible();
   await page.getByRole("button", { name: "RETURN TO HUB" }).click();
   await expect(page.getByRole("heading", { name: "PAUSED" })).toBeHidden();

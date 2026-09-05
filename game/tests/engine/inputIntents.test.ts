@@ -13,7 +13,12 @@ import {
   type KeyboardInput,
 } from "../../app/components/engine/inputIntents";
 import { createGameState, updateGame } from "../../app/components/engine/gameEngine";
-import { AudioEvent, GameScreen, type GameMode, type GameState, type Keys } from "../../app/components/engine/types";
+import { createTurretState, updateTurretEngine } from "../../app/components/engine/turretEngine";
+import { updateGroundEngine } from "../../app/components/engine/groundEngine";
+import { updateBoardingEngine } from "../../app/components/engine/boardingEngine";
+import { drawBoardingGame } from "../../app/components/engine/boardingRenderer";
+import { loadSprite, SPRITES } from "../../app/components/engine/sprites";
+import { AudioEvent, BULLET_SPEED, GameScreen, type GameMode, type GameState, type Keys } from "../../app/components/engine/types";
 
 const modes: GameMode[] = [
   "shooter", "ground-run", "boarding", "first-person", "turret",
@@ -337,5 +342,262 @@ test("catch-up rejects invalid or non-progressing time values before calling upd
     assert.throws(() => advanceInputFrame(tickState(), availableMs, stepMs, () => {
       throw new Error("invalid timing reached update");
     }), RangeError, `${availableMs}, ${stepMs}`);
+  }
+});
+
+function turretInputGame(): GameState {
+  const state = createGameState(1, 1);
+  state.screen = GameScreen.PLAYING;
+  state.currentMode = "turret";
+  state.turretState = createTurretState();
+  return state;
+}
+
+test("turret: explicit normalized aim owns the crosshair and the fired bolt", () => {
+  const state = turretInputGame();
+  const next = updateGame(state, { ...emptyKeys, right: true, up: true, shoot: true }, null, null, 16.67, { x: 0.25, y: 0.75 });
+  assert.equal(next.turretState!.crosshairX, 0.25);
+  assert.equal(next.turretState!.crosshairY, 0.75);
+  assert.equal(next.turretState!.bolts.length, 1);
+  assert.equal(next.turretState!.bolts[0].targetX, 0.25);
+  assert.equal(next.turretState!.bolts[0].targetY, 0.75);
+});
+
+test("turret: held normalized aim stays fixed across catch-up ticks until released", () => {
+  const keys = { ...emptyKeys, right: true };
+  const frame = advanceInputFrame(turretInputGame(), 30, 10, (state) =>
+    updateGame(state, keys, null, null, 10, { x: 0.3, y: 0.7 }));
+  assert.equal(frame.state.frameCount, 3);
+  assert.equal(frame.state.turretState!.crosshairX, 0.3);
+  assert.equal(frame.state.turretState!.crosshairY, 0.7);
+  const released = updateGame(frame.state, keys, null, null, 16.67, null);
+  assert.ok(Math.abs(released.turretState!.crosshairX - 0.312) < 1e-12);
+  assert.equal(released.turretState!.crosshairY, 0.7);
+});
+
+test("turret: finite aim clamps to the playable crosshair range", () => {
+  for (const [aim, expected] of [
+    [{ x: -2, y: 3 }, { x: 0.05, y: 0.95 }],
+    [{ x: 1, y: 0 }, { x: 0.95, y: 0.05 }],
+  ]) {
+    const state = turretInputGame();
+    updateTurretEngine(state, { ...emptyKeys, left: true, down: true }, aim);
+    assert.equal(state.turretState!.crosshairX, expected.x);
+    assert.equal(state.turretState!.crosshairY, expected.y);
+  }
+});
+
+test("turret: absent or non-finite aim preserves normalized keyboard movement", () => {
+  for (const aim of [null, { x: NaN, y: 0.2 }, { x: 0.2, y: NaN },
+    { x: Infinity, y: 0.2 }, { x: 0.2, y: -Infinity }]) {
+    const state = turretInputGame();
+    updateTurretEngine(state, { ...emptyKeys, left: true, down: true }, aim);
+    assert.ok(Math.abs(state.turretState!.crosshairX - (0.5 - 0.012 * Math.SQRT1_2)) < 1e-12);
+    assert.ok(Math.abs(state.turretState!.crosshairY - (0.5 + 0.012 * Math.SQRT1_2)) < 1e-12);
+  }
+});
+
+test("turret: paused gameplay does not consume explicit aim or fire", () => {
+  const state = turretInputGame();
+  state.screen = GameScreen.PAUSED;
+  const next = updateGame(state, { ...emptyKeys, shoot: true }, null, null, 16.67, { x: 0.2, y: 0.8 });
+  assert.equal(next, state);
+  assert.equal(next.turretState!.crosshairX, 0.5);
+  assert.equal(next.turretState!.crosshairY, 0.5);
+  assert.equal(next.turretState!.bolts.length, 0);
+});
+
+function groundInputGame(): GameState {
+  const state = createGameState(1, 1);
+  state.screen = GameScreen.PLAYING;
+  state.currentMode = "ground-run";
+  state.player = { ...state.player, x: 128, y: 128, fireTimer: 0 };
+  state.groundState = {
+    tileMap: {
+      width: 20, height: 12, tileSize: 32,
+      tiles: Array.from({ length: 12 }, (_, row) => Array.from({ length: 20 }, () => row === 11 ? "solid" : "empty")),
+    },
+    cameraX: 0, groundEnemies: [], groundBullets: [],
+    playerOnGround: false, playerVY: 0, playerFacingRight: true, goalReached: false,
+  };
+  return state;
+}
+
+const groundAimCases: [string, Partial<Keys>, number, number][] = [
+  ["up", { up: true }, 0, -1],
+  ["down", { down: true }, 0, 1],
+  ["up-left", { up: true, left: true }, -Math.SQRT1_2, -Math.SQRT1_2],
+  ["up-right", { up: true, right: true }, Math.SQRT1_2, -Math.SQRT1_2],
+  ["down-left", { down: true, left: true }, -Math.SQRT1_2, Math.SQRT1_2],
+  ["down-right", { down: true, right: true }, Math.SQRT1_2, Math.SQRT1_2],
+];
+for (const [direction, held, x, y] of groundAimCases) {
+  test(`ground: ${direction} fires a projectile along the normalized aim vector`, () => {
+    const state = groundInputGame();
+    updateGroundEngine(state, { ...emptyKeys, ...held, shoot: true });
+    assert.equal(state.groundState!.groundBullets.length, 1);
+    const bullet = state.groundState!.groundBullets[0];
+    assert.ok(Math.abs(bullet.vx - x * BULLET_SPEED) < 1e-12, `vx=${bullet.vx}`);
+    assert.ok(Math.abs(bullet.vy - y * BULLET_SPEED) < 1e-12, `vy=${bullet.vy}`);
+    assert.ok(Math.abs(Math.hypot(bullet.vx, bullet.vy) - BULLET_SPEED) < 1e-12);
+    assert.equal(state.groundState!.playerVY, 0.5, "aim must not trigger jump");
+  });
+}
+
+for (const facingRight of [false, true]) {
+  test(`ground: opposed vertical inputs fire horizontally while facing ${facingRight ? "right" : "left"}`, () => {
+    const state = groundInputGame();
+    state.groundState!.playerFacingRight = facingRight;
+    updateGroundEngine(state, { ...emptyKeys, up: true, down: true, shoot: true });
+    const bullet = state.groundState!.groundBullets[0];
+    assert.ok(bullet);
+    assert.equal(bullet.vx, facingRight ? BULLET_SPEED : -BULLET_SPEED);
+    assert.equal(bullet.vy, 0);
+  });
+}
+
+test("ground: jump and fire remain independent held actions", () => {
+  for (const action of ["jump", "shoot"] as const) {
+    const state = groundInputGame();
+    state.player.y = 11 * 32 - 40;
+    state.groundState!.playerOnGround = true;
+    const initialY = state.player.y;
+    updateGroundEngine(state, { ...emptyKeys, [action]: true });
+    if (action === "jump") {
+      assert.ok(state.player.y < initialY);
+      assert.ok(state.groundState!.playerVY < 0);
+      assert.equal(state.groundState!.groundBullets.length, 0);
+    } else {
+      assert.equal(state.player.y, initialY);
+      assert.equal(state.groundState!.playerVY, 0);
+      assert.equal(state.groundState!.groundBullets.length, 1);
+    }
+  }
+});
+
+function boardingInputGame(): GameState {
+  const state = createGameState(1, 1);
+  state.screen = GameScreen.PLAYING;
+  state.currentMode = "boarding";
+  state.player = { ...state.player, x: 160, y: 160, fireTimer: 0, invincibleTimer: 0 };
+  state.boardingState = {
+    map: {
+      width: 30, height: 30, tileSize: 32,
+      tiles: Array.from({ length: 30 }, () => Array.from({ length: 30 }, () => "floor")),
+    },
+    cameraX: 0, cameraY: 0, enemies: [], bullets: [], playerFacing: "right",
+    dashTimer: 0, dashCooldown: 0, goalReached: false,
+  };
+  return state;
+}
+
+const boardingAimCases: [string, Partial<Keys>, number, number][] = [
+  ["up", { up: true }, 0, -1],
+  ["down", { down: true }, 0, 1],
+  ["left", { left: true }, -1, 0],
+  ["right", { right: true }, 1, 0],
+  ...groundAimCases.filter(([direction]) => direction.includes("-")),
+];
+for (const [direction, held, x, y] of boardingAimCases) {
+  test(`boarding: ${direction} movement and retained fire share a normalized direction`, () => {
+    const state = boardingInputGame();
+    const bs = state.boardingState!;
+    updateBoardingEngine(state, { ...emptyKeys, ...held, shoot: true });
+    assert.ok(Math.abs(state.player.x - 160 - x * 2.5) < 1e-12);
+    assert.ok(Math.abs(state.player.y - 160 - y * 2.5) < 1e-12);
+    assert.equal(bs.bullets.length, 1);
+    const first = bs.bullets[0];
+    assert.ok(Math.abs(first.vx - x * 7) < 1e-12, `vx=${first.vx}`);
+    assert.ok(Math.abs(first.vy - y * 7) < 1e-12, `vy=${first.vy}`);
+    assert.ok(Math.abs(Math.hypot(first.vx, first.vy) - 7) < 1e-12);
+    assert.equal(bs.dashTimer, 0);
+
+    const stoppedAt = { x: state.player.x, y: state.player.y };
+    state.player.fireTimer = 0;
+    bs.bullets = [];
+    updateBoardingEngine(state, { ...emptyKeys, shoot: true });
+    assert.deepEqual({ x: state.player.x, y: state.player.y }, stoppedAt);
+    assert.equal(bs.bullets.length, 1);
+    assert.equal(bs.bullets[0].vx, first.vx, "release must retain aim");
+    assert.equal(bs.bullets[0].vy, first.vy, "release must retain aim");
+  });
+}
+
+test("boarding: movement, fire, and dash remain separate actions", () => {
+  const moving = boardingInputGame();
+  updateBoardingEngine(moving, { ...emptyKeys, right: true });
+  assert.equal(moving.player.x, 162.5);
+  assert.equal(moving.boardingState!.bullets.length, 0);
+  assert.equal(moving.boardingState!.dashTimer, 0);
+
+  const firing = boardingInputGame();
+  updateBoardingEngine(firing, { ...emptyKeys, shoot: true });
+  assert.equal(firing.player.x, 160);
+  assert.equal(firing.player.y, 160);
+  assert.equal(firing.boardingState!.bullets.length, 1);
+  assert.equal(firing.boardingState!.dashTimer, 0);
+
+  const dashing = boardingInputGame();
+  updateBoardingEngine(dashing, { ...emptyKeys, jump: true });
+  assert.equal(dashing.player.x, 160, "stationary dash must not introduce propulsion");
+  assert.equal(dashing.player.y, 160);
+  assert.equal(dashing.boardingState!.dashTimer, 7);
+  assert.equal(dashing.boardingState!.bullets.length, 0);
+  updateBoardingEngine(dashing, { ...emptyKeys, right: true });
+  assert.equal(dashing.player.x, 168, "active dash retains its existing movement speed");
+});
+
+test("boarding: opposed movement inputs retain the previous diagonal aim", () => {
+  const state = boardingInputGame();
+  updateBoardingEngine(state, { ...emptyKeys, up: true, left: true });
+  const stoppedAt = { x: state.player.x, y: state.player.y };
+  updateBoardingEngine(state, { ...emptyKeys, up: true, down: true, left: true, right: true, shoot: true });
+  assert.deepEqual({ x: state.player.x, y: state.player.y }, stoppedAt);
+  assert.ok(Math.abs(state.boardingState!.bullets[0].vx + 7 * Math.SQRT1_2) < 1e-12);
+  assert.ok(Math.abs(state.boardingState!.bullets[0].vy + 7 * Math.SQRT1_2) < 1e-12);
+});
+
+test("boarding: loaded cardinal art keeps a visible diagonal aim marker and matching dash trail", async () => {
+  const originalImage = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  class TestImage {
+    width = 36;
+    height = 36;
+    onload: (() => void) | null = null;
+    set src(_value: string) { queueMicrotask(() => this.onload?.()); }
+  }
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value: TestImage });
+  try {
+    const sprite = await loadSprite(SPRITES.BOARDING_PLAYER_RIGHT);
+    const state = boardingInputGame();
+    updateBoardingEngine(state, { ...emptyKeys, up: true, right: true });
+    const bs = state.boardingState!;
+    bs.dashTimer = 4;
+    const center = { x: state.player.x + 12 - bs.cameraX, y: state.player.y + 12 - bs.cameraY };
+    const arcs: number[][] = [];
+    const images: { args: unknown[]; alpha: unknown }[] = [];
+    const properties: Record<PropertyKey, unknown> = { globalAlpha: 1 };
+    const gradient = { addColorStop() {} };
+    const methods: Record<PropertyKey, unknown> = {
+      createLinearGradient: () => gradient, createRadialGradient: () => gradient,
+      measureText: (value: unknown) => ({ width: String(value).length * 7 }),
+      arc: (...args: number[]) => arcs.push(args),
+      drawImage: (...args: unknown[]) => images.push({ args, alpha: properties.globalAlpha }),
+    };
+    const ctx = new Proxy(methods, {
+      get(target, property) { return target[property] ?? properties[property] ?? (() => {}); },
+      set(_target, property, value) { properties[property] = value; return true; },
+    }) as unknown as CanvasRenderingContext2D;
+    drawBoardingGame(ctx, state);
+    assert.ok(arcs.some(([x, y, radius]) => radius === 3 &&
+      Math.abs(x - center.x - 20 * Math.SQRT1_2) < 1e-12 &&
+      Math.abs(y - center.y + 20 * Math.SQRT1_2) < 1e-12),
+    "a visible marker must indicate actual diagonal fire even when a cardinal sprite loads");
+    const trail = images.find(({ args, alpha }) => args[0] === sprite && alpha === 0.3);
+    assert.ok(trail, "the existing cardinal sprite must still draw the dash trail");
+    assert.ok(Math.abs(Number(trail.args[1]) - (center.x - 18 - 18 * Math.SQRT1_2)) < 1e-12);
+    assert.ok(Math.abs(Number(trail.args[2]) - (center.y - 18 + 18 * Math.SQRT1_2)) < 1e-12);
+  } finally {
+    if (originalImage) Object.defineProperty(globalThis, "Image", originalImage);
+    else Reflect.deleteProperty(globalThis, "Image");
   }
 });

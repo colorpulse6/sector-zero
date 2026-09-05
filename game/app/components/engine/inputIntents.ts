@@ -24,6 +24,17 @@ export type InputIntent =
 
 export type HeldInputState = Readonly<Record<string, InputIntent>>;
 
+export function getTouchControlHint(mode: GameMode): string {
+  switch (mode) {
+    case "ground-run": return "Ground: Move / aim pad · Fire · Jump";
+    case "boarding": return "Boarding: 8-way move pad · Fire · Dash";
+    case "first-person": return "First-person: Move / strafe · Look · Fire / interact";
+    case "colony-exploration": return "Colony: Move / strafe · Look · Interact";
+    case "turret": return "Turret: Aim area · Fire";
+    default: return "Shooter: Move pad · Fire · Bomb";
+  }
+}
+
 type KeyBindings = Readonly<Partial<Record<string, InputIntent>>>;
 
 const SHOOTER_BINDINGS: KeyBindings = {

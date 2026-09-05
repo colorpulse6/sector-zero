@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type TouchEvent as ReactTouchEvent } from "react";
 import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
@@ -10,6 +10,7 @@ import {
   type AppliedOutcomeReturnRecord,
   type GameState,
   type Keys,
+  type NormalizedAim,
   type OutcomeAttempt,
   type OutcomeTerminalKind,
   type SerializedOutcomeEnvelope,
@@ -21,6 +22,7 @@ import {
   pressInputSource, releaseInputSource, toEngineKeys,
   type HeldInputState, type InputContext,
 } from "./engine/inputIntents";
+import TouchControls, { getTouchControlHint } from "./TouchControls";
 import { getPlanetDef } from "./engine/planets";
 import type { PlanetId } from "./engine/types";
 import { drawGame, drawStarMap, drawIntroCrawl, INTRO_TOTAL_FRAMES } from "./engine/renderer";
@@ -344,21 +346,36 @@ export default function Game() {
   const keysRef = useRef<Keys>(toEngineKeys(heldInputRef.current));
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
   const touchActiveRef = useRef(false);
-  const mouseRef = useRef<{ x: number; y: number; down: boolean }>({ x: 0.5, y: 0.5, down: false });
+  const canvasTouchIdRef = useRef<number | null>(null);
+  const turretAimRef = useRef<{ position: NormalizedAim; held: boolean } | null>(null);
   const commitHeldInput = useCallback((next: HeldInputState) => {
     heldInputRef.current = next;
     keysRef.current = toEngineKeys(next);
   }, []);
   const clearHeldInput = useCallback(() => {
     commitHeldInput(createEmptyInputState());
-    mouseRef.current.down = false;
+    turretAimRef.current = null;
     touchPosRef.current = null;
     touchActiveRef.current = false;
+    canvasTouchIdRef.current = null;
   }, [commitHeldInput]);
-  // Last mouse position already applied to the turret crosshair — lets keyboard
-  // aiming coexist with the mouse (an idle mouse must not stomp arrow-key aim
-  // back to its own position every frame).
-  const lastTurretMouseRef = useRef<{ x: number; y: number } | null>(null);
+  const handlePauseTouchEnd = useCallback((event: ReactTouchEvent<HTMLButtonElement>) => {
+    // A third finger does not produce a compatibility click while movement and
+    // fire remain held. Handle its release directly and suppress a duplicate click.
+    event.preventDefault();
+    // The touch can begin before a save-failure overlay mounts. Its eventual
+    // release must respect the same lock as keyboard and pointer activation.
+    if (outcomeCommitIssue !== null || travelCommitIssue !== null ||
+      (pendingOutcomeReturn !== null && endingPhase === "off")) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const releasedInside = Array.from(event.changedTouches).some((touch) =>
+      touch.clientX >= rect.left && touch.clientX <= rect.right &&
+      touch.clientY >= rect.top && touch.clientY <= rect.bottom);
+    if (releasedInside) {
+      clearHeldInput();
+      setGameState((prev) => prev ? togglePause(prev) : null);
+    }
+  }, [clearHeldInput, outcomeCommitIssue, travelCommitIssue, pendingOutcomeReturn, endingPhase]);
   const animationFrameRef = useRef<number | null>(null);
   const cockpitRafRef = useRef<number | null>(null);
   const cockpitLoopGenerationRef = useRef(0);
@@ -1927,19 +1944,23 @@ export default function Game() {
       }
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      // Release the captured physical source, regardless of current focus/mode.
-      commitHeldInput(releaseInputSource(heldInputRef.current, keyboardInputSource(e)));
-    };
-
     window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
     };
   }, [inputContext, commitHeldInput, clearHeldInput, showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, retreatActiveRoute, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi, submitGameOutcome, outcomeCommitIssue, travelCommitIssue, pendingOutcomeReturn]);
+
+  // Release ownership independently of frame renders. Another input listener
+  // may trigger a React update during keyup; replacing this listener during that
+  // dispatch can otherwise miss the release and leave its source held.
+  useEffect(() => {
+    const handleKeyUp = (event: KeyboardEvent) => {
+      commitHeldInput(releaseInputSource(heldInputRef.current, keyboardInputSource(event)));
+    };
+    window.addEventListener("keyup", handleKeyUp);
+    return () => window.removeEventListener("keyup", handleKeyUp);
+  }, [commitHeldInput]);
 
   // Grade-scene menu detection: whenever gameplay isn't the active surface
   // (start screen, intro, cockpit, star map, ending) the grade preset eases
@@ -2001,25 +2022,25 @@ export default function Game() {
       ), "touch:secondary"));
       touchPosRef.current = null;
       touchActiveRef.current = false;
+      canvasTouchIdRef.current = null;
     };
-    const touchAllowed = inputContext.surface !== "blocked" && inputContext.surface !== "paused";
+    const positionalTouch = inputContext.surface === "gameplay" &&
+      ["shooter", "base-defense", "mech-duel"].includes(inputContext.mode);
+    const touchAllowed = inputContext.surface === "ui" || positionalTouch;
     const syncTouch = (e: TouchEvent) => {
-      const touch = e.touches[0];
+      // A finger on a DOM control must never steal the canvas drag or bomb.
+      const touch = Array.from(e.targetTouches).find((candidate) => candidate.identifier === canvasTouchIdRef.current);
       if (!touch) { releaseTouch(); return; }
-      touchPosRef.current = getCanvasPos(touch.clientX, touch.clientY);
-      let next = heldInputRef.current;
-      if (inputContext.surface === "gameplay" || showMap) {
-        next = pressInputSource(next, "touch:primary", showMap ? "activate" : "primary");
-        // Existing two-finger bomb gesture; visible controls belong to B2.
-        next = e.touches.length >= 2 && inputContext.surface === "gameplay"
-          ? pressInputSource(next, "touch:secondary", "secondary")
-          : releaseInputSource(next, "touch:secondary");
+      touchPosRef.current = positionalTouch ? getCanvasPos(touch.clientX, touch.clientY) : null;
+      if (showMap) {
+        commitHeldInput(pressInputSource(heldInputRef.current, "touch:primary", "activate"));
       }
-      commitHeldInput(next);
     };
     const handleTouchStart = (e: TouchEvent) => {
-      if (!touchAllowed || e.touches.length === 0) return;
+      if (!touchAllowed || e.changedTouches.length === 0) return;
       e.preventDefault();
+      if (touchActiveRef.current) return;
+      canvasTouchIdRef.current = e.changedTouches[0].identifier;
       touchActiveRef.current = true;
       syncTouch(e);
     };
@@ -2033,7 +2054,10 @@ export default function Game() {
     const handleTouchEnd = (e: TouchEvent) => {
       e.preventDefault();
       const wasActive = touchActiveRef.current;
-      if (touchAllowed && wasActive && e.touches.length > 0) { syncTouch(e); return; }
+      if (touchAllowed && wasActive && Array.from(e.targetTouches).some((touch) => touch.identifier === canvasTouchIdRef.current)) {
+        syncTouch(e);
+        return;
+      }
       releaseTouch();
       if (!touchAllowed || !wasActive) return;
 
@@ -2340,32 +2364,12 @@ export default function Game() {
       lastFrameTsRef.current = now;
       simAccumulatorRef.current += rawDt;
 
-      // Feed mouse position into turret crosshair — but only when the mouse
-      // actually moved, so keyboard aim (arrow keys) isn't snapped back to an
-      // idle mouse's position every frame.
-      let turretMouseFire = false;
-      if (gameState?.currentMode === "turret" && gameState.turretState) {
-        const m = mouseRef.current;
-        const last = lastTurretMouseRef.current;
-        if (!last || last.x !== m.x || last.y !== m.y) {
-          gameState.turretState.crosshairX = Math.max(0.05, Math.min(0.95, m.x));
-          gameState.turretState.crosshairY = Math.max(0.05, Math.min(0.95, m.y));
-          lastTurretMouseRef.current = { x: m.x, y: m.y };
-        }
-        // Held mouse button fires this frame only — never latch keysRef.shoot
-        // (the old latch kept auto-firing after the button was released until
-        // an unrelated Z/Shift keyup happened to clear it).
-        turretMouseFire = m.down;
-      }
-
       // In colony-exploration mode, suppress input when exit menu is open (DOM handles it)
       const effectiveKeys = (gameState.currentMode === "colony-exploration" && (exitMenuOpen || regionMapSurface))
         ? { left: false, right: false, up: false, down: false,
             strafeLeft: false, strafeRight: false,
             shoot: false, bomb: false, jump: false }
-        : turretMouseFire && !keysRef.current.shoot
-          ? { ...keysRef.current, shoot: true }
-          : keysRef.current;
+        : keysRef.current;
 
       // End catch-up at an input boundary so later ticks cannot reuse keys
       // captured on the previous surface. Retain their time for the next frame.
@@ -2375,8 +2379,11 @@ export default function Game() {
           effectiveKeys,
           touchPosRef.current?.x ?? null,
           touchPosRef.current?.y ?? null,
-          STEP_MS
+          STEP_MS,
+          turretAimRef.current?.position ?? null
         );
+        // Hover aims once; a held pointer owns aim until its explicit release.
+        if (turretAimRef.current && !turretAimRef.current.held) turretAimRef.current = null;
         // Play audio per tick — catch-up ticks each carry their own events.
         for (const event of next.audioEvents) {
           audioRef.current?.play(event);
@@ -2450,7 +2457,9 @@ export default function Game() {
       setGameState(newState);
       drawGame(ctx, newState);
 
-      animationFrameRef.current = requestAnimationFrame(gameLoop);
+      // The state commit reruns this effect and schedules the next frame with
+      // the new game/scene. Scheduling this closure too can race that effect,
+      // leak an older loop, and overwrite an interior with its former exterior.
     };
 
     animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -2655,26 +2664,6 @@ export default function Game() {
             objectFit: "contain",
             cursor: gameState?.currentMode === "turret" ? "none" : "default",
           }}
-          onMouseMove={(e) => {
-            if (showGalaxyAtlas) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const scaleX = CANVAS_WIDTH / rect.width;
-            const scaleY = CANVAS_HEIGHT / rect.height;
-            mouseRef.current.x = (e.clientX - rect.left) * scaleX / CANVAS_WIDTH;
-            mouseRef.current.y = (e.clientY - rect.top) * scaleY / CANVAS_HEIGHT;
-          }}
-          onMouseDown={(e) => {
-            if (inputContext.surface !== "gameplay") return;
-            if (e.button === 0) mouseRef.current.down = true;
-          }}
-          onMouseUp={(e) => {
-            if (showGalaxyAtlas) return;
-            if (e.button === 0) mouseRef.current.down = false;
-          }}
-          onMouseLeave={() => {
-            if (showGalaxyAtlas) return;
-            mouseRef.current.down = false;
-          }}
           onClick={(e) => {
             if (showGalaxyAtlas) return;
             const rect = e.currentTarget.getBoundingClientRect();
@@ -2775,6 +2764,28 @@ export default function Game() {
             pointerEvents: "none",
           }}
         />
+        {inputContext.surface === "gameplay" && gameState && (
+          <TouchControls
+            key={[gameState.screen, gameState.currentMode, gameState.currentPhase,
+              gameState.currentWorld, gameState.currentLevel, gameState.launchContext?.launchId,
+              sceneStack?.colonyId, sceneStack?.current.kind, sceneStack?.current.buildingId].join(":")}
+            mode={inputContext.mode}
+            onPress={(source, intent) => commitHeldInput(pressInputSource(heldInputRef.current, source, intent))}
+            onRelease={(source) => commitHeldInput(releaseInputSource(heldInputRef.current, source))}
+            onAim={(position, held) => { turretAimRef.current = position ? { position, held } : null; }}
+          />
+        )}
+        {inputContext.surface === "ui" && !showCockpit && !showMap && !showStartScreen &&
+          !showIntro && endingPhase === "off" && gameState &&
+          (gameState.screen === GameScreen.BRIEFING || gameState.screen === GameScreen.PHASE_TRANSITION) && (
+          <div role="note" aria-label="Active control profile" style={{
+            position: "absolute", bottom: "max(12px, env(safe-area-inset-bottom))", left: 12, right: 12,
+            padding: "10px 12px", color: "#a5f3fc", background: "rgba(2, 12, 20, 0.94)",
+            border: "1px solid #155e75", fontSize: 12, lineHeight: 1.4, pointerEvents: "none",
+          }}>
+            {getTouchControlHint(gameState.currentMode)}
+          </div>
+        )}
       </div>
 
       {showGalaxyAtlas && (
@@ -2864,6 +2875,7 @@ export default function Game() {
             <div className="flex flex-col gap-3 items-center">
               <button
                 onClick={() => setGameState((prev) => (prev ? togglePause(prev) : null))}
+                onTouchEnd={handlePauseTouchEnd}
                 className="px-8 py-3 border-2 border-cyan-400 text-cyan-400 text-lg hover:bg-cyan-400 hover:text-black transition-colors tracking-wider w-56"
               >
                 RESUME
@@ -3177,7 +3189,9 @@ export default function Game() {
       {gameState && !showGalaxyAtlas && (gameState.screen === GameScreen.PLAYING || gameState.screen === GameScreen.BOSS_FIGHT || gameState.screen === GameScreen.BOSS_INTRO) && (
         <button
           onClick={() => setGameState((prev) => (prev ? togglePause(prev) : null))}
-          className="absolute top-2 left-2 w-10 h-10 flex items-center justify-center bg-black/50 border border-white/20 text-white/60 hover:text-white hover:bg-black/70 transition-colors z-10 rounded"
+          onTouchEnd={handlePauseTouchEnd}
+          className="absolute top-2 left-2 w-11 h-11 flex items-center justify-center bg-black/50 border border-white/20 text-white/60 hover:text-white hover:bg-black/70 transition-colors z-10 rounded"
+          aria-label="Pause"
           title="Pause (ESC)"
         >
           <span className="text-lg font-bold">⏸</span>

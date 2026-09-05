@@ -16,6 +16,7 @@ import { drawEnemies } from "./enemies";
 import { getSprite, SPRITES } from "./sprites";
 import { getLevelData, WORLD_NAMES } from "./levels";
 import { drawDashboard } from "./dashboard";
+import { getTouchControlHint } from "./inputIntents";
 import {
   type StarMapState,
   getWorldNodes,
@@ -705,10 +706,9 @@ function drawBriefing(
     ctx.fillText("PRESS ENTER OR TAP TO SKIP", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 100);
 
     // Controls hint
-    ctx.fillStyle = "#44444488";
+    ctx.fillStyle = "#888888";
     ctx.font = "10px monospace";
-    ctx.fillText("SPACE: FIRE   B: BOMB   \u2190\u2191\u2192\u2193: MOVE", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 130);
-    ctx.fillText("MOBILE: TOUCH MOVE  2-FINGER TAP: BOMB", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 145);
+    ctx.fillText(getTouchControlHint(state.currentMode), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 130, CANVAS_WIDTH - 40);
   }
 
   ctx.restore();

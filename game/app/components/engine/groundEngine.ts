@@ -106,8 +106,9 @@ function updatePlayerShooting(gs: GameState, ground: GroundState, keys: Keys, dt
 
   if (keys.up && !keys.down) aimY = -1;
   if (keys.down && !keys.up) aimY = 1;
-  // If ONLY up/down pressed (no horizontal), shoot straight up/down
-  if (keys.up && !keys.left && !keys.right) aimX = 0;
+  // A single vertical direction aims straight up/down while standing still.
+  // Opposed vertical inputs cancel and retain ordinary horizontal facing.
+  if (aimY !== 0 && !keys.left && !keys.right) aimX = 0;
 
   // Normalize diagonal speed
   const mag = Math.sqrt(aimX * aimX + aimY * aimY) || 1;

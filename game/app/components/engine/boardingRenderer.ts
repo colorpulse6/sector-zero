@@ -204,10 +204,10 @@ function drawPlayer(
   const drawSize = 36;
   const drawX = sx + 12 - drawSize / 2;
   const drawY = sy + 12 - drawSize / 2;
+  const dir = bs.playerAim ?? facingVec(bs.playerFacing);
 
   // Dash trail
   if (bs.dashTimer > 0) {
-    const dir = facingVec(bs.playerFacing);
     ctx.globalAlpha = 0.3;
     if (sprite) {
       ctx.drawImage(sprite, drawX - dir.x * 18, drawY - dir.y * 18, drawSize, drawSize);
@@ -223,12 +223,13 @@ function drawPlayer(
     ctx.beginPath();
     ctx.arc(sx + 12, sy + 12, 12, 0, Math.PI * 2);
     ctx.fill();
-    const dir = facingVec(bs.playerFacing);
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(sx + 12 + dir.x * 8, sy + 12 + dir.y * 8, 3, 0, Math.PI * 2);
-    ctx.fill();
   }
+
+  // Show the actual firing direction even when the nearest cardinal sprite is used.
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(sx + 12 + dir.x * 20, sy + 12 + dir.y * 20, 3, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // ─── Bullets ────────────────────────────────────────────────────────

@@ -405,7 +405,7 @@ The conductor keeps the original browser ownership role but splits its single pl
 
 ## Package B2 — Pointer and visible touch gameplay controls
 
-**Branch/worktree:** `fix/sync-touch-gameplay` in `/private/tmp/sector-zero-sync-touch`
+**Branch/worktree:** `codex/b2-touch-gameplay` in `/Users/nichalasbarnes/.config/superpowers/worktrees/sector-zero/b2-touch-gameplay`, from accepted B1 evidence `1b87545a6cdb0bb3991c27de8cc606fe707d448d`.
 **Depends on:** B1.
 **Owned files:**
 
@@ -415,9 +415,19 @@ The conductor keeps the original browser ownership role but splits its single pl
 - `game/app/components/engine/inputIntents.ts`
 - `game/app/components/engine/gameEngine.ts`
 - `game/app/components/engine/turretEngine.ts`
+- `game/app/components/engine/groundEngine.ts` (conductor reconciliation: symmetric up/down aiming and opposed-input handling for the visible aim pad)
+- `game/app/components/engine/boardingEngine.ts` (conductor reconciliation: the selected eight-way pad must also face/fire diagonally)
+- `game/app/components/engine/boardingRenderer.ts` (conductor reconciliation: match the facing indicator and dash trail to diagonal aim, retaining existing sprites)
+- `game/app/components/engine/renderer.ts` (conductor reconciliation: briefing controls must identify the active profile and remove the obsolete two-finger bomb instruction)
 - `game/tests/engine/inputIntents.test.ts`
 - `game/tests/browser/touchGameplay.spec.ts` (new)
+- `game/next.config.ts` (conductor reconciliation: disable the framework development badge that intercepts the lower-left gameplay controls; retain the shipped game DevPanel)
+- `game/tests/browser/inputIntents.spec.ts` (conductor reconciliation: preserve cancellation/keyboard-ownership proof through the new explicit Fire control)
+- `game/tests/browser/outcomeAuthority.spec.ts` (conductor reconciliation: use the accessible Pause name and prove a previously held Resume touch cannot bypass a failed-save navigation lock)
 - `docs/playtests/2026-07-19-touch-gameplay.md` (new)
+- `docs/handoffs/2026-09-05-b2-touch-checkpoint.md` (new; dated continuation evidence)
+
+**Conductor decisions — 2026-09-05:** Replace canvas-anywhere automatic fire and the implicit second-finger bomb with explicit controls; retain shooter drag-to-position. Turret pointer/touch aim is normalized against the gameplay area and owns the crosshair while active. Ground Down becomes symmetric with Up; opposed vertical inputs retain horizontal facing. Boarding diagonal movement also retains diagonal aim after release, while existing cardinal sprites remain. These bounded engine corrections apply equally to keyboard and visible controls. Pause/Resume must accept a released third finger while other controls remain held, and a Resume touch that began before a save failure must still respect the recovery lock when released. Disable the framework development badge after native touch proved it intercepted the lower-left pad. The main frame effect owns scheduling after a state commit: the former extra callback retained an exterior and overwrote the live interior during the required touch traversal. Zero-tick callbacks retain their existing scheduling path. B3 focus/navigation and M3 content remain later work.
 
 ### B2.1 — Render the selected control profiles
 

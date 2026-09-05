@@ -4,7 +4,7 @@ import { freshLegacy } from "./fixtures/routeFixtures";
 import { attachBrowserReceipt } from "./helpers/receipt";
 import { installSaveFixture } from "./helpers/saveFixture";
 
-type GroundObservation = { sprite: string; x: number; y: number; bullets: number };
+type GroundObservation = { sprite: string; x: number; y: number; bullets: number; time: number };
 declare global {
   interface Window { inputObservations: GroundObservation[] }
 }
@@ -23,7 +23,7 @@ async function openGround(page: Page) {
     const drawImage = CanvasRenderingContext2D.prototype.drawImage;
     CanvasRenderingContext2D.prototype.drawImage = function (sprite: CanvasImageSource, x: number, y: number, ...dimensions: number[]) {
       if (this.canvas.id === "sector-zero-game-canvas" && sprite instanceof HTMLImageElement && sprite.src.includes("/ground/player-")) {
-        window.inputObservations.push({ sprite: sprite.src, x, y, bullets });
+        window.inputObservations.push({ sprite: sprite.src, x, y, bullets, time: performance.now() });
         bullets = 0;
       }
       return Reflect.apply(drawImage, this, [sprite, x, y, ...dimensions]);
@@ -132,13 +132,24 @@ test("@keyboard visibility loss and mode transitions discard old physical holds"
   });
 });
 
-test("@touch cancel releases canvas fire without cancelling a keyboard owner", async ({ page }, testInfo) => {
+test("@touch cancel releases the Fire control without cancelling a keyboard owner", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    const events: unknown[] = [];
+    Object.assign(window, { inputLifecycle: events });
+    for (const type of ["pointerdown", "pointerup", "pointercancel", "lostpointercapture", "touchstart", "touchend", "touchcancel", "click", "keyup"]) {
+      window.addEventListener(type, (event) => events.push({
+        type, target: event.target instanceof Element ? event.target.getAttribute("aria-label") : null,
+        pointerId: "pointerId" in event ? event.pointerId : null,
+        key: "key" in event ? event.key : null,
+      }), true);
+    }
+  });
   await openGround(page);
-  const box = await page.locator("#sector-zero-game-canvas").boundingBox();
+  const box = await page.getByRole("group", { name: "Ground controls" }).getByRole("button", { name: "Fire", exact: true }).boundingBox();
   expect(box).not.toBeNull();
   const session = await page.context().newCDPSession(page);
   const startTouch = () => session.send("Input.dispatchTouchEvent", {
-    type: "touchStart", touchPoints: [{ x: box!.x + box!.width * 0.75, y: box!.y + box!.height * 0.5 }],
+    type: "touchStart", touchPoints: [{ x: box!.x + box!.width * 0.5, y: box!.y + box!.height * 0.5 }],
   });
   const cancelTouch = () => session.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
   await page.keyboard.down("z");
@@ -148,17 +159,26 @@ test("@touch cancel releases canvas fire without cancelling a keyboard owner", a
   const keyboardOwned = await observeFrames(page, 30);
   expect(keyboardOwned.some((frame) => frame.sprite.endsWith("player-shoot.png"))).toBe(true);
   await page.keyboard.up("z");
-  await observeFrames(page, 25);
+  const afterKeyboardRelease = await observeFrames(page, 25);
   await startTouch();
   const touchOwned = await observeFrames(page, 25);
   expect(touchOwned.some((frame) => frame.bullets > 0)).toBe(true);
   await cancelTouch();
   await observeFrames(page, 25);
   const cancelled = await observeFrames(page, 25);
-  expect(cancelled.every((frame) => !frame.sprite.endsWith("player-shoot.png"))).toBe(true);
+  const lifecycle = await page.evaluate(() => ({
+    events: (window as unknown as { inputLifecycle: unknown[] }).inputLifecycle,
+    pressed: [...document.querySelectorAll('[aria-pressed="true"]')].map((node) => node.getAttribute("aria-label")),
+  }));
+  await testInfo.attach("input-lifecycle", { body: JSON.stringify(lifecycle, null, 2), contentType: "application/json" });
+  expect(cancelled.every((frame) => !frame.sprite.endsWith("player-shoot.png")), JSON.stringify({
+    ...lifecycle,
+    afterKeyboardRelease: afterKeyboardRelease.map(({ sprite, bullets, time }) => ({ sprite: sprite.split("/").at(-1), bullets, time })),
+    cancelled: cancelled.map(({ sprite, bullets, time }) => ({ sprite: sprite.split("/").at(-1), bullets, time })),
+  })).toBe(true);
   await session.detach();
   await attachBrowserReceipt(testInfo, {
-    route: "ground-run -> keyboard + canvas touch -> touchcancel -> touch only -> touchcancel", inputMethod: "touch", saveFixture: "freshLegacy",
+    route: "ground-run -> keyboard + Fire control -> touchcancel -> Fire control only -> touchcancel", inputMethod: "touch", saveFixture: "freshLegacy",
     expectedOutcome: "A native touch cancellation releases touch fire, preserving any held keyboard fire.",
     observedOutcome: "Keyboard shooting survived the first cancellation; touch-only shooting stopped after cancellation at 480x854.",
   });

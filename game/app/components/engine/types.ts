@@ -431,6 +431,12 @@ export interface BackgroundLayer {
 }
 
 // ─── Input ───────────────────────────────────────────────────────────
+/** Absolute coordinates within the gameplay area, independently normalized to 0–1. */
+export interface NormalizedAim {
+  x: number;
+  y: number;
+}
+
 export interface Keys {
   left: boolean;
   right: boolean;
@@ -846,6 +852,8 @@ export interface BoardingState {
   enemies: BoardingEntity[];
   bullets: Bullet[];
   playerFacing: FacingDirection;
+  /** Unit aim vector retained after movement stops; cardinal facing selects existing art. */
+  playerAim?: { x: number; y: number };
   dashTimer: number;      // frames remaining on dash (0 = not dashing)
   dashCooldown: number;   // frames until dash available again
   goalReached: boolean;

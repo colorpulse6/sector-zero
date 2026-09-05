@@ -20,6 +20,7 @@ import {
   type GameState,
   type Player,
   type Keys,
+  type NormalizedAim,
   type ActivePowerUp,
   type Particle,
   type Wave,
@@ -629,7 +630,8 @@ export function updateGame(
   keys: Keys,
   touchX: number | null,
   touchY: number | null,
-  dtMs: number = 16.67
+  dtMs: number = 16.67,
+  turretAim: NormalizedAim | null = null
 ): GameState {
   setDifficultyForWorld(state.enemySpawnPolicy.difficultyWorld);
   setPlanetClassOverride(state.enemySpawnPolicy.planetClassOverride);
@@ -709,7 +711,7 @@ export function updateGame(
   // ── Ship turret mode dispatch ──
   if (state.currentMode === "turret") {
     const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
-    updateTurretEngine(s, keys);
+    updateTurretEngine(s, keys, turretAim);
     s.particles = updateParticles(s.particles);
     s.explosions = updateSpriteExplosions(s.explosions);
     s.floatingLabels = updateFloatingLabels(s.floatingLabels);
