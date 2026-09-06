@@ -3,6 +3,7 @@ import { Space_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 import "./components/OpeningScreen.css";
+import "./components/colony/meta/RegionMapScreen.css";
 
 const spaceMono = Space_Mono({
   variable: "--font-space-mono",

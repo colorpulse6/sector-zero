@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { SaveData } from "../../engine/types";
 import { useModalFocus } from "../../ui/ModalFocus";
+import { RegionLandmark, RegionMapTerrain } from "./RegionMapArtwork";
 import type { RegionNode } from "../shared/colonyTypes";
 import { poiEncounterLabel } from "../region/poiCatalog";
 import {
@@ -34,8 +35,6 @@ type SelectedAction = {
   label: string;
   onActivate: (() => void) | undefined;
 };
-
-const CYAN = "#00f0ff";
 
 function visibleRegionNodes(nodes: readonly RegionNode[], edges: readonly [string, string][]): RegionNode[] {
   return nodes.filter(node => node.intel !== "unknown" || edges.some(([a, b]) => {
@@ -79,17 +78,26 @@ function unavailableCopy(
   actionsEnabled: boolean,
 ): string {
   if (!actionsEnabled) return source === "cockpit"
-    ? "COCKPIT VIEW — REGION ACTIONS ARE UNAVAILABLE. DESCEND TO A COLONY LANDING PAD TO CONTINUE."
-    : "REGION ACTIONS ARE UNAVAILABLE FROM THIS LINK.";
-  if (node.intel === "unknown") return "INTEL INSUFFICIENT — DESTINATION DETAILS AND ACTIONS ARE UNAVAILABLE.";
-  if (node.id === originNodeId) return "ORIGIN NODE — NO ACTION AVAILABLE.";
+    ? "Descend to the landing pad to survey or travel."
+    : "Survey and travel are unavailable from this view.";
+  if (node.intel === "unknown") return "Explore connected sites to learn more about this signal.";
+  if (node.id === originNodeId) return "Choose a destination to plan your next expedition.";
   const checks = (["survey", "travel", "found"] as const).map(action => checkRegionAction(save, originColonyId, node.id, action));
   const reasons = checks.filter(check => !check.allowed).map(check => check.reason);
-  if (reasons.includes("target_not_adjacent")) return "UNAVAILABLE — DESTINATION IS NOT ADJACENT TO THIS ORIGIN.";
-  if (reasons.includes("insufficient_resources")) return "FOUNDING UNAVAILABLE — ORIGIN STOCKPILE DOES NOT MEET THE RESOURCE COST.";
-  if (reasons.includes("site_already_claimed")) return "CLAIMED COLONY — NO ACTION AVAILABLE FROM THIS ORIGIN.";
-  if (reasons.includes("origin_not_claimed") || reasons.includes("origin_node_missing")) return "UNAVAILABLE — SELECTED ORIGIN CANNOT LAUNCH REGION ACTIONS.";
-  return "NO ELIGIBLE ACTION — SURVEY OR APPROACH THIS DESTINATION FROM AN ADJACENT CLAIMED COLONY.";
+  if (reasons.includes("target_not_adjacent")) return "Beyond this camp’s reach. Approach from a connected colony.";
+  if (reasons.includes("insufficient_resources")) return `Your camp needs ${OUTPOST_FOUNDING_COST.metal} metal, ${OUTPOST_FOUNDING_COST.food} food and ${OUTPOST_FOUNDING_COST.water} water to found an outpost.`;
+  if (reasons.includes("site_already_claimed")) return "An established colony already occupies this site.";
+  if (reasons.includes("origin_not_claimed") || reasons.includes("origin_node_missing")) return "Establish a camp here before launching an expedition.";
+  return "Approach from a connected colony to explore this destination.";
+}
+
+function destinationContext(node: RegionNode, originNodeId: string): string {
+  if (node.intel === "unknown") return "A faint contact at the edge of known territory.";
+  if (node.id === originNodeId) return "Your expedition starts here.";
+  if (node.intel === "rumored") return "An unconfirmed report. Survey the site before heading out.";
+  if (node.intel === "claimed") return "An established foothold on the surface.";
+  if (node.type === "colony_site") return "A surveyed site for your next foothold.";
+  return node.intel === "cleared" ? "Explored territory. Previous expedition intel is available." : "Survey complete. An expedition awaits.";
 }
 
 function primaryBlockReason(
@@ -163,134 +171,131 @@ export function RegionMapScreen({
     actionRef.current?.focus();
   };
 
+  const connections = selectedNode ? edges
+    .filter(([a, b]) => a === selectedNode.id || b === selectedNode.id)
+    .map(([a, b]) => visibleNodes.find(node => node.id === (a === selectedNode.id ? b : a)))
+    .filter((node): node is RegionNode => Boolean(node)) : [];
+  const selectedIsOrigin = selectedNode?.id === originNodeId;
+  const siteStats = selectedNode?.intel !== "unknown" && selectedNode?.intel !== "rumored"
+    ? selectedNode?.siteStats : null;
+
   return (
-    <div
-      ref={dialogRef}
-      tabIndex={-1}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Region map"
-      style={{ position: "fixed", inset: 0, zIndex: 1200, overflow: "auto", background: "#070b12", color: "#e0e6ed", fontFamily: "ui-monospace, Menlo, monospace", padding: 20 }}
-    >
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${CYAN}`, paddingBottom: 12 }}>
-        <button onClick={onClose}>← {source === "atlas" ? "RETURN TO ATLAS" : source === "landing-pad" ? "RETURN TO LANDING PAD" : "RETURN TO COLONIES"}</button>
-        <div>
-          <h1 style={{ margin: 0, color: CYAN }}>ASHFALL REGION</h1>
-          <small>{source === "atlas" ? `ATLAS LINK — ${colony.name}` : source === "landing-pad" ? `PAD LINK — ${colony.name}` : "COCKPIT VIEW"}{!actionsEnabled ? " — ACTIONS LOCKED" : ""}</small>
-        </div>
-      </header>
+    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Region map" className="sz-region">
+      <div className="sz-region-shell">
+        <header className="sz-region-header">
+          <div>
+            <p className="sz-region-eyebrow">SURFACE EXPEDITIONS</p>
+            <h1>ASHFALL REGION</h1>
+            <p className="sz-region-provenance">
+              {source === "atlas" ? "ATLAS LINK" : source === "landing-pad" ? "PAD LINK" : "COCKPIT VIEW"}
+              <span aria-hidden="true"> / </span>{colony.name}
+              {!actionsEnabled && <span className="sz-region-view-only">View only</span>}
+            </p>
+          </div>
+          <button className="sz-region-back" onClick={onClose}>← {source === "atlas" ? "RETURN TO ATLAS" : source === "landing-pad" ? "RETURN TO LANDING PAD" : "RETURN TO COLONIES"}</button>
+        </header>
 
-      <div style={{ position: "relative", maxWidth: 980, margin: "20px auto" }}>
-        <svg aria-hidden="true" viewBox="0 0 100 100" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-          {edges.filter(([a, b]) => visibleIds.has(a) && visibleIds.has(b)).map(([a, b]) => {
-            const from = nodes.find(node => node.id === a)!;
-            const to = nodes.find(node => node.id === b)!;
-            return <line key={`${a}:${b}`} x1={from.coords.x} y1={from.coords.y} x2={to.coords.x} y2={to.coords.y} stroke="#295066" strokeWidth="0.5" />;
-          })}
-        </svg>
+        <div className="sz-region-layout">
+          <div className="sz-region-chart">
+            <div className="sz-region-map-caption" aria-hidden="true">
+              <span>LOCAL TERRITORY</span><span>ASHFALL / SURFACE</span>
+            </div>
+            <div className="sz-region-field" data-region-map-field="true">
+              <RegionMapTerrain />
+              <div className="sz-region-compass" aria-hidden="true"><span>N</span>↑</div>
+              <svg className="sz-region-routes" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {edges.filter(([a, b]) => visibleIds.has(a) && visibleIds.has(b)).map(([a, b]) => {
+                  const from = nodes.find(node => node.id === a)!;
+                  const to = nodes.find(node => node.id === b)!;
+                  const unknown = from.intel === "unknown" || to.intel === "unknown";
+                  const selected = !unknown && ((a === originNodeId && b === selectedNode?.id)
+                    || (b === originNodeId && a === selectedNode?.id));
+                  return <line key={`${a}:${b}`} x1={from.coords.x} y1={from.coords.y} x2={to.coords.x} y2={to.coords.y}
+                    data-route-state={selected ? "selected" : unknown ? "unknown" : "known"} vectorEffect="non-scaling-stroke" />;
+                })}
+              </svg>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18, alignItems: "start", position: "relative" }}>
-          <div
-            role="listbox"
-            aria-label="Region destinations"
-            data-region-node-list="true"
-            style={{ display: "grid", gap: 12 }}
-          >
-            {visibleNodes.map(node => {
-              const label = nodeLabel(node);
-              const selected = node.id === selectedNode?.id;
-              const connections = edges
-                .filter(([a, b]) => a === node.id || b === node.id)
-                .map(([a, b]) => nodes.find(neighbor => neighbor.id === (a === node.id ? b : a)))
-                .filter((neighbor): neighbor is RegionNode => Boolean(neighbor))
-                .map(neighbor => nodeLabel(neighbor))
-                .join(", ");
-              return (
-                <article
-                  key={node.id}
-                  ref={element => {
-                    if (element) optionRefs.current.set(node.id, element);
-                    else optionRefs.current.delete(node.id);
-                  }}
-                  role="option"
-                  aria-selected={selected}
-                  aria-label={`${label}, ${node.intel}`}
-                  tabIndex={selected ? 0 : -1}
-                  onClick={event => {
-                    setSelectedNodeId(node.id);
-                    event.currentTarget.focus();
-                  }}
-                  onKeyDown={event => {
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      moveSelection("next");
-                    } else if (event.key === "ArrowUp") {
-                      event.preventDefault();
-                      moveSelection("previous");
-                    } else {
-                      focusAction(event);
-                    }
-                  }}
-                  style={{
-                    border: selected ? `2px solid ${CYAN}` : "1px solid #234052",
-                    boxShadow: selected ? "0 0 0 2px rgba(0,240,255,.18), 0 0 18px rgba(0,240,255,.18)" : "none",
-                    background: selected ? "rgba(0,74,92,.72)" : "rgba(8,20,30,.9)",
-                    padding: 14,
-                    cursor: "pointer",
-                    outline: "none",
-                  }}
-                >
-                  <strong style={{ color: selected ? "#ffffff" : CYAN }}>{label}</strong>{" "}
-                  <span>{node.intel.toUpperCase()}</span>
-                  <p>Connections: {connections || "None"}</p>
-                </article>
-              );
-            })}
+              <div role="listbox" aria-label="Region destinations" data-region-node-list="true" className="sz-region-landmarks">
+                {visibleNodes.map(node => {
+                  const selected = node.id === selectedNode?.id;
+                  const origin = node.id === originNodeId;
+                  return (
+                    <div key={node.id}
+                      ref={element => {
+                        if (element) optionRefs.current.set(node.id, element);
+                        else optionRefs.current.delete(node.id);
+                      }}
+                      role="option" aria-selected={selected} aria-label={`${nodeLabel(node)}, ${node.intel}`}
+                      tabIndex={selected ? 0 : -1} data-region-origin={origin ? "true" : undefined}
+                      data-intel={node.intel} className="sz-region-landmark"
+                      style={{ left: `${node.coords.x}%`, top: `${node.coords.y}%` }}
+                      onClick={event => { setSelectedNodeId(node.id); event.currentTarget.focus(); }}
+                      onKeyDown={event => {
+                        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                          event.preventDefault();
+                          moveSelection(event.key === "ArrowDown" ? "next" : "previous");
+                        } else focusAction(event);
+                      }}
+                    >
+                      <span className="sz-region-marker"><RegionLandmark node={node} /></span>
+                      <span className="sz-region-landmark-label">
+                        <strong>{nodeLabel(node)}</strong>
+                        <span>{origin ? "EXPEDITION ORIGIN" : node.intel === "unknown" ? "UNIDENTIFIED" : node.intel.toUpperCase()}</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="sz-region-map-footer">
+              <div className="sz-region-legend" aria-label="Map legend">
+                <span><i className="sz-region-key-origin" />Origin camp</span>
+                <span><i className="sz-region-key-route" />Known route</span>
+                <span><i className="sz-region-key-unknown" />Unknown signal</span>
+              </div>
+              <p>Select a landmark to plan an expedition.</p>
+            </div>
           </div>
 
-          <section
-            data-region-detail-panel="true"
-            aria-live="polite"
-            style={{ position: "sticky", top: 12, border: `1px solid ${CYAN}`, background: "rgba(4,12,20,.97)", padding: 18, minHeight: 260 }}
-          >
+          <section data-region-detail-panel="true" aria-live="polite" aria-atomic="true" className="sz-region-detail">
             {selectedNode ? (
               <>
-                <small style={{ color: "#8aa7b8" }}>SELECTED DESTINATION</small>
-                <h2 style={{ color: CYAN, margin: "8px 0 16px" }}>{nodeLabel(selectedNode)}</h2>
-                <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 14px", margin: 0 }}>
-                  <dt>INTEL</dt><dd style={{ margin: 0 }}>{selectedNode.intel.toUpperCase()}</dd>
-                  <dt>ENCOUNTER</dt><dd style={{ margin: 0 }}>{selectedNode.intel === "unknown" ? "UNKNOWN" : (poiEncounterLabel(selectedNode) ?? (selectedNode.type === "colony_site" ? "COLONY SITE" : "UNAVAILABLE"))}</dd>
-                  {selectedNode.id !== originNodeId && selectedNode.intel !== "unknown" && <><dt>TRAVEL COST</dt><dd style={{ margin: 0 }}>1 CYCLE</dd></>}
+                <div className="sz-region-detail-heading">
+                  <p className="sz-region-eyebrow">{selectedIsOrigin ? "EXPEDITION ORIGIN" : "SELECTED DESTINATION"}</p>
+                  <h2>{nodeLabel(selectedNode)}</h2>
+                  <p className="sz-region-context">{destinationContext(selectedNode, originNodeId)}</p>
+                </div>
+                <dl className="sz-region-facts">
+                  <div><dt>INTEL</dt><dd>{selectedNode.intel.toUpperCase()}</dd></div>
+                  {!selectedIsOrigin && <div><dt>ENCOUNTER</dt><dd>{selectedNode.intel === "unknown" ? "UNKNOWN" : (poiEncounterLabel(selectedNode) ?? (selectedNode.type === "colony_site" ? "COLONY SITE" : "UNAVAILABLE"))}</dd></div>}
+                  {action && action.kind !== "found" && <div><dt>{action.kind === "survey" ? "SURVEY COST" : "TRAVEL COST"}</dt><dd>1 CYCLE</dd></div>}
                 </dl>
 
-                {selectedNode.siteStats && selectedNode.intel !== "unknown" && selectedNode.intel !== "rumored" && (
-                  <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 14px", marginTop: 18 }}>
-                    <dt>ORE DENSITY</dt><dd style={{ margin: 0 }}>{selectedNode.siteStats.oreDensity}</dd>
-                    <dt>WATER TABLE</dt><dd style={{ margin: 0 }}>{selectedNode.siteStats.waterTable}</dd>
-                    <dt>BUILDABLE SLOTS</dt><dd style={{ margin: 0 }}>{selectedNode.siteStats.buildableSlots}</dd>
-                    <dt>THREAT</dt><dd style={{ margin: 0 }}>{selectedNode.siteStats.threat}</dd>
-                  </dl>
-                )}
-
-                <div style={{ borderTop: "1px solid #234052", marginTop: 18, paddingTop: 18 }}>
+                <div className="sz-region-action-area">
                   {action ? (
-                    <button
-                      ref={actionRef}
-                      data-region-action="true"
-                      aria-label={action.label}
-                      onClick={action.onActivate}
-                      style={{ width: "100%", padding: "14px 16px", border: `2px solid ${CYAN}`, background: "rgba(0,240,255,.12)", color: "#ffffff", font: "inherit", cursor: "pointer" }}
-                    >
+                    <button ref={actionRef} data-region-action="true" aria-label={action.label}
+                      disabled={!action.onActivate} onClick={action.onActivate} className="sz-region-action">
                       {action.kind === "survey" && "SURVEY · 1 CYCLE"}
                       {action.kind === "travel" && "TRAVEL · 1 CYCLE"}
                       {action.kind === "found" && `FOUND OUTPOST · ${OUTPOST_FOUNDING_COST.metal} METAL · ${OUTPOST_FOUNDING_COST.food} FOOD · ${OUTPOST_FOUNDING_COST.water} WATER`}
                     </button>
-                  ) : (
-                    <p style={{ margin: 0, color: "#a9bdc8" }} data-region-block-reason={primaryBlockReason(save, colony.id, selectedNode) ?? undefined}>
-                      {unavailableCopy(save, colony.id, originNodeId, selectedNode, source, actionsEnabled)}
-                    </p>
-                  )}
+                  ) : <p data-region-block-reason={primaryBlockReason(save, colony.id, selectedNode) ?? undefined}>
+                    {unavailableCopy(save, colony.id, originNodeId, selectedNode, source, actionsEnabled)}
+                  </p>}
                 </div>
+
+                <details className="sz-region-intel" key={selectedNode.id}>
+                  <summary tabIndex={0}>SITE INTEL</summary>
+                  {siteStats && <dl className="sz-region-site-stats">
+                    <div><dt>ORE DENSITY</dt><dd>{siteStats.oreDensity}</dd></div>
+                    <div><dt>WATER TABLE</dt><dd>{siteStats.waterTable}</dd></div>
+                    <div><dt>BUILDABLE SLOTS</dt><dd>{siteStats.buildableSlots}</dd></div>
+                    <div><dt>THREAT</dt><dd>{siteStats.threat}</dd></div>
+                  </dl>}
+                  <h3>CONNECTED SITES</h3>
+                  <ul>{connections.map(node => <li key={node.id}>{nodeLabel(node)}</li>)}</ul>
+                  {connections.length === 0 && <p>No charted connections.</p>}
+                </details>
               </>
             ) : <p>NO VISIBLE DESTINATIONS.</p>}
           </section>
