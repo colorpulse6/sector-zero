@@ -1,69 +1,134 @@
+import Image from "next/image";
 import { GAME_MODES } from "@/data/modes";
+import { withBasePath } from "@/lib/basePath";
 import HudSection from "@/components/HudSection";
 import ModeCard from "@/components/ModeCard";
+import CtaButton from "@/components/CtaButton";
 
 export default function AboutPage() {
   return (
     <>
-      {/* The Story */}
-      <HudSection label="THE STORY">
-        <div className="max-w-3xl">
-          <h2 className="font-mono text-xl tracking-[0.2em] text-cyan-accent mb-6">
-            THE KEPLER EXODUS
-          </h2>
-          <div className="space-y-4 text-sm text-text-primary leading-relaxed">
+      <section className="page-hero" aria-labelledby="about-title">
+        <Image
+          src={withBasePath("/images/backgrounds/sector-zero-key-art.webp")}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="hero-art"
+        />
+        <div className="hero-shade" />
+        <div className="page-grid">
+          <p className="eyebrow">The story so far</p>
+          <h1 id="about-title">
+            Forty-seven ships.
+            <br />
+            One unanswered signal.
+          </h1>
+          <p className="page-lead">
+            You are the last pilot of Sector Zero. The UEC Vanguard is your way
+            in. The truth is waiting on the other side.
+          </p>
+        </div>
+      </section>
+      <HudSection label="2535 · The Kepler Exodus" title="They never arrived.">
+        <div className="story-layout">
+          <div className="reading-copy">
             <p>
-              In 2535, forty-seven colony ships launched toward the edge of known
-              space. The Kepler Exodus  - humanity&apos;s boldest leap. Two million
-              souls chasing a new home. They never arrived. The region was sealed
-              off and renamed: Sector Zero. For 312 years, no one went in.
+              In 2535, forty-seven colony ships launched toward the edge of
+              known space. The Kepler Exodus: humanity&apos;s boldest leap. Two
+              million souls chasing a new home.
             </p>
             <p>
-              Then a signal started broadcasting from inside.
+              The region was sealed off and renamed Sector Zero. For 312 years,
+              no one went in. Then a signal started broadcasting from inside.
             </p>
             <p>
               Commander Voss, Lieutenant Reyes, and Doc Kael are the crew of the
-              UEC Vanguard  - sent to silence it. What they find is far worse than
-              aliens: the Hollow are evolved humans, descendants of the Kepler
-              colonists, merged into a collective consciousness over centuries of
-              isolation.
+              UEC Vanguard, sent to silence it. Join them on a campaign through
+              eight hostile sectors, where the fate of the lost colonists is
+              only the beginning.
             </p>
-            <p className="text-text-muted italic">
-              Two endings await. Destroy the Hollow Mind and restart the cycle.
-              Or merge with it  - breaking the cycle, but losing your humanity.
-            </p>
+            <details className="story-spoilers">
+              <summary>Reveal story spoilers</summary>
+              <div>
+                <p>
+                  The Hollow are evolved humans: descendants of the Kepler
+                  colonists, merged into a collective consciousness over
+                  centuries of isolation.
+                </p>
+                <p>
+                  Two endings await. Destroy the Hollow Mind and restart the
+                  cycle. Or merge with it, breaking the cycle, but losing your
+                  humanity.
+                </p>
+              </div>
+            </details>
           </div>
+          <aside className="mission-facts" aria-label="Campaign at a glance">
+            <p className="eyebrow">Mission profile</p>
+            <dl>
+              <div>
+                <dt>Sectors</dt>
+                <dd>08</dd>
+              </div>
+              <div>
+                <dt>Campaign missions</dt>
+                <dd>40</dd>
+              </div>
+              <div>
+                <dt>Ways to fight</dt>
+                <dd>06</dd>
+              </div>
+            </dl>
+            <CtaButton
+              href="https://colorpulse6.github.io/sector-zero/"
+              external
+            >
+              Begin your mission
+            </CtaButton>
+          </aside>
         </div>
       </HudSection>
-
-      {/* Gameplay Modes */}
-      <HudSection label="GAMEPLAY MODES" className="border-t border-border-hud">
-        <h2 className="font-mono text-xl tracking-[0.2em] text-cyan-accent mb-6">
-          6 WAYS TO FIGHT
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+      <HudSection
+        label="The gameplay"
+        title="Adapt to every encounter."
+        className="bordered-section"
+      >
+        <div className="modes-grid">
           {GAME_MODES.map((mode) => (
             <ModeCard key={mode.id} mode={mode} />
           ))}
         </div>
       </HudSection>
-
-      {/* Tech Stack */}
-      <HudSection label="BUILT WITH" className="border-t border-border-hud">
-        <div className="max-w-3xl">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { name: "HTML5 Canvas", detail: "2D rendering at 60fps" },
-              { name: "Next.js 15", detail: "Static export for GitHub Pages" },
-              { name: "TypeScript", detail: "30+ interfaces, strict mode" },
-              { name: "React 19", detail: "UI layer and state management" },
-            ].map((tech) => (
-              <div key={tech.name} className="border border-border-hud p-3">
-                <p className="font-mono text-xs text-cyan-accent">{tech.name}</p>
-                <p className="text-[0.65rem] text-text-muted mt-1">{tech.detail}</p>
-              </div>
-            ))}
-          </div>
+      <HudSection
+        label="An independent game"
+        title="Made for the browser."
+        className="bordered-section"
+      >
+        <div className="reading-copy">
+          <p>
+            Sector Zero is built by{" "}
+            <a
+              href="https://nichalasbarnes.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Nic Barnes
+            </a>
+            , using HTML5 Canvas, TypeScript, React, and Next.js.
+          </p>
+          <p>
+            Follow the game’s development, explore the source, or jump straight
+            into the pilot’s seat.
+          </p>
+          <CtaButton
+            href="https://github.com/colorpulse6/sector-zero"
+            external
+            secondary
+          >
+            Explore the source
+          </CtaButton>
         </div>
       </HudSection>
     </>

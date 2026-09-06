@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import styles from "../OpeningScreen.module.css";
 
 export interface GalaxyExperienceGateProps {
   hasGalaxyRun: boolean;
@@ -8,16 +8,6 @@ export interface GalaxyExperienceGateProps {
   onGalaxy: () => void;
   onLegacy: () => void;
 }
-const BUTTON_STYLE: React.CSSProperties = {
-  minHeight: 48,
-  padding: "12px 18px",
-  border: "1px solid #00e7f0",
-  background: "rgba(0, 92, 110, .25)",
-  color: "#e8fdff",
-  font: "inherit",
-  letterSpacing: ".08em",
-  cursor: "pointer",
-};
 
 export function GalaxyExperienceGate({
   hasGalaxyRun,
@@ -29,33 +19,23 @@ export function GalaxyExperienceGate({
     <section
       aria-labelledby="experience-gate-title"
       aria-busy={!ready}
-      style={{
-        width: "min(560px, calc(100% - 32px))",
-        margin: "24px auto",
-        padding: 24,
-        border: "1px solid #1c5363",
-        background: "rgba(5, 13, 22, .96)",
-        color: "#c9e8ee",
-        fontFamily: "ui-monospace, Menlo, monospace",
-      }}
+      className={styles.choices}
     >
-      <p style={{ margin: 0, color: "#70aebc", letterSpacing: ".12em" }}>
-        SELECT EXPERIENCE
-      </p>
-      <h1 id="experience-gate-title" style={{ margin: "8px 0", color: "#00f0ff" }}>
-        SECTOR ZERO
-      </h1>
-      <p style={{ margin: "0 0 20px" }}>
-        Begin a fresh continuous-galaxy expedition or preserve the numbered legacy campaign.
-      </p>
-      <div style={{ display: "grid", gap: 12 }}>
-        <button type="button" disabled={!ready} onClick={onGalaxy} style={BUTTON_STYLE}>
+      <div className={styles.choice}>
+        <button type="button" disabled={!ready} onClick={onGalaxy} className={`${styles.launchButton} ${styles.primary}`} aria-describedby="galaxy-choice-context">
           {ready ? (hasGalaxyRun ? "CONTINUE GALAXY" : "BEGIN GALAXY") : "LOADING SAVE"}
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
         </button>
-        <button type="button" disabled={!ready} onClick={onLegacy} style={BUTTON_STYLE}>
-          LEGACY CAMPAIGN
-        </button>
+        <p id="galaxy-choice-context" className={styles.choiceContext}>Explore a persistent galaxy.</p>
       </div>
+      <div className={styles.choice}>
+        <button type="button" disabled={!ready} onClick={onLegacy} className={`${styles.launchButton} ${styles.secondary}`} aria-describedby="legacy-choice-context">
+          LEGACY CAMPAIGN
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
+        </button>
+        <p id="legacy-choice-context" className={styles.choiceContext}>40 missions across eight sectors.</p>
+      </div>
+      {!ready && <p role="status" className={styles.loading}>Reading your saved progress…</p>}
     </section>
   );
 }

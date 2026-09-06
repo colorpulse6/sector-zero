@@ -1,20 +1,23 @@
 import { getAllPosts } from "@/lib/posts";
-import HudSection from "@/components/HudSection";
 import NewsItem from "@/components/NewsItem";
 
 export default function NewsPage() {
   const posts = getAllPosts();
-
   return (
-    <HudSection label="TRANSMISSIONS">
-      <h2 className="font-mono text-xl tracking-[0.2em] text-cyan-accent mb-8">
-        NEWS & UPDATES
-      </h2>
-      <div className="space-y-6 max-w-3xl">
+    <div className="page-grid news-page">
+      <header className="page-heading">
+        <p className="eyebrow">From the Vanguard</p>
+        <h1>Transmissions.</h1>
+        <p className="page-lead">
+          New modes, new discoveries, and dispatches from the development of
+          Sector Zero.
+        </p>
+      </header>
+      <section className="news-list" aria-label="News and updates">
         {posts.map((post) => (
-          <NewsItem key={post.slug} post={post} />
+          <NewsItem key={post.slug} post={post} headingLevel="h2" />
         ))}
-      </div>
-    </HudSection>
+      </section>
+    </div>
   );
 }

@@ -77,4 +77,4 @@ Stop after this opening-screen/site pass. The C1.2 dialogue/result work and the 
 - [x] Present a coordinated visual concept and concrete implementation scope.
 - [x] Independent review of this proposed scope: Approved; first-launch sound-control clarification incorporated.
 - [x] User accepts the concrete design before implementation: “yeah that looks awesome”.
-- [ ] Save accepted spec in the isolated branch and write the implementation plan.
+- [x] Save accepted spec in the isolated branch and write the implementation plan.
