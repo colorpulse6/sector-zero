@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
+import "./components/OpeningScreen.css";
 
 const spaceMono = Space_Mono({
   variable: "--font-space-mono",
