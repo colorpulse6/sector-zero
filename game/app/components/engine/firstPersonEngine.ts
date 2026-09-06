@@ -4,6 +4,9 @@ import { resolveAffinity } from "./enemyClasses";
 import { AFFINITY_MULTIPLIER } from "./weaponTypes";
 import { createAffinityLabel } from "./floatingLabels";
 import { hasSkill, getSkillEffect } from "./skillTree";
+import { stepWeaponMotion } from "./weaponMotion";
+import { initializeActorPresentation, playEnemyAction, stepEnemyPresentation, stepStationaryNpcPresentation } from "./actorPresentation";
+import { syncActorAssets } from "./actorAssets";
 
 // ─── Constants ──────────────────────────────────────────────────────
 
@@ -84,6 +87,16 @@ function moveWithCollision(
   return { posX: nextX, posY: nextY };
 }
 
+function advanceWeaponPresentation(fp: FirstPersonState, startX: number, startY: number, dtMs: number): void {
+  fp.weaponMotion = stepWeaponMotion(fp.weaponMotion, {
+    deltaX: fp.posX - startX,
+    deltaY: fp.posY - startY,
+    dtMs,
+    gunFireTimer: fp.gunFireTimer,
+    dialogueActive: fp.dialogState?.active === true,
+  });
+}
+
 // ─── NPC dialog open (shared: non-colony site + colony hook) ───
 // Extracted from the non-colony NPC-interaction block so the colony hook can
 // reuse the engine's own dialog-open logic (Phase 5a §H1). Finds an NPC within
@@ -127,13 +140,17 @@ function tryOpenNpcDialog(gs: GameState, fp: FirstPersonState): boolean {
 
 export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.67): void {
   const fp = gs.firstPersonState;
-  if (!fp || gs.levelCompleteTimer > 0) return;
+  if (!fp) return;
+  initializeActorPresentation(fp);
+  syncActorAssets(fp);
+  if (gs.levelCompleteTimer > 0) return;
 
   // Frame-rate-independence factor: 1.0 at 60fps (dtMs = 16.67), capped at 3
   // so a long stall can't teleport the player through walls in a single step.
   const dtF = Math.min(dtMs / 16.67, 3);
 
   let { posX, posY, dirX, dirY, planeX, planeY } = fp;
+  const startX = posX, startY = posY;
 
   // ── Rotation + movement (frozen while a dialog/shop is open) ──
   // Gating on !dialogState.active holds the player still while talking or
@@ -295,6 +312,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
         }
       }
     }
+    stepStationaryNpcPresentation(fp, dtMs);
+    advanceWeaponPresentation(fp, startX, startY, dtMs);
     return;
   }
   // ─── End colony hook block ───
@@ -306,6 +325,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   if (fp.npcs && keys.shoot && fp.gunCooldown <= 0) {
     if (tryOpenNpcDialog(gs, fp)) return;
   }
+
+  stepStationaryNpcPresentation(fp, dtMs);
 
   // ── Shooting ──
   if (fp.gunCooldown > 0) fp.gunCooldown = Math.max(0, fp.gunCooldown - dtF);
@@ -362,6 +383,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       }
 
       closestHit.hp -= dmg;
+      playEnemyAction(closestHit, closestHit.hp <= 0 ? "death" : "hurt");
       gs.screenShake = 2;
 
       // Floating label (in screen space — approximate)
@@ -379,6 +401,10 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       }
     }
   }
+
+  // Sample the existing shot timer after firing, before any enemy respawn can
+  // relocate the player. Dialogue paths above retain the previous pose.
+  advanceWeaponPresentation(fp, startX, startY, dtMs);
 
   // ── Enemy AI ──
   for (const enemy of fp.enemies) {
@@ -422,6 +448,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
 
         // Contact damage
         if (dist < ENEMY_CONTACT_RANGE && gs.player.invincibleTimer <= 0) {
+          playEnemyAction(enemy, "attack");
           gs.player.hp -= ENEMY_CONTACT_DAMAGE;
           gs.player.invincibleTimer = 60;
           gs.screenShake = 5;
@@ -473,6 +500,10 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
               }
             }
           }
+          // A sentry has no travel vector to update its facing. Orient this
+          // shot toward the same target used by the hitscan and LOS checks.
+          if (enemy.atlasAnimation) enemy.atlasAnimation.facingAngle = Math.atan2(dy, dx);
+          playEnemyAction(enemy, "attack");
           enemy.fireTimer = SENTRY_FIRE_RATE;
           gs.audioEvents.push(AudioEvent.ENEMY_SHOOT);
         }
@@ -480,6 +511,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       }
     }
   }
+
+  for (const enemy of fp.enemies) stepEnemyPresentation(enemy, dtMs);
 
   // Remove dead enemies
   fp.enemies = fp.enemies.filter((e) => e.deathTimer !== -1);

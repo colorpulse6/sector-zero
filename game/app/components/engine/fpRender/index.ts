@@ -1,3 +1,4 @@
+import { releaseActorAssets } from "../actorAssets";
 import { Framebuffer, presentFramebuffer } from "./framebuffer";
 import { TextureRegistry } from "./textures";
 import { SceneBuilder } from "./sceneInput";
@@ -157,3 +158,11 @@ export function drawFirstPersonPixel(ctx: CanvasRenderingContext2D, fp: FirstPer
 export function currentFrame(): Framebuffer { return activeFb; }     // overlays read zbuf (occlusion)
 export function currentScene() { return builder.lastBuilt; }         // overlays project via
 export { projectBillboard };
+
+/** Drop actor source/cell residency when gameplay leaves the first-person view. */
+export function releaseFirstPersonGraphics(): void {
+  releaseActorAssets();
+  registry.retainFramePaths(new Set());
+}
+
+export function getActorFrameStats() { return registry.getFrameCacheStats(); }

@@ -210,21 +210,25 @@ function still(observed: Frame[], kind: Motion, tolerance = 0.001) {
 // An old projectile cannot re-enter the muzzle region once it has left it.
 // Requiring an empty -> occupied transition at a stationary player proves a
 // fresh shot. FP/turret similarly require a fresh off -> on firing animation.
+function freshFireCycleObserved({ seq, kind, observed = window.touchEvidence.frames }: { seq: number; kind: Motion; observed?: Frame[] }): boolean {
+  // The muzzle starts 14px from center; up to three 7px simulation ticks can
+  // elapse before a render. Camera subtraction can add floating-point error.
+  const boardingMuzzleRadius = 14 + 7 * 3 + 0.0001;
+  let cleared = false;
+  for (const frame of observed) {
+    if (frame.seq <= seq || !frame[kind]) continue;
+    const active = kind === "fp" ? frame.gun : kind === "turret" ? frame.turretFire
+      : kind === "ship" ? frame.shipShots.some((shot) => shot.y > frame.ship!.y - 40 && shot.y < frame.ship!.y + 10)
+        : kind === "ground" ? frame.groundShots.some((shot) => Math.abs(shot.x - frame.ground!.x) < 60 && Math.abs(shot.y - frame.ground!.y) < 55)
+          : frame.boardPlayer && frame.boardShots.some((shot) => Math.hypot(shot.x - frame.boardPlayer!.x - 18, shot.y - frame.boardPlayer!.y - 18) <= boardingMuzzleRadius);
+    if (!active) cleared = true;
+    else if (cleared) return true;
+  }
+  return false;
+}
 async function freshFireCycle(page: Page, kind: Motion): Promise<Frame[]> {
   const seq = await page.evaluate(() => window.touchEvidence.frames.at(-1)?.seq ?? 0);
-  await page.waitForFunction(({ seq, kind }) => {
-    let cleared = false;
-    for (const frame of window.touchEvidence.frames) {
-      if (frame.seq <= seq || !frame[kind]) continue;
-      const active = kind === "fp" ? frame.gun : kind === "turret" ? frame.turretFire
-        : kind === "ship" ? frame.shipShots.some((shot) => shot.y > frame.ship!.y - 40 && shot.y < frame.ship!.y + 10)
-          : kind === "ground" ? frame.groundShots.some((shot) => Math.abs(shot.x - frame.ground!.x) < 60 && Math.abs(shot.y - frame.ground!.y) < 55)
-            : frame.boardPlayer && frame.boardShots.some((shot) => Math.hypot(shot.x - frame.boardPlayer!.x - 18, shot.y - frame.boardPlayer!.y - 18) < 34);
-      if (!active) cleared = true;
-      else if (cleared) return true;
-    }
-    return false;
-  }, { seq, kind }, { timeout: 5_000 });
+  await page.waitForFunction(freshFireCycleObserved, { seq, kind }, { timeout: 5_000 });
   return page.evaluate(({ seq, kind }) => window.touchEvidence.frames.filter((frame) => frame.seq > seq && frame[kind]), { seq, kind });
 }
 
@@ -289,6 +293,27 @@ test("@fixture ground projectile observation respects signed engine ticks across
       dash: false, gun: false, turretFire: false, bombs: null,
     }));
     expect.soft(hasProjectileTrajectory(observed, "groundShots", 0, 1), entry.name).toBe(entry.expected);
+  }
+});
+
+test("@fixture boarding fresh fire observation accepts three catch-up ticks and rejects stale shots", () => {
+  const cases = [
+    { name: "fresh shot after one tick", distances: [null, 21], expected: true },
+    { name: "fresh shot after two ticks", distances: [null, 28], expected: true },
+    { name: "fresh shot after three ticks", distances: [null, 35], expected: true },
+    { name: "CI three-tick cycle with older shots in flight", distances: [109, 35, 56, 77], expected: true },
+    { name: "existing shot leaves the muzzle", distances: [21, 42, 63], expected: false },
+    { name: "past the maximum fresh-shot distance", distances: [null, 35.001], expected: false },
+    { name: "old shot stays outside the muzzle", distances: [null, 56, 77], expected: false },
+    { name: "no shot appears", distances: [null, null], expected: false },
+  ];
+  for (const entry of cases) {
+    const observed: Frame[] = entry.distances.map((distance, index) => ({
+      seq: index + 1, board: { x: 2.125, y: 2.125 }, boardPlayer: { x: 100, y: 100 },
+      shipShots: [], groundShots: [], boardShots: distance === null ? [] : [{ x: 118 + distance, y: 118 }],
+      dash: false, gun: false, turretFire: false, bombs: null,
+    }));
+    expect.soft(freshFireCycleObserved({ seq: 0, kind: "board", observed }), entry.name).toBe(entry.expected);
   }
 });
 
@@ -586,35 +611,48 @@ test("@touch shooter canvas drag owns position without firing and releases back 
 });
 
 test("@touch ground move aim fire and jump stay distinct and support three fingers", async ({ page }, testInfo) => {
+  test.setTimeout(60_000); // Independent gestures each re-enter through the real menu.
   await installObservation(page);
   await openMode(page, "GROUND RUN");
   await page.waitForFunction(() => window.touchEvidence.frames.at(-1)?.ground?.sprite.endsWith("player-idle.png"));
   await withFingers(page, async (fingers) => {
+    const freshEntry = async () => {
+      await fingers.tap(9, action(page, "DEV"));
+      await fingers.tap(9, action(page, "GROUND RUN"));
+      await fingers.tap(9, action(page, "X"));
+      await page.waitForFunction(() => window.touchEvidence.frames.at(-1)?.ground?.sprite.endsWith("player-idle.png"));
+      const spawn = (await frames(page, "ground", 1)).at(-1)!.ground!;
+      expect(spawn.worldX).toBeCloseTo(60, 3); // World spawn 64, minus the sprite's 4px draw offset.
+    };
     for (const [label, sign] of [["Move right", 1], ["Move left", -1]] as const) {
+      if (sign < 0) await freshEntry();
+      // A slow native command can finish after left movement reaches the wall.
+      // Keep its full displacement from the position before the touch begins.
+      const baseline = (await frames(page, "ground", 1)).at(-1)!;
       await fingers.down(1, action(page, label));
-      const moving = await frames(page, "ground", 8);
+      const moving = [baseline, ...await frames(page, "ground", 8)];
       expect(displacement(moving, "ground").x * sign).toBeGreaterThan(1);
       expect(moving.every((f) => f.groundShots.length === 0 && !f.ground!.sprite.endsWith("player-jump.png"))).toBe(true);
       await fingers.up(1);
     }
+    // Combat continues during browser round trips. Reset each independent
+    // gesture so a previous hold's damage/respawn cannot count as aim movement.
     for (const label of ["Aim up", "Aim down"]) {
+      await freshEntry();
       await fingers.down(1, action(page, label));
       const aiming = await frames(page, "ground", 8);
       still(aiming, "ground");
       expect(aiming.every((f) => f.groundShots.length === 0 && !f.ground!.sprite.endsWith("player-jump.png"))).toBe(true);
       await fingers.up(1);
     }
+    await freshEntry();
     await fingers.down(1, action(page, "Jump"));
     const jump = await frames(page, "ground", 10);
     await fingers.up(1);
     expect(jump.some((f) => f.ground!.sprite.endsWith("player-jump.png"))).toBe(true);
     expect(jump.every((f) => f.groundShots.length === 0)).toBe(true);
-    // Start the compound aiming leg through the real touch route, before the
-    // earlier movement and waiting expose it to accumulated combat damage.
-    await action(page, "DEV").tap();
-    await action(page, "GROUND RUN").tap();
-    await action(page, "X").tap();
-    await page.waitForFunction(() => window.touchEvidence.frames.at(-1)?.ground?.sprite.endsWith("player-idle.png"));
+    // Keep the compound hold continuous after its own fresh native entry.
+    await freshEntry();
     await fingers.down(2, action(page, "Fire"));
     const firing = await frames(page, "ground", 18);
     still(firing, "ground");
@@ -663,7 +701,7 @@ test("@touch ground move aim fire and jump stay distinct and support three finge
     const ended = await frames(page, "ground", 12);
     expect(ended.every((f) => !f.ground!.sprite.endsWith("player-shoot.png"))).toBe(true);
   });
-  await receipt(page, testInfo, "DevPanel -> ground movement/aim/jump -> DevPanel Ground relaunch -> fire/aim -> three fingers -> cancel", "freshLegacy", "Movement and aiming do not shoot or jump; Jump does not shoot; Fire does not jump; up/down aim changes real projectile direction; firing survives release of the other fingers and stops on cancellation.");
+  await receipt(page, testInfo, "DevPanel -> independent ground movement/aim/jump entries -> fresh entry fire/aim -> three fingers -> cancel", "freshLegacy", "Movement and aiming do not shoot or jump; Jump does not shoot; Fire does not jump; up/down aim changes real projectile direction; firing survives release of the other fingers and stops on cancellation.");
 });
 
 test("@touch boarding covers eight directions retained facing fire and dash", async ({ page }, testInfo) => {

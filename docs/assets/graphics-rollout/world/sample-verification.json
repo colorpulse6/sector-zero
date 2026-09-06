@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "seed": 20260906,
+  "generator": "game/scripts/world-assets/render_world.py",
+  "sourceBlend": "docs/assets/graphics-rollout/world/world-kit.blend",
+  "provenance": "Original parameterized Blender geometry and procedural materials; no imported models, image textures, paid service or external runtime dependency.",
+  "runtimeDimensions": [
+    512,
+    512
+  ],
+  "sourceTileDimensions": [
+    512,
+    512
+  ],
+  "sourcePropDimensions": [
+    1024,
+    1024
+  ],
+  "assets": [
+    {
+      "id": "facade-purifier",
+      "kind": "tile",
+      "builder": "purifier-wall",
+      "path": "walls/purifier.png",
+      "runtimePath": "/sprites/walls/purifier.png",
+      "productionPath": "game/public/sprites/walls/purifier.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/facade-purifier.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 418849,
+      "sourceSha256": "546fc3159229b3b877da03a79bb894b3542a58dd9f323d272303d634522d3ae7",
+      "bytes": 347186,
+      "sha256": "5e8cf1efa3f0367ab82b01b04f63de0a6bb08a302dd656f6e20e5c74b0bd8b0c",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 16.005,
+        "wrapYMeanRgbDelta": 12.967,
+        "interiorXMeanRgbDelta": 4.019,
+        "interiorYMeanRgbDelta": 3.209,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 16.005,
+        "wrapYMeanRgbDelta": 12.967,
+        "interiorXMeanRgbDelta": 4.019,
+        "interiorYMeanRgbDelta": 3.209,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "sample-rendered"
+    },
+    {
+      "id": "purifier-pump",
+      "kind": "prop",
+      "builder": "purifier-pump",
+      "path": "interiors/purifier-pump.png",
+      "runtimePath": "/sprites/interiors/purifier-pump.png",
+      "productionPath": "game/public/sprites/interiors/purifier-pump.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/purifier-pump.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        144,
+        108,
+        866,
+        985
+      ],
+      "runtimeAlphaBounds": [
+        46,
+        2,
+        466,
+        512
+      ],
+      "sourceBytes": 970270,
+      "sourceSha256": "b5e7bf4dcb648a89383c23e2547fa2905e5b37605e307b9f852381bb12c48082",
+      "bytes": 200142,
+      "sha256": "0bc0fedd0ef3934d8da1b602ed8ada5f42b4e8d7496929678636dbee78662dd6",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "sample-rendered"
+    },
+    {
+      "id": "mine-extractor",
+      "kind": "prop",
+      "builder": "mine-extractor",
+      "path": "world/mine-extractor.png",
+      "runtimePath": "/sprites/world/mine-extractor.png",
+      "productionPath": "game/public/sprites/world/mine-extractor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/mine-extractor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        117,
+        59,
+        879,
+        989
+      ],
+      "runtimeAlphaBounds": [
+        47,
+        2,
+        465,
+        512
+      ],
+      "sourceBytes": 1057518,
+      "sourceSha256": "7a8d05a41732f5abdf2a2082527932f6234afe1d435148f5d8f03a941b777101",
+      "bytes": 212697,
+      "sha256": "ecf608c01f75bf6329a227385a3d1745cf48da923ccb1188e2c244edd806e01a",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "sample-rendered"
+    }
+  ],
+  "sourceBlendBytes": 1496481,
+  "sourceBlendSha256": "004c38b81e1212ee7b2639a64fdfc1e3d2dc6dbf22805528fc976c72976d351a",
+  "generatorSha256": "fd370ad5423ae2984dbcdf512c663f9964e24dbe737b72dcabde0fd8472442e8",
+  "catalogSha256": "c4c5da06717f26fad653e798e2f95e2b661010d153a4d10f28f922a8f90cfaf0"
+}

@@ -1,3 +1,4 @@
+import { createCombatDressing } from "./worldArt";
 import type { BoardingMap, BoardingTileType, EnemyClass, FPEnemy, FirstPersonState } from "./types";
 
 const T = 32;
@@ -108,6 +109,7 @@ export function createKeplerBlackBoxFirstPersonState(
 ): FirstPersonState {
   return {
     map: KEPLER_MAP_DATA.map,
+    ...createCombatDressing(KEPLER_MAP_DATA.map, "station"),
     posX: KEPLER_MAP_DATA.spawn.x,
     posY: KEPLER_MAP_DATA.spawn.y,
     dirX: 1,

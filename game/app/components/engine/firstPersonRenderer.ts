@@ -7,6 +7,7 @@ import {
 import { drawDashboard } from "./dashboard";
 import { getSprite, SPRITES } from "./sprites";
 import { planFPDialogLayout } from "./fpDialogLayout";
+import { weaponOffsets } from "./weaponMotion";
 import {
   drawFirstPersonPixel,
   currentFrame,
@@ -226,7 +227,7 @@ function drawPropLabels(ctx: CanvasRenderingContext2D, fp: FirstPersonState): vo
     const p = projectBillboard(scene, prop.x, prop.y, CANVAS_WIDTH, GAME_AREA_HEIGHT);
     if (!p || isOccluded(p.screenX, p.dist)) continue;
     const spriteHeight = Math.max(20, p.size * (prop.scale ?? 1));
-    const drawStartY = Math.floor(GAME_AREA_HEIGHT / 2 - spriteHeight * 0.55);
+    const drawStartY = Math.floor(GAME_AREA_HEIGHT / 2 + GAME_AREA_HEIGHT / (2 * p.dist)) - spriteHeight;
     ctx.fillStyle = "#ffdd99";
     ctx.font = "bold 9px monospace";
     ctx.textAlign = "center";
@@ -237,22 +238,19 @@ function drawPropLabels(ctx: CanvasRenderingContext2D, fp: FirstPersonState): vo
 
 // ─── Gun HUD (bottom center, like Doom) ─────────────────────────────
 
-function drawGunHUD(
+export function drawGunHUD(
   ctx: CanvasRenderingContext2D,
-  fp: FirstPersonState,
-  frameCount: number
+  fp: FirstPersonState
 ): void {
   const gunSprite = getSprite(SPRITES.FP_GUN_SHEET);
   const isFiring = fp.gunFireTimer > 0;
 
-  // Bob effect when moving
-  const bobX = Math.sin(frameCount * 0.1) * 3;
-  const bobY = Math.abs(Math.cos(frameCount * 0.1)) * 2;
+  const offset = weaponOffsets(fp.weaponMotion);
 
   const gunW = 200;
   const gunH = 200;
-  const gunX = CANVAS_WIDTH / 2 - gunW / 2 + bobX;
-  const gunY = GAME_AREA_HEIGHT - gunH + 20 + bobY;
+  const gunX = CANVAS_WIDTH / 2 - gunW / 2 + offset.x;
+  const gunY = GAME_AREA_HEIGHT - gunH + 20 + offset.y;
 
   if (gunSprite) {
     // Gun sheet: 2 frames side-by-side (idle, firing)
@@ -526,7 +524,7 @@ export function drawFirstPerson(
   drawObjectiveBillboard(ctx, fp);
 
   // ── Gun HUD ──
-  drawGunHUD(ctx, fp, state.frameCount);
+  drawGunHUD(ctx, fp);
 
   // ── Damage flash ──
   if (state.player.invincibleTimer > 50) {

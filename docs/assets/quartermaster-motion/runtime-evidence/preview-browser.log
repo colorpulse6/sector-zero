@@ -1,0 +1,15 @@
+[WebServer] (node:75819) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:75820) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:75852) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 2 tests using 1 worker
+
+(node:75917) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [desktop-keyboard] › tests/browser/quartermasterPilot.spec.ts:3:5 › @keyboard quartermaster preview loads directional cells and leaves the player save alone (11.1s)
+  ✓  2 [desktop-keyboard] › tests/browser/quartermasterPilot.spec.ts:37:5 › @keyboard unavailable pilot images retain the original character (2.0s)
+
+  2 passed (21.3s)
