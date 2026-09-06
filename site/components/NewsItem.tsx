@@ -3,39 +3,36 @@ import Image from "next/image";
 import type { PostFrontmatter } from "@/lib/posts";
 import { withBasePath } from "@/lib/basePath";
 
-interface NewsItemProps {
+export default function NewsItem({
+  post,
+  headingLevel = "h3",
+}: {
   post: PostFrontmatter;
-}
-
-export default function NewsItem({ post }: NewsItemProps) {
+  headingLevel?: "h2" | "h3";
+}) {
+  const Heading = headingLevel;
   return (
-    <Link href={`/news/${post.slug}`} className="block news-accent group">
-      <div className="flex gap-4 items-start">
-        <div className="w-20 h-20 relative flex-shrink-0 border border-border-hud overflow-hidden">
-          <Image
-            src={withBasePath(post.heroImage)}
-            alt={post.title}
-            fill
-            className="object-cover"
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="font-mono text-[0.6rem] tracking-wider text-purple-accent/80 border border-purple-accent/30 px-1.5 py-0.5">
-              {post.tag}
-            </span>
-            <span className="font-mono text-[0.6rem] text-text-muted">
-              {post.date}
-            </span>
-          </div>
-          <h3 className="font-mono text-sm text-cyan-accent group-hover:text-white transition-colors truncate">
-            {post.title}
-          </h3>
-          <p className="text-xs text-text-muted mt-1 line-clamp-2">
-            {post.summary}
-          </p>
-        </div>
+    <Link href={`/news/${post.slug}/`} className="news-item">
+      <div className="news-preview">
+        <Image
+          src={withBasePath(post.heroImage)}
+          alt=""
+          fill
+          sizes="(max-width: 600px) 80px, 120px"
+          className="gameplay-image"
+        />
       </div>
+      <div className="news-copy">
+        <div className="post-meta">
+          <span>{post.tag}</span>
+          <time dateTime={post.date}>{post.date}</time>
+        </div>
+        <Heading>{post.title}</Heading>
+        <p>{post.summary}</p>
+      </div>
+      <span className="news-arrow" aria-hidden="true">
+        ↗
+      </span>
     </Link>
   );
 }
