@@ -1,0 +1,110 @@
+.sz-region {
+  --region-white: #eee9df;
+  --region-cyan: #9ad5da;
+  --region-line: #9ac2c226;
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #060d13;
+  color: var(--region-white);
+  font-family: Arial, Helvetica, sans-serif;
+  touch-action: pan-y;
+}
+.sz-region * { box-sizing: border-box; }
+.sz-region-shell { max-width: 1680px; margin: auto; padding: 28px clamp(20px, 3.5vw, 64px); }
+.sz-region-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+.sz-region-eyebrow, .sz-region-provenance, .sz-region-back, .sz-region-map-caption, .sz-region-landmark-label > span, .sz-region-facts, .sz-region-action, .sz-region-intel, .sz-region-compass {
+  font-family: var(--font-space-mono), ui-monospace, monospace;
+}
+.sz-region-eyebrow { margin: 0 0 10px; color: var(--region-cyan); font-size: 10px; letter-spacing: .2em; }
+.sz-region-header h1 { margin: 0; font-family: var(--font-orbitron), sans-serif; font-size: clamp(22px, 2.8vw, 38px); font-weight: 600; letter-spacing: .03em; line-height: 1.25; }
+.sz-region-provenance { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; color: #9eafb4; font-size: 10px; line-height: 1.7; }
+.sz-region-view-only { color: #d4b988; border: 1px solid #cdb48038; padding: 0 7px; }
+.sz-region-back { min-height: 44px; padding: 10px 0 10px 14px; border-bottom: 1px solid #9ad5da66; color: var(--region-white); font-size: 11px; letter-spacing: .04em; cursor: pointer; }
+.sz-region-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 24px; align-items: start; }
+.sz-region-chart { min-width: 0; border: 1px solid var(--region-line); background: #0b161b; }
+.sz-region-map-caption { display: flex; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--region-line); color: #96adaf; font-size: 9px; letter-spacing: .15em; }
+.sz-region-field { position: relative; height: clamp(430px, 62vh, 760px); isolation: isolate; background: radial-gradient(ellipse at 29% 53%, #82745824, transparent 55%), radial-gradient(ellipse at 70% 76%, #39585b2e, transparent 55%), linear-gradient(130deg, #0c1b21, #151c1e 53%, #0a1720); }
+.sz-region-terrain, .sz-region-routes, .sz-region-landmarks { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sz-region-terrain { color: #aab59c; opacity: .17; pointer-events: none; }
+.sz-region-survey-grid { opacity: .8; }
+.sz-region-routes { pointer-events: none; overflow: visible; }
+.sz-region-routes line { stroke: #829b9566; stroke-width: 1.5px; }
+.sz-region-routes [data-route-state="selected"] { stroke: #b5e5dc; stroke-width: 2px; filter: drop-shadow(0 0 5px #9ad5da80); }
+.sz-region-routes [data-route-state="unknown"] { stroke: #b8b19866; stroke-dasharray: 4 7; }
+.sz-region-compass { position: absolute; left: 22px; top: 20px; display: grid; text-align: center; gap: 4px; font-size: 22px; color: #a9b9b7; }
+.sz-region-compass span { font-size: 9px; letter-spacing: .1em; }
+.sz-region-landmarks { pointer-events: none; }
+.sz-region-landmark { position: absolute; width: 48px; height: 48px; transform: translate(-50%, -50%); color: #d2c7a6; cursor: pointer; pointer-events: auto; border-radius: 50%; outline: none; }
+.sz-region-marker { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid #aeb8ac72; background: #111d21; border-radius: 50%; box-shadow: 0 0 0 5px #0c171c8a, 0 4px 18px #0006; }
+.sz-region-marker svg { width: 28px; height: 28px; }
+.sz-region-landmark[data-region-origin="true"] { color: #b4ded8; }
+.sz-region-landmark[data-region-origin="true"] .sz-region-marker { border-radius: 8px; border-color: #94c4bd; background: #153034; }
+.sz-region-landmark[data-intel="unknown"] { color: #9ca6a7; }
+.sz-region-landmark[data-intel="unknown"] .sz-region-marker { border-style: dashed; background: #101c21; }
+.sz-region-landmark[aria-selected="true"] { color: #effbf7; z-index: 2; }
+.sz-region-landmark[aria-selected="true"] .sz-region-marker { border-color: #d0f6ec; box-shadow: 0 0 0 5px #82c6c129, 0 0 25px #9ac8ba27; background: #214047; }
+.sz-region-landmark:hover .sz-region-marker { border-color: #d0f6ec; }
+.sz-region-landmark-label { position: absolute; width: max-content; max-width: 154px; left: 50%; top: 54px; transform: translateX(-50%); text-align: center; line-height: 1.3; text-shadow: 0 2px 7px #050e13, 0 0 4px #050e13; }
+.sz-region-landmark-label strong { display: block; font-size: 13px; font-weight: 500; color: #e4e2d6; }
+.sz-region-landmark-label > span { display: block; margin-top: 5px; color: #9baca9; font-size: 8px; letter-spacing: .1em; }
+.sz-region-landmark[aria-selected="true"] .sz-region-landmark-label strong { color: #cefff2; }
+.sz-region-map-footer { padding: 16px 18px; border-top: 1px solid var(--region-line); }
+.sz-region-legend { display: flex; flex-wrap: wrap; gap: 10px 20px; color: #bbc5bf; font-size: 11px; }
+.sz-region-legend > span { display: inline-flex; align-items: center; gap: 8px; }
+.sz-region-legend i { display: inline-block; width: 9px; height: 9px; }
+.sz-region-key-origin { border: 1px solid #9acfc7; border-radius: 2px; }
+.sz-region-legend .sz-region-key-route { width: 16px; height: 1px; background: #92aca6; }
+.sz-region-key-unknown { border: 1px dashed #b8b198; border-radius: 50%; }
+.sz-region-map-footer p { margin: 10px 0 0; font-size: 11px; color: #90a1a5; }
+.sz-region-detail { position: sticky; top: 24px; border-top: 2px solid var(--region-cyan); padding-top: 22px; min-width: 0; }
+.sz-region-detail h2 { margin: 0; font-size: 29px; font-weight: 400; line-height: 1.15; letter-spacing: -.02em; }
+.sz-region-context { margin: 16px 0 24px; font-size: 14px; line-height: 1.65; color: #b7c2c4; }
+.sz-region-facts { margin: 0; display: grid; gap: 14px; font-size: 10px; }
+.sz-region-facts > div { display: flex; justify-content: space-between; gap: 16px; }
+.sz-region-facts dt { color: #96abaf; }
+.sz-region-facts dd { margin: 0; color: #dfdfd3; text-align: right; }
+.sz-region-action-area { margin: 24px 0; }
+.sz-region-action-area > p { margin: 0; padding: 16px; background: #a5c2c208; border-left: 1px solid #a5c2c24d; color: #b9c8cc; font-size: 13px; line-height: 1.65; }
+.sz-region-action { display: block; width: 100%; min-height: 52px; padding: 16px; border: 1px solid #b7e3e2; background: #9ad5da; color: #08232c; font-size: 11px; font-weight: 700; letter-spacing: .04em; line-height: 1.7; cursor: pointer; }
+.sz-region-action:hover { background: #c1ecea; }
+.sz-region-action:disabled { opacity: .45; cursor: not-allowed; }
+.sz-region-intel { border-top: 1px solid var(--region-line); color: #bbc9c7; font-size: 10px; }
+.sz-region-intel summary { min-height: 44px; padding: 16px 0; cursor: pointer; color: #9fb8ba; font-size: 10px; letter-spacing: .13em; }
+.sz-region-intel h3 { font-size: 9px; letter-spacing: .1em; color: #98aeb0; margin: 18px 0 10px; }
+.sz-region-intel ul { margin: 0; padding: 0; list-style: none; }
+.sz-region-intel li { padding: 5px 0; }
+.sz-region-site-stats { margin: 14px 0; display: grid; gap: 12px; }
+.sz-region-site-stats > div { display: flex; justify-content: space-between; gap: 12px; }
+.sz-region-site-stats dd { margin: 0; color: var(--region-white); }
+.sz-region :is(button, summary, [role="option"]):focus-visible { outline: 2px solid #e0fff9; outline-offset: 5px; }
+
+@media (min-width: 1500px) { .sz-region-layout { grid-template-columns: minmax(0, 1fr) 350px; gap: 40px; } }
+@media (max-width: 900px) {
+  .sz-region-shell { padding: 22px 20px; }
+  .sz-region-layout { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .sz-region-field { height: 470px; }
+  .sz-region-detail { position: static; padding-top: 20px; }
+}
+@media (max-width: 540px) {
+  .sz-region-shell { padding: 18px 16px 28px; }
+  .sz-region-header { flex-direction: column-reverse; align-items: stretch; gap: 20px; margin-bottom: 20px; }
+  .sz-region-back { align-self: flex-start; padding: 8px 0; font-size: 10px; }
+  .sz-region-eyebrow { font-size: 9px; margin-bottom: 8px; }
+  .sz-region-header h1 { font-size: 26px; }
+  .sz-region-field { height: 410px; }
+  .sz-region-map-caption { padding: 12px; font-size: 8px; letter-spacing: .08em; }
+  .sz-region-marker { width: 44px; height: 44px; }
+  .sz-region-landmark { width: 44px; height: 44px; }
+  .sz-region-marker svg { width: 25px; height: 25px; }
+  .sz-region-landmark-label { max-width: 105px; top: 49px; }
+  .sz-region-landmark-label strong { font-size: 11px; }
+  .sz-region-landmark-label > span { font-size: 7px; letter-spacing: .04em; margin-top: 3px; }
+  .sz-region-landmark[data-intel="unknown"] .sz-region-landmark-label { width: 78px; }
+  .sz-region-map-footer { padding: 14px 12px; }
+  .sz-region-legend { font-size: 9px; gap: 10px 12px; }
+  .sz-region-detail h2 { font-size: 28px; }
+}
+@media (prefers-reduced-motion: reduce) { .sz-region { scroll-behavior: auto; } }
