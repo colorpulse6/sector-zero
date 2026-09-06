@@ -210,21 +210,25 @@ function still(observed: Frame[], kind: Motion, tolerance = 0.001) {
 // An old projectile cannot re-enter the muzzle region once it has left it.
 // Requiring an empty -> occupied transition at a stationary player proves a
 // fresh shot. FP/turret similarly require a fresh off -> on firing animation.
+function freshFireCycleObserved({ seq, kind, observed = window.touchEvidence.frames }: { seq: number; kind: Motion; observed?: Frame[] }): boolean {
+  // The muzzle starts 14px from center; up to three 7px simulation ticks can
+  // elapse before a render. Camera subtraction can add floating-point error.
+  const boardingMuzzleRadius = 14 + 7 * 3 + 0.0001;
+  let cleared = false;
+  for (const frame of observed) {
+    if (frame.seq <= seq || !frame[kind]) continue;
+    const active = kind === "fp" ? frame.gun : kind === "turret" ? frame.turretFire
+      : kind === "ship" ? frame.shipShots.some((shot) => shot.y > frame.ship!.y - 40 && shot.y < frame.ship!.y + 10)
+        : kind === "ground" ? frame.groundShots.some((shot) => Math.abs(shot.x - frame.ground!.x) < 60 && Math.abs(shot.y - frame.ground!.y) < 55)
+          : frame.boardPlayer && frame.boardShots.some((shot) => Math.hypot(shot.x - frame.boardPlayer!.x - 18, shot.y - frame.boardPlayer!.y - 18) <= boardingMuzzleRadius);
+    if (!active) cleared = true;
+    else if (cleared) return true;
+  }
+  return false;
+}
 async function freshFireCycle(page: Page, kind: Motion): Promise<Frame[]> {
   const seq = await page.evaluate(() => window.touchEvidence.frames.at(-1)?.seq ?? 0);
-  await page.waitForFunction(({ seq, kind }) => {
-    let cleared = false;
-    for (const frame of window.touchEvidence.frames) {
-      if (frame.seq <= seq || !frame[kind]) continue;
-      const active = kind === "fp" ? frame.gun : kind === "turret" ? frame.turretFire
-        : kind === "ship" ? frame.shipShots.some((shot) => shot.y > frame.ship!.y - 40 && shot.y < frame.ship!.y + 10)
-          : kind === "ground" ? frame.groundShots.some((shot) => Math.abs(shot.x - frame.ground!.x) < 60 && Math.abs(shot.y - frame.ground!.y) < 55)
-            : frame.boardPlayer && frame.boardShots.some((shot) => Math.hypot(shot.x - frame.boardPlayer!.x - 18, shot.y - frame.boardPlayer!.y - 18) < 34);
-      if (!active) cleared = true;
-      else if (cleared) return true;
-    }
-    return false;
-  }, { seq, kind }, { timeout: 5_000 });
+  await page.waitForFunction(freshFireCycleObserved, { seq, kind }, { timeout: 5_000 });
   return page.evaluate(({ seq, kind }) => window.touchEvidence.frames.filter((frame) => frame.seq > seq && frame[kind]), { seq, kind });
 }
 
@@ -289,6 +293,27 @@ test("@fixture ground projectile observation respects signed engine ticks across
       dash: false, gun: false, turretFire: false, bombs: null,
     }));
     expect.soft(hasProjectileTrajectory(observed, "groundShots", 0, 1), entry.name).toBe(entry.expected);
+  }
+});
+
+test("@fixture boarding fresh fire observation accepts three catch-up ticks and rejects stale shots", () => {
+  const cases = [
+    { name: "fresh shot after one tick", distances: [null, 21], expected: true },
+    { name: "fresh shot after two ticks", distances: [null, 28], expected: true },
+    { name: "fresh shot after three ticks", distances: [null, 35], expected: true },
+    { name: "CI three-tick cycle with older shots in flight", distances: [109, 35, 56, 77], expected: true },
+    { name: "existing shot leaves the muzzle", distances: [21, 42, 63], expected: false },
+    { name: "past the maximum fresh-shot distance", distances: [null, 35.001], expected: false },
+    { name: "old shot stays outside the muzzle", distances: [null, 56, 77], expected: false },
+    { name: "no shot appears", distances: [null, null], expected: false },
+  ];
+  for (const entry of cases) {
+    const observed: Frame[] = entry.distances.map((distance, index) => ({
+      seq: index + 1, board: { x: 2.125, y: 2.125 }, boardPlayer: { x: 100, y: 100 },
+      shipShots: [], groundShots: [], boardShots: distance === null ? [] : [{ x: 118 + distance, y: 118 }],
+      dash: false, gun: false, turretFire: false, bombs: null,
+    }));
+    expect.soft(freshFireCycleObserved({ seq: 0, kind: "board", observed }), entry.name).toBe(entry.expected);
   }
 });
 

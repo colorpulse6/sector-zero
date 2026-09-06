@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { updateFirstPerson } from "../../app/components/engine/firstPersonEngine";
 import { initializeActorPresentation } from "../../app/components/engine/actorPresentation";
+import { releaseActorAssets, syncActorAssets } from "../../app/components/engine/actorAssets";
 import { selectNpcAtlasFrame } from "../../app/components/engine/fpRender/npcAtlas";
 import { SceneBuilder } from "../../app/components/engine/fpRender/sceneInput";
 import { TextureRegistry } from "../../app/components/engine/fpRender/textures";
@@ -109,7 +110,8 @@ test("legacy enemy fallback uses flinch only during a transient hurt event", () 
 });
 
 test("scene frames are protected before atlas use and preserve NPC/hostile aspect and anchors", async () => {
-  const { syncActorAssets, releaseActorAssets } = await import("../../app/components/engine/actorAssets");
+  // Match SceneBuilder's static import: tsx on Node 20 can instantiate a
+  // separate actor cache when this stateful module is dynamically imported.
   const previous = globalThis.Image;
   globalThis.Image = class { onload?: () => void; set src(_path: string) { queueMicrotask(() => this.onload?.()); } } as unknown as typeof Image;
   try {
