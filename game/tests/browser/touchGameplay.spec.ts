@@ -611,35 +611,48 @@ test("@touch shooter canvas drag owns position without firing and releases back 
 });
 
 test("@touch ground move aim fire and jump stay distinct and support three fingers", async ({ page }, testInfo) => {
+  test.setTimeout(60_000); // Independent gestures each re-enter through the real menu.
   await installObservation(page);
   await openMode(page, "GROUND RUN");
   await page.waitForFunction(() => window.touchEvidence.frames.at(-1)?.ground?.sprite.endsWith("player-idle.png"));
   await withFingers(page, async (fingers) => {
+    const freshEntry = async () => {
+      await fingers.tap(9, action(page, "DEV"));
+      await fingers.tap(9, action(page, "GROUND RUN"));
+      await fingers.tap(9, action(page, "X"));
+      await page.waitForFunction(() => window.touchEvidence.frames.at(-1)?.ground?.sprite.endsWith("player-idle.png"));
+      const spawn = (await frames(page, "ground", 1)).at(-1)!.ground!;
+      expect(spawn.worldX).toBeCloseTo(60, 3); // World spawn 64, minus the sprite's 4px draw offset.
+    };
     for (const [label, sign] of [["Move right", 1], ["Move left", -1]] as const) {
+      if (sign < 0) await freshEntry();
+      // A slow native command can finish after left movement reaches the wall.
+      // Keep its full displacement from the position before the touch begins.
+      const baseline = (await frames(page, "ground", 1)).at(-1)!;
       await fingers.down(1, action(page, label));
-      const moving = await frames(page, "ground", 8);
+      const moving = [baseline, ...await frames(page, "ground", 8)];
       expect(displacement(moving, "ground").x * sign).toBeGreaterThan(1);
       expect(moving.every((f) => f.groundShots.length === 0 && !f.ground!.sprite.endsWith("player-jump.png"))).toBe(true);
       await fingers.up(1);
     }
+    // Combat continues during browser round trips. Reset each independent
+    // gesture so a previous hold's damage/respawn cannot count as aim movement.
     for (const label of ["Aim up", "Aim down"]) {
+      await freshEntry();
       await fingers.down(1, action(page, label));
       const aiming = await frames(page, "ground", 8);
       still(aiming, "ground");
       expect(aiming.every((f) => f.groundShots.length === 0 && !f.ground!.sprite.endsWith("player-jump.png"))).toBe(true);
       await fingers.up(1);
     }
+    await freshEntry();
     await fingers.down(1, action(page, "Jump"));
     const jump = await frames(page, "ground", 10);
     await fingers.up(1);
     expect(jump.some((f) => f.ground!.sprite.endsWith("player-jump.png"))).toBe(true);
     expect(jump.every((f) => f.groundShots.length === 0)).toBe(true);
-    // Start the compound aiming leg through the real touch route, before the
-    // earlier movement and waiting expose it to accumulated combat damage.
-    await action(page, "DEV").tap();
-    await action(page, "GROUND RUN").tap();
-    await action(page, "X").tap();
-    await page.waitForFunction(() => window.touchEvidence.frames.at(-1)?.ground?.sprite.endsWith("player-idle.png"));
+    // Keep the compound hold continuous after its own fresh native entry.
+    await freshEntry();
     await fingers.down(2, action(page, "Fire"));
     const firing = await frames(page, "ground", 18);
     still(firing, "ground");
@@ -688,7 +701,7 @@ test("@touch ground move aim fire and jump stay distinct and support three finge
     const ended = await frames(page, "ground", 12);
     expect(ended.every((f) => !f.ground!.sprite.endsWith("player-shoot.png"))).toBe(true);
   });
-  await receipt(page, testInfo, "DevPanel -> ground movement/aim/jump -> DevPanel Ground relaunch -> fire/aim -> three fingers -> cancel", "freshLegacy", "Movement and aiming do not shoot or jump; Jump does not shoot; Fire does not jump; up/down aim changes real projectile direction; firing survives release of the other fingers and stops on cancellation.");
+  await receipt(page, testInfo, "DevPanel -> independent ground movement/aim/jump entries -> fresh entry fire/aim -> three fingers -> cancel", "freshLegacy", "Movement and aiming do not shoot or jump; Jump does not shoot; Fire does not jump; up/down aim changes real projectile direction; firing survives release of the other fingers and stops on cancellation.");
 });
 
 test("@touch boarding covers eight directions retained facing fire and dash", async ({ page }, testInfo) => {
