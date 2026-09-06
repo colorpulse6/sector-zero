@@ -31,13 +31,15 @@ the root layout only. No Game.tsx changes are expected.
   Enter/Z focus the separate action without mutation; native Enter/Space and
   pointer/touch action activation launch only the selected encounter. Rows use
   the configured keyboard/pointer/touch project tags.
-- [ ] Visually inspect desktop and 390/480px mobile routes. Use the existing dev seed
+- [x] Visually inspect desktop and 390/480px mobile routes. Use the existing dev seed
   and canonical browser fixtures. Keep before/after screenshots outside the repository.
-- [ ] Run all engine/colony/sprite suites, TypeScript, relevant navigationFocus and
+- [x] Run all engine/colony/sprite suites, TypeScript, relevant navigationFocus and
   galaxyPersistence browser rows with `--workers=1 --retries=0`, and both empty/base-path
   production exports. Avoid a simultaneous full browser matrix alongside other work.
-- [ ] Request an independent code review, address findings, record final verification
-  and limitations in a dated playtest note, commit the focused files and open a PR.
+- [x] Request an independent code review, address findings, record final verification
+  and limitations in a dated playtest note, and commit the focused files.
+
+Deliver as a focused pull request after committing the verification receipt.
 
 Browser acceptance failures require diagnosis and a new evidenced run; retries and
 arbitrary timeout increases do not count as acceptance.
