@@ -496,6 +496,7 @@ test("@touch shooter briefing describes visible controls before skipping", async
 
 for (const route of ["campaign", "planet", "Galaxy operation"] as const) {
   test(`@touch ${route} shooter separates movement fire and bomb with retained finger ownership`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000); // Native launch plus the full multi-finger frame sequence can exceed 30s.
     await installObservation(page);
     if (route === "campaign") await openMode(page, "1-1");
     else {

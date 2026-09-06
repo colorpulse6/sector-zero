@@ -30,7 +30,7 @@ All commands use Node 20.20.1 and `COREPACK_ENABLE_AUTO_PIN=0 COREPACK_ENABLE_PR
 
 ## Task 2 — game opening UI (game worker)
 
-**Owned files:** `game/app/components/Game.tsx`, `game/app/components/galaxy/GalaxyExperienceGate.tsx`, new `game/app/components/OpeningScreen.tsx`, new `game/app/components/OpeningScreen.module.css`, narrow additions to `game/app/globals.css` and `game/app/layout.tsx` if required for scoped fonts, new `game/tests/browser/openingScreen.spec.ts`. Do not edit engine/save/mission files, other browser suites, site files, artifacts owned by the conductor, or dependency files.
+**Owned files:** `game/app/components/Game.tsx`, `game/app/components/galaxy/GalaxyExperienceGate.tsx`, new `game/app/components/OpeningScreen.tsx`, new `game/app/components/OpeningScreen.css`, narrow additions to `game/app/globals.css` and `game/app/layout.tsx` if required for scoped fonts, new `game/tests/browser/openingScreen.spec.ts`. Do not edit engine/save/mission files, other browser suites, site files, artifacts owned by the conductor, or dependency files.
 
 - [x] Tag every new game browser row with the existing project filters (`@keyboard`, `@pointer`, `@touch`). Write focused browser tests first for one heading, Controls/Story panels, Escape and focus return, and first-launch sound control. Run with `yarn playwright test tests/browser/openingScreen.spec.ts --workers=1 --retries=0 --reporter=list,json`; retain expected RED caused by missing UI.
 - [x] Extract the old inline start markup into `OpeningScreen`, with props for `ready`, `hasGalaxyRun`, `onGalaxy`, `onLegacy`, `muted`, `onToggleMute` and optional player name. The component owns only local help-panel state. No localStorage calls or launch decisions belong in it.
@@ -57,7 +57,7 @@ All commands use Node 20.20.1 and `COREPACK_ENABLE_AUTO_PIN=0 COREPACK_ENABLE_PR
 
 ## Task 4 — integration and visual acceptance (conductor)
 
-**Owned files:** `.github/workflows/pr-checks.yml` only to run the new site browser harness with both app dependencies installed; final review/handoff records under `docs/handoffs/`, plan checkboxes, integration fixes within the lanes' allocated UI files after workers release ownership. Do not change unrelated source, root dirty files, C1 branch or quartermaster worktree.
+**Owned files:** `game/tests/browser/touchGameplay.spec.ts` only for the evidence-backed aggregate timeout of the three-route shooter gesture test; `.github/workflows/pr-checks.yml` only to run the new site browser harness with both app dependencies installed; final review/handoff records under `docs/handoffs/`, plan checkboxes, integration fixes within the lanes' allocated UI files after workers release ownership. Do not change unrelated source, root dirty files, C1 branch or quartermaster worktree.
 
 - [ ] Read both worker diffs; verify no launch/save/mission authority changes and no unallocated files. Test adding this UI change to C1 in a temporary merge index or throwaway branch without altering the accepted C1 worktree. Resolve only actual UI overlap, retaining distinct acceptance identities.
 - [ ] Inspect the running UI in the browser at 1440×900, 480×854 and a short landscape size; inspect site navigation at 320px. Compare to the approved mockup. Check dialogs, native launches, sound, mobile scrolling, image aspect ratios, loading fallback and reduced motion. Fix visual defects before broad final gates.
@@ -68,6 +68,10 @@ All commands use Node 20.20.1 and `COREPACK_ENABLE_AUTO_PIN=0 COREPACK_ENABLE_PR
 - [ ] Request an independent spec review followed by a separate code-quality review of the integrated result. Fix confirmed findings and rerun only affected checks, broadening when justified.
 - [ ] Save a concise checkpoint with exact code/verification/review identities, screenshots, known limits and open C1/graphics work. Keep generated metadata changes out of commits. Preserve the root's original build-info bytes and research file.
 - [ ] Push the focused UI branch and create a non-duplicate PR against main after checks pass. Original user authorization covers continuing and publishing reviewed work; GitHub's approving-review rule still applies. Monitor actual CI and report publication accurately. Do not assume the previous PR #20 admin-override authorization automatically covers this new PR.
+
+### Integration finding — browser deadline
+
+The full run at `616075f` passed 89/90 browser rows; the Galaxy shooter gesture row crossed its 30-second aggregate deadline. Its trace retained every successful gameplay assertion and completed receipt at about 36.44 seconds. The native opening-button lookup consumed 9.813 seconds, with a 7.573-second screencast gap; this does not establish a styling, network, or input defect. Allocate the same 60-second deadline already used by other long gesture tests to the three-route shooter callback. Keep all input assertions, frame observations, and zero-retry policy unchanged. Retain the failed evidence and run the complete matrix on the corrected candidate.
 
 ## Done contract
 

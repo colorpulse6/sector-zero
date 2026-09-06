@@ -29,7 +29,7 @@ Use a coherent cinematic presentation across both apps. A modest cleanup would p
 - Provide an optional Controls panel with introductory guidance and an explanation that active-mode controls appear during play. Use current control definitions; do not repeat a universal Space-to-shoot claim across all modes.
 - Give panels a visible close action, Escape dismissal and focus return. Native buttons must retain Enter/Space activation without duplicate global input handling. No background launch may happen while a help panel is open.
 - Consolidate the opening screen's sound control with the existing mute state and handler; do not add a second audio state or force the mockup's example `SOUND OFF` value. Audio still obeys user-gesture requirements. The opening control must work before the first launch: initialize the existing audio engine through `ensureAudio` inside the button gesture if necessary, then update the same authoritative mute state. Do not initialize or start audio merely by rendering the screen.
-- On narrow or short viewports, use a single column with the primary actions immediately reachable and a scrollable start-screen container. Scope any overflow/touch changes to the opening UI so gameplay canvas controls retain their current ownership.
+- On narrow portrait viewports, use a single column with the primary actions immediately reachable and a scrollable start-screen container. Short landscape may use two columns to keep both launch actions initially visible. Scope any overflow/touch changes to the opening UI so gameplay canvas controls retain their current ownership.
 
 ## Companion site
 
