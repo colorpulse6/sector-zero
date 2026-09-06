@@ -7,55 +7,35 @@ export interface GalaxyExperienceGateProps {
   ready: boolean;
   onGalaxy: () => void;
   onLegacy: () => void;
+  className?: string;
 }
-const BUTTON_STYLE: React.CSSProperties = {
-  minHeight: 48,
-  padding: "12px 18px",
-  border: "1px solid #00e7f0",
-  background: "rgba(0, 92, 110, .25)",
-  color: "#e8fdff",
-  font: "inherit",
-  letterSpacing: ".08em",
-  cursor: "pointer",
-};
 
 export function GalaxyExperienceGate({
   hasGalaxyRun,
   ready,
   onGalaxy,
   onLegacy,
+  className,
 }: GalaxyExperienceGateProps) {
   return (
     <section
       aria-labelledby="experience-gate-title"
       aria-busy={!ready}
-      style={{
-        width: "min(560px, calc(100% - 32px))",
-        margin: "24px auto",
-        padding: 24,
-        border: "1px solid #1c5363",
-        background: "rgba(5, 13, 22, .96)",
-        color: "#c9e8ee",
-        fontFamily: "ui-monospace, Menlo, monospace",
-      }}
+      className={className}
     >
-      <p style={{ margin: 0, color: "#70aebc", letterSpacing: ".12em" }}>
-        SELECT EXPERIENCE
-      </p>
-      <h1 id="experience-gate-title" style={{ margin: "8px 0", color: "#00f0ff" }}>
-        SECTOR ZERO
-      </h1>
-      <p style={{ margin: "0 0 20px" }}>
-        Begin a fresh continuous-galaxy expedition or preserve the numbered legacy campaign.
-      </p>
-      <div style={{ display: "grid", gap: 12 }}>
-        <button type="button" disabled={!ready} onClick={onGalaxy} style={BUTTON_STYLE}>
+      <div>
+        <button type="button" disabled={!ready} onClick={onGalaxy} aria-describedby="galaxy-choice-context">
           {ready ? (hasGalaxyRun ? "CONTINUE GALAXY" : "BEGIN GALAXY") : "LOADING SAVE"}
         </button>
-        <button type="button" disabled={!ready} onClick={onLegacy} style={BUTTON_STYLE}>
+        <p id="galaxy-choice-context">Explore a persistent galaxy.</p>
+      </div>
+      <div>
+        <button type="button" disabled={!ready} onClick={onLegacy} aria-describedby="legacy-choice-context">
           LEGACY CAMPAIGN
         </button>
+        <p id="legacy-choice-context">40 missions across eight sectors.</p>
       </div>
+      {!ready && <p role="status">Reading your saved progress…</p>}
     </section>
   );
 }

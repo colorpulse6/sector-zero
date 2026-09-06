@@ -131,7 +131,8 @@ import { applyColonyFixture, findFixture } from "./colony/dev/seedColony";
 import DevPanel from "./DevPanel";
 import { createGradePass } from "./engine/postFx";
 import { selectPreset, type GradeScene } from "./engine/postFx/presets";
-import { GalaxyAtlasScreen, GalaxyExperienceGate } from "./galaxy";
+import { GalaxyAtlasScreen } from "./galaxy";
+import OpeningScreen from "./OpeningScreen";
 import {
   attemptCanonicalTransitionPersistence,
   beginGalaxyExperience,
@@ -429,6 +430,10 @@ export default function Game() {
     audioRef.current.init();
     return audioRef.current;
   }, []);
+
+  const toggleMute = useCallback(() => {
+    setMuted(ensureAudio().toggleMute());
+  }, [ensureAudio]);
 
   const commitCockpitState = useCallback((next: CockpitHubState) => {
     if (next.screen === "colonies" && cockpitStateRef.current.screen !== "colonies") {
@@ -2006,10 +2011,7 @@ export default function Game() {
           setGameState((prev) => (prev ? togglePause(prev) : null));
           break;
         case "mute":
-          if (audioRef.current) {
-            const nowMuted = audioRef.current.toggleMute();
-            setMuted(nowMuted);
-          }
+          toggleMute();
           break;
         default:
           hold();
@@ -2021,7 +2023,7 @@ export default function Game() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [inputContext, commitHeldInput, clearHeldInput, showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, retreatActiveRoute, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi, submitGameOutcome, outcomeCommitIssue, travelCommitIssue, pendingOutcomeReturn]);
+  }, [inputContext, commitHeldInput, clearHeldInput, toggleMute, showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, retreatActiveRoute, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi, submitGameOutcome, outcomeCommitIssue, travelCommitIssue, pendingOutcomeReturn]);
 
   // Release ownership independently of frame renders. Another input listener
   // may trigger a React update during keyup; replacing this listener during that
@@ -2839,55 +2841,15 @@ export default function Game() {
 
       {/* Start Screen */}
       {showStartScreen && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 text-white">
-          <h1
-            className="text-5xl font-bold mb-2 tracking-[0.3em]"
-            style={{
-              background: "linear-gradient(135deg, #44ccff, #aa44ff, #ff4444)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
-          >
-            SECTOR ZERO
-          </h1>
-          <p className="text-gray-600 text-sm mb-1 tracking-wider">
-            THE LAST PILOT OF SECTOR ZERO
-          </p>
-          <p className="text-gray-700 text-xs mb-4">{playerName}</p>
-
-          {/* Scrolling story crawl */}
-          <div
-            className="relative overflow-hidden w-full max-w-lg mb-6"
-            style={{ height: "180px", maskImage: "linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)" }}
-          >
-            <div className="sector-crawl absolute left-0 right-0 text-center text-gray-400 text-xs leading-relaxed space-y-3">
-              <p className="text-cyan-400 font-bold tracking-[0.2em] text-sm">THE YEAR 2847</p>
-              <p>Humanity has spread across the stars.<br/>Thousands of colony worlds.<br/>A golden age of expansion.</p>
-              <p className="text-purple-400 italic">Then The Signal arrived.</p>
-              <p>An electromagnetic whisper from the void.<br/>Coming from a region every star chart<br/>labeled FORBIDDEN.</p>
-              <p className="text-cyan-400 font-bold tracking-[0.2em] text-sm">SECTOR ZERO</p>
-              <p>The colonies closest to the source<br/>fell silent first. Then entire systems<br/>went dark.</p>
-              <p>Survivors spoke of hostiles<br/>unlike anything in our records.</p>
-              <p className="text-cyan-400 font-bold tracking-[0.2em] text-sm">THE HOLLOW</p>
-              <p>An alien hivemind.<br/>Fast. Adaptive. Relentless.<br/>They consumed everything in their path.</p>
-              <p>The United Earth Coalition<br/>has one option remaining.</p>
-              <p>Send a strike team into Sector Zero.<br/>Find the source of The Signal.<br/>Destroy the Hollow Mind.<br/>End this war.</p>
-              <p className="text-purple-400 italic">Whatever the cost.</p>
-            </div>
-          </div>
-          <div className="text-center mb-6 text-gray-400 text-xs space-y-1">
-            <p>Arrow Keys / WASD to move</p>
-            <p>SPACE to shoot</p>
-            <p>P to pause &middot; M to mute</p>
-          </div>
-
-          <GalaxyExperienceGate
-            hasGalaxyRun={saveData.galaxyRun !== null}
-            ready={saveHydrated}
-            onGalaxy={beginGalaxy}
-            onLegacy={beginLegacy}
-          />
-        </div>
+        <OpeningScreen
+          hasGalaxyRun={saveData.galaxyRun !== null}
+          ready={saveHydrated}
+          onGalaxy={beginGalaxy}
+          onLegacy={beginLegacy}
+          muted={muted}
+          onToggleMute={toggleMute}
+          playerName={playerName}
+        />
       )}
 
       {/* Paused Overlay */}
@@ -3230,12 +3192,7 @@ export default function Game() {
       {/* Mute button */}
       {(gameState || showCockpit || showMap || endingPhase !== "off") && !showStartScreen && !showGalaxyAtlas && (
         <button
-          onClick={() => {
-            if (audioRef.current) {
-              const nowMuted = audioRef.current.toggleMute();
-              setMuted(nowMuted);
-            }
-          }}
+          onClick={toggleMute}
           className="absolute top-2 right-2 text-gray-500 hover:text-white transition-colors text-sm z-10"
           title="Toggle sound (M)"
         >
