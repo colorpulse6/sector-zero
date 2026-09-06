@@ -1,4 +1,5 @@
 import { getSprite, SPRITES } from "../sprites";
+import type { AtlasFrame } from "./npcAtlas";
 
 export type TexKind = "tile" | "sky" | "billboard";
 
@@ -56,6 +57,29 @@ export class TextureRegistry {
   }
 
   get(id: number): Texture { return this.textures[id]; }
+
+  /** Decode a single authored cell, never resize the atlas as one billboard.
+   * Missing/invalid cells return -1 so scene construction retains its static
+   * actor. There are at most 160 quartermaster cells, shared by all colonies. */
+  idForFrame(frame: AtlasFrame): number {
+    const key = `${frame.path}#${frame.x},${frame.y},${frame.width},${frame.height}`;
+    const cached = this.byPath.get(key);
+    if (cached !== undefined) return cached;
+    const img = getSprite(frame.path);
+    if (!img || typeof document === "undefined") return -1;
+    const { x, y, width, height } = frame;
+    if (![x, y, width, height].every(Number.isInteger) || x < 0 || y < 0
+      || width < 1 || height < 1 || width > BILLBOARD_MAX || height > BILLBOARD_MAX
+      || (width & (width - 1)) || (height & (height - 1))
+      || x + width > img.width || y + height > img.height) return -1;
+    const cv = document.createElement("canvas");
+    cv.width = width; cv.height = height;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return -1;
+    ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
+    const pixels = ctx.getImageData(0, 0, width, height);
+    return this.registerRaw(key, new Uint32Array(pixels.data.buffer), width, height);
+  }
 
   /** Called once per frame (cheap): decode any images that finished loading.
    *  Compacts `pending` IN PLACE instead of `Array.prototype.filter` (which

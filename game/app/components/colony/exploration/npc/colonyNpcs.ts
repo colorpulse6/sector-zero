@@ -208,6 +208,10 @@ export function generateColonyNpcs(
       canBuy: spec.canBuy,
       walkSprites: spec.walkSprites,
       idleSprites: spec.idleSprites,
+      ...(spec.kind === "quartermaster" ? { atlasAnimation: {
+        set: "quartermaster" as const, facingAngle: Math.PI / 2,
+        action: "idle" as const, clockMs: 0, walkDistance: 0,
+      } } : {}),
     });
   };
 

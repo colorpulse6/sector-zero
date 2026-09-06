@@ -1,6 +1,7 @@
 import type { FirstPersonState, BoardingMap, FPEnvironmentArt } from "../types";
 import { SPRITES } from "../sprites";
 import { TextureRegistry } from "./textures";
+import { selectNpcAtlasFrame } from "./npcAtlas";
 import { hslShiftToRgbMul, IDENTITY_TINT, type RgbMul, type LightGrid, type LightGridPointLight } from "./lighting";
 
 export interface BillboardInput {
@@ -163,7 +164,9 @@ export class SceneBuilder {
       s.billboards.push({ x: e.x, y: e.y, texId: reg.idFor(sprite, "billboard"), scale: 1, alpha256: alpha, widthFactor: 1, vAnchor: "center" });
     }
     for (const n of fp.npcs) {
-      s.billboards.push({ x: n.x, y: n.y, texId: reg.idFor(resolveNpcSprite(n), "billboard"), scale: 1, alpha256: 256, widthFactor: 0.4, vAnchor: "npc" });
+      const frame = selectNpcAtlasFrame(n, fp.posX, fp.posY);
+      const atlasId = frame ? reg.idForFrame(frame) : -1;
+      s.billboards.push({ x: n.x, y: n.y, texId: atlasId >= 0 ? atlasId : reg.idFor(resolveNpcSprite(n), "billboard"), scale: 1, alpha256: 256, widthFactor: atlasId >= 0 ? 0.5 : 0.4, vAnchor: "npc" });
     }
     // Objective marker: NOT pushed here. It stays the classic overlay
     // (drawObjectiveBillboard — glow + label are vector draws that already

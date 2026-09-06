@@ -4,6 +4,7 @@ import { resolveAffinity } from "./enemyClasses";
 import { AFFINITY_MULTIPLIER } from "./weaponTypes";
 import { createAffinityLabel } from "./floatingLabels";
 import { hasSkill, getSkillEffect } from "./skillTree";
+import { stepWeaponMotion } from "./weaponMotion";
 
 // ─── Constants ──────────────────────────────────────────────────────
 
@@ -84,6 +85,16 @@ function moveWithCollision(
   return { posX: nextX, posY: nextY };
 }
 
+function advanceWeaponPresentation(fp: FirstPersonState, startX: number, startY: number, dtMs: number): void {
+  fp.weaponMotion = stepWeaponMotion(fp.weaponMotion, {
+    deltaX: fp.posX - startX,
+    deltaY: fp.posY - startY,
+    dtMs,
+    gunFireTimer: fp.gunFireTimer,
+    dialogueActive: fp.dialogState?.active === true,
+  });
+}
+
 // ─── NPC dialog open (shared: non-colony site + colony hook) ───
 // Extracted from the non-colony NPC-interaction block so the colony hook can
 // reuse the engine's own dialog-open logic (Phase 5a §H1). Finds an NPC within
@@ -134,6 +145,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   const dtF = Math.min(dtMs / 16.67, 3);
 
   let { posX, posY, dirX, dirY, planeX, planeY } = fp;
+  const startX = posX, startY = posY;
 
   // ── Rotation + movement (frozen while a dialog/shop is open) ──
   // Gating on !dialogState.active holds the player still while talking or
@@ -295,6 +307,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
         }
       }
     }
+    advanceWeaponPresentation(fp, startX, startY, dtMs);
     return;
   }
   // ─── End colony hook block ───
@@ -379,6 +392,10 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       }
     }
   }
+
+  // Sample the existing shot timer after firing, before any enemy respawn can
+  // relocate the player. Dialogue paths above retain the previous pose.
+  advanceWeaponPresentation(fp, startX, startY, dtMs);
 
   // ── Enemy AI ──
   for (const enemy of fp.enemies) {

@@ -971,6 +971,7 @@ export interface FPNPC {
   animClockMs?: number;   // Accumulated step dtMs driving frame selection. Threaded
                           //   from the game loop like all engine time — NEVER
                           //   Date.now/performance.now.
+  atlasAnimation?: import("./fpRender/npcAtlas").NpcAtlasAnimation;
 }
 
 // One-shot, typed buy signal the FP engine emits when the player confirms a
@@ -1061,6 +1062,7 @@ export interface FirstPersonState {
   enemies: FPEnemy[];
   gunFireTimer: number;   // Frames since last shot (for muzzle flash)
   gunCooldown: number;    // Frames until can fire again
+  weaponMotion?: import("./weaponMotion").WeaponMotion;
   // RPG layer
   npcs: FPNPC[];
   dialogState: FPDialogState | null;

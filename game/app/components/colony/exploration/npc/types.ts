@@ -21,6 +21,8 @@ export interface ColonyNpc {
   millAnchorX?: number;           // idle-mill anchor, captured from posX/posY the first frame the
   millAnchorY?: number;           //   path empties — mill drifts around this, so an unreachable
                                   //   target mills at spawn instead of teleporting to the target
+  quartermasterMotion?: import("./quartermasterMotion").QuartermasterMotion;
+  quartermasterStepRemainderMs?: number;
 }
 
 export interface GeneratedNpcs { fpNpcs: FPNPC[]; sidecar: ColonyNpc[]; }

@@ -25,6 +25,7 @@
 import type { BoardingMap, FPNPC } from "../../../engine/types";
 import type { ColonyNpc } from "./types";
 import { findPath } from "./npcPathfind";
+import { stepQuartermasterMotion } from "./quartermasterMotion";
 
 const NPC_WALK_SPEED = 0.03;   // tiles per frame at 60fps (dtF = 1)
 const ARRIVE_EPSILON = 0.02;   // snap distance to a waypoint center
@@ -59,6 +60,10 @@ export function stepColonyNpcs(
 
   for (let i = 0; i < sidecar.length; i++) {
     const npc = sidecar[i];
+    if (npc.kind === "quartermaster" && fpNpcs[i]?.atlasAnimation) {
+      stepQuartermasterMotion(npc, fpNpcs[i], map, dtMs);
+      continue;
+    }
 
     // 1. Compute the path once (fixed entry-hour target).
     if (!npc.pathComputed) {
