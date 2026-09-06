@@ -1,3 +1,4 @@
+import { createCombatDressing } from "./worldArt";
 import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
@@ -576,6 +577,7 @@ function tickLevelComplete(s: GameState): void {
       const boardingState = createBoardingState();
       s.firstPersonState = {
         map: boardingState.map,
+        ...createCombatDressing(boardingState.map, "station"),
         posX: 2.5, posY: 2.5,
         dirX: 1, dirY: 0,
         planeX: 0, planeY: 0.66,

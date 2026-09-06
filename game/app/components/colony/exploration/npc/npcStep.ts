@@ -1,44 +1,54 @@
-// Per-frame NPC stepping (Phase 5a, Task 6).
-//
-// Advances the orchestrator-owned ColonyNpc sidecar one frame and syncs each
-// NPC's position into its paired, persistent FPNPC render object. All new
-// movement logic lives here; the engine stays colony-agnostic (it just renders
-// fp.npcs and runs its generic dialog/shop flow).
-//
-// Boundaries (spec Section C):
-//   - Movement PAUSES while a dialog/shop is open (dialogActive) — the plaza
-//     holds still while the player talks.
-//   - Delta-time scaled via the shared clamp dtF = min(dtMs/16.67, 3).
-//   - Each NPC's target is a fixed entry-hour snapshot, so its A* path is
-//     computed ONCE (on first step) and then followed; on arrival it idle-mills.
-//   - The idle-mill is a small, bounded, DETERMINISTIC drift keyed to a per-NPC
-//     millSeed + an accumulating counter, clamped so it never leaves a walkable
-//     tile.
-//
-// FPNPC identity rule (LOAD-BEARING — Codex finding): this MUST mutate
-// fpNpcs[i].x/y in place on the SAME objects generation created. It must NEVER
-// rebuild the fpNpcs array or replace an element — an open dialog binds to
-// dialogState.npcId, and the engine reads each NPC's live x/y straight off
-// that same object every frame; replacing objects mid-conversation would
-// orphan the dialog and desync its rendered position.
+// The colony sidecar owns movement and animation time. Entry-hour paths remain
+// fixed for the visit; after arrival actors pause and make a short local walk.
+// Both sidecar and persistent FPNPC objects freeze during dialogue/shop.
 
 import type { BoardingMap, FPNPC } from "../../../engine/types";
 import type { ColonyNpc } from "./types";
 import { findPath } from "./npcPathfind";
 import { stepQuartermasterMotion } from "./quartermasterMotion";
+import { initializeNpcPresentation, stepNpcPresentation } from "../../../engine/actorPresentation";
 
 const NPC_WALK_SPEED = 0.03;   // tiles per frame at 60fps (dtF = 1)
 const ARRIVE_EPSILON = 0.02;   // snap distance to a waypoint center
-const MILL_RADIUS = 0.3;       // idle-drift amplitude (tiles) around the mill anchor; each
-                               //   candidate is walkable-guarded before it's applied
-const MILL_FREQ_X = 0.05;      // angular frequency of the X drift (rad per accumulated frame)
-const MILL_FREQ_Y = 0.04;      // Y drift frequency — differs from X so the drift traces a Lissajous path
+const LOCAL_RADIUS = 0.3;
 
 function isWalkable(map: BoardingMap, x: number, y: number): boolean {
   const tx = Math.floor(x), ty = Math.floor(y);
   if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return false;
   const t = map.tiles[ty][tx];
   return t === "floor" || t === "door";
+}
+
+function stepLocalMotion(npc: ColonyNpc, map: BoardingMap, dtMs: number, dtF: number): void {
+  if (!npc.localMotion) {
+    const angle = (npc.millSeed % 8) * Math.PI / 4;
+    let awayX = npc.posX, awayY = npc.posY;
+    for (let i = 0; i < 8; i++) {
+      const heading = angle + i * Math.PI / 4;
+      const x = npc.posX + Math.cos(heading) * LOCAL_RADIUS;
+      const y = npc.posY + Math.sin(heading) * LOCAL_RADIUS;
+      if (isWalkable(map, x, y) && !map.landingPadTiles?.has(`${Math.floor(x)},${Math.floor(y)}`)) { awayX = x; awayY = y; break; }
+    }
+    npc.localMotion = { phase: "pause", remainingMs: 1800 + Math.abs(npc.millSeed % 900), anchorX: npc.posX, anchorY: npc.posY, awayX, awayY };
+  }
+  const motion = npc.localMotion;
+  if (motion.phase === "pause" || motion.phase === "awayPause") {
+    motion.remainingMs -= dtMs;
+    if (motion.remainingMs <= 0) motion.phase = motion.phase === "pause" ? "outbound" : "return";
+    return;
+  }
+  const targetX = motion.phase === "outbound" ? motion.awayX : motion.anchorX;
+  const targetY = motion.phase === "outbound" ? motion.awayY : motion.anchorY;
+  const dx = targetX - npc.posX, dy = targetY - npc.posY, distance = Math.hypot(dx, dy);
+  const step = Math.min(distance, NPC_WALK_SPEED * dtF);
+  const x = distance > 1e-8 ? npc.posX + dx / distance * step : npc.posX;
+  const y = distance > 1e-8 ? npc.posY + dy / distance * step : npc.posY;
+  const canMove = isWalkable(map, x, y);
+  if (canMove) { npc.posX = x; npc.posY = y; }
+  if (distance <= step + 1e-8 || !canMove) {
+    motion.phase = motion.phase === "outbound" ? "awayPause" : "pause";
+    motion.remainingMs = motion.phase === "pause" ? 1800 + Math.abs(npc.millSeed % 900) : 1400;
+  }
 }
 
 /**
@@ -56,10 +66,15 @@ export function stepColonyNpcs(
   // Freeze the whole plaza while the player is in dialog/shop.
   if (dialogActive) return;
 
-  const dtF = Math.min(dtMs / 16.67, 3);
+  const dt = Number.isFinite(dtMs) ? Math.max(0, Math.min(dtMs, 50.01)) : 0;
+  if (dt === 0) return;
+  const dtF = dt / 16.67;
 
   for (let i = 0; i < sidecar.length; i++) {
     const npc = sidecar[i];
+    const fp = fpNpcs[i];
+    if (fp) { initializeNpcPresentation(fp); fp.atlasClockOwner = "colony"; }
+    const beforeX = npc.posX, beforeY = npc.posY;
     if (npc.kind === "quartermaster" && fpNpcs[i]?.atlasAnimation) {
       stepQuartermasterMotion(npc, fpNpcs[i], map, dtMs);
       continue;
@@ -74,12 +89,6 @@ export function stepColonyNpcs(
       );
       npc.pathComputed = true;
     }
-
-    // Billboard animation input (DOOM overhaul): true only on frames where the
-    // NPC actually moved — any path advance, or an idle-mill shuffle that was
-    // applied (a mill candidate rejected by the walkable guard holds position
-    // → NOT moving). Synced onto the FPNPC below alongside x/y.
-    let moved = false;
 
     if (npc.path.length > 0) {
       // 2. Advance toward the next waypoint's center.
@@ -97,42 +106,17 @@ export function stepColonyNpcs(
         npc.posX += (dx / dist) * step;
         npc.posY += (dy / dist) * step;
       }
-      moved = true;
     } else {
-      // 3. Idle-mill — deterministic bounded drift around a fixed anchor. The
-      //    anchor is captured ONCE, the first frame the path empties, from the
-      //    NPC's CURRENT position: a normal arrival mills around the target
-      //    center, while an NPC whose target is unreachable (findPath → [], so it
-      //    drops straight here) mills where it stands instead of teleporting
-      //    across the map to the target. Keyed to millSeed + an accumulating
-      //    counter; only applied if the candidate is walkable, else the NPC holds
-      //    its previous (walkable) position.
-      if (npc.millAnchorX === undefined || npc.millAnchorY === undefined) {
-        npc.millAnchorX = npc.posX;
-        npc.millAnchorY = npc.posY;
-      }
-      const c = (npc.millCounter ?? 0) + dtF;
-      npc.millCounter = c;
-      const candX = npc.millAnchorX + MILL_RADIUS * Math.sin(c * MILL_FREQ_X + npc.millSeed);
-      const candY = npc.millAnchorY + MILL_RADIUS * Math.cos(c * MILL_FREQ_Y + npc.millSeed);
-      if (isWalkable(map, candX, candY)) {
-        npc.posX = candX;
-        npc.posY = candY;
-        moved = true;   // idle-mill shuffles count as moving during the shuffle
-      }
+      stepLocalMotion(npc, map, dt, dtF);
     }
 
-    // 4. FPNPC identity rule: mutate x/y (and animation state) in place on the
-    //    persistent object. NEVER reassign fpNpcs[i] or rebuild the array.
-    //    animClockMs accumulates threaded dtMs (never wall time) and drives
-    //    resolveNpcSprite's frame selection; the dialog freeze above returns
-    //    before this, so the clock — and thus the visible frame — pauses with
-    //    the plaza. Inert for NPCs without walk/idle sprites.
-    const fp = fpNpcs[i];
+    // Mutate the paired persistent object; dialogue binds to this identity.
     if (fp) {
       fp.x = npc.posX;
       fp.y = npc.posY;
-      fp.isMoving = moved;
+      const dx = npc.posX - beforeX, dy = npc.posY - beforeY;
+      fp.isMoving = Math.hypot(dx, dy) > 1e-8;
+      stepNpcPresentation(fp, dx, dy, dt);
       fp.animClockMs = (fp.animClockMs ?? 0) + dtMs;
     }
   }

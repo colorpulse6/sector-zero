@@ -2,6 +2,8 @@ import { Framebuffer } from "./framebuffer";
 import { TextureRegistry } from "./textures";
 import { buildLightGrid } from "./lighting";
 import type { RenderScene, BillboardInput } from "./sceneInput";
+import { skyProjection } from "./panorama";
+import { mipForFootprint, type TextureLevel } from "./mipmaps";
 
 const FOG_R = 5, FOG_G = 5, FOG_B = 16;          // classic rgba(5,5,16,…)
 const FOG_SCALE = 0.08, FOG_MAX = 179;           // min(0.7, d*0.08) → 0.7*256≈179
@@ -43,15 +45,13 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
   // keeps the no-texture fallback correct without a per-pixel branch.
   if (s.art.skyTexId >= 0) {
     const sky = reg.get(s.art.skyTexId);
-    // Angle-offset horizontal sample, screen-space vertical — parity with the
-    // classic repeat-x pattern translated by view angle.
-    const angle = Math.atan2(s.dirY, s.dirX);
-    const uOff = ((angle + Math.PI) / (2 * Math.PI)) * sky.w;
+    s.skyProjection = skyProjection(s.skyProjection, w, sky.w, s.dirX, s.dirY, s.planeX, s.planeY);
+    const columns = s.skyProjection.columns;
     for (let y = 0; y < half; y++) {
       const v = ((y * sky.h / half) | 0) & sky.hMask;
       const row = y * w, trow = v * sky.w;
       for (let x = 0; x < w; x++) {
-        const u = ((x + uOff) | 0) & sky.wMask;
+        const u = columns[x];
         px[row + x] = shade(sky.texels[trow + u], s.tint.rMul, s.tint.gMul, s.tint.bMul, 0);
       }
     }
@@ -69,6 +69,7 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
   // camera at the floor/ceiling midpoint sees symmetric distances both ways.
   const rd0x = s.dirX - s.planeX, rd0y = s.dirY - s.planeY;
   const rd1x = s.dirX + s.planeX, rd1y = s.dirY + s.planeY;
+  const maxRayComponent = Math.max(Math.abs(rd0x), Math.abs(rd0y), Math.abs(rd1x), Math.abs(rd1y));
   const floorDefault = s.art.floorTexId >= 0 ? reg.get(s.art.floorTexId) : null;
   // Sky takes precedence over a ceiling texture (Task-1 semantics) — resolved
   // once here so the pixel loop tests a single reference.
@@ -84,18 +85,27 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
     const rowDist = (h * 0.5) / (y - h * 0.5);
     const stepX = rowDist * (rd1x - rd0x) / w;
     const stepY = rowDist * (rd1y - rd0y) / w;
+    // Near the horizon the distance between adjacent rows exceeds the lateral
+    // footprint. Include both axes so forward motion cannot invert floor bands.
+    const rowDelta = rowDist - (h * 0.5) / (y + 1 - h * 0.5);
+    const rowMip = mipForFootprint(Math.max(Math.abs(stepX), Math.abs(stepY), rowDelta * maxRayComponent));
+    const floorRow = floorDefault?.mips ? floorDefault.mips[Math.min(rowMip, floorDefault.mips.length - 1)] : floorDefault;
+    const ceilingRow = castCeil?.mips ? castCeil.mips[Math.min(rowMip, castCeil.mips.length - 1)] : castCeil;
     let fx = s.camX + rowDist * rd0x;
     let fy = s.camY + rowDist * rd0y;
     let fogF = (rowDist * FOG_SCALE * 256) | 0; if (fogF > FOG_MAX) fogF = FOG_MAX;
     const rowF = y * w, rowC = (h - 1 - y) * w;
     for (let x = 0; x < w; x++) {
       const cellX = fx | 0, cellY = fy | 0;
-      let ftex = floorDefault;
+      let ftex: TextureLevel | null = floorRow;
       let lr = rMul, lg = gMul, lb = bMul;
       if (cellX >= 0 && cellX < mw && cellY >= 0 && cellY < mh) {
         const gi = cellY * mw + cellX;
         const ov = floorTexture[gi];
-        if (ov >= 0) ftex = reg.get(ov);
+        if (ov >= 0) {
+          const tile = reg.get(ov);
+          ftex = tile.mips ? tile.mips[Math.min(rowMip, tile.mips.length - 1)] : tile;
+        }
         lr = grid.r[gi]; lg = grid.g[gi]; lb = grid.b[gi];
       }
       if (ftex) {
@@ -115,10 +125,10 @@ function drawEnvironment(fb: Framebuffer, s: RenderScene, reg: TextureRegistry):
         // Ceiling never darkens (FLOOR only, matches the classic renderer).
         px[rowF + x] = darkenFloor(c);
       } // else keep the gradient already painted for this row (paint gradient first)
-      if (castCeil) {
-        const tx = (((fx - cellX) * castCeil.w) | 0) & castCeil.wMask;
-        const ty = (((fy - cellY) * castCeil.h) | 0) & castCeil.hMask;
-        px[rowC + x] = shade(castCeil.texels[ty * castCeil.w + tx], lr, lg, lb, fogF);
+      if (ceilingRow) {
+        const tx = (((fx - cellX) * ceilingRow.w) | 0) & ceilingRow.wMask;
+        const ty = (((fy - cellY) * ceilingRow.h) | 0) & ceilingRow.hMask;
+        px[rowC + x] = shade(ceilingRow.texels[ty * ceilingRow.w + tx], lr, lg, lb, fogF);
       }
       fx += stepX; fy += stepY;
     }
@@ -177,7 +187,9 @@ function drawWalls(fb: Framebuffer, s: RenderScene, reg: TextureRegistry): void 
     let wallX = side === 0 ? s.camY + dist * rayY : s.camX + dist * rayX;
     wallX -= wallX | 0;
     const texOverride = wallTexture[mapY * mw + mapX];
-    const tex = texOverride >= 0 ? reg.get(texOverride) : defaultTex;
+    const fullTex = texOverride >= 0 ? reg.get(texOverride) : defaultTex;
+    const wallMip = Math.max(0, Math.floor(Math.log2(fullTex.h / Math.max(1, lineH))));
+    const tex = fullTex.mips ? fullTex.mips[Math.min(wallMip, fullTex.mips.length - 1)] : fullTex;
     let texX = (wallX * tex.w) | 0;
     // Standard mirror-fix (lodev): classic renderer OMITS this, so two wall
     // faces render mirrored today. Keeping the fix is an intended deviation —
@@ -253,7 +265,9 @@ function drawBillboards(fb: Framebuffer, s: RenderScene, reg: TextureRegistry,
     const bw = (size * b.widthFactor) | 0;     // NPC portraits are 0.4×
     const sx0 = screenX - (bw >> 1), sx1 = sx0 + bw - 1;
     const sy0 = b.vAnchor === "npc" ? half - ((size / 3) | 0)
-              : b.vAnchor === "prop" ? half - ((size * 0.55) | 0)
+              // Ground-contact props use the inverse of the floor projection.
+              // Changing asset height must not lift its base above that plane.
+              : b.vAnchor === "prop" ? Math.floor(h * 0.5 + h / (2 * trY)) - size
               : half - (size >> 1);
     const sy1 = sy0 + size - 1;
     const cx0 = Math.max(0, sx0), cx1 = Math.min(w - 1, sx1);

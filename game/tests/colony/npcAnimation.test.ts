@@ -160,13 +160,10 @@ test("stepColonyNpcs: isMoving is true on every path-advancing frame", () => {
   }
 });
 
-test("stepColonyNpcs: idle-mill shuffles count as moving; a walkable-rejected candidate does not", () => {
+test("stepColonyNpcs: local walks count as moving and stationary pauses do not", () => {
   const map = room();
-  // Anchor hugs the west wall (x < 1 is solid): pathComputed with an empty path
-  // drops straight into the mill, capturing anchor (1.05, 1.5). With millSeed 0
-  // the drift candX = 1.05 + 0.3·sin(0.05c) dips below x=1 for part of the
-  // cycle — those candidates are rejected by the walkable guard (position
-  // held → NOT moving), while the rest are applied (shuffle → moving).
+  // Place the station beside the west wall. Its chosen short walk remains
+  // walkable and includes substantial stationary pauses at each endpoint.
   const npc = makeNpc(0, { x: 1, y: 1 }, { x: 1, y: 1 }, { pathComputed: true, path: [], millSeed: 0 });
   npc.posX = 1.05; npc.posY = 1.5;
   const fp = makeFp(0, npc.posX, npc.posY);
@@ -179,8 +176,8 @@ test("stepColonyNpcs: idle-mill shuffles count as moving; a walkable-rejected ca
     assert.equal(fp.isMoving, changed, `step ${i}: isMoving mirrors an actual position change`);
     if (changed) movedFrames++; else heldFrames++;
   }
-  assert.ok(movedFrames > 0, "some mill shuffles were applied (count as moving)");
-  assert.ok(heldFrames > 0, "some candidates were wall-rejected (held → not moving)");
+  assert.ok(movedFrames > 0, "some short walks were applied (count as moving)");
+  assert.ok(heldFrames > 0, "stationary pauses hold position (not moving)");
 });
 
 // ─── Quartermaster's own sprite (spec §5.4) ───────────────────────────────────
@@ -221,10 +218,45 @@ test("generateColonyNpcs: quartermaster has its own sprite — no longer shares 
   walking.animClockMs = 180;
   assert.equal(resolveNpcSprite(walking), SPRITES.NPC_QUARTERMASTER_WALK_2);
 
-  // The enabler stays opt-in — every OTHER colony NPC renders statically.
+  // New colony atlases do not change the legacy frame-array fallback fields.
   for (const fp of fpNpcs) {
     if (fp === qmFp) continue;
     assert.equal(fp.walkSprites, undefined, `${fp.name}: no walk frames assigned at generation`);
     assert.equal(fp.idleSprites, undefined, `${fp.name}: no idle frames assigned at generation`);
   }
+});
+
+test("colony actors pause after arrival and make bounded, gait-driven purposeful walks", () => {
+  const map = room();
+  const npc = makeNpc(0, { x: 3, y: 3 }, { x: 3, y: 3 }, { pathComputed: true, millSeed: 0 });
+  const fp = makeFp(0, npc.posX, npc.posY); fp.sprite = SPRITES.NPC_SURVIVOR;
+  let moved = 0, held = 0, longestPause = 0, pause = 0, traveled = 0;
+  for (let i = 0; i < 600; i++) {
+    const x = npc.posX, y = npc.posY;
+    stepColonyNpcs([npc], [fp], map, STEP_MS, false);
+    const distance = Math.hypot(npc.posX - x, npc.posY - y);
+    traveled += distance;
+    if (distance > 1e-8) { moved++; pause = 0; assert.equal(fp.atlasAnimation!.action, "walk"); assert.equal(fp.atlasAnimation!.facingAngle, Math.atan2(npc.posY - y, npc.posX - x)); }
+    else { held++; longestPause = Math.max(longestPause, ++pause); assert.equal(fp.atlasAnimation!.action, "idle"); }
+    assert.ok(Math.hypot(fp.x - 3.5, fp.y - 3.5) <= .31);
+  }
+  assert.ok(moved > 0); assert.ok(held > moved); assert.ok(longestPause >= 60);
+  assert.ok(Math.abs(fp.atlasAnimation!.walkDistance - traveled) < 1e-8);
+  const frozen = JSON.stringify([npc, fp]);
+  stepColonyNpcs([npc], [fp], map, 1000, true);
+  assert.equal(JSON.stringify([npc, fp]), frozen);
+});
+
+test("generation initializes every colony identity and engine never double-steps sidecar clocks", async () => {
+  const { updateFirstPerson } = await import("../../app/components/engine/firstPersonEngine");
+  const colony = makeTestColony({ population: { total: 16, capacity: 20, namedCount: 0, growthRate: 0, recentDeaths: [] } });
+  const fp = generateExteriorState(colony, CLOCK);
+  const actors = generateColonyNpcs(colony, CLOCK, fp.map); fp.npcs = actors.fpNpcs;
+  assert.ok(fp.npcs.length > 2);
+  for (const npc of fp.npcs) { assert.ok(npc.atlasAnimation, npc.name); assert.equal(npc.atlasClockOwner, "colony"); }
+  stepColonyNpcs(actors.sidecar, fp.npcs, fp.map, STEP_MS, false);
+  const animations = JSON.stringify(fp.npcs.map(n => n.atlasAnimation));
+  updateFirstPerson({ firstPersonState: fp, levelCompleteTimer: 0, player: { bankDir: 0 }, audioEvents: [] } as never,
+    { left: false, right: false, up: false, down: false, strafeLeft: false, strafeRight: false, shoot: false, bomb: false, jump: false });
+  assert.equal(JSON.stringify(fp.npcs.map(n => n.atlasAnimation)), animations);
 });

@@ -33,6 +33,12 @@ export function getSprite(path: string): HTMLImageElement | null {
   return cache.get(basePath + path) ?? null;
 }
 
+/** Release a scene-owned image. Pending loads are not cancelled; the scene
+ * retention coordinator releases their results if they are no longer wanted. */
+export function releaseSprite(path: string): void {
+  cache.delete(basePath + path);
+}
+
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
   sheet: HTMLImageElement,
@@ -305,6 +311,30 @@ export const SPRITES = {
   INTERIOR_FARM_CRATE: "/sprites/interiors/farm-crate.png",
   INTERIOR_PURIFIER_PUMP: "/sprites/interiors/purifier-pump.png",
   INTERIOR_BUNK: "/sprites/interiors/bunk.png",
+
+  // Shared first-person detail kits; actor atlases load only for their active scene.
+  WORLD_SOLAR_WALL: "/sprites/world/solar-wall.png",
+  WORLD_SOLAR_FLOOR: "/sprites/world/solar-floor.png",
+  WORLD_FARM_WALL: "/sprites/world/farm-wall.png",
+  WORLD_FARM_FLOOR: "/sprites/world/farm-floor.png",
+  WORLD_PURIFIER_WALL: "/sprites/world/purifier-wall.png",
+  WORLD_PURIFIER_FLOOR: "/sprites/world/purifier-floor.png",
+  WORLD_HABITAT_WALL: "/sprites/world/habitat-wall.png",
+  WORLD_HABITAT_FLOOR: "/sprites/world/habitat-floor.png",
+  WORLD_MINE_WALL: "/sprites/world/mine-wall.png",
+  WORLD_MINE_FLOOR: "/sprites/world/mine-floor.png",
+  WORLD_UTILITY_CEILING: "/sprites/world/utility-ceiling.png",
+  WORLD_STATION_WALL: "/sprites/world/station-wall.png",
+  WORLD_STATION_FLOOR: "/sprites/world/station-floor.png",
+  WORLD_STATION_CEILING: "/sprites/world/station-ceiling.png",
+  WORLD_RUIN_WALL: "/sprites/world/ruin-wall.png",
+  WORLD_RUIN_FLOOR: "/sprites/world/ruin-floor.png",
+  WORLD_RUIN_CEILING: "/sprites/world/ruin-ceiling.png",
+  WORLD_MINE_EXTRACTOR: "/sprites/world/mine-extractor.png",
+  WORLD_STATION_CONSOLE: "/sprites/world/station-console.png",
+  WORLD_RUIN_COLUMN: "/sprites/world/ruin-column.png",
+  WORLD_SUPPLY_CANISTERS: "/sprites/world/supply-canisters.png",
+  QUARTERMASTER_WORKSTATION: "/sprites/pilot/quartermaster/workstation.png",
 
   // M3 Cantina runtime bundle
   HUB_CANTINA_WALL: "/sprites/interiors/m3/cantina/wall.png",

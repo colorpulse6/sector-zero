@@ -41,6 +41,8 @@ import {
   type SaveData,
 } from "./engine/save";
 import { WORLD_NAMES, getWorldLevelCount, getMultiPhaseLevelData } from "./engine/levels";
+import { createCombatDressing } from "./engine/worldArt";
+import { releaseFirstPersonGraphics } from "./engine/fpRender";
 import { preloadAll } from "./engine/sprites";
 import {
   type StarMapState,
@@ -1780,6 +1782,7 @@ export default function Game() {
           totalPhases: 2,
           firstPersonState: {
             map: bs.map,
+            ...createCombatDressing(bs.map, "station"),
             posX: spawnTileX,
             posY: spawnTileY,
             dirX: 1, dirY: 0,
@@ -2620,6 +2623,13 @@ export default function Game() {
     showMap,
     starMapState,
   ]);
+
+  const firstPersonVisible = !showStartScreen && !showCockpit && !showMap && !showGalaxyAtlas
+    && (gameState?.currentMode === "first-person" || gameState?.currentMode === "colony-exploration");
+  useEffect(() => {
+    if (!firstPersonVisible) releaseFirstPersonGraphics();
+    return () => { releaseFirstPersonGraphics(); };
+  }, [firstPersonVisible]);
 
   // Load player name and preload sprites
   useEffect(() => {

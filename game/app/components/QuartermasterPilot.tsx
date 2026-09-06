@@ -10,6 +10,8 @@ import { createGameState } from "./engine/gameEngine";
 import { updateFirstPerson } from "./engine/firstPersonEngine";
 import { drawFirstPerson } from "./engine/firstPersonRenderer";
 import { GameScreen, type GameState, type Keys, type SaveData } from "./engine/types";
+import { releaseFirstPersonGraphics } from "./engine/fpRender";
+import { syncActorAssets } from "./engine/actorAssets";
 import { preloadAll } from "./engine/sprites";
 import { preloadQuartermasterAssets } from "./engine/fpRender/npcAtlas";
 import { getPerfStats } from "./engine/fpRender";
@@ -38,7 +40,7 @@ export default function QuartermasterPilot() {
 
   function view(angle: number, distance = 0.9) {
     const fp = runtime.current?.state.firstPersonState;
-    const npc = fp?.npcs.find(n => n.atlasAnimation);
+    const npc = fp?.npcs.find(n => n.atlasAnimation?.set === "quartermaster");
     if (!fp || !npc) return;
     const heading = (npc.atlasAnimation?.facingAngle ?? Math.PI / 2) + angle;
     // Inspect inside the one-tile workstation offset, so the console cannot
@@ -61,12 +63,15 @@ export default function QuartermasterPilot() {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !overlay || !ctx) return;
     const fixture = findFixture("day")!;
-    const seeded = applyColonyFixture(createHydrationSafeSave(), { ...fixture, playerCredits: 300 });
+    const seeded = applyColonyFixture({ ...createHydrationSafeSave(), completedPlanets: ["verdania"] }, { ...fixture, playerCredits: 300 });
     const entry = enterColonyExploration(seeded.save, seeded.colonyId);
     const state = createGameState(1, 1);
     state.screen = GameScreen.PLAYING;
     state.currentMode = "colony-exploration";
     state.firstPersonState = entry.firstPersonState;
+    // Register residency before any asynchronous preload or first animation
+    // frame, so an immediate route exit can also release late image arrivals.
+    syncActorAssets(state.firstPersonState);
     state.firstPersonState.missionLabel = "ASHFALL · SUPPLY STATION";
     runtime.current = { state, stack: entry.sceneStack, save: seeded.save, paused: false };
     view(0, 2); // Leave room to watch the whole routine on first arrival.
@@ -120,8 +125,9 @@ export default function QuartermasterPilot() {
       drawFirstPerson(ctx, state);
       grade.present(canvas, selectPreset("colony-exploration"));
       if (now - reportAt > 150) {
-        const animation = fp.npcs.find(n => n.atlasAnimation)?.atlasAnimation;
-        setAction(fp.dialogState?.active ? "Conversation" : LABELS[animation?.action ?? "idle"]);
+        const animation = fp.npcs.find(n => n.atlasAnimation?.set === "quartermaster")?.atlasAnimation;
+        const action = animation?.action;
+        setAction(fp.dialogState?.active ? "Conversation" : LABELS[action === "walk" || action === "work" ? action : "idle"]);
         setRenderMs(getPerfStats().p50.toFixed(1));
         reportAt = now;
       }
@@ -129,6 +135,7 @@ export default function QuartermasterPilot() {
     };
     frameId = requestAnimationFrame(frame);
     return () => {
+      releaseFirstPersonGraphics();
       active = false; cancelAnimationFrame(frameId); grade.dispose(); release();
       window.removeEventListener("keydown", keyDown); window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", release); canvas.removeEventListener("blur", release);

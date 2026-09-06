@@ -227,7 +227,7 @@ function drawPropLabels(ctx: CanvasRenderingContext2D, fp: FirstPersonState): vo
     const p = projectBillboard(scene, prop.x, prop.y, CANVAS_WIDTH, GAME_AREA_HEIGHT);
     if (!p || isOccluded(p.screenX, p.dist)) continue;
     const spriteHeight = Math.max(20, p.size * (prop.scale ?? 1));
-    const drawStartY = Math.floor(GAME_AREA_HEIGHT / 2 - spriteHeight * 0.55);
+    const drawStartY = Math.floor(GAME_AREA_HEIGHT / 2 + GAME_AREA_HEIGHT / (2 * p.dist)) - spriteHeight;
     ctx.fillStyle = "#ffdd99";
     ctx.font = "bold 9px monospace";
     ctx.textAlign = "center";

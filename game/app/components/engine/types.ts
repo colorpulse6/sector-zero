@@ -967,11 +967,13 @@ export interface FPNPC {
   idleSprites?: string[]; // SPRITES paths cycled while standing (idle → static).
   isMoving?: boolean;     // Set per frame by the colony stepper (npcStep.ts): true
                           //   only on frames where the NPC actually moved — a path
-                          //   advance or an applied idle-mill shuffle.
+                          //   advance or a short local walk.
   animClockMs?: number;   // Accumulated step dtMs driving frame selection. Threaded
                           //   from the game loop like all engine time — NEVER
                           //   Date.now/performance.now.
   atlasAnimation?: import("./fpRender/npcAtlas").NpcAtlasAnimation;
+  /** Colony sidecar owns motion and time; fixed NPCs are stepped by the FP engine. */
+  atlasClockOwner?: "colony";
 }
 
 // One-shot, typed buy signal the FP engine emits when the player confirms a
@@ -1014,6 +1016,8 @@ export interface FPEnemy {
   deathTimer: number;     // > 0 means dying animation, 0 = alive, -1 = dead & removed
   fireTimer: number;
   classId: EnemyClass;
+  atlasAnimation?: import("./fpRender/npcAtlas").NpcAtlasAnimation;
+  actorPresentation?: import("./actorPresentation").EnemyPresentationState;
 }
 
 export interface FPEnvironmentArt {

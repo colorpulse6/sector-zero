@@ -55,3 +55,19 @@ test("unloaded atlas returns no texture id so caller can keep the static actor",
   const frame = selectNpcAtlasFrame({ x: 0, y: 0, atlasAnimation: state() }, 1, 0)!;
   assert.equal(reg.idForFrame(frame), -1);
 });
+
+test("all humanoid identities use distance-driven 128x256 cells", () => {
+  for (const set of ["voss", "kael", "reyes", "survivor", "scavenger", "hub-bartender", "hub-regular", "hub-signal-chaser"] as const) {
+    const actor = { x: 0, y: 0, atlasAnimation: state({ set, action: "walk", walkDistance: WALK_CYCLE_DISTANCE / 2 }) };
+    assert.deepEqual(selectNpcAtlasFrame(actor, -2, 0), { path: `/sprites/actors/${set}/walk.png`, x: 512, y: 1024, width: 128, height: 256 });
+  }
+});
+
+test("hostile attack is timed and square; death holds its final frame", () => {
+  const actor = { x: 0, y: 0, atlasAnimation: state({ set: "hostile", action: "attack", clockMs: 200 }) };
+  assert.deepEqual(selectNpcAtlasFrame(actor, 0, 2), { path: "/sprites/actors/hostile/attack.png", x: 512, y: 512, width: 256, height: 256 });
+  actor.atlasAnimation = state({ set: "hostile", action: "hurt", clockMs: 10000 });
+  assert.equal(selectNpcAtlasFrame(actor, -1, 0)!.x, 0);
+  actor.atlasAnimation = state({ set: "hostile", action: "death", clockMs: 10000 });
+  assert.deepEqual(selectNpcAtlasFrame(actor, 0, -1), { path: "/sprites/actors/hostile/death.png", x: 1280, y: 0, width: 256, height: 256 });
+});

@@ -2,6 +2,7 @@ import type { FirstPersonState, BoardingMap, FPEnvironmentArt } from "../types";
 import { SPRITES } from "../sprites";
 import { TextureRegistry } from "./textures";
 import { selectNpcAtlasFrame } from "./npcAtlas";
+import { retainedActorSpritePaths } from "../actorAssets";
 import { hslShiftToRgbMul, IDENTITY_TINT, type RgbMul, type LightGrid, type LightGridPointLight } from "./lighting";
 
 export interface BillboardInput {
@@ -12,14 +13,15 @@ export interface BillboardInput {
   widthFactor: number;  // width = height × this. NPCs are portraits: 0.4 (classic
                         //   firstPersonRenderer.ts:493). Enemies/props: 1.
   vAnchor: "center" | "npc" | "prop";
-                        // vertical anchor, ported from classic draw math:
+                        // Characters retain classic framing; props contact the projected floor:
                         //   center → sy0 = half − size/2 (enemies)
-                        //   npc    → sy0 = half − size/3 (feet on ground, :496)
-                        //   prop   → sy0 = half − 0.55·size (:343-346)
+                        //   npc    → sy0 = half − size/3
+                        //   prop   → sy0 = floor(h/2 + h/(2*depth)) − size
   minSizeFrac?: number; // props: 20/714 of fb height (classic 20px floor, :344)
 }
 
 export interface RenderScene {
+  skyProjection?: import("./panorama").SkyProjection;
   camX: number; camY: number;
   dirX: number; dirY: number; planeX: number; planeY: number;
   map: {
@@ -94,6 +96,9 @@ export class SceneBuilder {
   get lastBuilt(): RenderScene | null { return this.scene; }
 
   build(fp: FirstPersonState, reg: TextureRegistry): RenderScene {
+    reg.beginFrame();
+    const actorPaths = retainedActorSpritePaths();
+    reg.retainFramePaths(actorPaths);
     if (!this.scene) this.scene = emptyScene();
     const s = this.scene;
 
@@ -153,19 +158,17 @@ export class SceneBuilder {
     }
     for (const e of fp.enemies) {
       if (e.deathTimer === -1) continue;
-      // PORTED VERBATIM: frame selection + fade from the classic
-      // drawEnemyBillboards (firstPersonRenderer.ts:239-267): death frame while
-      // deathTimer > 0 with alpha = deathTimer/30; flinch frame while damaged
-      // (hp < maxHp); front frame otherwise.
+      const frame = selectNpcAtlasFrame(e, fp.posX, fp.posY);
+      const atlasId = frame && actorPaths.has(frame.path) ? reg.idForFrame(frame) : -1;
       const sprite = e.deathTimer > 0 ? SPRITES.FP_ENEMY_DEATH
-        : e.hp < e.maxHp ? SPRITES.FP_ENEMY_FLINCH
+        : e.atlasAnimation?.action === "hurt" ? SPRITES.FP_ENEMY_FLINCH
         : SPRITES.FP_ENEMY_FRONT;
       const alpha = e.deathTimer > 0 ? Math.round((e.deathTimer / 30) * 256) : 256;
-      s.billboards.push({ x: e.x, y: e.y, texId: reg.idFor(sprite, "billboard"), scale: 1, alpha256: alpha, widthFactor: 1, vAnchor: "center" });
+      s.billboards.push({ x: e.x, y: e.y, texId: atlasId >= 0 ? atlasId : reg.idFor(sprite, "billboard"), scale: 1, alpha256: alpha, widthFactor: 1, vAnchor: "center" });
     }
     for (const n of fp.npcs) {
       const frame = selectNpcAtlasFrame(n, fp.posX, fp.posY);
-      const atlasId = frame ? reg.idForFrame(frame) : -1;
+      const atlasId = frame && actorPaths.has(frame.path) ? reg.idForFrame(frame) : -1;
       s.billboards.push({ x: n.x, y: n.y, texId: atlasId >= 0 ? atlasId : reg.idFor(resolveNpcSprite(n), "billboard"), scale: 1, alpha256: 256, widthFactor: atlasId >= 0 ? 0.5 : 0.4, vAnchor: "npc" });
     }
     // Objective marker: NOT pushed here. It stays the classic overlay

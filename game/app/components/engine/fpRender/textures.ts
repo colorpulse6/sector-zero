@@ -1,18 +1,21 @@
 import { getSprite, SPRITES } from "../sprites";
 import type { AtlasFrame } from "./npcAtlas";
+import { buildMipChain, type TextureLevel } from "./mipmaps";
 
 export type TexKind = "tile" | "sky" | "billboard";
 
-export interface Texture {
-  texels: Uint32Array;
-  w: number; h: number;
-  wMask: number; hMask: number;   // pow2 masks (w-1 / h-1); tile+sky are always pow2
+export interface Texture extends TextureLevel {
   ready: boolean;                 // false while serving fallback texels
+  mips?: TextureLevel[];
 }
 
-const TILE_SIZE = 128;
-const SKY_W = 512, SKY_H = 256;
-const BILLBOARD_MAX = 256;
+const TILE_SIZE = 256;
+const SKY_W = 2048, SKY_H = 512;
+const BILLBOARD_MAX = 512;
+const FRAME_MAX = 256;
+const MAX_FRAME_BYTES = 40 * 1024 * 1024;
+const MAX_FRAME_SLOTS = 320;
+type CachedFrame = { id: number; path: string; bytes: number; usedAt: number };
 // sprites.ts's loadSprite() only populates its cache in the onload handler —
 // an onerror (404, etc.) never enters the cache, so getSprite() returns null
 // forever for that path and is indistinguishable here from "still loading".
@@ -35,6 +38,47 @@ export class TextureRegistry {
   private byPath = new Map<string, number>();
   private textures: Texture[] = [];
   private pending: { id: number; path: string; kind: TexKind; framesWaited: number }[] = [];
+  private frames = new Map<string, CachedFrame>();
+  private freeFrameIds: number[] = [];
+  private frameBytes = 0;
+  private frameSlots = 0;
+  private frameNumber = 0;
+
+  constructor(private readonly frameBudget = MAX_FRAME_BYTES) {}
+
+  /** Protect every atlas ID selected by this scene until the next build. */
+  beginFrame(): void { this.frameNumber++; }
+
+  getFrameCacheStats() {
+    return { bytes: this.frameBytes, entries: this.frames.size, slots: this.frameSlots, budget: this.frameBudget };
+  }
+
+  /** Actor source images and decoded frame cells have separate lifetimes.
+   * Only frame slots are recycled; cached map texture IDs always stay valid. */
+  retainFramePaths(paths: ReadonlySet<string>): void {
+    for (const [key, entry] of this.frames) if (!paths.has(entry.path)) this.releaseFrame(key, entry);
+  }
+
+  private releaseFrame(key: string, entry: CachedFrame): void {
+    this.frames.delete(key);
+    this.frameBytes -= entry.bytes;
+    this.textures[entry.id] = this.fallbackTexture("billboard");
+    this.freeFrameIds.push(entry.id);
+  }
+
+  private makeFrameSpace(bytes: number): boolean {
+    if (bytes > this.frameBudget) return false;
+    while (this.frameBytes + bytes > this.frameBudget || (!this.freeFrameIds.length && this.frameSlots >= MAX_FRAME_SLOTS)) {
+      let oldestKey: string | undefined, oldest: CachedFrame | undefined;
+      for (const [key, entry] of this.frames) {
+        if (entry.usedAt === this.frameNumber) continue;
+        if (!oldest || entry.usedAt < oldest.usedAt) { oldestKey = key; oldest = entry; }
+      }
+      if (!oldest || oldestKey === undefined) return false;
+      this.releaseFrame(oldestKey, oldest);
+    }
+    return true;
+  }
 
   /** Node tests: register texels directly. Dimensions must be powers of two. */
   registerRaw(path: string, texels: Uint32Array, w: number, h: number): number {
@@ -60,25 +104,32 @@ export class TextureRegistry {
 
   /** Decode a single authored cell, never resize the atlas as one billboard.
    * Missing/invalid cells return -1 so scene construction retains its static
-   * actor. There are at most 160 quartermaster cells, shared by all colonies. */
+   * actor. The LRU frame pool has fixed byte/slot caps across scene changes. */
   idForFrame(frame: AtlasFrame): number {
     const key = `${frame.path}#${frame.x},${frame.y},${frame.width},${frame.height}`;
-    const cached = this.byPath.get(key);
-    if (cached !== undefined) return cached;
+    const cached = this.frames.get(key);
+    if (cached) { cached.usedAt = this.frameNumber; return cached.id; }
     const img = getSprite(frame.path);
     if (!img || typeof document === "undefined") return -1;
     const { x, y, width, height } = frame;
     if (![x, y, width, height].every(Number.isInteger) || x < 0 || y < 0
-      || width < 1 || height < 1 || width > BILLBOARD_MAX || height > BILLBOARD_MAX
+      || width < 1 || height < 1 || width > FRAME_MAX || height > FRAME_MAX
       || (width & (width - 1)) || (height & (height - 1))
       || x + width > img.width || y + height > img.height) return -1;
+    const bytes = width * height * 4;
+    if (!this.makeFrameSpace(bytes)) return -1;
     const cv = document.createElement("canvas");
     cv.width = width; cv.height = height;
     const ctx = cv.getContext("2d");
     if (!ctx) return -1;
     ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
     const pixels = ctx.getImageData(0, 0, width, height);
-    return this.registerRaw(key, new Uint32Array(pixels.data.buffer), width, height);
+    let id = this.freeFrameIds.pop();
+    if (id === undefined) { id = this.textures.length; this.frameSlots++; }
+    this.textures[id] = { texels: new Uint32Array(pixels.data.buffer), w: width, h: height, wMask: width - 1, hMask: height - 1, ready: true };
+    this.frames.set(key, { id, path: frame.path, bytes, usedAt: this.frameNumber });
+    this.frameBytes += bytes;
+    return id;
   }
 
   /** Called once per frame (cheap): decode any images that finished loading.
@@ -117,14 +168,8 @@ export class TextureRegistry {
 }
 
 function decode(img: HTMLImageElement, path: string, kind: TexKind): Texture {
-  let w: number, h: number, srcX = 0, srcW = img.width;
-  if (kind === "tile") { w = TILE_SIZE; h = TILE_SIZE; }
-  else if (kind === "sky") { w = SKY_W; h = SKY_H; }
-  else {
-    // billboards keep native size capped, rounded up to pow2 for masking
-    w = Math.min(BILLBOARD_MAX, pow2Ceil(img.width));
-    h = Math.min(BILLBOARD_MAX, pow2Ceil(img.height));
-  }
+  const { w, h } = textureTargetSize(img.width, img.height, kind);
+  let srcX = 0, srcW = img.width;
   // Classic renderer treats BOARDING_TILES as a 3-frame atlas and samples
   // the middle third for generic FP walls — slice it here, once, forever.
   if (path === SPRITES.BOARDING_TILES) { srcX = img.width / 3; srcW = img.width / 3; }
@@ -135,7 +180,16 @@ function decode(img: HTMLImageElement, path: string, kind: TexKind): Texture {
   c.imageSmoothingEnabled = true;   // downscale smoothing is desirable here
   c.drawImage(img, srcX, 0, srcW, img.height, 0, 0, w, h);
   const data = c.getImageData(0, 0, w, h);
-  return { texels: new Uint32Array(data.data.buffer), w, h, wMask: w - 1, hMask: h - 1, ready: true };
+  const texels = new Uint32Array(data.data.buffer);
+  return { texels, w, h, wMask: w - 1, hMask: h - 1, ready: true,
+    ...(kind === "tile" ? { mips: buildMipChain(texels, w, h) } : {}),
+  };
+}
+
+export function textureTargetSize(width: number, height: number, kind: TexKind) {
+  if (kind === "tile") return { w: TILE_SIZE, h: TILE_SIZE };
+  if (kind === "sky") return { w: Math.min(SKY_W, pow2Ceil(width)), h: Math.min(SKY_H, pow2Ceil(height)) };
+  return { w: Math.min(BILLBOARD_MAX, pow2Ceil(width)), h: Math.min(BILLBOARD_MAX, pow2Ceil(height)) };
 }
 
 function pow2Ceil(n: number): number { let p = 1; while (p < n) p <<= 1; return p; }

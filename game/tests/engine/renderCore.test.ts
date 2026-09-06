@@ -306,7 +306,8 @@ test("golden: sky panorama sample with the default fixture camera (deterministic
   renderScene(fb, scene, reg);
   const h = hashFrame(fb.px);
   if (process.env.UPDATE_GOLDENS) console.log("GOLDEN sky:", h);
-  assert.equal(h, "baea1930");
+  // Ray-angle projection shows only the camera FOV, independent of texture width.
+  assert.equal(h, "f8a5bbf0");
 });
 
 test("golden: half-resolution framebuffer (240x357 — exact half of the real canvas, golden 10)", () => {
@@ -426,7 +427,7 @@ test("SceneBuilder flattens billboards with the ported classic rules", () => {
   fp.props = [{ id: 1, x: 2.2, y: 2.2, sprite: "/sprites/test-prop.png", scale: 1.4, label: "RIG" }];
   fp.enemies = [
     { ...enemyBase, id: 1 },                          // full hp → front frame
-    { ...enemyBase, id: 2, hp: 5 },                   // damaged → flinch frame
+    { ...enemyBase, id: 2, hp: 5, atlasAnimation: { set: "hostile", facingAngle: 0, action: "hurt", clockMs: 0, walkDistance: 0 } }, // active hurt event → flinch
     { ...enemyBase, id: 3, deathTimer: 15 },          // dying → death frame, fading
     { ...enemyBase, id: 4, deathTimer: -1 },          // dead → excluded
   ];

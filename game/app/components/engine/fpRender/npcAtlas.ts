@@ -1,54 +1,48 @@
-export type NpcAction = "idle" | "walk" | "work";
+import { ACTOR_CATALOG, QUARTERMASTER_ATLASES, type ActorAction, type ActorSetId } from "../actorAssets";
+import { loadSprite } from "../sprites";
+export { QUARTERMASTER_ATLASES } from "../actorAssets";
+export type NpcAction = ActorAction;
 export interface NpcAtlasAnimation {
-  set: "quartermaster";
+  set: ActorSetId;
   facingAngle: number;
   action: NpcAction;
   clockMs: number;
   walkDistance: number;
 }
 export interface AtlasFrame { path: string; x: number; y: number; width: number; height: number }
-export const QUARTERMASTER_ATLASES = {
-  idle: "/sprites/pilot/quartermaster/idle.png",
-  walk: "/sprites/pilot/quartermaster/walk.png",
-  work: "/sprites/pilot/quartermaster/work.png",
-};
 export const QUARTERMASTER_WORKSTATION = "/sprites/pilot/quartermaster/workstation.png";
 export const WALK_CYCLE_DISTANCE = 1.2;
-
-const CLIPS = {
-  idle: { columns: 4, frameMs: 300 },
-  walk: { columns: 8, frameMs: 100 },
-  work: { columns: 8, frameMs: 125 },
-};
-// These immutable selections are reused by the render path; the cache is
-// bounded to the authored 160 cells, regardless of how long a visit lasts.
-const FRAMES = Object.fromEntries(Object.entries(CLIPS).map(([clip, { columns }]) => [clip,
-  Array.from({ length: columns * 8 }, (_, i) => ({
-    path: QUARTERMASTER_ATLASES[clip as NpcAction],
-    x: (i % columns) * 128, y: Math.floor(i / columns) * 256, width: 128, height: 256,
-  })),
-])) as Record<NpcAction, AtlasFrame[]>;
-
+// Metadata only: no image decode or extracted texel allocation. Every authored
+// cell has one stable object, so render calls cannot advance an actor's clock.
+const FRAMES = new Map<string, AtlasFrame[]>();
+for (const asset of Object.values(ACTOR_CATALOG)) for (const clip of Object.values(asset.clips)) {
+  FRAMES.set(clip.path, Array.from({ length: clip.columns * clip.rows }, (_, i) => ({
+    path: clip.path, x: (i % clip.columns) * asset.width, y: Math.floor(i / clip.columns) * asset.height,
+    width: asset.width, height: asset.height,
+  })));
+}
 const nonnegative = (n: number) => Number.isFinite(n) ? Math.max(0, n) : 0;
 
-/** Row zero looks at the actor's face. Positive map angles turn toward the
- * actor's right (map +Y is down), matching the Blender camera orbit. */
+/** Row zero faces the viewer; +Y map angles orbit toward the actor's right. */
 export function selectNpcAtlasFrame(
   npc: { x: number; y: number; atlasAnimation?: NpcAtlasAnimation }, camX: number, camY: number,
 ): AtlasFrame | null {
   const animation = npc.atlasAnimation;
-  if (!animation || animation.set !== "quartermaster") return null;
-  const clip = CLIPS[animation.action];
+  if (!animation) return null;
+  const asset = ACTOR_CATALOG[animation.set];
+  const clip = asset?.clips[animation.action];
+  if (!clip) return null;
   const relative = Math.atan2(camY - npc.y, camX - npc.x) - animation.facingAngle;
-  const row = ((Math.round(relative / (Math.PI / 4)) % 8) + 8) % 8;
+  const row = clip.rows === 1 ? 0 : ((Math.round(relative / (Math.PI / 4)) % 8) + 8) % 8;
   const phase = animation.action === "walk"
     ? nonnegative(animation.walkDistance) / WALK_CYCLE_DISTANCE * clip.columns
     : nonnegative(animation.clockMs) / clip.frameMs;
-  return FRAMES[animation.action][row * clip.columns + Math.floor(phase + 1e-9) % clip.columns];
+  const tick = Math.floor(phase + 1e-9);
+  const column = clip.loop === false ? Math.min(tick, clip.columns - 1) : tick % clip.columns;
+  return FRAMES.get(clip.path)![row * clip.columns + column];
 }
 
-/** Called only on colony/preview entry. Failures keep the existing static
- * sprite; another entry can retry. Never starts an image request in Node. */
+/** Legacy pilot preview loader. Live scenes use actorAssets scene retention. */
 export async function preloadQuartermasterAssets(): Promise<boolean> {
   if (typeof Image === "undefined") return false;
   const results = await Promise.allSettled(
@@ -56,4 +50,3 @@ export async function preloadQuartermasterAssets(): Promise<boolean> {
   );
   return results.every(result => result.status === "fulfilled");
 }
-import { loadSprite } from "../sprites";
