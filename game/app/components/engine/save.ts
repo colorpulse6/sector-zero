@@ -3,6 +3,8 @@ import {
   type ConsumableId,
   type EnhancementId,
   type MaterialId,
+  type OutcomeRouteKind,
+  type OutcomeRecoveryRecord,
   type PlanetId,
   type SaveData,
   type ShipUpgrades,
@@ -10,6 +12,11 @@ import {
   type StoryItemId,
   type WeaponType,
 } from "./types";
+import {
+  dynamicOutcomeRouteIdentityIsCanonical,
+  outcomeAuthorityReturnMatches,
+  snapshotOutcomeRouteIdentity,
+} from "./missionContext";
 import type {
   ColonyState,
   PlanetState,
@@ -30,12 +37,551 @@ import {
 } from "../colony/region/regionMap";
 import type { RegionIntelState, RegionNode, SiteStats } from "../colony/shared/colonyTypes";
 import { migrateGalaxyRun } from "./galaxy/galaxyRun";
+import {
+  inspectGalaxyPoiPreparedAuthority,
+  type GalaxyPoiPreparedAuthorityInspection,
+} from "./galaxy/galaxyPoiOutcomeAuthority";
+import {
+  inspectGalaxyOutcomeJournals,
+  snapshotGalaxyOutcomeAuthority,
+} from "./outcomeJournalAuthority";
 export type { SaveData };
 
 const SAVE_KEY = "sector-zero-save";
+export const OUTCOME_JOURNAL_LIMIT = 256;
+export const OUTCOME_RECOVERY_LIMIT = 32;
+
+function snapshotDenseArray(value: unknown): unknown[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    if (lengthDescriptor === undefined || !("value" in lengthDescriptor) ||
+      !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) return null;
+    const length = lengthDescriptor.value as number;
+    const keys = Reflect.ownKeys(value);
+    if (keys.length !== length + 1 || keys.some((key) => key !== "length" &&
+      (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length))) return null;
+    const snapshot: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      snapshot.push(descriptor.value);
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+type OwnFieldSnapshot =
+  | { kind: "absent" }
+  | { kind: "invalid" }
+  | { kind: "data"; value: unknown };
+
+function snapshotOwnField(value: unknown, key: string): OwnFieldSnapshot {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return { kind: "invalid" };
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined) return { kind: "absent" };
+    return "value" in descriptor
+      ? { kind: "data", value: descriptor.value }
+      : { kind: "invalid" };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
+function migrateStringJournal(value: unknown): string[] {
+  const entries = snapshotDenseArray(value);
+  if (entries === null) return [];
+  const newestFirst: string[] = [];
+  const seen = new Set<string>();
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (typeof entry !== "string" || entry.length === 0 || seen.has(entry)) continue;
+    seen.add(entry);
+    newestFirst.push(entry);
+  }
+  return newestFirst.reverse();
+}
+
+function snapshotRecoverableStringJournal(value: unknown): string[] {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return [];
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    if (lengthDescriptor === undefined || !("value" in lengthDescriptor) ||
+      !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) return [];
+    const length = lengthDescriptor.value as number;
+    const entries: Array<readonly [number, string]> = [];
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string" || !/^(0|[1-9]\d*)$/.test(key)) continue;
+      const index = Number(key);
+      if (!Number.isSafeInteger(index) || index >= length) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor !== undefined && "value" in descriptor &&
+        typeof descriptor.value === "string" && descriptor.value.length > 0) {
+        entries.push([index, descriptor.value]);
+      }
+    }
+    entries.sort(([left], [right]) => left - right);
+    return migrateStringJournal(entries.map(([, entry]) => entry));
+  } catch {
+    return [];
+  }
+}
+
+function snapshotStrictStringJournal(value: unknown): string[] | null {
+  const entries = snapshotDenseArray(value);
+  return entries !== null && entries.every((entry) => typeof entry === "string" && entry.length > 0) &&
+    new Set(entries).size === entries.length
+    ? entries as string[]
+    : null;
+}
+
+interface MigratedOutcomeJournal {
+  appliedOutcomeIds: string[];
+  protectedCapacityOverflow: number;
+}
+
+function migrateOutcomeJournal(
+  value: unknown,
+  protectedIds: readonly string[] = [],
+): MigratedOutcomeJournal {
+  const journal = migrateStringJournal(value);
+  const protectedSet = new Set(protectedIds);
+  const protectedCapacityOverflow = Math.max(
+    0,
+    journal.filter((outcomeId) => protectedSet.has(outcomeId)).length - OUTCOME_JOURNAL_LIMIT,
+  );
+  if (journal.length <= OUTCOME_JOURNAL_LIMIT) {
+    return { appliedOutcomeIds: journal, protectedCapacityOverflow };
+  }
+  for (let index = 0; index < journal.length && journal.length > OUTCOME_JOURNAL_LIMIT;) {
+    if (protectedSet.has(journal[index])) {
+      index += 1;
+    } else {
+      journal.splice(index, 1);
+    }
+  }
+  return {
+    appliedOutcomeIds: journal.slice(-OUTCOME_JOURNAL_LIMIT),
+    protectedCapacityOverflow,
+  };
+}
+
+const OUTCOME_ROUTE_KINDS = new Set(["campaign", "planet", "special", "operation", "colony", "poi"]);
+const OUTCOME_TERMINAL_KINDS = new Set(["success", "failure", "retreat"]);
+function ownDataRecord(value: unknown): Record<string, unknown> | null {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const snapshot: Record<string, unknown> = {};
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") return null;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function exactOwnData(value: unknown, expectedKeys: readonly string[]): Record<string, unknown> | null {
+  const snapshot = ownDataRecord(value);
+  if (snapshot === null) return null;
+  const keys = Object.keys(snapshot).sort();
+  const expected = [...expectedKeys].sort();
+  return keys.length === expected.length && keys.every((key, index) => key === expected[index])
+    ? snapshot
+    : null;
+}
+
+function isPlainSerializable(value: unknown, ancestors = new Set<object>()): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object") return false;
+  if (ancestors.has(value)) return false;
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const snapshot = snapshotDenseArray(value);
+      return snapshot !== null && snapshot.every((entry) => isPlainSerializable(entry, ancestors));
+    }
+    const snapshot = ownDataRecord(value);
+    return snapshot !== null && Object.values(snapshot).every((entry) => isPlainSerializable(entry, ancestors));
+  } catch {
+    return false;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function sameData(left: unknown, right: unknown): boolean {
+  try {
+    if (Object.is(left, right)) return true;
+    if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return false;
+    const leftIsArray = Array.isArray(left);
+    const rightIsArray = Array.isArray(right);
+    if (leftIsArray || rightIsArray) {
+      if (!leftIsArray || !rightIsArray) return false;
+      const leftArray = snapshotDenseArray(left);
+      const rightArray = snapshotDenseArray(right);
+      return leftArray !== null && rightArray !== null && leftArray.length === rightArray.length &&
+        leftArray.every((entry, index) => sameData(entry, rightArray[index]));
+    }
+    const leftRecord = ownDataRecord(left);
+    const rightRecord = ownDataRecord(right);
+    if (leftRecord === null || rightRecord === null) return false;
+    const leftKeys = Object.keys(leftRecord).sort();
+    const rightKeys = Object.keys(rightRecord).sort();
+    return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
+      key === rightKeys[index] && sameData(leftRecord[key], rightRecord[key]));
+  } catch {
+    return false;
+  }
+}
+
+function snapshotOutcomeEnvelope(value: unknown): Record<string, unknown> | null {
+  const envelope = exactOwnData(value, [
+    "version", "routeKind", "missionId", "routeIdentity", "launchId", "expectedRevision", "persistenceAuthority",
+    "returnTarget", "declaredFields", "launchSnapshot", "outcomeId", "terminalKind", "payload",
+  ]);
+  if (envelope === null || envelope.version !== 1 || envelope.routeKind !== "poi" ||
+    typeof envelope.missionId !== "string" || envelope.missionId.length === 0 ||
+    typeof envelope.launchId !== "string" || envelope.launchId.length === 0 ||
+    !Number.isSafeInteger(envelope.expectedRevision) || (envelope.expectedRevision as number) < 0 ||
+    envelope.persistenceAuthority !== "legacy" || envelope.returnTarget !== "legacy-colony-exterior" ||
+    envelope.terminalKind !== "success" || envelope.outcomeId !== `${envelope.launchId}:success`) return null;
+  const rawFields = snapshotDenseArray(envelope.declaredFields);
+  if (rawFields === null || rawFields.some((field) => typeof field !== "string")) return null;
+  const fields = rawFields as string[];
+  const expectedFields = [
+    "colonies", "planets", "missionsSinceStart",
+  ];
+  if (fields.length !== expectedFields.length || fields.some((field, index) => field !== expectedFields[index])) return null;
+  const routeIdentity = snapshotOutcomeRouteIdentity(
+    envelope.routeIdentity,
+    "poi",
+    envelope.missionId as string,
+  );
+  if (routeIdentity === null || routeIdentity.kind !== "poi") return null;
+  const launchSnapshot = exactOwnData(envelope.launchSnapshot, fields);
+  const payload = exactOwnData(envelope.payload, ["version", "kind"]);
+  if (launchSnapshot === null || payload === null || payload.version !== 2 ||
+    payload.kind !== "poi_prepared_v2" || !isPlainSerializable(launchSnapshot) ||
+    !Array.isArray(launchSnapshot.colonies) || !Array.isArray(launchSnapshot.planets)) return null;
+  const colonies = launchSnapshot.colonies as SaveData["colonies"];
+  const planets = launchSnapshot.planets as SaveData["planets"];
+  const origin = colonies.find((colony) => colony.id === routeIdentity.originColonyId);
+  const node = planets.find((planet) => planet.id === origin?.planetId)
+    ?.regionMap.nodes.find((entry) => entry.id === routeIdentity.nodeId);
+  if (origin === undefined || node === undefined || node.templateId !== routeIdentity.templateId ||
+    (node.intel !== "surveyed" && node.intel !== "cleared") ||
+    routeIdentity.rewardEligible !== (node.intel === "surveyed")) return null;
+  if (!isPlainSerializable(envelope)) return null;
+  try { return structuredClone(envelope) as Record<string, unknown>; }
+  catch { return null; }
+}
+
+function snapshotAppliedReturn(value: unknown): OutcomeRecoveryRecord | null {
+  const source = exactOwnData(value, [
+    "version", "kind", "outcomeId", "launchId", "missionId", "routeKind", "routeIdentity", "terminalKind", "persistenceAuthority",
+    "returnTarget", "appliedRevision", "returnPending",
+  ]);
+  const identity = source === null || typeof source.routeKind !== "string" || typeof source.missionId !== "string"
+    ? null
+    : snapshotOutcomeRouteIdentity(
+        source.routeIdentity,
+        source.routeKind as OutcomeRouteKind,
+        source.missionId,
+      );
+  if (source === null || source.version !== 2 || source.kind !== "applied_return" ||
+    typeof source.routeKind !== "string" || !OUTCOME_ROUTE_KINDS.has(source.routeKind) ||
+    typeof source.missionId !== "string" || source.missionId.length === 0 || identity === null ||
+    typeof source.launchId !== "string" || source.launchId.length === 0 ||
+    !OUTCOME_TERMINAL_KINDS.has(source.terminalKind as string) ||
+    source.outcomeId !== `${source.launchId}:${source.terminalKind}` ||
+    !outcomeAuthorityReturnMatches(
+      source.routeKind as OutcomeRouteKind,
+      source.persistenceAuthority,
+      source.returnTarget,
+    ) ||
+    !Number.isSafeInteger(source.appliedRevision) || (source.appliedRevision as number) < 0 ||
+    typeof source.returnPending !== "boolean") return null;
+  try { return structuredClone(source) as unknown as OutcomeRecoveryRecord; }
+  catch { return null; }
+}
+
+function snapshotReconciliation(value: unknown): OutcomeRecoveryRecord | null {
+  const record = ownDataRecord(value);
+  if (record === null) return null;
+  const source = record.version === 2
+    ? exactOwnData(value, ["version", "kind", "reason", "protectedOutcomeIds", "quarantinedOutcomeCount"])
+    : exactOwnData(value, ["version", "kind", "reason", "protectedOutcomeIds"]);
+  if (source === null || (source.version !== 1 && source.version !== 2) || source.kind !== "reconciliation_required" ||
+    (source.reason !== "recovery_capacity_exceeded" && source.reason !== "prepared_outcome_invalid" &&
+      source.reason !== "outcome_authority_invalid") ||
+    migrateStringJournal(source.protectedOutcomeIds).length !== (snapshotDenseArray(source.protectedOutcomeIds)?.length ?? -1)) return null;
+  const protectedOutcomeIds = migrateStringJournal(source.protectedOutcomeIds);
+  const priorQuarantine = source.version === 2 && Number.isSafeInteger(source.quarantinedOutcomeCount) &&
+    (source.quarantinedOutcomeCount as number) >= 0
+    ? source.quarantinedOutcomeCount as number
+    : source.version === 1 ? 0 : -1;
+  if (priorQuarantine < 0) return null;
+  return reconciliationLock(
+    source.reason as OutcomeReconciliationReason,
+    protectedOutcomeIds,
+    priorQuarantine,
+  );
+}
+
+function salvageReconciliation(value: unknown): Extract<OutcomeRecoveryRecord, {
+  kind: "reconciliation_required";
+}> {
+  const idsField = snapshotOwnField(value, "protectedOutcomeIds");
+  const countField = snapshotOwnField(value, "quarantinedOutcomeCount");
+  const protectedOutcomeIds = idsField.kind === "data" ? migrateStringJournal(idsField.value) : [];
+  const priorQuarantine = countField.kind === "data" && Number.isSafeInteger(countField.value) &&
+    (countField.value as number) >= 0
+    ? countField.value as number
+    : 0;
+  return reconciliationLock("outcome_authority_invalid", protectedOutcomeIds, Math.max(1, priorQuarantine));
+}
+
+type OutcomeReconciliationReason = Extract<OutcomeRecoveryRecord, {
+  kind: "reconciliation_required";
+}>["reason"];
+
+function saturatingQuarantineAdd(left: number, right: number): number {
+  const boundedLeft = Number.isSafeInteger(left) && left >= 0
+    ? left
+    : left >= Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : 0;
+  const boundedRight = Number.isSafeInteger(right) && right >= 0
+    ? right
+    : right >= Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : 0;
+  return boundedLeft >= Number.MAX_SAFE_INTEGER - boundedRight
+    ? Number.MAX_SAFE_INTEGER
+    : boundedLeft + boundedRight;
+}
+
+function reconciliationLock(
+  reason: OutcomeReconciliationReason,
+  outcomeIds: readonly string[],
+  quarantinedOutcomeCount = 0,
+): Extract<OutcomeRecoveryRecord, { kind: "reconciliation_required" }> {
+  const unique = [...new Set(outcomeIds)];
+  const protectedOutcomeIds = structuredClone(unique.slice(-OUTCOME_JOURNAL_LIMIT));
+  const trimmedOutcomeCount = unique.length - protectedOutcomeIds.length;
+  return {
+    version: 2,
+    kind: "reconciliation_required",
+    reason,
+    protectedOutcomeIds,
+    quarantinedOutcomeCount: saturatingQuarantineAdd(quarantinedOutcomeCount, trimmedOutcomeCount),
+  };
+}
+
+function protectedRecoveryOutcomeIds(records: readonly OutcomeRecoveryRecord[]): string[] {
+  return records.flatMap((record) =>
+    record.kind === "applied_return"
+      ? record.returnPending || record.persistenceAuthority === "galaxy" ? [record.outcomeId] : []
+      : record.kind === "legacy_poi_prepared"
+        ? [record.envelope.outcomeId]
+        : record.protectedOutcomeIds);
+}
+
+function reconcileRecoveryAuthority(
+  records: readonly OutcomeRecoveryRecord[],
+  reason: OutcomeReconciliationReason,
+  additionalOutcomeIds: readonly string[],
+  quarantinedOutcomeCount: number,
+): OutcomeRecoveryRecord[] {
+  const existingLock = records.find((record): record is Extract<OutcomeRecoveryRecord, {
+    kind: "reconciliation_required";
+  }> => record.kind === "reconciliation_required");
+  const priorQuarantine = records.reduce((total, record) =>
+    saturatingQuarantineAdd(
+      total,
+      record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0,
+    ), 0);
+  return [reconciliationLock(
+    existingLock?.reason ?? reason,
+    [...protectedRecoveryOutcomeIds(records), ...additionalOutcomeIds],
+    existingLock === undefined
+      ? saturatingQuarantineAdd(priorQuarantine, Math.max(1, quarantinedOutcomeCount))
+      : Math.max(priorQuarantine, quarantinedOutcomeCount),
+  )];
+}
+
+function reconcileProtectedJournalCapacity(
+  records: readonly OutcomeRecoveryRecord[],
+  protectedOutcomeIds: readonly string[],
+): OutcomeRecoveryRecord[] {
+  const existingLock = records.find((record): record is Extract<OutcomeRecoveryRecord, {
+    kind: "reconciliation_required";
+  }> => record.kind === "reconciliation_required");
+  const priorQuarantine = records.reduce((total, record) =>
+    saturatingQuarantineAdd(
+      total,
+      record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0,
+    ), 0);
+  return [reconciliationLock(
+    existingLock?.reason ?? "recovery_capacity_exceeded",
+    protectedOutcomeIds,
+    priorQuarantine,
+  )];
+}
+
+function migrateOutcomeRecoveryRecords(
+  value: unknown,
+  rootRevision: number,
+  rootJournal: readonly string[],
+  authorityView: Pick<SaveData, "colonies" | "planets" | "missionsSinceStart" | "galaxyRun">,
+): OutcomeRecoveryRecord[] {
+  const entries = snapshotDenseArray(value);
+  if (entries === null) return [];
+  const newestFirst: OutcomeRecoveryRecord[] = [];
+  const seen = new Set<string>();
+  const invalidPreparedIds: string[] = [];
+  let invalidPrepared = false;
+  const invalidAuthorityIds: string[] = [];
+  let invalidAuthorityWithoutEvidence = 0;
+  const noteInvalidAuthority = (entry: unknown) => {
+    const outcomeIdField = snapshotOwnField(entry, "outcomeId");
+    if (outcomeIdField.kind === "data" && typeof outcomeIdField.value === "string" &&
+      outcomeIdField.value.length > 0) {
+      invalidAuthorityIds.push(outcomeIdField.value);
+    } else {
+      invalidAuthorityWithoutEvidence = saturatingQuarantineAdd(invalidAuthorityWithoutEvidence, 1);
+    }
+  };
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    const kindField = snapshotOwnField(entry, "kind");
+    if (kindField.kind === "data" && kindField.value === "reconciliation_required") {
+      newestFirst.push(snapshotReconciliation(entry) ?? salvageReconciliation(entry));
+      continue;
+    }
+    const source = ownDataRecord(entry);
+    if (source === null) {
+      noteInvalidAuthority(entry);
+      continue;
+    }
+    let record: OutcomeRecoveryRecord | null = null;
+    let identity: unknown;
+    if (source.kind === "applied_return") {
+      record = snapshotAppliedReturn(entry);
+      identity = source.outcomeId;
+      if (record === null) {
+        noteInvalidAuthority(entry);
+        continue;
+      }
+      if (record?.kind === "applied_return" && record.returnPending &&
+        (record.appliedRevision > rootRevision || !rootJournal.includes(record.outcomeId))) {
+        invalidAuthorityIds.push(record.outcomeId);
+        continue;
+      }
+      if (record?.kind === "applied_return" &&
+        (record.routeKind === "poi" || record.routeKind === "colony") &&
+        !dynamicOutcomeRouteIdentityIsCanonical(
+          authorityView as SaveData,
+          record.routeIdentity,
+          record.persistenceAuthority,
+          "applied",
+        )) {
+        invalidAuthorityIds.push(record.outcomeId);
+        continue;
+      }
+    } else if (source.kind === "legacy_poi_prepared") {
+      const wrapped = exactOwnData(entry, ["version", "kind", "envelope"]);
+      const envelope = wrapped === null ? null : snapshotOutcomeEnvelope(wrapped.envelope);
+      if (wrapped === null || wrapped.version !== 2 || envelope === null ||
+        envelope.routeKind !== "poi" || envelope.persistenceAuthority !== "legacy" ||
+        envelope.returnTarget !== "legacy-colony-exterior") {
+        invalidPrepared = true;
+        const rawEnvelope = ownDataRecord(source.envelope);
+        if (rawEnvelope !== null && typeof rawEnvelope.outcomeId === "string" && rawEnvelope.outcomeId.length > 0) {
+          invalidPreparedIds.push(rawEnvelope.outcomeId);
+        }
+        continue;
+      }
+      record = { version: 2, kind: "legacy_poi_prepared", envelope } as unknown as OutcomeRecoveryRecord;
+      identity = envelope.outcomeId;
+      const launchSnapshot = ownDataRecord(envelope.launchSnapshot);
+      if ((envelope.expectedRevision as number) > rootRevision || launchSnapshot === null ||
+        !sameData(launchSnapshot.colonies, authorityView.colonies) ||
+        !sameData(launchSnapshot.planets, authorityView.planets) ||
+        !sameData(launchSnapshot.missionsSinceStart, authorityView.missionsSinceStart)) {
+        invalidPrepared = true;
+        invalidPreparedIds.push(envelope.outcomeId as string);
+        continue;
+      }
+    } else {
+      noteInvalidAuthority(entry);
+      continue;
+    }
+    if (typeof identity !== "string" || identity.length === 0) continue;
+    if (seen.has(identity)) {
+      if (record?.kind === "legacy_poi_prepared") {
+        invalidPrepared = true;
+        invalidPreparedIds.push(identity);
+      } else {
+        invalidAuthorityIds.push(identity);
+      }
+      continue;
+    }
+    if (record === null) continue;
+    seen.add(identity);
+    newestFirst.push(record);
+  }
+  const records = newestFirst.reverse();
+  const retainedPreparedIds = records.flatMap((record) =>
+    record.kind === "legacy_poi_prepared" ? [record.envelope.outcomeId] : []);
+  const protectedOutcomeIds = protectedRecoveryOutcomeIds(records);
+  const existingLock = records.find((record): record is Extract<OutcomeRecoveryRecord, {
+    kind: "reconciliation_required";
+  }> => record.kind === "reconciliation_required");
+  const priorLockQuarantine = records.reduce((total, record) =>
+    saturatingQuarantineAdd(
+      total,
+      record.kind === "reconciliation_required" ? record.quarantinedOutcomeCount : 0,
+    ), 0);
+  if (invalidAuthorityIds.length > 0 || invalidAuthorityWithoutEvidence > 0) {
+    return [reconciliationLock(
+      existingLock?.reason ?? "outcome_authority_invalid",
+      [...protectedOutcomeIds, ...invalidAuthorityIds.reverse()],
+      saturatingQuarantineAdd(priorLockQuarantine, invalidAuthorityWithoutEvidence),
+    )];
+  }
+  if (invalidPrepared) {
+    return [reconciliationLock(
+      existingLock?.reason ?? "prepared_outcome_invalid",
+      [...protectedOutcomeIds, ...invalidPreparedIds.reverse()],
+      priorLockQuarantine,
+    )];
+  }
+  if (existingLock !== undefined) {
+    return [reconciliationLock(existingLock.reason, protectedOutcomeIds, priorLockQuarantine)];
+  }
+  const overflowDiscard = records.slice(0, Math.max(0, records.length - OUTCOME_RECOVERY_LIMIT));
+  if (overflowDiscard.some((record) =>
+    record.kind === "legacy_poi_prepared" || (record.kind === "applied_return" && record.returnPending))) {
+    return [reconciliationLock("recovery_capacity_exceeded", protectedOutcomeIds)];
+  }
+  if (retainedPreparedIds.length > 1) {
+    return [reconciliationLock("prepared_outcome_invalid", retainedPreparedIds)];
+  }
+  return records.slice(-OUTCOME_RECOVERY_LIMIT);
+}
 
 function createDefaultSave(): SaveData {
   return {
+  saveRevision: 0,
+  appliedOutcomeIds: [],
+  outcomeRecoveryRecords: [],
   currentWorld: 1,
   levels: {},
   credits: 0,
@@ -89,32 +635,173 @@ export function createHydrationSafeSave(): SaveData {
 export function migrateSave(raw: Record<string, unknown>): SaveData {
   const colonies = migrateColonies(raw.colonies);
   const planets = migratePlanets(raw.planets, colonies);
-  const rawGalaxyRun = raw.galaxyRun;
-  const rawGalaxyIdentity = rawGalaxyRun !== null
-      && typeof rawGalaxyRun === "object"
-      && !Array.isArray(rawGalaxyRun)
-      && Object.prototype.hasOwnProperty.call(rawGalaxyRun, "identity")
-    ? (rawGalaxyRun as Record<string, unknown>).identity
-    : null;
-  const identitySource = rawGalaxyIdentity !== null
-      && typeof rawGalaxyIdentity === "object"
-      && !Array.isArray(rawGalaxyIdentity)
-    ? rawGalaxyIdentity as Record<string, unknown>
+  const rawGalaxyRunField = snapshotOwnField(raw, "galaxyRun");
+  const rawGalaxyRun = rawGalaxyRunField.kind === "data" ? rawGalaxyRunField.value : null;
+  const rawGalaxyJournalInspection = rawGalaxyRun === null || rawGalaxyRun === undefined
+    ? { ok: true as const, nestedOutcomeIds: [], operationOwners: new Map<string, string>() }
+    : inspectGalaxyOutcomeJournals(rawGalaxyRun, OUTCOME_JOURNAL_LIMIT);
+  const rawGalaxyHistoryField = rawGalaxyRunField.kind === "data" && rawGalaxyRun !== null
+    ? snapshotOwnField(rawGalaxyRun, "historyFacts")
+    : { kind: "absent" as const };
+  const rawPreparedInspection: GalaxyPoiPreparedAuthorityInspection = rawGalaxyHistoryField.kind === "absent"
+    ? { status: "none" }
+    : inspectGalaxyPoiPreparedAuthority(rawGalaxyRun);
+  const rawGalaxyIdentityField = rawGalaxyRunField.kind === "data" && rawGalaxyRun !== null
+    ? snapshotOwnField(rawGalaxyRun, "identity")
+    : { kind: "absent" as const };
+  const identitySource = rawGalaxyIdentityField.kind === "data"
+    ? ownDataRecord(rawGalaxyIdentityField.value)
     : null;
   const identityIsComplete = identitySource !== null
-    && Object.prototype.hasOwnProperty.call(identitySource, "galaxySeed")
     && typeof identitySource.galaxySeed === "string"
-    && Object.prototype.hasOwnProperty.call(identitySource, "generationVersion")
     && Number.isSafeInteger(identitySource.generationVersion)
     && (identitySource.generationVersion as number) >= 0
-    && Object.prototype.hasOwnProperty.call(
-      identitySource,
-      "authoredAnchorRegistryVersion",
-    )
     && Number.isSafeInteger(identitySource.authoredAnchorRegistryVersion)
     && (identitySource.authoredAnchorRegistryVersion as number) >= 0;
-  const galaxyRun = identityIsComplete ? migrateGalaxyRun(rawGalaxyRun) : null;
+  let galaxyRun: SaveData["galaxyRun"] = null;
+  if (identityIsComplete) {
+    try { galaxyRun = migrateGalaxyRun(rawGalaxyRun); }
+    catch { galaxyRun = null; }
+  }
+  const rawRevisionField = snapshotOwnField(raw, "saveRevision");
+  const rawJournalField = snapshotOwnField(raw, "appliedOutcomeIds");
+  const rawRecoveryField = snapshotOwnField(raw, "outcomeRecoveryRecords");
+  const isPreA3Authority = rawRevisionField.kind === "absent" && rawJournalField.kind === "absent" &&
+    rawRecoveryField.kind === "absent";
+  const absentAuthorityFieldCount = Number(rawRevisionField.kind === "absent") +
+    Number(rawJournalField.kind === "absent") + Number(rawRecoveryField.kind === "absent");
+  const hasPartialA3Authority = absentAuthorityFieldCount > 0 && absentAuthorityFieldCount < 3;
+  const saveRevision = rawRevisionField.kind === "data" && Number.isSafeInteger(rawRevisionField.value) &&
+    (rawRevisionField.value as number) >= 0
+    ? rawRevisionField.value as number
+    : 0;
+  const activeExperience = raw.activeExperience === "galaxy" && galaxyRun !== null
+    ? "galaxy"
+    : "legacy";
+  const missionsSinceStart = (raw.missionsSinceStart as number) ?? 0;
+  const strictRootJournal = rawJournalField.kind === "data"
+    ? snapshotStrictStringJournal(rawJournalField.value)
+    : rawJournalField.kind === "absent" ? [] : null;
+  const recoverySnapshot = rawRecoveryField.kind === "absent"
+    ? []
+    : rawRecoveryField.kind === "data" ? snapshotDenseArray(rawRecoveryField.value) : null;
+  const preA3SeedIsCoherent = isPreA3Authority && rawGalaxyJournalInspection.ok &&
+    rawGalaxyJournalInspection.operationOwners.size === rawGalaxyJournalInspection.nestedOutcomeIds.length;
+  const malformedGalaxyRunContainer = rawGalaxyRunField.kind === "invalid" ||
+    (rawGalaxyRunField.kind === "data" && rawGalaxyRunField.value !== null && galaxyRun === null);
+  const malformedJournalContainer = rawJournalField.kind !== "absent" && strictRootJournal === null;
+  const malformedRecoveryContainer = recoverySnapshot === null;
+  const malformedRevision = rawRevisionField.kind === "invalid" ||
+    (rawRevisionField.kind === "data" && (!Number.isSafeInteger(rawRevisionField.value) ||
+      (rawRevisionField.value as number) < 0));
+  const rawOutcomeJournal = preA3SeedIsCoherent
+    ? [...rawGalaxyJournalInspection.nestedOutcomeIds]
+    : strictRootJournal ?? (rawJournalField.kind === "data"
+      ? snapshotRecoverableStringJournal(rawJournalField.value)
+      : []);
+  let outcomeRecoveryRecords = migrateOutcomeRecoveryRecords(
+    recoverySnapshot ?? [],
+    saveRevision,
+    rawOutcomeJournal,
+    { colonies, planets, missionsSinceStart, galaxyRun },
+  );
+  const opaqueAuthorityCount = Number(malformedGalaxyRunContainer) + Number(malformedJournalContainer) +
+    Number(malformedRecoveryContainer) + Number(malformedRevision) +
+    Number(isPreA3Authority && !preA3SeedIsCoherent);
+  if (opaqueAuthorityCount > 0) {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "outcome_authority_invalid",
+      rawOutcomeJournal,
+      opaqueAuthorityCount,
+    );
+  }
+  if (hasPartialA3Authority) {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "outcome_authority_invalid",
+      [],
+      0,
+    );
+  }
+  const rawParity = snapshotGalaxyOutcomeAuthority(
+    rawGalaxyRun,
+    rawOutcomeJournal,
+    outcomeRecoveryRecords,
+    OUTCOME_JOURNAL_LIMIT,
+  );
+  if (!rawParity.ok) {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "outcome_authority_invalid",
+      rawParity.knownOutcomeIds,
+      rawParity.quarantinedOutcomeCount,
+    );
+  }
+  if (rawPreparedInspection.status === "invalid") {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "prepared_outcome_invalid",
+      [],
+      rawPreparedInspection.quarantinedCount,
+    );
+  } else if (rawPreparedInspection.status === "valid") {
+    const preparation = rawPreparedInspection.preparation;
+    const migratedInspection = galaxyRun === null
+      ? { status: "invalid" as const, quarantinedCount: 1 }
+      : inspectGalaxyPoiPreparedAuthority(galaxyRun);
+    const migratedMatches = migratedInspection.status === "valid" &&
+      migratedInspection.preparation.launchId === preparation.launchId &&
+      migratedInspection.preparation.outcomeId === preparation.outcomeId &&
+      migratedInspection.preparation.preparedRevision === preparation.preparedRevision &&
+      migratedInspection.preparation.factId === preparation.factId;
+    const nestedOutcomeIds = galaxyRun?.appliedOutcomeIds ?? [];
+    if (!migratedMatches || activeExperience !== "galaxy" ||
+      preparation.preparedRevision !== saveRevision || rawOutcomeJournal.includes(preparation.outcomeId) ||
+      nestedOutcomeIds.includes(preparation.outcomeId)) {
+      outcomeRecoveryRecords = reconcileRecoveryAuthority(
+        outcomeRecoveryRecords,
+        "prepared_outcome_invalid",
+        [preparation.outcomeId],
+        1,
+      );
+    }
+  }
+  let protectedOutcomeIds = [
+    ...protectedRecoveryOutcomeIds(outcomeRecoveryRecords),
+    ...(rawParity.ok ? rawParity.nestedOutcomeIds : []),
+  ];
+  let journalMigration = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
+  let appliedOutcomeIds = journalMigration.appliedOutcomeIds;
+  if (journalMigration.protectedCapacityOverflow > 0) {
+    outcomeRecoveryRecords = reconcileProtectedJournalCapacity(outcomeRecoveryRecords, protectedOutcomeIds);
+    protectedOutcomeIds = [
+      ...protectedRecoveryOutcomeIds(outcomeRecoveryRecords),
+      ...(rawParity.ok ? rawParity.nestedOutcomeIds : []),
+    ];
+    journalMigration = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds);
+    appliedOutcomeIds = journalMigration.appliedOutcomeIds;
+  }
+  const parity = snapshotGalaxyOutcomeAuthority(
+    galaxyRun,
+    appliedOutcomeIds,
+    outcomeRecoveryRecords,
+    OUTCOME_JOURNAL_LIMIT,
+  );
+  if (!parity.ok) {
+    outcomeRecoveryRecords = reconcileRecoveryAuthority(
+      outcomeRecoveryRecords,
+      "outcome_authority_invalid",
+      parity.knownOutcomeIds,
+      parity.quarantinedOutcomeCount,
+    );
+    protectedOutcomeIds = protectedRecoveryOutcomeIds(outcomeRecoveryRecords);
+    appliedOutcomeIds = migrateOutcomeJournal(rawOutcomeJournal, protectedOutcomeIds).appliedOutcomeIds;
+  }
   return {
+    saveRevision,
+    appliedOutcomeIds,
+    outcomeRecoveryRecords,
     currentWorld: (raw.currentWorld as number) ?? 1,
     levels: (raw.levels as SaveData["levels"]) ?? {},
     credits: (raw.credits as number) ?? 0,
@@ -146,7 +833,7 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
     earthShipments: (raw.earthShipments as EarthShipment[]) ?? [],
     factionStandings: (raw.factionStandings as FactionStanding[]) ?? defaultFactionStandings(),
     bounties: (raw.bounties as Bounty[]) ?? [],
-    missionsSinceStart: (raw.missionsSinceStart as number) ?? 0,
+    missionsSinceStart,
     gameClock: (raw.gameClock as GameClock) ?? {
       day: 0,
       hour: 7,
@@ -154,9 +841,7 @@ export function migrateSave(raw: Record<string, unknown>): SaveData {
       realtimeMsPerGameMinute: 1000,
       season: "standard",
     },
-    activeExperience: raw.activeExperience === "galaxy" && galaxyRun !== null
-      ? "galaxy"
-      : "legacy",
+    activeExperience,
     galaxyRun,
   };
 }
@@ -335,16 +1020,17 @@ export function recalcPilotLevel(save: SaveData): SaveData {
   };
 }
 
-export function loadSave(): SaveData {
+export function readCanonicalSaveStrict(): SaveData {
   if (typeof window === "undefined") return createDefaultSave();
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return unlockCodexEntries(createDefaultSave());
-    const parsed = JSON.parse(raw);
-    return recalcPilotLevel(unlockCodexEntries(migrateSave(parsed)));
-  } catch {
-    return unlockCodexEntries(createDefaultSave());
-  }
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (!raw) return unlockCodexEntries(createDefaultSave());
+  const parsed = JSON.parse(raw);
+  return recalcPilotLevel(unlockCodexEntries(migrateSave(parsed)));
+}
+
+export function loadSave(): SaveData {
+  try { return readCanonicalSaveStrict(); }
+  catch { return unlockCodexEntries(createDefaultSave()); }
 }
 
 export function saveSave(data: SaveData): void {

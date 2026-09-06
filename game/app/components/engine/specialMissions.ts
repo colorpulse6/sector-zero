@@ -46,6 +46,10 @@ export function isSpecialMissionCompleted(id: SpecialMissionId, save: SaveData):
   return save.completedSpecialMissions.includes(id);
 }
 
+export function canLaunchSpecialMission(id: SpecialMissionId, save: SaveData): boolean {
+  return isSpecialMissionUnlocked(id, save) && !isSpecialMissionCompleted(id, save);
+}
+
 export function getAvailableSpecialMissions(save: SaveData): SpecialMissionDef[] {
   return SPECIAL_MISSIONS.filter((mission) => isSpecialMissionUnlocked(mission.id, save));
 }

@@ -148,8 +148,11 @@ function isCanonicalSave(value: SaveData | GalaxyRunState): value is SaveData {
   return hasOwn(value, "galaxyRun") && hasOwn(value, "activeExperience");
 }
 
-function projectionFromRun(run: GalaxyRunState): SaveData {
+export function projectGalaxyRunToLegacyState(run: GalaxyRunState): SaveData {
   return {
+    saveRevision: 0,
+    appliedOutcomeIds: [],
+    outcomeRecoveryRecords: [],
     currentWorld: 1,
     levels: {},
     credits: run.resources.credits,
@@ -197,7 +200,7 @@ export function projectGalaxyRunToLegacySave(parent: SaveData): SaveData {
   if (parent.galaxyRun === null) {
     throw new Error("Cannot project legacy engine state without a galaxy run");
   }
-  return projectionFromRun(parent.galaxyRun);
+  return projectGalaxyRunToLegacyState(parent.galaxyRun);
 }
 
 function isOptionalUndefinedBestiaryPath(path: string): boolean {
@@ -801,7 +804,7 @@ export function advanceGalaxyWorldCycles(
   let current = startingRun;
   try {
     for (let index = 0; index < cycles; index += 1) {
-      const projection = projectionFromRun(current);
+      const projection = projectGalaxyRunToLegacyState(current);
       const advanced = advanceWorldCycle(projection);
       const merged = mergeProjectionIntoGalaxy(current, {
         colonies: advanced.colonies,

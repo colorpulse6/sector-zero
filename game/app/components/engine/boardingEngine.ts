@@ -68,10 +68,12 @@ export function updateBoardingEngine(gs: GameState, keys: Keys, dtMs: number = 1
   if (keys.right) vx += 1;
   if (keys.up) vy -= 1;
   if (keys.down) vy += 1;
+  const mag = Math.sqrt(vx * vx + vy * vy) || 1;
 
   // Update facing from input
   if (vx !== 0 || vy !== 0) {
-    // Prefer horizontal for diagonal
+    bs.playerAim = { x: vx / mag, y: vy / mag };
+    // Existing cardinal sprites prefer horizontal for diagonal movement.
     if (Math.abs(vx) >= Math.abs(vy)) {
       bs.playerFacing = vx > 0 ? "right" : "left";
     } else {
@@ -84,7 +86,6 @@ export function updateBoardingEngine(gs: GameState, keys: Keys, dtMs: number = 1
   }
 
   // Normalize diagonal
-  const mag = Math.sqrt(vx * vx + vy * vy) || 1;
   const speed = bs.dashTimer > 0 ? DASH_SPEED : PLAYER_SPEED;
   vx = (vx / mag) * speed * dtF;
   vy = (vy / mag) * speed * dtF;
@@ -106,7 +107,7 @@ export function updateBoardingEngine(gs: GameState, keys: Keys, dtMs: number = 1
 
   // ── Shooting ──
   if (keys.shoot && p.fireTimer <= 0) {
-    const dir = facingToVec(bs.playerFacing);
+    const dir = bs.playerAim ?? facingToVec(bs.playerFacing);
     const cx = p.x + PLAYER_W / 2;
     const cy = p.y + PLAYER_H / 2;
     bs.bullets.push({

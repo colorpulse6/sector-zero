@@ -16,6 +16,7 @@ import { drawEnemies } from "./enemies";
 import { getSprite, SPRITES } from "./sprites";
 import { getLevelData, WORLD_NAMES } from "./levels";
 import { drawDashboard } from "./dashboard";
+import { getTouchControlHint } from "./inputIntents";
 import {
   type StarMapState,
   getWorldNodes,
@@ -30,6 +31,13 @@ import { drawBoardingGame } from "./boardingRenderer";
 import { drawFirstPerson } from "./firstPersonRenderer";
 import { drawTurretGame } from "./turretRenderer";
 import { operationSurfaceLabel } from "./galaxy/experienceFlow";
+import {
+  drawObjectiveHud,
+  drawPlanetBackground,
+  drawPlanetForeground,
+  drawPlanetHazards,
+  drawPlanetObjectiveActor,
+} from "./planetRenderer";
 
 export function drawGame(
   ctx: CanvasRenderingContext2D,
@@ -45,7 +53,11 @@ export function drawGame(
   }
 
   // Background
-  drawBackground(ctx, state.background, state.currentWorld, state.planetId);
+  if (state.planetId) {
+    drawPlanetBackground(ctx, state.planetId, state.frameCount);
+  } else {
+    drawBackground(ctx, state.background, state.currentWorld);
+  }
 
   // Phase transition screen
   if (state.screen === GameScreen.PHASE_TRANSITION) {
@@ -125,9 +137,14 @@ export function drawGame(
   drawPlayerBullets(ctx, state.playerBullets, state.player.weaponLevel, hasRapidFire);
   drawPlayer(ctx, state);
   drawSideGunners(ctx, state);
+  drawPlanetObjectiveActor(ctx, state);
+  drawPlanetHazards(ctx, state, state.hazardState);
   drawParticles(ctx, state.particles);
   drawSpriteExplosions(ctx, state.explosions);
   drawFloatingLabels(ctx, state.floatingLabels);
+  if (state.planetId) {
+    drawPlanetForeground(ctx, state.planetId, state.frameCount);
+  }
 
   // Wave indicator (only during normal play, not boss)
   if (state.screen === GameScreen.PLAYING && state.waveDelay > 30 && state.currentWave > 0 && !state.boss) {
@@ -144,6 +161,10 @@ export function drawGame(
   // Level complete banner (game keeps running during countdown)
   if (state.levelCompleteTimer > 0) {
     drawLevelCompleteBanner(ctx, state);
+  }
+
+  if (state.planetId && state.objective) {
+    drawObjectiveHud(ctx, state.objective, state.planetId, state.frameCount);
   }
 
   // Dashboard (bottom panel — replaces old HUD + dialog overlay)
@@ -685,10 +706,9 @@ function drawBriefing(
     ctx.fillText("PRESS ENTER OR TAP TO SKIP", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 100);
 
     // Controls hint
-    ctx.fillStyle = "#44444488";
+    ctx.fillStyle = "#888888";
     ctx.font = "10px monospace";
-    ctx.fillText("SPACE: FIRE   B: BOMB   \u2190\u2191\u2192\u2193: MOVE", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 130);
-    ctx.fillText("MOBILE: TOUCH MOVE  2-FINGER TAP: BOMB", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 145);
+    ctx.fillText(getTouchControlHint(state.currentMode), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 130, CANVAS_WIDTH - 40);
   }
 
   ctx.restore();

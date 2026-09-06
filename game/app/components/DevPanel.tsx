@@ -99,7 +99,7 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
 
   if (!open) {
     return (
-      <div className="absolute top-2 left-2 z-50">
+      <div className="absolute top-14 left-2 z-50">
         <button
           onClick={() => setOpen(true)}
           className="bg-black/60 text-green-400 text-xs px-2 py-1 font-mono border border-green-800 hover:border-green-400 transition-colors"
@@ -112,7 +112,7 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
   }
 
   return (
-    <div className="absolute top-2 left-2 z-50 w-64 max-h-[90vh] overflow-y-auto bg-black/90 border border-green-800 text-green-400 font-mono text-xs p-3 space-y-3">
+    <div className="absolute top-14 left-2 z-50 w-64 max-h-[90vh] overflow-y-auto bg-black/90 border border-green-800 text-green-400 font-mono text-xs p-3 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-green-800 pb-2">
         <span className="font-bold tracking-wider">DEV PANEL</span>

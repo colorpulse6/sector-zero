@@ -463,6 +463,9 @@ function startingAtlas(identity: AtlasGenerationIdentity): GalaxyAtlasState {
 
 function colonyBootstrapSave(): SaveData {
   return {
+    saveRevision: 0,
+    appliedOutcomeIds: [],
+    outcomeRecoveryRecords: [],
     currentWorld: 1,
     levels: {},
     credits: 0,

@@ -4,6 +4,7 @@ import type { PlanetId, SaveData } from "../../app/components/engine/types";
 /** Minimal empty SaveData for reducer/delivery/fixture tests. */
 export function makeTestSave(overrides: Partial<SaveData> = {}): SaveData {
   return {
+    saveRevision: 0, appliedOutcomeIds: [], outcomeRecoveryRecords: [],
     currentWorld: 1, levels: {}, credits: 0, totalStars: 0, totalScore: 0, xp: 0,
     upgrades: {} as SaveData["upgrades"], unlockedCodex: [], viewedCodex: [],
     viewedConversations: [], completedQuests: [], activeQuests: [],

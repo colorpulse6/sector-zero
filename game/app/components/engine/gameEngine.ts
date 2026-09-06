@@ -20,6 +20,7 @@ import {
   type GameState,
   type Player,
   type Keys,
+  type NormalizedAim,
   type ActivePowerUp,
   type Particle,
   type Wave,
@@ -45,20 +46,18 @@ import {
   fireEnemyBullet,
   isEnemyOffscreen,
   spawnFormation,
-  resetEnemyIds,
   setDifficultyForWorld,
   setPlanetClassOverride,
 } from "./enemies";
 import { PLANET_DOMINANT_CLASS, resolveAffinity } from "./enemyClasses";
 import { AFFINITY_MULTIPLIER } from "./weaponTypes";
-import { createAffinityLabel, updateFloatingLabels, resetFloatingLabelIds } from "./floatingLabels";
-import { resetBulletIds } from "./weapons";
+import { createAffinityLabel, updateFloatingLabels } from "./floatingLabels";
 import { aabbOverlap, SpatialHash } from "./physics";
 import { getLevelData, getWorldLevelCount, getMultiPhaseLevelData } from "./levels";
 import { clamp } from "./physics";
 
 const spatialHash = new SpatialHash();
-import { createBossForWorld, updateBossForWorld, isBossDefeated, resetBossBulletIds } from "./bosses";
+import { createBossForWorld, updateBossForWorld, isBossDefeated } from "./bosses";
 import { updateGroundEngine } from "./groundEngine";
 import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./groundLevel";
 import { updateBoardingEngine } from "./boardingEngine";
@@ -70,9 +69,17 @@ import { createObjectiveState, createEscortEntity, createDefendStructure, update
 import { getPlanetDef } from "./planets";
 import { getPlanetLevelData } from "./planetLevels";
 import { getPlanetDialogTriggers } from "./planetDialog";
-import { createHazardState, updateHazards, type HazardState } from "./hazards";
+import { createHazardState, updateHazards } from "./hazards";
 import { createCheckpoint, isLastPhase } from "./phases";
 import { createKeplerBlackBoxFirstPersonState } from "./keplerBlackBoxMission";
+import {
+  assertLaunchContextMatchesEngineRoute,
+  claimLaunchContextForGameState,
+  cloneLaunchContext,
+  clonePilotLoadout,
+  type LaunchContext,
+  type PilotLoadout,
+} from "./missionContext";
 
 // ─── Power-Up Spawning ──────────────────────────────────────────────
 
@@ -162,35 +169,60 @@ export function createPlayer(
   };
 }
 
-// Store current upgrades so handlePlayerShooting and updatePowerUps can reference them
-let currentUpgrades: ShipUpgrades = { ...DEFAULT_UPGRADES };
-let currentEnhancements: EnhancementId[] = [];
-let currentAllocatedSkills: SkillNodeId[] = [];
-let currentHazardState: HazardState | null = null;
 let reflectedBulletId = 200000;
 
-function hasEnhancement(id: EnhancementId): boolean {
-  return currentEnhancements.includes(id);
+function legacyPilotLoadout(
+  upgrades: ShipUpgrades,
+  enhancements: EnhancementId[],
+  pilotLevel: number,
+  allocatedSkills: SkillNodeId[],
+): PilotLoadout {
+  return {
+    upgrades: { ...upgrades },
+    unlockedEnhancements: [...enhancements],
+    pilotLevel,
+    allocatedSkills: [...allocatedSkills],
+    equippedWeaponType: "kinetic",
+    equippedConsumables: [],
+    consumableInventory: {},
+  };
 }
 
-export function getHazardState(): HazardState | null {
-  return currentHazardState;
+function hasEnhancement(state: GameState, id: EnhancementId): boolean {
+  return state.pilotLoadout.unlockedEnhancements.includes(id);
 }
 
-export function createGameState(world: number, level: number, upgrades: ShipUpgrades = DEFAULT_UPGRADES, enhancements: EnhancementId[] = [], pilotLevel: number = 1, allocatedSkills: SkillNodeId[] = []): GameState {
-  setPlanetClassOverride(null);
-  currentUpgrades = { ...upgrades };
-  currentEnhancements = [...enhancements];
-  currentAllocatedSkills = [...allocatedSkills];
-  currentHazardState = null;
-  setDifficultyForWorld(world);
-  resetEnemyIds();
-  resetFloatingLabelIds();
-  resetBulletIds();
-  resetBossBulletIds();
-  resetPowerUpIds();
+function isLaunchContext(value: ShipUpgrades | LaunchContext): value is LaunchContext {
+  return "launchId" in value;
+}
 
+export function createGameState(world: number, level: number, launchContext: LaunchContext): GameState;
+export function createGameState(world: number, level: number, upgrades?: ShipUpgrades, enhancements?: EnhancementId[], pilotLevel?: number, allocatedSkills?: SkillNodeId[]): GameState;
+export function createGameState(
+  world: number,
+  level: number,
+  upgradesOrLaunch: ShipUpgrades | LaunchContext = DEFAULT_UPGRADES,
+  enhancements: EnhancementId[] = [],
+  pilotLevel: number = 1,
+  allocatedSkills: SkillNodeId[] = [],
+): GameState {
+  const hasLaunchContext = isLaunchContext(upgradesOrLaunch);
+  const launchContext = hasLaunchContext
+    ? cloneLaunchContext(upgradesOrLaunch)
+    : undefined;
+  const upgrades = launchContext?.pilot.upgrades ?? upgradesOrLaunch as ShipUpgrades;
+  const normalizedEnhancements = launchContext?.pilot.unlockedEnhancements ?? enhancements;
+  const normalizedPilotLevel = launchContext?.pilot.pilotLevel ?? pilotLevel;
+  const normalizedAllocatedSkills = launchContext?.pilot.allocatedSkills ?? allocatedSkills;
+  const pilotLoadout = launchContext
+    ? clonePilotLoadout(launchContext.pilot)
+    : legacyPilotLoadout(upgrades, normalizedEnhancements, normalizedPilotLevel, normalizedAllocatedSkills);
   const levelData = getLevelData(world, level);
+  if (levelData === undefined) throw new Error(`Unknown campaign coordinates ${world}-${level}.`);
+  if (launchContext) {
+    assertLaunchContextMatchesEngineRoute(launchContext, { kind: "campaign", world, level });
+    claimLaunchContextForGameState(launchContext);
+  }
   const multiPhaseData = getMultiPhaseLevelData(world, level);
   const waves: Wave[] = (levelData?.waves ?? []).map((def) => ({
     definition: def,
@@ -204,7 +236,10 @@ export function createGameState(world: number, level: number, upgrades: ShipUpgr
 
   return {
     screen: GameScreen.BRIEFING,
-    player: createPlayer(upgrades, pilotLevel, allocatedSkills),
+    launchContext,
+    pilotLoadout,
+    enemySpawnPolicy: { difficultyWorld: world, planetClassOverride: null },
+    player: createPlayer(upgrades, normalizedPilotLevel, normalizedAllocatedSkills),
     playerBullets: [],
     enemyBullets: [],
     enemies: [],
@@ -214,7 +249,7 @@ export function createGameState(world: number, level: number, upgrades: ShipUpgr
     particles: [],
     explosions: [],
     floatingLabels: [],
-    equippedWeaponType: "kinetic",
+    equippedWeaponType: launchContext?.pilot.equippedWeaponType ?? "kinetic",
     pendingBestiaryKills: [],
     background: createBackground(),
     score: 0,
@@ -244,8 +279,9 @@ export function createGameState(world: number, level: number, upgrades: ShipUpgr
     dialogTriggers: getDialogTriggers(world, level),
     xp: 0,
     hpWarningTriggered: false,
-    pilotLevel,
-    allocatedSkills,
+    hazardState: null,
+    pilotLevel: normalizedPilotLevel,
+    allocatedSkills: [...normalizedAllocatedSkills],
     currentPhase: 0,
     currentMode: "shooter",
     totalPhases: multiPhaseData?.phases.length ?? 1,
@@ -256,25 +292,39 @@ export function createGameState(world: number, level: number, upgrades: ShipUpgr
   };
 }
 
+export function createPlanetGameState(planetId: PlanetId, launchContext: LaunchContext): GameState;
 export function createPlanetGameState(
   planetId: PlanetId,
-  upgrades: ShipUpgrades = DEFAULT_UPGRADES,
+  upgrades?: ShipUpgrades,
+  enhancements?: EnhancementId[],
+  pilotLevel?: number,
+  allocatedSkills?: SkillNodeId[],
+): GameState;
+export function createPlanetGameState(
+  planetId: PlanetId,
+  upgradesOrLaunch: ShipUpgrades | LaunchContext = DEFAULT_UPGRADES,
   enhancements: EnhancementId[] = [],
   pilotLevel: number = 1,
-  allocatedSkills: SkillNodeId[] = []
+  allocatedSkills: SkillNodeId[] = [],
 ): GameState {
-  setPlanetClassOverride(PLANET_DOMINANT_CLASS[planetId]);
-  currentUpgrades = { ...upgrades };
-  currentEnhancements = [...enhancements];
+  const hasLaunchContext = isLaunchContext(upgradesOrLaunch);
+  const launchContext = hasLaunchContext
+    ? cloneLaunchContext(upgradesOrLaunch)
+    : undefined;
+  const upgrades = launchContext?.pilot.upgrades ?? upgradesOrLaunch as ShipUpgrades;
+  const normalizedEnhancements = launchContext?.pilot.unlockedEnhancements ?? enhancements;
+  const normalizedPilotLevel = launchContext?.pilot.pilotLevel ?? pilotLevel;
+  const normalizedAllocatedSkills = launchContext?.pilot.allocatedSkills ?? allocatedSkills;
+  const pilotLoadout = launchContext
+    ? clonePilotLoadout(launchContext.pilot)
+    : legacyPilotLoadout(upgrades, normalizedEnhancements, normalizedPilotLevel, normalizedAllocatedSkills);
 
   const planet = getPlanetDef(planetId);
-  setDifficultyForWorld(planet.pairedWorld);
-  resetEnemyIds();
-  resetFloatingLabelIds();
-  resetBulletIds();
-  resetBossBulletIds();
-  resetPowerUpIds();
-
+  if (!planet) throw new Error(`Unknown planet mission ${String(planetId)}.`);
+  if (launchContext) {
+    assertLaunchContextMatchesEngineRoute(launchContext, { kind: "planet", planetId });
+    claimLaunchContextForGameState(launchContext);
+  }
   const levelData = getPlanetLevelData(planetId);
   const waves: Wave[] = levelData.waves.map((def) => ({
     definition: def,
@@ -285,11 +335,17 @@ export function createPlanetGameState(
   const objective = createObjectiveState(planet.objective, planet.objectiveValue);
   const escort = planet.objective === "escort" ? createEscortEntity(planet.objectiveValue) : undefined;
   const defendStructure = planet.objective === "defend" ? createDefendStructure(planet.objectiveValue) : undefined;
-  currentHazardState = createHazardState(planetId);
+  const hazardState = createHazardState(planetId);
 
   return {
     screen: GameScreen.BRIEFING,
-    player: createPlayer(upgrades, pilotLevel, allocatedSkills),
+    launchContext,
+    pilotLoadout,
+    enemySpawnPolicy: {
+      difficultyWorld: planet.pairedWorld,
+      planetClassOverride: PLANET_DOMINANT_CLASS[planetId],
+    },
+    player: createPlayer(upgrades, normalizedPilotLevel, normalizedAllocatedSkills),
     playerBullets: [],
     enemyBullets: [],
     enemies: [],
@@ -299,7 +355,7 @@ export function createPlanetGameState(
     particles: [],
     explosions: [],
     floatingLabels: [],
-    equippedWeaponType: "kinetic",
+    equippedWeaponType: launchContext?.pilot.equippedWeaponType ?? "kinetic",
     pendingBestiaryKills: [],
     background: createBackground(),
     score: 0,
@@ -329,8 +385,9 @@ export function createPlanetGameState(
     dialogTriggers: getPlanetDialogTriggers(planetId),
     xp: 0,
     hpWarningTriggered: false,
-    pilotLevel,
-    allocatedSkills,
+    hazardState,
+    pilotLevel: normalizedPilotLevel,
+    allocatedSkills: [...normalizedAllocatedSkills],
     currentPhase: 0,
     currentMode: "shooter",
     totalPhases: 1,
@@ -349,23 +406,42 @@ export function createPlanetGameState(
 export function createSpecialMissionGameState(
   missionId: SpecialMissionId,
   blackBoxRecovered: boolean,
-  upgrades: ShipUpgrades = DEFAULT_UPGRADES,
+  launchContext: LaunchContext,
+): GameState;
+export function createSpecialMissionGameState(
+  missionId: SpecialMissionId,
+  blackBoxRecovered: boolean,
+  upgrades?: ShipUpgrades,
+  enhancements?: EnhancementId[],
+  pilotLevel?: number,
+  allocatedSkills?: SkillNodeId[],
+): GameState;
+export function createSpecialMissionGameState(
+  missionId: SpecialMissionId,
+  blackBoxRecovered: boolean,
+  upgradesOrLaunch: ShipUpgrades | LaunchContext = DEFAULT_UPGRADES,
   enhancements: EnhancementId[] = [],
   pilotLevel: number = 1,
-  allocatedSkills: SkillNodeId[] = []
+  allocatedSkills: SkillNodeId[] = [],
 ): GameState {
-  currentUpgrades = { ...upgrades };
-  currentEnhancements = [...enhancements];
-  currentAllocatedSkills = [...allocatedSkills];
-  currentHazardState = null;
-  setPlanetClassOverride(null);
-  setDifficultyForWorld(4);
-  resetEnemyIds();
-  resetFloatingLabelIds();
-  resetBulletIds();
-  resetBossBulletIds();
-  resetPowerUpIds();
-
+  if (missionId !== "kepler-black-box") {
+    throw new Error(`Unknown special mission ${String(missionId)}.`);
+  }
+  const hasLaunchContext = isLaunchContext(upgradesOrLaunch);
+  const launchContext = hasLaunchContext
+    ? cloneLaunchContext(upgradesOrLaunch)
+    : undefined;
+  const upgrades = launchContext?.pilot.upgrades ?? upgradesOrLaunch as ShipUpgrades;
+  const normalizedEnhancements = launchContext?.pilot.unlockedEnhancements ?? enhancements;
+  const normalizedPilotLevel = launchContext?.pilot.pilotLevel ?? pilotLevel;
+  const normalizedAllocatedSkills = launchContext?.pilot.allocatedSkills ?? allocatedSkills;
+  const pilotLoadout = launchContext
+    ? clonePilotLoadout(launchContext.pilot)
+    : legacyPilotLoadout(upgrades, normalizedEnhancements, normalizedPilotLevel, normalizedAllocatedSkills);
+  if (launchContext) {
+    assertLaunchContextMatchesEngineRoute(launchContext, { kind: "special", missionId });
+    claimLaunchContextForGameState(launchContext);
+  }
   const firstPersonState =
     missionId === "kepler-black-box"
       ? createKeplerBlackBoxFirstPersonState(blackBoxRecovered)
@@ -373,7 +449,10 @@ export function createSpecialMissionGameState(
 
   return {
     screen: GameScreen.BRIEFING,
-    player: createPlayer(upgrades, pilotLevel, allocatedSkills),
+    launchContext,
+    pilotLoadout,
+    enemySpawnPolicy: { difficultyWorld: 4, planetClassOverride: null },
+    player: createPlayer(upgrades, normalizedPilotLevel, normalizedAllocatedSkills),
     playerBullets: [],
     enemyBullets: [],
     enemies: [],
@@ -383,7 +462,7 @@ export function createSpecialMissionGameState(
     particles: [],
     explosions: [],
     floatingLabels: [],
-    equippedWeaponType: "kinetic",
+    equippedWeaponType: launchContext?.pilot.equippedWeaponType ?? "kinetic",
     pendingBestiaryKills: [],
     background: createBackground(),
     score: 0,
@@ -413,8 +492,9 @@ export function createSpecialMissionGameState(
     dialogTriggers: [],
     xp: 0,
     hpWarningTriggered: false,
-    pilotLevel,
-    allocatedSkills,
+    hazardState: null,
+    pilotLevel: normalizedPilotLevel,
+    allocatedSkills: [...normalizedAllocatedSkills],
     currentPhase: 0,
     currentMode: "first-person",
     totalPhases: 1,
@@ -550,8 +630,12 @@ export function updateGame(
   keys: Keys,
   touchX: number | null,
   touchY: number | null,
-  dtMs: number = 16.67
+  dtMs: number = 16.67,
+  turretAim: NormalizedAim | null = null
 ): GameState {
+  setDifficultyForWorld(state.enemySpawnPolicy.difficultyWorld);
+  setPlanetClassOverride(state.enemySpawnPolicy.planetClassOverride);
+
   // Briefing screen: countdown + animate background
   if (state.screen === GameScreen.BRIEFING) {
     return updateBriefingScreen(state);
@@ -627,7 +711,7 @@ export function updateGame(
   // ── Ship turret mode dispatch ──
   if (state.currentMode === "turret") {
     const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
-    updateTurretEngine(s, keys);
+    updateTurretEngine(s, keys, turretAim);
     s.particles = updateParticles(s.particles);
     s.explosions = updateSpriteExplosions(s.explosions);
     s.floatingLabels = updateFloatingLabels(s.floatingLabels);
@@ -668,6 +752,10 @@ export function updateGame(
   if (s.objective && !s.objective.completed && !s.objective.failed) {
     const objResult = updateObjective(
       s.objective, s.frameCount, s.player, s.enemyBullets, s.enemies,
+      {
+        allWavesSpawned: s.waves.every((wave) => wave.spawned),
+        hasActiveBoss: !!s.boss && !s.boss.defeated,
+      },
       s.escort, s.defendStructure
     );
     s.objective = objResult.objective;
@@ -686,8 +774,8 @@ export function updateGame(
   }
 
   // Planet hazard update
-  if (currentHazardState && s.planetId) {
-    const { damage: hazardDmg } = updateHazards(currentHazardState, s.player, s.objective?.intensityTier ?? 0);
+  if (s.hazardState && s.planetId) {
+    const { damage: hazardDmg } = updateHazards(s.hazardState, s.player, s.objective?.intensityTier ?? 0);
     if (hazardDmg > 0 && s.player.invincibleTimer <= 0 && !s.devInvincible) {
       s.player = { ...s.player, hp: s.player.hp - hazardDmg, invincibleTimer: 30 };
       s.screenShake = Math.max(s.screenShake, 3);
@@ -1146,7 +1234,7 @@ function handlePlayerShooting(state: GameState, keys: Keys): GameState {
   if (!shouldFire) return state;
 
   const hasRapidFire = state.activePowerUps.some((p) => p.type === PowerUpType.RAPID_FIRE);
-  const baseRate = PLAYER_FIRE_RATE - currentUpgrades.fireControl;
+  const baseRate = PLAYER_FIRE_RATE - state.pilotLoadout.upgrades.fireControl;
   const rapidRate = hasRapidFire ? Math.floor(baseRate / 2) : baseRate;
   const fireRateMod = hasSkill(state.allocatedSkills, "adrenaline") ? (1 - getSkillEffect(state.allocatedSkills, "adrenaline")) : 1;
   const fireRate = Math.max(2, Math.floor(rapidRate * fireRateMod));
@@ -1163,7 +1251,7 @@ function handlePlayerShooting(state: GameState, keys: Keys): GameState {
     const gunnerBullets = fireSideGunners(state.player, state.equippedWeaponType);
 
     // Homing gunners enhancement: slightly track nearest enemy
-    if (hasEnhancement("homing-gunners") && state.enemies.length > 0) {
+    if (hasEnhancement(state, "homing-gunners") && state.enemies.length > 0) {
       for (const gb of gunnerBullets) {
         const bCx = gb.x + gb.width / 2;
         const bCy = gb.y + gb.height / 2;
@@ -1432,7 +1520,7 @@ function handleCollisions(state: GameState): GameState {
               : p
           );
           // Reinforced shield enhancement: reflect 1 bullet back at enemies
-          if (hasEnhancement("reinforced-shield")) {
+          if (hasEnhancement(s, "reinforced-shield")) {
             s.playerBullets = [
               ...s.playerBullets,
               {
@@ -1532,7 +1620,7 @@ function playerHit(
 
     if (newLives > 0) {
       // Respawn
-      const newPlayer = createPlayer(currentUpgrades, state.pilotLevel, state.allocatedSkills);
+      const newPlayer = createPlayer(state.pilotLoadout.upgrades, state.pilotLevel, state.allocatedSkills);
       newPlayer.invincibleTimer = PLAYER_INVINCIBLE_FRAMES * 2;
       newPlayer.weaponLevel = Math.max(1, player.weaponLevel - 1);
 
@@ -1681,7 +1769,7 @@ function activateBomb(state: GameState): GameState {
     audioEvents,
     pendingBestiaryKills: [...state.pendingBestiaryKills, ...bombKills],
     // Incendiary bombs enhancement: leave 3-second damage zone
-    incendiaryTimer: hasEnhancement("incendiary-bombs") ? 180 : (state.incendiaryTimer ?? 0),
+    incendiaryTimer: hasEnhancement(state, "incendiary-bombs") ? 180 : (state.incendiaryTimer ?? 0),
   };
 }
 
@@ -1713,7 +1801,7 @@ function updatePowerUps(state: GameState): GameState {
       let { x, y, vy } = p;
 
       if (hasMagnet) {
-        const magnetRange = hasEnhancement("extended-magnet") ? 300 : 150;
+        const magnetRange = hasEnhancement(state, "extended-magnet") ? 300 : 150;
         const dx = pcx - (x + p.width / 2);
         const dy = pcy - (y + p.height / 2);
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -1761,15 +1849,15 @@ function updatePowerUps(state: GameState): GameState {
         let dur = POWER_UP_DURATION[pu.type] ?? 600;
         // Shield generator upgrade extends shield duration
         if (pu.type === PowerUpType.SHIELD) {
-          dur += currentUpgrades.shieldGenerator * 200;
+          dur += state.pilotLoadout.upgrades.shieldGenerator * 200;
         }
         // Resonance field enhancement: +25% all power-up durations
-        if (hasEnhancement("resonance-field")) {
+        if (hasEnhancement(state, "resonance-field")) {
           dur = Math.floor(dur * 1.25);
         }
         // Overcharge skill: weapon power-ups last 50% longer
-        if (hasSkill(currentAllocatedSkills, "overcharge")) {
-          dur = Math.floor(dur * (1 + getSkillEffect(currentAllocatedSkills, "overcharge")));
+        if (hasSkill(state.pilotLoadout.allocatedSkills, "overcharge")) {
+          dur = Math.floor(dur * (1 + getSkillEffect(state.pilotLoadout.allocatedSkills, "overcharge")));
         }
         const existing = activePowerUps.findIndex((a) => a.type === pu.type);
 

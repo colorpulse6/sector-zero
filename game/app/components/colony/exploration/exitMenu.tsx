@@ -1,22 +1,19 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
+import { useModalFocus } from "../../ui/ModalFocus";
 
 export interface ExitMenuProps {
   onTakeOff: () => void;
   onStay: () => void;
   onRegionMap?: () => void;
+  focusActive?: boolean;
+  onRestoreFocus?: () => void;
 }
 
-export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap }: ExitMenuProps) {
-  const takeOffRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { takeOffRef.current?.focus(); }, []);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); onStay(); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onStay]);
+export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap, focusActive = true, onRestoreFocus }: ExitMenuProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const resumeRef = useRef<HTMLButtonElement>(null);
+  useModalFocus({ active: focusActive, rootRef, initialFocus: () => resumeRef.current,
+    onEscape: onStay, restoreFocus: onRestoreFocus });
 
   const tokens = {
     deep: "#0a0e17",
@@ -26,7 +23,7 @@ export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap }: ExitMenuP
   };
 
   return (
-    <div style={{
+    <div ref={rootRef} role="dialog" aria-modal="true" aria-label="Landing pad exit menu" tabIndex={-1} style={{
       position: "fixed",
       top: 0, left: 0, width: "100%", height: "100%",
       background: "rgba(0, 0, 0, 0.75)",
@@ -47,7 +44,6 @@ export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap }: ExitMenuP
           Leave the colony?
         </div>
         <button
-          ref={takeOffRef}
           onClick={onTakeOff}
           style={{
             padding: "12px 24px",
@@ -65,6 +61,7 @@ export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap }: ExitMenuP
         </button>
         {onRegionMap && <button onClick={onRegionMap} style={{ padding: "12px 24px", background: "rgba(0,240,255,.08)", color: tokens.cyan, border: `1px solid ${tokens.cyan}`, fontFamily: tokens.mono }}>REGION MAP</button>}
         <button
+          ref={resumeRef}
           onClick={onStay}
           style={{
             padding: "12px 24px",
@@ -78,7 +75,7 @@ export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap }: ExitMenuP
             textTransform: "uppercase",
           }}
         >
-          Stay
+          Resume
         </button>
       </div>
     </div>

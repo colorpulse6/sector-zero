@@ -2,11 +2,13 @@
   "name": "sector-zero-game",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "yarn@4.9.2",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "browser:test": "playwright test",
     "colony:test": "tsx --test tests/colony/*.test.ts",
     "engine:test": "tsx --test tests/engine/*.test.ts",
     "sprites:classify": "tsx scripts/sprites/classify.ts",
@@ -19,6 +21,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.0.5",
     "@types/node": "^20",
     "@types/react": "^19",

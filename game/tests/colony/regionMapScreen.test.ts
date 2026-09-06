@@ -17,7 +17,7 @@ function save() {
 }
 
 test("region map hides unknown stats and cockpit mode is view-only", () => {
-  const html = renderToStaticMarkup(React.createElement(RegionMapScreen, { save: save(), originColonyId: "home", mode: "view", onClose() {} }));
+  const html = renderToStaticMarkup(React.createElement(RegionMapScreen, { save: save(), originColonyId: "home", source: "cockpit", actionsEnabled: false, onClose() {} }));
   assert.match(html, /COCKPIT VIEW/);
   assert.match(html, /UNKNOWN SIGNAL/);
   assert.match(html, /role="listbox"/);
@@ -35,7 +35,7 @@ test("node options contain no direct actions and one selected action renders out
   const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
     save: surveyed.save,
     originColonyId: "home",
-    mode: "pad",
+    source: "landing-pad", actionsEnabled: true,
     initialSelectedNodeId: "ashfall-oathbreaker-wreck",
     onClose() {}, onSurvey() {}, onTravel() {}, onFound() {},
   }));
@@ -50,7 +50,7 @@ test("node options contain no direct actions and one selected action renders out
 
 test("selected rumored destination exposes one survey action outside the listbox", () => {
   const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
-    save: save(), originColonyId: "home", mode: "pad",
+    save: save(), originColonyId: "home", source: "landing-pad", actionsEnabled: true,
     initialSelectedNodeId: "ashfall-cinder-relay", onClose() {}, onSurvey() {},
   }));
   const listbox = html.slice(html.indexOf('data-region-node-list="true"'), html.indexOf('data-region-detail-panel="true"'));
@@ -62,7 +62,7 @@ test("selected rumored destination exposes one survey action outside the listbox
 
 test("selected origin and cockpit selections render zero actions with explicit unavailable copy", () => {
   const originHtml = renderToStaticMarkup(React.createElement(RegionMapScreen, {
-    save: save(), originColonyId: "home", mode: "pad", onClose() {},
+    save: save(), originColonyId: "home", source: "landing-pad", actionsEnabled: true, onClose() {},
   }));
   assert.equal((originHtml.match(/data-region-action="true"/g) ?? []).length, 0);
   assert.match(originHtml, /ORIGIN NODE[^<]*—[^<]*NO ACTION AVAILABLE/);
@@ -73,7 +73,7 @@ test("selected origin and cockpit selections render zero actions with explicit u
   const cockpitHtml = renderToStaticMarkup(React.createElement(RegionMapScreen, {
     save: surveyed.save,
     originColonyId: "home",
-    mode: "view",
+    source: "cockpit", actionsEnabled: false,
     initialSelectedNodeId: "ashfall-cinder-relay",
     onClose() {}, onTravel() {},
   }));
@@ -86,7 +86,7 @@ test("selected POIs disclose the correct encounter label only after intel permit
   assert.equal(cinder.ok, true);
   if (!cinder.ok) return;
   const cinderHtml = renderToStaticMarkup(React.createElement(RegionMapScreen, {
-    save: cinder.save, originColonyId: "home", mode: "pad",
+    save: cinder.save, originColonyId: "home", source: "landing-pad", actionsEnabled: true,
     initialSelectedNodeId: "ashfall-cinder-relay", onClose() {}, onTravel() {},
   }));
   assert.match(cinderHtml, /FIRST-PERSON/);
@@ -101,7 +101,7 @@ test("selected POIs disclose the correct encounter label only after intel permit
   assert.equal(glassknife.ok, true);
   if (!glassknife.ok) return;
   const glassknifeHtml = renderToStaticMarkup(React.createElement(RegionMapScreen, {
-    save: glassknife.save, originColonyId: founded.colonyId, mode: "pad",
+    save: glassknife.save, originColonyId: founded.colonyId, source: "landing-pad", actionsEnabled: true,
     initialSelectedNodeId: "ashfall-glassknife-canyon", onClose() {}, onTravel() {},
   }));
   assert.match(glassknifeHtml, /GROUND-RUN/);
@@ -112,7 +112,7 @@ test("selected surveyed colony site exposes one founding action and its stats", 
   assert.equal(surveyed.ok, true);
   if (!surveyed.ok) return;
   const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
-    save: surveyed.save, originColonyId: "home", mode: "pad",
+    save: surveyed.save, originColonyId: "home", source: "landing-pad", actionsEnabled: true,
     initialSelectedNodeId: "ashfall-basalt-basin", onClose() {}, onFound() {},
   }));
   assert.match(html, /ORE DENSITY/);
@@ -123,7 +123,7 @@ test("selected surveyed colony site exposes one founding action and its stats", 
 
 test("unknown selection reveals no real name, engine, template, stats, or action", () => {
   const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
-    save: save(), originColonyId: "home", mode: "pad",
+    save: save(), originColonyId: "home", source: "landing-pad", actionsEnabled: true,
     initialSelectedNodeId: "ashfall-glassknife-canyon", onClose() {},
     onSurvey() {}, onTravel() {}, onFound() {},
   }));
@@ -131,4 +131,25 @@ test("unknown selection reveals no real name, engine, template, stats, or action
   assert.match(html, /INTEL INSUFFICIENT/);
   assert.doesNotMatch(html, /Glassknife Canyon|ground-canyon-glassknife|GROUND-RUN|ORE DENSITY|WATER TABLE|BUILDABLE SLOTS/);
   assert.equal((html.match(/data-region-action="true"/g) ?? []).length, 0);
+});
+
+test("Region source labels and return controls do not imply action permission", () => {
+  for (const [source, provenance, back] of [
+    ["atlas", "ATLAS LINK", "RETURN TO ATLAS"],
+    ["landing-pad", "PAD LINK", "RETURN TO LANDING PAD"],
+    ["cockpit", "COCKPIT VIEW", "RETURN TO COLONIES"],
+  ] as const) {
+    for (const actionsEnabled of [false, true]) {
+      const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
+        save: save(), originColonyId: "home", source, actionsEnabled,
+        initialSelectedNodeId: "ashfall-cinder-relay", onClose() {}, onSurvey() {},
+      }));
+      assert.match(html, new RegExp(provenance));
+      assert.match(html, new RegExp(back));
+      assert.equal((html.match(/data-region-action="true"/g) ?? []).length, actionsEnabled ? 1 : 0);
+      if (!actionsEnabled) assert.match(html, /REGION ACTIONS ARE UNAVAILABLE/);
+      if (source !== "cockpit") assert.doesNotMatch(html, /COCKPIT VIEW/);
+      if (source !== "landing-pad") assert.doesNotMatch(html, /PAD LINK/);
+    }
+  }
 });

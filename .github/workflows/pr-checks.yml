@@ -21,8 +21,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "yarn"
-          cache-dependency-path: game/yarn.lock
       - run: corepack enable
       - name: Install
         run: cd game && yarn install
@@ -37,8 +35,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "yarn"
-          cache-dependency-path: game/yarn.lock
       - run: corepack enable
       - name: Install
         run: cd game && yarn install
@@ -57,6 +53,32 @@ jobs:
             echo "No engine tests directory — skipping."
           fi
 
+  game-browser-tests:
+    name: Game · Browser tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: corepack enable
+      - name: Install
+        run: cd game && yarn install
+      - name: Install Playwright Chromium
+        run: cd game && yarn playwright install --with-deps chromium
+      - name: Browser tests
+        run: cd game && yarn browser:test --workers=1 --retries=0 --trace=retain-on-failure --reporter=list,json
+        env:
+          PLAYWRIGHT_OUTPUT_DIR: ${{ runner.temp }}/sector-zero-browser-results
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/sector-zero-browser-results/report.json
+      - name: Retain browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-browser-results
+          path: ${{ runner.temp }}/sector-zero-browser-results
+          retention-days: 7
+
   game-build:
     name: Game · Next build
     runs-on: ubuntu-latest
@@ -65,8 +87,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "yarn"
-          cache-dependency-path: game/yarn.lock
       - run: corepack enable
       - name: Install
         run: cd game && yarn install

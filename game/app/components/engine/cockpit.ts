@@ -1,4 +1,4 @@
-import { type Keys, type SaveData, type PlanetId, type SpecialMissionId, AudioEvent } from "./types";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, type Keys, type SaveData, type PlanetId, type SpecialMissionId, AudioEvent } from "./types";
 import { UPGRADE_DEFS, getUpgradeCost, canPurchase } from "./upgrades";
 import { purchaseUpgrade } from "./save";
 import { CREW, getAvailableConversations, markConversationViewed } from "./crewDialog";
@@ -8,7 +8,7 @@ import { getAvailableQuests, isQuestActive, isQuestCompleted, acceptQuest, aband
 import { PLANET_DEFS, isPlanetUnlocked, isPlanetCompleted } from "./planets";
 import { getTreeNodes, canAllocate } from "./skillTree";
 import type { SkillNodeId } from "./types";
-import { getAvailableSpecialMissions, isSpecialMissionCompleted } from "./specialMissions";
+import { canLaunchSpecialMission, getAvailableSpecialMissions } from "./specialMissions";
 
 // ─── Cockpit Screen Types ───────────────────────────────────────────
 
@@ -35,6 +35,30 @@ export interface CockpitHubState {
   bestiarySelected: number;
   bestiaryReading: boolean;
   pilotTreeSelected: number;
+}
+
+export type MissionBoardTab = 0 | 1 | 2;
+
+export interface MissionBoardRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export type MissionBoardHit =
+  | { kind: "back" }
+  | { kind: "tab"; tab: MissionBoardTab }
+  | { kind: "row"; tab: MissionBoardTab; index: number };
+
+export interface MissionBoardLayout {
+  back: MissionBoardRect;
+  tabs: Array<MissionBoardRect & { tab: MissionBoardTab }>;
+  rows: Array<MissionBoardRect & { index: number; enabled: boolean }>;
+  listY: number;
+  rowH: number;
+  scrollOffset: number;
+  maxVisible: number;
 }
 
 // ─── Hotspot Definitions ────────────────────────────────────────────
@@ -373,7 +397,7 @@ function updateMissions(
     return { newState: s, action: { type: "none" } };
   }
   if (justPressed.left && s.missionTab > 0) {
-    s.missionTab = 0;
+    s.missionTab -= 1;
     s.missionSelected = 0;
     s.audioEvents.push(AudioEvent.COCKPIT_NAV);
     return { newState: s, action: { type: "none" } };
@@ -399,6 +423,153 @@ function updateMissions(
     // ── Planet Missions tab ──
     return updateMissionsPlanets(s, justPressed, save);
   }
+}
+
+const MISSION_BOARD_TAB_Y = 52;
+const MISSION_BOARD_TAB_H = 26;
+const MISSION_BOARD_TAB_SPACING = 6;
+const MISSION_BOARD_INSET = 12;
+const MISSION_BOARD_TAB_W = (CANVAS_WIDTH - MISSION_BOARD_INSET * 2 - MISSION_BOARD_TAB_SPACING * 2) / 3;
+
+function missionBoardItems(tab: MissionBoardTab, save: SaveData): Array<{ enabled: boolean }> {
+  if (tab === 0) {
+    const activeCount = save.activeQuests.length;
+    return getAvailableQuests(save).map((quest) => ({
+      enabled: isQuestActive(quest.id, save) || (!isQuestCompleted(quest.id, save) && activeCount < 3),
+    }));
+  }
+  if (tab === 1) {
+    return getAvailableSpecialMissions(save).map((mission) => ({
+      enabled: canLaunchSpecialMission(mission.id, save),
+    }));
+  }
+  return PLANET_DEFS.map((planet) => ({
+    enabled: isPlanetUnlocked(planet, save) && !isPlanetCompleted(planet.id, save),
+  }));
+}
+
+export function getMissionBoardLayout(
+  state: CockpitHubState,
+  save: SaveData,
+): MissionBoardLayout {
+  const tab = state.missionTab as MissionBoardTab;
+  const rowH = tab === 0 ? 68 : tab === 1 ? 72 : 62;
+  const listY = tab === 0 ? 98 : tab === 1 ? 88 : 84;
+  const maxVisible = Math.floor((CANVAS_HEIGHT - listY - 60) / rowH);
+  const items = missionBoardItems(tab, save);
+  const scrollOffset = Math.max(0, state.missionSelected - maxVisible + 1);
+  const rows = items
+    .slice(scrollOffset, scrollOffset + maxVisible)
+    .map((item, visibleIndex) => ({
+      x: MISSION_BOARD_INSET,
+      y: listY + visibleIndex * rowH,
+      w: CANVAS_WIDTH - MISSION_BOARD_INSET * 2,
+      h: rowH - 4,
+      index: scrollOffset + visibleIndex,
+      enabled: item.enabled,
+    }));
+
+  return {
+    back: { x: 0, y: 0, w: 60, h: 50 },
+    tabs: ([0, 1, 2] as const).map((tabIndex) => ({
+      x: MISSION_BOARD_INSET + tabIndex * (MISSION_BOARD_TAB_W + MISSION_BOARD_TAB_SPACING),
+      y: MISSION_BOARD_TAB_Y,
+      w: MISSION_BOARD_TAB_W,
+      h: MISSION_BOARD_TAB_H,
+      tab: tabIndex,
+    })),
+    rows,
+    listY,
+    rowH,
+    scrollOffset,
+    maxVisible,
+  };
+}
+
+function contains(rect: MissionBoardRect, x: number, y: number): boolean {
+  return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+}
+
+export function hitTestMissionBoard(
+  state: CockpitHubState,
+  save: SaveData,
+  x: number,
+  y: number,
+): MissionBoardHit | null {
+  const layout = getMissionBoardLayout(state, save);
+  if (contains(layout.back, x, y)) return { kind: "back" };
+  const tab = layout.tabs.find((candidate) => contains(candidate, x, y));
+  if (tab) return { kind: "tab", tab: tab.tab };
+  const row = layout.rows.find((candidate) => contains(candidate, x, y));
+  return row
+    ? { kind: "row", tab: state.missionTab as MissionBoardTab, index: row.index }
+    : null;
+}
+
+function activateMissionRow(
+  s: CockpitHubState,
+  save: SaveData,
+): { newState: CockpitHubState; action: CockpitAction } {
+  if (s.missionTab === 0) {
+    const quests = getAvailableQuests(save);
+    const quest = quests[s.missionSelected];
+    if (!quest) return { newState: s, action: { type: "none" } };
+    if (isQuestActive(quest.id, save)) {
+      s.audioEvents.push(AudioEvent.QUEST_ABANDON);
+      return { newState: s, action: { type: "save-updated", save: abandonQuest(save, quest.id) } };
+    }
+    if (!isQuestCompleted(quest.id, save)) {
+      const newSave = acceptQuest(save, quest.id);
+      if (newSave) {
+        s.audioEvents.push(AudioEvent.QUEST_ACCEPT);
+        return { newState: s, action: { type: "save-updated", save: newSave } };
+      }
+    }
+    s.audioEvents.push(AudioEvent.UPGRADE_DENIED);
+    return { newState: s, action: { type: "none" } };
+  }
+
+  if (s.missionTab === 1) {
+    const mission = getAvailableSpecialMissions(save)[s.missionSelected];
+    if (mission && canLaunchSpecialMission(mission.id, save)) {
+      s.audioEvents.push(AudioEvent.COCKPIT_OPEN);
+      return { newState: s, action: { type: "launch-special-mission", missionId: mission.id } };
+    }
+    s.audioEvents.push(AudioEvent.UPGRADE_DENIED);
+    return { newState: s, action: { type: "none" } };
+  }
+
+  const planet = PLANET_DEFS[s.missionSelected];
+  if (planet && isPlanetUnlocked(planet, save) && !isPlanetCompleted(planet.id, save)) {
+    s.audioEvents.push(AudioEvent.COCKPIT_OPEN);
+    return { newState: s, action: { type: "launch-planet", planetId: planet.id } };
+  }
+  s.audioEvents.push(AudioEvent.UPGRADE_DENIED);
+  return { newState: s, action: { type: "none" } };
+}
+
+export function applyMissionBoardHit(
+  state: CockpitHubState,
+  save: SaveData,
+  hit: MissionBoardHit,
+): { newState: CockpitHubState; action: CockpitAction } {
+  const s = { ...state, audioEvents: [] as AudioEvent[] };
+  if (hit.kind === "back") {
+    s.screen = "hub";
+    s.missionSelected = 0;
+    s.transitionTimer = TRANSITION_FRAMES;
+    s.audioEvents.push(AudioEvent.COCKPIT_BACK);
+    return { newState: s, action: { type: "none" } };
+  }
+  if (hit.kind === "tab") {
+    s.missionTab = hit.tab;
+    s.missionSelected = 0;
+    s.audioEvents.push(AudioEvent.COCKPIT_NAV);
+    return { newState: s, action: { type: "none" } };
+  }
+  if (hit.tab !== s.missionTab) return { newState: s, action: { type: "none" } };
+  s.missionSelected = hit.index;
+  return activateMissionRow(s, save);
 }
 
 function updateMissionsQuests(
@@ -466,13 +637,7 @@ function updateMissionsPlanets(
 
   // Launch planet mission
   if (justPressed.shoot && planets.length > 0) {
-    const planet = planets[s.missionSelected];
-    if (planet && isPlanetUnlocked(planet, save) && !isPlanetCompleted(planet.id, save)) {
-      s.audioEvents.push(AudioEvent.COCKPIT_OPEN);
-      return { newState: s, action: { type: "launch-planet", planetId: planet.id } };
-    }
-    // Can't launch — locked or already completed
-    s.audioEvents.push(AudioEvent.UPGRADE_DENIED);
+    return activateMissionRow(s, save);
   }
 
   return { newState: s, action: { type: "none" } };
@@ -497,11 +662,7 @@ function updateMissionsSpecial(
   }
 
   if (justPressed.shoot && missions.length > 0) {
-    const mission = missions[s.missionSelected];
-    if (mission) {
-      s.audioEvents.push(AudioEvent.COCKPIT_OPEN);
-      return { newState: s, action: { type: "launch-special-mission", missionId: mission.id } };
-    }
+    return activateMissionRow(s, save);
   }
 
   return { newState: s, action: { type: "none" } };
@@ -682,4 +843,199 @@ export function getCockpitTouchHotspot(x: number, y: number): number {
     }
   }
   return -1;
+}
+
+export type CockpitScreenHit =
+  | { view: string; kind: "back" | "primary" }
+  | { view: string; kind: "tab" | "row"; index: number }
+  | { view: string; kind: "page"; direction: -1 | 1 };
+
+export interface CockpitScreenLayout {
+  view: string;
+  back: MissionBoardRect | null;
+  tabs: Array<MissionBoardRect & { index: number }>;
+  rows: Array<MissionBoardRect & { index: number }>;
+  primary: MissionBoardRect | null;
+  previous: MissionBoardRect | null;
+  next: MissionBoardRect | null;
+  listX: number;
+  listY: number;
+  listW: number;
+  rowH: number;
+  maxVisible: number;
+  scrollOffset: number;
+  itemCount: number;
+}
+
+/** Canvas drawing and pointer activation consume the same visible geometry. */
+export function getCockpitScreenLayout(state: CockpitHubState, save: SaveData): CockpitScreenLayout {
+  const layout: CockpitScreenLayout = {
+    view: state.screen,
+    back: null,
+    tabs: [],
+    rows: [],
+    primary: null,
+    previous: null,
+    next: null,
+    listX: 16,
+    listY: 70,
+    listW: CANVAS_WIDTH - 32,
+    rowH: 44,
+    maxVisible: 0,
+    scrollOffset: 0,
+    itemCount: 0,
+  };
+  if (!["armory", "crew", "codex", "bestiary", "pilot"].includes(state.screen)) return layout;
+  layout.back = { x: 0, y: 0, w: 86, h: 50 };
+  let selected = 0;
+  if (state.screen === "armory") {
+    layout.rowH = 56;
+    layout.itemCount = layout.maxVisible = UPGRADE_DEFS.length;
+    const def = UPGRADE_DEFS[state.armorySelected];
+    if (def && getUpgradeCost(def, save.upgrades[def.id]) !== null) {
+      layout.primary = { x: CANVAS_WIDTH / 2 - 90, y: 70 + UPGRADE_DEFS.length * 56 + 102, w: 180, h: 30 };
+    }
+  } else if (state.screen === "crew") {
+    layout.view = `crew:${state.crewSelected}:${state.crewDialogActive ? "dialog" : "list"}`;
+    if (state.crewDialogActive) {
+      layout.back.h = 44;
+      layout.primary = { x: 120, y: CANVAS_HEIGHT - 102, w: 240, h: 44 };
+      return layout;
+    }
+    const cardW = 130;
+    const spacing = 14;
+    const startX = (CANVAS_WIDTH - CREW.length * cardW - (CREW.length - 1) * spacing) / 2;
+    layout.tabs = CREW.map((_, index) => ({ x: startX + index * (cardW + spacing), y: 62, w: cardW, h: 160, index }));
+    layout.listX = 20;
+    layout.listY = 256;
+    layout.listW = CANVAS_WIDTH - 40;
+    layout.rowH = 48;
+    layout.maxVisible = 8;
+    const crew = CREW[state.crewSelected];
+    layout.itemCount = crew ? getAvailableConversations(crew.id, save).length : 0;
+    selected = state.crewConvoIndex;
+  } else if (state.screen === "codex") {
+    layout.view = `codex:${state.codexCategory}:${state.codexReading ? "reading" : "list"}`;
+    if (state.codexReading) {
+      layout.back.h = 44;
+      layout.primary = { x: 120, y: CANVAS_HEIGHT - 62, w: 240, h: 44 };
+      return layout;
+    }
+    const tabW = (CANVAS_WIDTH - 20 - (CODEX_CATEGORIES.length - 1) * 4) / CODEX_CATEGORIES.length;
+    layout.tabs = CODEX_CATEGORIES.map((_, index) => ({ x: 10 + index * (tabW + 4), y: 56, w: tabW, h: 28, index }));
+    layout.listX = 12;
+    layout.listY = 92;
+    layout.listW = CANVAS_WIDTH - 24;
+    layout.rowH = 44;
+    layout.maxVisible = Math.floor((CANVAS_HEIGHT - layout.listY - 60) / layout.rowH);
+    const category = CODEX_CATEGORIES[state.codexCategory];
+    layout.itemCount = category ? getEntriesForCategory(category.id, save).length : 0;
+    selected = state.codexSelected;
+  } else if (state.screen === "bestiary") {
+    layout.view = `bestiary:${state.bestiaryReading ? "reading" : "list"}`;
+    if (state.bestiaryReading) {
+      // The detail has no header back arrow; its visible footer owns close.
+      layout.back = null;
+      layout.primary = { x: 120, y: CANVAS_HEIGHT - 47, w: 240, h: 44 };
+      return layout;
+    }
+    layout.rowH = 42;
+    layout.maxVisible = Math.floor((CANVAS_HEIGHT - 140 - layout.listY) / layout.rowH);
+    layout.itemCount = getBestiaryList(save.bestiary).length;
+    selected = state.bestiarySelected;
+  } else {
+    layout.listY = 200;
+    layout.rowH = 52;
+    layout.itemCount = layout.maxVisible = getTreeNodes("combat").length;
+  }
+  layout.scrollOffset = Math.max(0, selected - layout.maxVisible + 1);
+  layout.rows = Array.from({ length: Math.min(layout.maxVisible, Math.max(0, layout.itemCount - layout.scrollOffset)) }, (_, visibleIndex) => ({
+    x: layout.listX,
+    y: layout.listY + visibleIndex * layout.rowH,
+    w: layout.listW,
+    h: layout.rowH - 4,
+    index: layout.scrollOffset + visibleIndex,
+  }));
+  if (layout.itemCount > layout.maxVisible) {
+    if (layout.scrollOffset > 0) layout.previous = { x: 16, y: CANVAS_HEIGHT - 48, w: 80, h: 44 };
+    if (layout.scrollOffset + layout.maxVisible < layout.itemCount) layout.next = { x: CANVAS_WIDTH - 96, y: CANVAS_HEIGHT - 48, w: 80, h: 44 };
+  }
+  return layout;
+}
+
+export function hitTestCockpitScreen(
+  state: CockpitHubState,
+  save: SaveData,
+  x: number,
+  y: number,
+): CockpitScreenHit | null {
+  const layout = getCockpitScreenLayout(state, save);
+  const view = layout.view;
+  if (layout.back && contains(layout.back, x, y)) return { view, kind: "back" };
+  if (layout.primary && contains(layout.primary, x, y)) return { view, kind: "primary" };
+  if (layout.previous && contains(layout.previous, x, y)) return { view, kind: "page", direction: -1 };
+  if (layout.next && contains(layout.next, x, y)) return { view, kind: "page", direction: 1 };
+  const tab = layout.tabs.find((candidate) => contains(candidate, x, y));
+  if (tab) return { view, kind: "tab", index: tab.index };
+  const row = layout.rows.find((candidate) => contains(candidate, x, y));
+  if (row) return { view, kind: "row", index: row.index };
+  return null;
+}
+
+export function applyCockpitScreenHit(
+  state: CockpitHubState,
+  save: SaveData,
+  hit: CockpitScreenHit,
+): { newState: CockpitHubState; action: CockpitAction } {
+  const layout = getCockpitScreenLayout(state, save);
+  const s = { ...state, audioEvents: [] as AudioEvent[] };
+  const none = (): { newState: CockpitHubState; action: CockpitAction } => ({ newState: s, action: { type: "none" } });
+  if (hit.view !== layout.view) return none();
+  if (hit.kind === "back") {
+    if (!layout.back) return none();
+    if (s.screen === "crew" && s.crewDialogActive) return updateCrew(s, { left: true }, save);
+    if (s.screen === "codex" && s.codexReading) return updateCodex(s, { left: true }, save);
+    s.screen = "hub";
+    s.transitionTimer = TRANSITION_FRAMES;
+    s.audioEvents.push(AudioEvent.COCKPIT_BACK);
+    return none();
+  }
+  if (hit.kind === "tab") {
+    if (!layout.tabs.some((tab) => tab.index === hit.index)) return none();
+    if (s.screen === "crew") {
+      s.crewSelected = hit.index;
+      s.crewConvoIndex = 0;
+    } else if (s.screen === "codex") {
+      s.codexCategory = hit.index;
+      s.codexSelected = 0;
+    }
+    s.audioEvents.push(AudioEvent.COCKPIT_NAV);
+    return none();
+  }
+  if (hit.kind === "page") {
+    if (!(hit.direction === -1 ? layout.previous : layout.next)) return none();
+    const selected = s.screen === "crew" ? s.crewConvoIndex : s.screen === "codex" ? s.codexSelected : s.bestiarySelected;
+    const index = Math.max(0, Math.min(layout.itemCount - 1, selected + hit.direction * layout.maxVisible));
+    if (s.screen === "crew") s.crewConvoIndex = index;
+    else if (s.screen === "codex") s.codexSelected = index;
+    else s.bestiarySelected = index;
+    s.audioEvents.push(AudioEvent.COCKPIT_NAV);
+    return none();
+  }
+  if (hit.kind === "primary" && !layout.primary) return none();
+  if (hit.kind === "row") {
+    if (!layout.rows.some((row) => row.index === hit.index)) return none();
+    if (s.screen === "armory") s.armorySelected = hit.index;
+    else if (s.screen === "crew") s.crewConvoIndex = hit.index;
+    else if (s.screen === "codex") s.codexSelected = hit.index;
+    else if (s.screen === "bestiary") s.bestiarySelected = hit.index;
+    else if (s.screen === "pilot") s.pilotTreeSelected = hit.index;
+  }
+  // Invoke the same action path as keyboard activation, without changing its edge history.
+  if (s.screen === "armory") return updateArmory(s, { shoot: true }, save);
+  if (s.screen === "crew") return updateCrew(s, { shoot: true }, save);
+  if (s.screen === "codex") return updateCodex(s, { shoot: true }, save);
+  if (s.screen === "bestiary") return updateBestiary(s, { shoot: true }, save);
+  if (s.screen === "pilot") return updatePilot(s, { shoot: true }, save);
+  return none();
 }

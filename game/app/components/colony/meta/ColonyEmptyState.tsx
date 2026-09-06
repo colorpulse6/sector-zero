@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React from "react";
 import { hudColors, hudFonts, hudSpacing } from "./hudTokens";
 
 export interface ColonyEmptyStateProps {
@@ -6,11 +6,6 @@ export interface ColonyEmptyStateProps {
 }
 
 export function ColonyEmptyState({ onFound }: ColonyEmptyStateProps) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    buttonRef.current?.focus();
-  }, []);
 
   return (
     <div style={{
@@ -43,7 +38,7 @@ export function ColonyEmptyState({ onFound }: ColonyEmptyStateProps) {
         anchor on Ashfall — a desert world already mapped by forward scouts.
       </p>
       <button
-        ref={buttonRef}
+        data-modal-initial
         onClick={onFound}
         style={{
           padding: `${hudSpacing.md} ${hudSpacing.xl}`,

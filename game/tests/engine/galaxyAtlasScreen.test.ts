@@ -88,6 +88,14 @@ test("every visible Atlas contact has a button equivalent outside Canvas", () =>
   assert.match(html, /UNRESOLVED SIGNAL/);
 });
 
+test("Atlas contacts expose one selected tab stop for repeated keyboard navigation", () => {
+  const html = screen({ initialTarget: { kind: "contact", contactId: "contact:ashfall" } });
+  const options = html.match(/<button[^>]*role="option"[^>]*>/g) ?? [];
+  assert.equal(options.filter(option => option.includes('tabindex="0"')).length, 1);
+  assert.ok(options.find(option => option.includes('data-atlas-contact="contact:ashfall"'))?.includes('tabindex="0"'));
+  assert.ok(options.filter(option => !option.includes('aria-selected="true"')).every(option => option.includes('tabindex="-1"')));
+});
+
 test("experience gate exposes focusable galaxy and legacy entry choices", () => {
   const begin = renderToStaticMarkup(
     React.createElement(GalaxyExperienceGate, {

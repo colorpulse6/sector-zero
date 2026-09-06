@@ -11,6 +11,8 @@ import type {
   ExperienceMode,
   GalaxyRunState,
 } from "./galaxy/galaxyTypes";
+import type { HazardState } from "./hazards";
+import type { LaunchContext, PilotLoadout } from "./missionContext";
 
 export type { ExperienceMode, GalaxyRunState } from "./galaxy/galaxyTypes";
 
@@ -429,6 +431,12 @@ export interface BackgroundLayer {
 }
 
 // ─── Input ───────────────────────────────────────────────────────────
+/** Absolute coordinates within the gameplay area, independently normalized to 0–1. */
+export interface NormalizedAim {
+  x: number;
+  y: number;
+}
+
 export interface Keys {
   left: boolean;
   right: boolean;
@@ -508,6 +516,17 @@ export interface DialogTrigger {
 // ─── Full Game State ─────────────────────────────────────────────────
 export interface GameState {
   screen: GameScreen;
+  /** Immutable identity and loadout snapshot for this gameplay attempt. */
+  launchContext?: LaunchContext;
+  /** Attempt-owned terminal dependency snapshot captured by the launch wrapper. */
+  outcomeAttempt?: OutcomeAttempt;
+  /** State-owned build snapshot used by simulation even before shell launch rewiring. */
+  pilotLoadout: PilotLoadout;
+  /** Attempt-owned enemy construction policy rebound before any shared spawn path. */
+  enemySpawnPolicy: {
+    difficultyWorld: number;
+    planetClassOverride: EnemyClass | null;
+  };
   /** Ephemeral Atlas identity for an authorized galaxy operation. Never saved. */
   galaxyOperation?: { id: string; label: string };
   player: Player;
@@ -569,6 +588,8 @@ export interface GameState {
   xp: number;
   hpWarningTriggered: boolean;
   // Planet mission state (optional — only set for planet side missions)
+  /** Attempt-owned planet hazard state; never shared between constructors. */
+  hazardState: HazardState | null;
   planetId?: PlanetId;
   objective?: ObjectiveState;
   escort?: EscortEntity;
@@ -831,6 +852,8 @@ export interface BoardingState {
   enemies: BoardingEntity[];
   bullets: Bullet[];
   playerFacing: FacingDirection;
+  /** Unit aim vector retained after movement stops; cardinal facing selects existing art. */
+  playerAim?: { x: number; y: number };
   dashTimer: number;      // frames remaining on dash (0 = not dashing)
   dashCooldown: number;   // frames until dash available again
   goalReached: boolean;
@@ -1082,7 +1105,83 @@ export interface BestiaryEntry {
 }
 
 // ─── Save Data ───────────────────────────────────────────────────────
+export type OutcomeTerminalKind = "success" | "failure" | "retreat";
+export type OutcomeRouteKind = "campaign" | "planet" | "special" | "operation" | "colony" | "poi";
+export type OutcomeRouteIdentity =
+  | { kind: "campaign"; world: number; level: number }
+  | { kind: "planet"; planetId: PlanetId }
+  | { kind: "special"; missionId: SpecialMissionId }
+  | { kind: "operation"; operationId: string }
+  | { kind: "colony"; colonyId: string; mode: "exterior" | "interior"; buildingId: string | null }
+  | {
+      kind: "poi";
+      originColonyId: string;
+      nodeId: string;
+      engine: "firstPerson" | "boarding" | "groundRun";
+      templateId: string;
+      rewardEligible: boolean;
+    };
+
+export interface OutcomeAttempt {
+  version: 1;
+  routeKind: OutcomeRouteKind;
+  missionId: string;
+  routeIdentity: OutcomeRouteIdentity;
+  launchId: string;
+  expectedRevision: number;
+  persistenceAuthority: LaunchContext["persistenceAuthority"];
+  returnTarget: LaunchContext["returnTarget"];
+  declaredFields: string[];
+  launchSnapshot: Record<string, unknown>;
+}
+
+export interface SerializedOutcomeEnvelope extends OutcomeAttempt {
+  outcomeId: string;
+  terminalKind: OutcomeTerminalKind;
+  payload: unknown;
+}
+
+export interface AppliedOutcomeReturnRecord {
+  version: 2;
+  kind: "applied_return";
+  outcomeId: string;
+  launchId: string;
+  missionId: string;
+  routeKind: OutcomeRouteKind;
+  routeIdentity: OutcomeRouteIdentity;
+  terminalKind: OutcomeTerminalKind;
+  persistenceAuthority: LaunchContext["persistenceAuthority"];
+  returnTarget: LaunchContext["returnTarget"];
+  appliedRevision: number;
+  returnPending: boolean;
+}
+
+export interface LegacyPreparedOutcomeRecord {
+  version: 2;
+  kind: "legacy_poi_prepared";
+  envelope: SerializedOutcomeEnvelope;
+}
+
+export interface OutcomeReconciliationRecord {
+  version: 2;
+  kind: "reconciliation_required";
+  reason: "recovery_capacity_exceeded" | "prepared_outcome_invalid" | "outcome_authority_invalid";
+  protectedOutcomeIds: string[];
+  quarantinedOutcomeCount: number;
+}
+
+export type OutcomeRecoveryRecord =
+  | AppliedOutcomeReturnRecord
+  | LegacyPreparedOutcomeRecord
+  | OutcomeReconciliationRecord;
+
 export interface SaveData {
+  /** Monotonic root persistence revision. Every canonical write advances it. */
+  saveRevision: number;
+  /** Bounded idempotency journal for terminal outcomes across every route. */
+  appliedOutcomeIds: string[];
+  /** Bounded durable return receipts and Legacy prepared terminal outcomes. */
+  outcomeRecoveryRecords: OutcomeRecoveryRecord[];
   currentWorld: number;
   levels: Record<string, { completed: boolean; stars: number; highScore: number }>;
   credits: number;

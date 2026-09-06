@@ -1,4 +1,4 @@
-import type { GameState, Keys, TurretState, TurretEnemy } from "./types";
+import type { GameState, Keys, NormalizedAim, TurretState, TurretEnemy } from "./types";
 import { GameScreen, AudioEvent, CANVAS_WIDTH, GAME_AREA_HEIGHT } from "./types";
 import { resolveAffinity } from "./enemyClasses";
 import { AFFINITY_MULTIPLIER } from "./weaponTypes";
@@ -95,23 +95,29 @@ let boltIdCounter = 0;
 
 // ─── Main Update ────────────────────────────────────────────────────
 
-export function updateTurretEngine(gs: GameState, keys: Keys): void {
+export function updateTurretEngine(gs: GameState, keys: Keys, aim: NormalizedAim | null = null): void {
   const ts = gs.turretState;
   if (!ts || ts.completed || gs.levelCompleteTimer > 0) return;
 
-  // ── Crosshair movement (diagonals normalized to unit speed) ──
-  let aimX = 0;
-  let aimY = 0;
-  if (keys.left) aimX -= 1;
-  if (keys.right) aimX += 1;
-  if (keys.up) aimY -= 1;
-  if (keys.down) aimY += 1;
-  if (aimX !== 0 && aimY !== 0) {
-    aimX *= Math.SQRT1_2;
-    aimY *= Math.SQRT1_2;
+  // An active absolute pointer owns aim for this tick; released pointers leave
+  // the crosshair available for keyboard movement again.
+  if (aim && Number.isFinite(aim.x) && Number.isFinite(aim.y)) {
+    ts.crosshairX = aim.x;
+    ts.crosshairY = aim.y;
+  } else {
+    let aimX = 0;
+    let aimY = 0;
+    if (keys.left) aimX -= 1;
+    if (keys.right) aimX += 1;
+    if (keys.up) aimY -= 1;
+    if (keys.down) aimY += 1;
+    if (aimX !== 0 && aimY !== 0) {
+      aimX *= Math.SQRT1_2;
+      aimY *= Math.SQRT1_2;
+    }
+    ts.crosshairX += aimX * CROSSHAIR_SPEED;
+    ts.crosshairY += aimY * CROSSHAIR_SPEED;
   }
-  ts.crosshairX += aimX * CROSSHAIR_SPEED;
-  ts.crosshairY += aimY * CROSSHAIR_SPEED;
   ts.crosshairX = Math.max(0.05, Math.min(0.95, ts.crosshairX));
   ts.crosshairY = Math.max(0.05, Math.min(0.95, ts.crosshairY));
 

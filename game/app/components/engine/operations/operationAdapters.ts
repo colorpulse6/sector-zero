@@ -10,9 +10,8 @@ import type {
 } from "../../colony/region/poiRuntime";
 import {
   preparePoiCompletion,
-  resolvePoiCompletion,
 } from "../../colony/region/poiRuntime";
-import { POI_CARGO } from "../../colony/region/poiOutcomes";
+import { confirmPoiOutcome, POI_CARGO } from "../../colony/region/poiOutcomes";
 import { isSupportedPoiNode, type PoiTemplateId } from "../../colony/region/poiCatalog";
 import {
   foundOutpost,
@@ -34,15 +33,39 @@ import {
   type GalaxyProjectionDelta,
 } from "../galaxy/galaxyProjection";
 import { stableHash } from "../galaxy/coordinates";
+import {
+  createGalaxyPoiPreparedFact,
+  recoverGalaxyPoiPreparation,
+} from "../galaxy/galaxyPoiOutcomeAuthority";
 import { getGalaxyRunAvailability } from "../galaxy/galaxyRun";
 import type { GalaxyRunState, HistoricalFact } from "../galaxy/galaxyTypes";
+import { MAX_PILOT_LEVEL } from "../pilotLevel";
+import { ALL_SKILL_NODES } from "../skillTree";
 import type {
   EnhancementId,
-  GameScreen,
+  ConsumableId,
+  OutcomeAttempt,
   SaveData,
   ShipUpgrades,
   SkillNodeId,
+  WeaponType,
 } from "../types";
+import { GameScreen } from "../types";
+import {
+  createOutcomeAttempt,
+  snapshotOutcomeIdJournal,
+  snapshotOutcomeRootAuthority,
+} from "../missionOutcome";
+import {
+  launchContextFromPilotLoadout,
+  operationMissionDescriptor,
+  poiOutcomeMissionId,
+  poiMissionDescriptor,
+  snapshotOutcomeRouteIdentity,
+  snapshotRetryLaunchContext,
+  type LaunchContext,
+  type LaunchIdFactory,
+} from "../missionContext";
 import {
   authorizeOperationLaunch,
   operationDisplayLabel,
@@ -62,9 +85,12 @@ function unavailable(reason: OperationUnavailableReason): Extract<OperationAvail
 
 interface EngineProjectionInput {
   upgrades: ShipUpgrades;
-  enhancements: EnhancementId[];
+  unlockedEnhancements: EnhancementId[];
   pilotLevel: number;
   allocatedSkills: SkillNodeId[];
+  equippedWeaponType: WeaponType;
+  equippedConsumables: ConsumableId[];
+  consumableInventory: Partial<Record<ConsumableId, number>>;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -94,6 +120,14 @@ const UPGRADE_KEYS = [
   "shieldGenerator",
 ] as const;
 
+const ENHANCEMENT_IDS: readonly EnhancementId[] = [
+  "reinforced-shield",
+  "incendiary-bombs",
+  "extended-magnet",
+  "homing-gunners",
+  "resonance-field",
+];
+
 function exactOwnData(
   value: unknown,
   expectedKeys: readonly string[],
@@ -113,6 +147,25 @@ function exactOwnData(
     snapshot[key] = descriptor.value;
   }
   return snapshot;
+}
+
+function requiredOwnData(
+  value: unknown,
+  requiredKeys: readonly string[],
+): Record<string, unknown> | null {
+  if (!isPlainRecord(value)) return null;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") return null;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor) || typeof descriptor.value === "function") {
+      return null;
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return requiredKeys.every((key) => Object.prototype.hasOwnProperty.call(snapshot, key))
+    ? snapshot
+    : null;
 }
 
 function arraySnapshot(value: unknown): unknown[] | null {
@@ -148,10 +201,122 @@ function stringArraySnapshot(value: unknown): string[] | null {
     : null;
 }
 
+const INVALID_PLAIN_SNAPSHOT = Symbol("invalid-plain-snapshot");
+
+function snapshotPlainData(
+  value: unknown,
+  ancestors = new Set<object>(),
+): unknown | typeof INVALID_PLAIN_SNAPSHOT {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : INVALID_PLAIN_SNAPSHOT;
+  if (typeof value !== "object" || ancestors.has(value)) return INVALID_PLAIN_SNAPSHOT;
+  try {
+    ancestors.add(value);
+    if (Array.isArray(value)) {
+      const entries = arraySnapshot(value);
+      if (entries === null) return INVALID_PLAIN_SNAPSHOT;
+      const snapshot: unknown[] = [];
+      for (const entry of entries) {
+        const safeEntry = snapshotPlainData(entry, ancestors);
+        if (safeEntry === INVALID_PLAIN_SNAPSHOT) return INVALID_PLAIN_SNAPSHOT;
+        snapshot.push(safeEntry);
+      }
+      return snapshot;
+    }
+    const entries = requiredOwnData(value, []);
+    if (entries === null) return INVALID_PLAIN_SNAPSHOT;
+    const snapshot: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(entries)) {
+      const safeEntry = snapshotPlainData(entry, ancestors);
+      if (safeEntry === INVALID_PLAIN_SNAPSHOT) return INVALID_PLAIN_SNAPSHOT;
+      snapshot[key] = safeEntry;
+    }
+    return snapshot;
+  } catch {
+    return INVALID_PLAIN_SNAPSHOT;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+type GalaxyPoiOutcomeAttempt = OutcomeAttempt & {
+  routeKind: "poi";
+  routeIdentity: Extract<OutcomeAttempt["routeIdentity"], { kind: "poi" }>;
+  persistenceAuthority: "galaxy";
+  returnTarget: "galaxy-region";
+};
+
+function snapshotGalaxyPoiOutcomeAttempt(value: unknown): GalaxyPoiOutcomeAttempt | null {
+  try {
+    const attempt = exactOwnData(value, [
+      "version", "routeKind", "missionId", "routeIdentity", "launchId", "expectedRevision",
+      "persistenceAuthority", "returnTarget", "declaredFields", "launchSnapshot",
+    ]);
+    if (attempt === null || attempt.version !== 1 || attempt.routeKind !== "poi" ||
+      typeof attempt.missionId !== "string" || attempt.missionId.length === 0 ||
+      typeof attempt.launchId !== "string" || attempt.launchId.length === 0 ||
+      !Number.isSafeInteger(attempt.expectedRevision) || (attempt.expectedRevision as number) < 0 ||
+      attempt.persistenceAuthority !== "galaxy" || attempt.returnTarget !== "galaxy-region") return null;
+    const routeIdentity = snapshotOutcomeRouteIdentity(
+      attempt.routeIdentity,
+      "poi",
+      attempt.missionId,
+    );
+    const declaredFields = arraySnapshot(attempt.declaredFields);
+    const launchSnapshot = exactOwnData(attempt.launchSnapshot, ["galaxyRun"]);
+    const galaxyRun = launchSnapshot === null
+      ? INVALID_PLAIN_SNAPSHOT
+      : snapshotPlainData(launchSnapshot.galaxyRun);
+    if (routeIdentity === null || routeIdentity.kind !== "poi" || declaredFields === null ||
+      declaredFields.length !== 1 || declaredFields[0] !== "galaxyRun" ||
+      galaxyRun === INVALID_PLAIN_SNAPSHOT) return null;
+    // A transparent Proxy can emulate own data descriptors. Structured clone
+    // rejects Proxy exotics; all nested values have already passed the
+    // descriptor-only snapshot above, so this cannot invoke an accessor.
+    try { structuredClone(value); }
+    catch { return null; }
+    return {
+      version: 1,
+      routeKind: "poi",
+      missionId: attempt.missionId,
+      routeIdentity,
+      launchId: attempt.launchId,
+      expectedRevision: attempt.expectedRevision as number,
+      persistenceAuthority: "galaxy",
+      returnTarget: "galaxy-region",
+      declaredFields: ["galaxyRun"],
+      launchSnapshot: { galaxyRun },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function knownUniqueStringArraySnapshot<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): T[] | null {
+  const snapshot = stringArraySnapshot(value);
+  if (snapshot === null || snapshot.some((entry) => !allowed.includes(entry as T)) ||
+    new Set(snapshot).size !== snapshot.length) return null;
+  return snapshot as T[];
+}
+
+function allocatedSkillSnapshot(value: unknown): SkillNodeId[] | null {
+  const skillIds = ALL_SKILL_NODES.map((node) => node.id);
+  const snapshot = knownUniqueStringArraySnapshot(value, skillIds);
+  if (snapshot === null || snapshot.some((id) => {
+    const node = ALL_SKILL_NODES.find((candidate) => candidate.id === id);
+    return node === undefined || node.prerequisites.some((required) => !snapshot.includes(required));
+  })) return null;
+  return snapshot;
+}
+
 function upgradeSnapshot(value: unknown): ShipUpgrades | null {
   const snapshot = exactOwnData(value, UPGRADE_KEYS);
   if (snapshot === null || UPGRADE_KEYS.some((key) =>
-    !Number.isSafeInteger(snapshot[key]) || (snapshot[key] as number) < 0)) {
+    !Number.isSafeInteger(snapshot[key]) || (snapshot[key] as number) < 0 ||
+    (snapshot[key] as number) > 5)) {
     return null;
   }
   return {
@@ -170,6 +335,37 @@ function sameUpgrades(left: ShipUpgrades, right: ShipUpgrades): boolean {
 
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((entry, index) => entry === right[index]);
+}
+
+const WEAPON_TYPES: readonly WeaponType[] = ["kinetic", "energy", "incendiary", "cryogenic"];
+const CONSUMABLE_IDS: readonly ConsumableId[] = [
+  "hull-repair",
+  "cryo-charge",
+  "shield-charge",
+  "weapon-overcharge",
+  "scanner-pulse",
+];
+
+function consumableInventorySnapshot(
+  value: unknown,
+): Partial<Record<ConsumableId, number>> | null {
+  if (!isPlainRecord(value)) return null;
+  const result: Partial<Record<ConsumableId, number>> = {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string" || !CONSUMABLE_IDS.includes(key as ConsumableId)) return null;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor) ||
+      !Number.isSafeInteger(descriptor.value) || descriptor.value < 0) return null;
+    result[key as ConsumableId] = descriptor.value as number;
+  }
+  return result;
+}
+
+function sameInventory(
+  left: Partial<Record<ConsumableId, number>>,
+  right: Partial<Record<ConsumableId, number>>,
+): boolean {
+  return CONSUMABLE_IDS.every((id) => left[id] === right[id]);
 }
 
 function canonicalBlackBoxRecovered(run: GalaxyRunState): boolean | null {
@@ -191,7 +387,7 @@ function lockedProjection(
   run: GalaxyRunState,
 ): EngineProjectionInput | null {
   try {
-    const snapshot = exactOwnData(projection, SAVE_DATA_KEYS);
+    const snapshot = requiredOwnData(projection, SAVE_DATA_KEYS);
     if (snapshot === null) return null;
     const levels = exactOwnData(snapshot.levels, []);
     const completedQuests = stringArraySnapshot(snapshot.completedQuests);
@@ -199,11 +395,15 @@ function lockedProjection(
     const completedPlanets = stringArraySnapshot(snapshot.completedPlanets);
     const unlockedSpecialMissions = stringArraySnapshot(snapshot.unlockedSpecialMissions);
     const upgrades = upgradeSnapshot(snapshot.upgrades);
-    const enhancements = stringArraySnapshot(snapshot.unlockedEnhancements);
-    const allocatedSkills = stringArraySnapshot(snapshot.allocatedSkills);
+    const enhancements = knownUniqueStringArraySnapshot(snapshot.unlockedEnhancements, ENHANCEMENT_IDS);
+    const allocatedSkills = allocatedSkillSnapshot(snapshot.allocatedSkills);
+    const equippedConsumables = knownUniqueStringArraySnapshot(snapshot.equippedConsumables, CONSUMABLE_IDS);
+    const consumableInventory = consumableInventorySnapshot(snapshot.consumableInventory);
     const canonicalUpgrades = upgradeSnapshot(run.ship.upgrades);
-    const canonicalEnhancements = stringArraySnapshot(run.ship.unlockedEnhancements);
-    const canonicalSkills = stringArraySnapshot(run.pilot.allocatedSkills);
+    const canonicalEnhancements = knownUniqueStringArraySnapshot(run.ship.unlockedEnhancements, ENHANCEMENT_IDS);
+    const canonicalSkills = allocatedSkillSnapshot(run.pilot.allocatedSkills);
+    const canonicalEquippedConsumables = knownUniqueStringArraySnapshot(run.ship.equippedConsumables, CONSUMABLE_IDS);
+    const canonicalConsumableInventory = consumableInventorySnapshot(run.ship.consumableInventory);
     if (
       snapshot.activeExperience !== "legacy" || snapshot.galaxyRun !== null ||
       snapshot.currentWorld !== 1 || levels === null ||
@@ -213,18 +413,29 @@ function lockedProjection(
       completedPlanets === null || completedPlanets.length !== 0 ||
       unlockedSpecialMissions === null || unlockedSpecialMissions.length !== 0 ||
       upgrades === null || enhancements === null || allocatedSkills === null ||
+      equippedConsumables === null || consumableInventory === null ||
       canonicalUpgrades === null || canonicalEnhancements === null || canonicalSkills === null ||
-      !Number.isSafeInteger(snapshot.pilotLevel) ||
+      canonicalEquippedConsumables === null || canonicalConsumableInventory === null ||
+      typeof snapshot.equippedWeaponType !== "string" ||
+      !WEAPON_TYPES.includes(snapshot.equippedWeaponType as WeaponType) ||
+      !Number.isSafeInteger(snapshot.pilotLevel) || (snapshot.pilotLevel as number) < 1 ||
+      (snapshot.pilotLevel as number) > MAX_PILOT_LEVEL ||
       !sameUpgrades(upgrades, canonicalUpgrades) ||
       !sameStrings(enhancements, canonicalEnhancements) ||
       snapshot.pilotLevel !== run.pilot.level ||
-      !sameStrings(allocatedSkills, canonicalSkills)
+      !sameStrings(allocatedSkills, canonicalSkills) ||
+      snapshot.equippedWeaponType !== run.ship.equippedWeaponType ||
+      !sameStrings(equippedConsumables, canonicalEquippedConsumables) ||
+      !sameInventory(consumableInventory, canonicalConsumableInventory)
     ) return null;
     return {
       upgrades,
-      enhancements: enhancements as EnhancementId[],
+      unlockedEnhancements: enhancements as EnhancementId[],
       pilotLevel: snapshot.pilotLevel as number,
       allocatedSkills: allocatedSkills as SkillNodeId[],
+      equippedWeaponType: snapshot.equippedWeaponType as WeaponType,
+      equippedConsumables: equippedConsumables as ConsumableId[],
+      consumableInventory,
     };
   } catch {
     return null;
@@ -251,6 +462,8 @@ export function launchOperation(
   run: GalaxyRunState,
   projection: SaveData,
   context: OperationLaunchContext,
+  launchIdFactoryOrRetry?: LaunchIdFactory | LaunchContext,
+  canonicalParent?: SaveData,
 ): OperationLaunchResult {
   let safeContext: OperationLaunchContext | null = null;
   try {
@@ -274,6 +487,18 @@ export function launchOperation(
         availability: unavailable("context_mismatch"),
       };
     }
+    const blackBoxRecovered = safeContext.operationId === "op:kepler-black-box"
+      ? canonicalBlackBoxRecovered(safeRun)
+      : false;
+    if (blackBoxRecovered === null) return fail(safeContext, "malformed_run");
+    if (blackBoxRecovered) {
+      return {
+        ok: false,
+        context: safeContext,
+        operation: authorization.operation,
+        availability: unavailable("operation_resolved"),
+      };
+    }
     const engineInput = lockedProjection(projection, safeRun);
     if (engineInput === null) {
       return {
@@ -284,19 +509,30 @@ export function launchOperation(
       };
     }
 
-    const common = [
-      engineInput.upgrades,
-      engineInput.enhancements,
-      engineInput.pilotLevel,
-      engineInput.allocatedSkills,
-    ] as const;
+    const gameplayMission = operationMissionDescriptor(safeContext.operationId);
+    const gameplayLaunch = typeof launchIdFactoryOrRetry === "function" || launchIdFactoryOrRetry === undefined
+      ? launchContextFromPilotLoadout(
+          engineInput,
+          gameplayMission,
+          "galaxy",
+          "atlas",
+          "galaxy-atlas",
+          launchIdFactoryOrRetry,
+        )
+      : snapshotRetryLaunchContext(
+          launchIdFactoryOrRetry,
+          gameplayMission,
+          "galaxy",
+          "galaxy-atlas",
+        );
+    if (gameplayLaunch === null) return fail(safeContext, "context_mismatch");
     let gameState;
     switch (safeContext.adapterKind) {
       case "legacy_level": {
         const payload = safeContext.adapterPayload;
         if (payload.kind !== "legacy_level" || payload.world !== 1 || payload.level !== 1 ||
           safeContext.operationId !== "op:hostile-picket") return fail(safeContext, "context_mismatch");
-        gameState = createGameState(payload.world, payload.level, ...common);
+        gameState = createGameState(payload.world, payload.level, gameplayLaunch);
         // W1-L1 is a gameplay compatibility shell only. Its authored Aurelia
         // campaign dialogue must never become Galaxy operation narrative.
         gameState.dialogTriggers = [];
@@ -306,12 +542,10 @@ export function launchOperation(
         const payload = safeContext.adapterPayload;
         if (payload.kind !== "special_mission" || payload.missionId !== "kepler-black-box" ||
           safeContext.operationId !== "op:kepler-black-box") return fail(safeContext, "context_mismatch");
-        const blackBoxRecovered = canonicalBlackBoxRecovered(safeRun);
-        if (blackBoxRecovered === null) return fail(safeContext, "malformed_run");
         gameState = createSpecialMissionGameState(
           payload.missionId,
           blackBoxRecovered,
-          ...common,
+          gameplayLaunch,
         );
         break;
       }
@@ -319,7 +553,7 @@ export function launchOperation(
         const payload = safeContext.adapterPayload;
         if (payload.kind !== "planet_mission" || payload.planetId !== "ashfall" ||
           safeContext.operationId !== "op:ashfall-sortie") return fail(safeContext, "context_mismatch");
-        gameState = createPlanetGameState(payload.planetId, ...common);
+        gameState = createPlanetGameState(payload.planetId, gameplayLaunch);
         break;
       }
       default: {
@@ -331,6 +565,17 @@ export function launchOperation(
       id: authorization.operation.id,
       label: operationDisplayLabel(authorization.operation.id),
     };
+    if (canonicalParent !== undefined) {
+      if (canonicalParent.activeExperience !== "galaxy" || canonicalParent.galaxyRun === null ||
+        !samePlainData(canonicalParent.galaxyRun, safeRun) || gameState.launchContext === undefined) {
+        return fail(safeContext, "malformed_run");
+      }
+      gameState.outcomeAttempt = createOutcomeAttempt(
+        canonicalParent,
+        gameState.launchContext,
+        "operation",
+      );
+    }
     return { ok: true, context: structuredClone(authorization.context), gameState };
   } catch {
     return fail(safeContext, "malformed_run");
@@ -407,12 +652,17 @@ export type GalaxyPoiResolutionResult =
   | { ok: true; save: SaveData; delivery: MissionDelivery | null }
   | { ok: false; save: SaveData; reason: GalaxyRegionAdapterReason };
 
+export type GalaxyPoiAuthorityPreparationResult =
+  | { ok: true; save: SaveData; attempt: OutcomeAttempt }
+  | { ok: false; reason: GalaxyRegionAdapterReason };
+
 /** Reserved preparation IDs remain recovery authority even if their kind is tampered. */
 export function isGalaxyPoiPreparationFact(
   fact: Pick<HistoricalFact, "id" | "kind">,
 ): boolean {
   return fact.kind === "poi_completion_prepared" ||
-    (typeof fact.id === "string" && fact.id.startsWith("history:poi-prepared:"));
+    (typeof fact.id === "string" &&
+      (fact.id.startsWith("history:poi-prepared:") || fact.id.startsWith("history:poi-prepared-v2:")));
 }
 
 interface OpenAshfallProjection {
@@ -441,6 +691,12 @@ function samePlainData(left: unknown, right: unknown): boolean {
     samePlainData(leftRecord[key], rightRecord[key]));
 }
 
+function sameRequiredSaveData(left: SaveData, right: SaveData): boolean {
+  const leftRecord = left as unknown as Record<string, unknown>;
+  const rightRecord = right as unknown as Record<string, unknown>;
+  return SAVE_DATA_KEYS.every((key) => samePlainData(leftRecord[key], rightRecord[key]));
+}
+
 function openAshfallProjection(
   save: SaveData,
   contactId: string,
@@ -449,7 +705,7 @@ function openAshfallProjection(
     return { ok: false, reason: "unsupported_contact" };
   }
   try {
-    const root = exactOwnData(save, SAVE_DATA_KEYS);
+    const root = requiredOwnData(save, SAVE_DATA_KEYS);
     if (root === null) return { ok: false, reason: "malformed_save" };
     const parent = root as unknown as SaveData;
     if (parent.activeExperience !== "galaxy" || parent.galaxyRun === null) {
@@ -495,7 +751,7 @@ function mergeProjectedRegion(
   projected: SaveData,
 ): { ok: true; save: SaveData } | { ok: false; reason: GalaxyRegionAdapterReason } {
   try {
-    const projection = exactOwnData(projected, SAVE_DATA_KEYS);
+    const projection = requiredOwnData(projected, SAVE_DATA_KEYS);
     if (projection === null || projection.activeExperience !== "legacy" || projection.galaxyRun !== null) {
       return { ok: false, reason: "projected_result_invalid" };
     }
@@ -916,6 +1172,109 @@ export function prepareGalaxyPoiCompletion(
   }
 }
 
+/** Stage immutable Galaxy POI authority without advancing cycle or deriving rewards. */
+function stageGalaxyPoiOutcomeAuthorityImpl(
+  save: SaveData,
+  activePoi: ActivePoiDescriptor,
+  screen: GameScreen,
+  attempt: OutcomeAttempt,
+): GalaxyPoiAuthorityPreparationResult {
+  const active = snapshotActivePoi(activePoi);
+  const root = snapshotOutcomeRootAuthority(save);
+  const saveData = requiredOwnData(save, ["activeExperience", "galaxyRun"]);
+  const submittedRun = saveData?.galaxyRun as GalaxyRunState | null | undefined;
+  const attemptSnapshot = snapshotGalaxyPoiOutcomeAttempt(attempt);
+  const submittedRunSnapshot = snapshotPlainData(submittedRun);
+  const safeSubmittedRun = submittedRunSnapshot === INVALID_PLAIN_SNAPSHOT
+    ? null
+    : submittedRunSnapshot as GalaxyRunState;
+  const runData = requiredOwnData(safeSubmittedRun, ["appliedOutcomeIds"]);
+  const nestedJournal = runData === null ? null : snapshotOutcomeIdJournal(runData.appliedOutcomeIds);
+  const outcomeId = attemptSnapshot === null ? null : `${attemptSnapshot.launchId}:success`;
+  const rootOccurrences = root?.appliedOutcomeIds.filter((id) => id === outcomeId).length ?? -1;
+  const nestedOccurrences = nestedJournal?.filter((id) => id === outcomeId).length ?? -1;
+  if (screen !== GameScreen.LEVEL_COMPLETE || active === null || root === null || root.locked ||
+    saveData === null || saveData.activeExperience !== "galaxy" || safeSubmittedRun === null ||
+    attemptSnapshot === null || outcomeId === null ||
+    nestedJournal === null || rootOccurrences !== 0 || nestedOccurrences !== 0 ||
+    attemptSnapshot.expectedRevision !== root.saveRevision ||
+    !samePlainData(attemptSnapshot.launchSnapshot.galaxyRun, safeSubmittedRun) ||
+    active.originColonyId !== attemptSnapshot.routeIdentity.originColonyId ||
+    active.nodeId !== attemptSnapshot.routeIdentity.nodeId || active.engine !== attemptSnapshot.routeIdentity.engine ||
+    active.rewardEligible !== attemptSnapshot.routeIdentity.rewardEligible) {
+    return { ok: false, reason: "invalid_poi_session" };
+  }
+  const preparedRevision = root.saveRevision + 1;
+  if (!Number.isSafeInteger(preparedRevision)) return { ok: false, reason: "invalid_poi_session" };
+  const fact = createGalaxyPoiPreparedFact(safeSubmittedRun, attemptSnapshot.routeIdentity, {
+    launchId: attemptSnapshot.launchId,
+    outcomeId,
+    preparedRevision,
+  });
+  if (fact === null) return { ok: false, reason: "invalid_poi_session" };
+  const galaxyRun = structuredClone(safeSubmittedRun);
+  galaxyRun.historyFacts.push(fact);
+  const stagedSave = {
+    ...saveData as unknown as SaveData,
+    saveRevision: preparedRevision,
+    appliedOutcomeIds: root.appliedOutcomeIds,
+    outcomeRecoveryRecords: root.outcomeRecoveryRecords,
+    galaxyRun,
+  };
+  return {
+    ok: true,
+    save: stagedSave,
+    attempt: {
+      ...attemptSnapshot,
+      expectedRevision: preparedRevision,
+      launchSnapshot: { galaxyRun: structuredClone(galaxyRun) },
+    },
+  };
+}
+
+export function stageGalaxyPoiOutcomeAuthority(
+  save: SaveData,
+  activePoi: ActivePoiDescriptor,
+  screen: GameScreen,
+  attempt: OutcomeAttempt,
+): GalaxyPoiAuthorityPreparationResult {
+  try { return stageGalaxyPoiOutcomeAuthorityImpl(save, activePoi, screen, attempt); }
+  catch { return { ok: false, reason: "invalid_poi_session" }; }
+}
+
+/** Rebuild the exact final Galaxy POI attempt from its durable v2 authority fact. */
+export function recoverGalaxyPoiOutcomeAuthority(save: SaveData): OutcomeAttempt | null {
+  try {
+    const root = snapshotOutcomeRootAuthority(save);
+    const saveData = requiredOwnData(save, ["activeExperience", "galaxyRun"]);
+    const submittedRun = saveData?.galaxyRun as GalaxyRunState | null | undefined;
+    const runData = requiredOwnData(submittedRun, ["appliedOutcomeIds"]);
+    const nestedJournal = runData === null ? null : snapshotOutcomeIdJournal(runData.appliedOutcomeIds);
+    if (root === null || root.locked || saveData === null || saveData.activeExperience !== "galaxy" ||
+      submittedRun === null || submittedRun === undefined || nestedJournal === null) return null;
+    const validated = mergeProjectionIntoGalaxy(submittedRun, {});
+    if (!validated.ok) return null;
+    const recovered = recoverGalaxyPoiPreparation(validated.galaxyRun);
+    if (recovered === null || recovered.preparedRevision !== root.saveRevision ||
+      root.appliedOutcomeIds.includes(recovered.outcomeId) || nestedJournal.includes(recovered.outcomeId)) return null;
+    const mission = poiMissionDescriptor(recovered.identity.nodeId, recovered.identity.engine);
+    return {
+      version: 1,
+      routeKind: "poi",
+      missionId: poiOutcomeMissionId(mission.id, recovered.identity.originColonyId),
+      routeIdentity: recovered.identity,
+      launchId: recovered.launchId,
+      expectedRevision: recovered.preparedRevision,
+      persistenceAuthority: "galaxy",
+      returnTarget: "galaxy-region",
+      declaredFields: ["galaxyRun"],
+      launchSnapshot: { galaxyRun: structuredClone(validated.galaxyRun) },
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Rebuild the one deferred Ashfall outcome that survived a page reload. The
  * journal is treated as hostile serialized input: every embedded field is
@@ -1018,13 +1377,13 @@ function snapshotGalaxyPending(
       snapshot.originColonyId.length === 0 || typeof snapshot.nodeId !== "string" ||
       snapshot.nodeId.length === 0 || typeof snapshot.preparedFactId !== "string" ||
       snapshot.preparedFactId.length === 0) return null;
-    const baseRoot = exactOwnData(snapshot.baseSave, SAVE_DATA_KEYS);
-    const aliasRoot = exactOwnData(snapshot.projectedSave, SAVE_DATA_KEYS);
-    const currentRoot = exactOwnData(save, SAVE_DATA_KEYS);
+    const baseRoot = requiredOwnData(snapshot.baseSave, SAVE_DATA_KEYS);
+    const aliasRoot = requiredOwnData(snapshot.projectedSave, SAVE_DATA_KEYS);
+    const currentRoot = requiredOwnData(save, SAVE_DATA_KEYS);
     if (baseRoot === null || aliasRoot === null || currentRoot === null ||
       baseRoot.activeExperience !== "galaxy" || baseRoot.galaxyRun === null ||
       currentRoot.activeExperience !== "galaxy" || currentRoot.galaxyRun === null ||
-      !samePlainData(baseRoot, aliasRoot) ||
+      !SAVE_DATA_KEYS.every((key) => samePlainData(baseRoot[key], aliasRoot[key])) ||
       !SAVE_DATA_KEYS.filter((key) => key !== "galaxyRun").every((key) =>
         samePlainData(baseRoot[key], currentRoot[key]))) return null;
     const baseRun = mergeProjectionIntoGalaxy(baseRoot.galaxyRun as GalaxyRunState, {});
@@ -1085,14 +1444,11 @@ function resolveValidatedGalaxyPending(
 ): GalaxyPoiResolutionResult {
   const opened = openAshfallProjection(save, contactId);
   if (isOpenFailure(opened)) return { ...opened, save };
-  const nativePending: PendingPoiResolution = {
-    originColonyId: pending.originColonyId,
-    nodeId: pending.nodeId,
-    baseSave: opened.projectedSave,
-    projectedSave: opened.projectedSave,
-    outcome: pending.outcome,
-  };
-  const native = resolvePoiCompletion(nativePending, destinationColonyId);
+  const native = pending.outcome === null
+    ? { ok: true as const, save: opened.projectedSave, delivery: null }
+    : destinationColonyId === null
+      ? { ok: false as const, save: opened.projectedSave, reason: "destination_missing" as const }
+      : confirmPoiOutcome(opened.projectedSave, pending.outcome, destinationColonyId);
   if (!native.ok) return { ok: false, save, reason: native.reason };
   const merged = mergeProjectedRegion(opened, native.save);
   if (!merged.ok) return { ok: false, save, reason: merged.reason };
@@ -1116,7 +1472,7 @@ export function resolveGalaxyPoiCompletion(
     return { ok: false, save, reason: "invalid_poi_session" };
   }
   try {
-    const atPreparedBase = samePlainData(safePending.baseSave, safePending.currentSave);
+    const atPreparedBase = sameRequiredSaveData(safePending.baseSave, safePending.currentSave);
     if (!atPreparedBase) {
       const canonicalResolution = resolveValidatedGalaxyPending(
         safePending.baseSave,
@@ -1125,7 +1481,7 @@ export function resolveGalaxyPoiCompletion(
         destinationColonyId,
       );
       if (!canonicalResolution.ok ||
-        !samePlainData(canonicalResolution.save, safePending.currentSave)) {
+        !sameRequiredSaveData(canonicalResolution.save, safePending.currentSave)) {
         return { ok: false, save, reason: "invalid_poi_session" };
       }
       const stale = resolveValidatedGalaxyPending(

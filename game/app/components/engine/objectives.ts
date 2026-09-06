@@ -218,6 +218,12 @@ export interface ObjectiveUpdateResult {
   structure?: DefendStructure;
 }
 
+/** Encounter state needed to decide whether a combat objective is terminal. */
+export interface ObjectiveEncounterContext {
+  allWavesSpawned: boolean;
+  hasActiveBoss: boolean;
+}
+
 /** How often to spawn collectibles (in frames) */
 const COLLECT_SPAWN_INTERVAL = 90; // every 1.5s
 
@@ -230,6 +236,7 @@ export function updateObjective(
   player: Player,
   enemyBullets: Bullet[],
   enemies: Enemy[],
+  encounter: ObjectiveEncounterContext,
   escort?: EscortEntity,
   structure?: DefendStructure
 ): ObjectiveUpdateResult {
@@ -321,6 +328,12 @@ export function updateObjective(
 
         if (structure.hp <= 0) {
           updated.failed = true;
+        } else if (
+          encounter.allWavesSpawned &&
+          enemies.length === ramEnemies.length &&
+          !encounter.hasActiveBoss
+        ) {
+          updated.completed = true;
         }
 
         // Store IDs for caller cleanup
