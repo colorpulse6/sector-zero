@@ -2,7 +2,9 @@
 // isolated galaxy namespace and use the same public planning/travel reducers as
 // player actions, so legacy campaign progress remains an inert sibling.
 
+import { G0_SECTOR_BOUNDS, chartFact, observeFact, resolveCell } from "../engine/galaxy/atlas";
 import { BLIND_FIXTURE_COORDINATE } from "../engine/galaxy/authoredAnchors";
+import { coord } from "../engine/galaxy/coordinates";
 import { createFreshGalaxyRun, startFreshGalaxy } from "../engine/galaxy/galaxyRun";
 import type { GalaxyRunState } from "../engine/galaxy/galaxyTypes";
 import {
@@ -24,7 +26,8 @@ export type GalaxyFixtureId =
   | "hostile-route"
   | "blind-discovery"
   | "insufficient-supply"
-  | "in-transit-reload";
+  | "in-transit-reload"
+  | "dense-sector";
 
 export interface GalaxyFixture {
   id: GalaxyFixtureId;
@@ -63,6 +66,11 @@ export const GALAXY_FIXTURES: readonly GalaxyFixture[] = Object.freeze([
     label: "RELOAD INTERRUPT",
     description: "Reload-safe hostile interruption after exactly one checkpoint.",
   },
+  {
+    id: "dense-sector",
+    label: "DENSE SECTOR",
+    description: "Fresh run with every procedural star charted and every procedural signal observed.",
+  },
 ]);
 
 function contact(contactId: string): AtlasTarget {
@@ -98,6 +106,51 @@ function closeTravel(run: GalaxyRunState): GalaxyRunState {
   return requireTravel(finalizeTravel(run));
 }
 
+/**
+ * Chart every procedural stellar contact in the sector and observe every procedural signal,
+ * using only the public generation resolver and knowledge reducers. Authored cells are left
+ * alone, so the authored registry and generation identity are untouched.
+ */
+function chartDenseSector(run: GalaxyRunState): GalaxyRunState {
+  let atlas = run.atlas;
+  const cells = Math.floor((G0_SECTOR_BOUNDS.max - G0_SECTOR_BOUNDS.min + 1) / G0_SECTOR_BOUNDS.cellSize);
+  const half = Math.floor(G0_SECTOR_BOUNDS.cellSize / 2);
+  for (let cellY = 0; cellY < cells; cellY += 1) {
+    for (let cellX = 0; cellX < cells; cellX += 1) {
+      const centre = coord(0, 0, cellX * G0_SECTOR_BOUNDS.cellSize + half, cellY * G0_SECTOR_BOUNDS.cellSize + half);
+      const resolved = resolveCell(run.identity, centre);
+      if (!resolved.ok || resolved.fact.authored) continue;
+      const fact = resolved.fact;
+      if (fact.kind === "stellar_contact") {
+        atlas = chartFact(atlas, {
+          fact,
+          record: {
+            id: `knowledge:dense:${fact.cellKey}`,
+            observedProperties: {},
+            confidence: "medium",
+            source: "archive",
+            observedCycle: run.worldCycle,
+            expiresCycle: null,
+          },
+        });
+      } else if (fact.kind === "signal") {
+        atlas = observeFact(atlas, {
+          fact,
+          record: {
+            id: `knowledge:dense:${fact.cellKey}`,
+            observedProperties: {},
+            confidence: "low",
+            source: "sensor",
+            observedCycle: run.worldCycle,
+            expiresCycle: null,
+          },
+        });
+      }
+    }
+  }
+  return { ...run, atlas };
+}
+
 function buildFixtureRun(id: GalaxyFixtureId): GalaxyRunState {
   const fresh = createFreshGalaxyRun();
 
@@ -123,6 +176,8 @@ function buildFixtureRun(id: GalaxyFixtureId): GalaxyRunState {
     }
     case "in-transit-reload":
       return advanceOnce(commitTo(fresh, contact("contact:hostile-picket")));
+    case "dense-sector":
+      return chartDenseSector(fresh);
   }
 }
 

@@ -5,6 +5,7 @@ import "./globals.css";
 import "./components/OpeningScreen.css";
 import "./components/colony/meta/RegionMapScreen.css";
 import "./components/galaxy/system/SystemAtlasScreen.css";
+import "./components/galaxy/GalaxyAtlasScreen.css";
 
 const spaceMono = Space_Mono({
   variable: "--font-space-mono",

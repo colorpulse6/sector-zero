@@ -61,7 +61,7 @@ function seededUnit(seed: number, salt: string): number {
   return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
 }
 
-const STAR_COLORS: Record<StarClass, string> = {
+export const STAR_COLORS: Record<StarClass, string> = {
   O: "#9bb0ff",
   B: "#aabfff",
   A: "#cad8ff",
@@ -88,7 +88,7 @@ const SYSTEM_SEEDS: readonly SystemSeed[] = [
   { id: "system:prismara-veil", name: "Prismara Veil", starClass: "M", position: { x: -340, y: 240 }, knowledge: "signal", planetIds: ["prismara"] },
 ];
 
-function buildPlanets(seed: number, systemId: string, planetIds: PlanetId[]): SystemPlanet[] {
+export function buildPlanets(seed: number, systemId: string, planetIds: PlanetId[]): SystemPlanet[] {
   const count = planetIds.length;
   return planetIds.map((planetId, index) => {
     const salt = `${systemId}:${planetId}`;
@@ -119,18 +119,32 @@ function buildSystems(seed: number): StarSystem[] {
 
 export const STAR_SYSTEMS: readonly StarSystem[] = Object.freeze(buildSystems(SYSTEM_ATLAS_SEED));
 
-export function homeSystem(): StarSystem {
-  const home = STAR_SYSTEMS.find(system => system.knowledge === "home");
+/**
+ * A set of systems the atlas can show. The seeded catalogue is the default; the Galaxy Atlas
+ * builds one from the live galaxy run (see `contactSystems.ts`).
+ */
+export interface SystemCatalogue {
+  systems: readonly StarSystem[];
+  homeId: string;
+}
+
+export const DEFAULT_CATALOGUE: SystemCatalogue = Object.freeze({
+  systems: STAR_SYSTEMS,
+  homeId: STAR_SYSTEMS.find(system => system.knowledge === "home")?.id ?? STAR_SYSTEMS[0].id,
+});
+
+export function homeSystem(catalogue: SystemCatalogue = DEFAULT_CATALOGUE): StarSystem {
+  const home = catalogue.systems.find(system => system.id === catalogue.homeId) ?? catalogue.systems[0];
   if (!home) throw new Error("System atlas has no home system");
   return home;
 }
 
-export function findSystem(id: string): StarSystem | undefined {
-  return STAR_SYSTEMS.find(system => system.id === id);
+export function findSystem(id: string, catalogue: SystemCatalogue = DEFAULT_CATALOGUE): StarSystem | undefined {
+  return catalogue.systems.find(system => system.id === id);
 }
 
-export function systemForPlanet(planetId: PlanetId): StarSystem {
-  const system = STAR_SYSTEMS.find(entry => entry.planets.some(planet => planet.planetId === planetId));
+export function systemForPlanet(planetId: PlanetId, catalogue: SystemCatalogue = DEFAULT_CATALOGUE): StarSystem {
+  const system = catalogue.systems.find(entry => entry.planets.some(planet => planet.planetId === planetId));
   if (!system) throw new Error(`Planet ${planetId} is not assigned to a system`);
   return system;
 }
@@ -140,10 +154,10 @@ export function planetName(planetId: PlanetId): string {
 }
 
 /** Neighbours sorted by distance, nearest first; ties break by id. */
-export function neighboursOf(systemId: string): SystemNeighbour[] {
-  const origin = findSystem(systemId);
+export function neighboursOf(systemId: string, catalogue: SystemCatalogue = DEFAULT_CATALOGUE): SystemNeighbour[] {
+  const origin = findSystem(systemId, catalogue);
   if (!origin) return [];
-  return STAR_SYSTEMS
+  return catalogue.systems
     .filter(system => system.id !== origin.id)
     .map(system => {
       const dx = system.position.x - origin.position.x;

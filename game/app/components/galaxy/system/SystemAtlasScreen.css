@@ -117,6 +117,41 @@
   .sz-system-legend { font-size: 9px; gap: 10px 12px; }
   .sz-system-detail h2 { font-size: 28px; }
 }
+.sz-system.sz-system--embedded {
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+.sz-system--embedded .sz-system-shell {
+  height: 100%;
+  max-width: none;
+  padding: 8px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sz-system--embedded .sz-system-header { margin-bottom: 10px; }
+.sz-system--embedded .sz-system-layout {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
+}
+.sz-system--embedded .sz-system-chart {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.sz-system--embedded .sz-system-field {
+  height: 100%;
+  flex: 1;
+  min-height: 220px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sz-system, .sz-system * { scroll-behavior: auto; transition: none; animation: none; }
 }

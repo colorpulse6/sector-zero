@@ -9,12 +9,14 @@ import {
   type RegionSelectionPoint,
 } from "../../colony/meta/regionMapSelection";
 import {
+  DEFAULT_CATALOGUE,
   findSystem,
   homeSystem,
   neighboursOf,
   planetName,
   systemLabel,
   type StarSystem,
+  type SystemCatalogue,
   type SystemNeighbour,
 } from "./starSystems";
 import { planSystemLayout, PLAN_TILT, type LandmarkPlan } from "./systemLayout";
@@ -28,6 +30,10 @@ export interface SystemAtlasScreenProps {
   onOpenRegion?: (colonyId: string) => void;
   initialSystemId?: string;
   initialSelectedId?: string;
+  /** Live galaxy catalogue. Defaults to the seeded system atlas. */
+  catalogue?: SystemCatalogue;
+  /** Mounted inside the Galaxy Atlas. Drops the dialog shell and its own back control. */
+  embedded?: boolean;
 }
 
 /** Matches the private plan scale in systemLayout.ts (percent per scene unit). */
@@ -71,6 +77,8 @@ export function SystemAtlasScreen({
   onOpenRegion,
   initialSystemId,
   initialSelectedId,
+  catalogue = DEFAULT_CATALOGUE,
+  embedded = false,
 }: SystemAtlasScreenProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
@@ -82,24 +90,26 @@ export function SystemAtlasScreen({
   const glidingRef = useRef(false);
   const mountedRef = useRef(true);
   const latestRef = useRef({ systemId: "", cycle: 0, colonies: [] as string[], selectedId: null as string | null });
+  const catalogueRef = useRef(catalogue);
+  catalogueRef.current = catalogue;
 
-  const [systemId, setSystemId] = useState(() => findSystem(initialSystemId ?? "")?.id ?? homeSystem().id);
+  const [systemId, setSystemId] = useState(() => findSystem(initialSystemId ?? "", catalogue)?.id ?? homeSystem(catalogue).id);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
-    const system = findSystem(initialSystemId ?? "") ?? homeSystem();
-    return selectionFor(system, neighboursOf(system.id), initialSelectedId);
+    const system = findSystem(initialSystemId ?? "", catalogue) ?? homeSystem(catalogue);
+    return selectionFor(system, neighboursOf(system.id, catalogue), initialSelectedId);
   });
   const [sceneReady, setSceneReady] = useState(false);
   const [gliding, setGliding] = useState(false);
 
-  const system = findSystem(systemId) ?? homeSystem();
-  const neighbours = useMemo(() => neighboursOf(system.id), [system.id]);
+  const system = findSystem(systemId, catalogue) ?? homeSystem(catalogue);
+  const neighbours = useMemo(() => neighboursOf(system.id, catalogue), [system.id, catalogue]);
   const landmarks = planSystemLayout(system, neighbours, save.missionsSinceStart);
   const colonyPlanetIds = save.colonies.map(colony => colony.planetId);
   const colonyKey = save.colonies.map(colony => `${colony.id}:${colony.planetId}`).join("|");
   latestRef.current = { systemId: system.id, cycle: save.missionsSinceStart, colonies: colonyPlanetIds, selectedId };
 
   useModalFocus({
-    active: focusActive,
+    active: embedded ? false : focusActive,
     rootRef: dialogRef,
     initialFocus: () => optionRefs.current.get(selectedId ?? "") ?? null,
     onEscape: onClose,
@@ -140,8 +150,9 @@ export function SystemAtlasScreen({
       sceneRef.current = handle;
       applyMotion();
       const latest = latestRef.current;
-      const current = findSystem(latest.systemId) ?? homeSystem();
-      handle.setSystem(current, neighboursOf(current.id), latest.cycle, latest.colonies);
+      const cat = catalogueRef.current;
+      const current = findSystem(latest.systemId, cat) ?? homeSystem(cat);
+      handle.setSystem(current, neighboursOf(current.id, cat), latest.cycle, latest.colonies);
       handle.focusLandmark(latest.selectedId);
       unsubscribe = handle.onFrame((projected: ProjectedLandmark[]) => {
         const next = new Map<string, LivePoint>();
@@ -178,7 +189,7 @@ export function SystemAtlasScreen({
     sceneRef.current?.focusLandmark(selectedId);
   }, [selectedId, sceneReady, systemId]);
 
-  const home = homeSystem();
+  const home = homeSystem(catalogue);
   const charted = neighbours.filter(entry => entry.system.knowledge !== "signal").length;
   const signals = neighbours.filter(entry => entry.system.knowledge === "signal").length;
   const selectedPlanet = system.planets.find(planet => `planet:${planet.planetId}` === selectedId) ?? null;
@@ -219,7 +230,7 @@ export function SystemAtlasScreen({
 
   const viewSystem = async (id: string) => {
     if (glidingRef.current) return;
-    const next = findSystem(id);
+    const next = findSystem(id, catalogue);
     if (!next || next.id === system.id) return;
     glidingRef.current = true;
     setGliding(true);
@@ -232,7 +243,7 @@ export function SystemAtlasScreen({
     if (!mountedRef.current) return;
     setGliding(false);
     setSystemId(next.id);
-    setSelectedId(selectionFor(next, neighboursOf(next.id)));
+    setSelectedId(selectionFor(next, neighboursOf(next.id, catalogue)));
     livePoints.current = new Map();
   };
 
@@ -241,7 +252,14 @@ export function SystemAtlasScreen({
   });
 
   return (
-    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="System map" className="sz-system">
+    <div
+      ref={dialogRef}
+      tabIndex={-1}
+      role={embedded ? "region" : "dialog"}
+      aria-modal={embedded ? undefined : true}
+      aria-label="System map"
+      className={embedded ? "sz-system sz-system--embedded" : "sz-system"}
+    >
       <div className="sz-system-shell">
         <header className="sz-system-header">
           <div>
@@ -249,9 +267,9 @@ export function SystemAtlasScreen({
             <h1>{systemLabel(system)}</h1>
           </div>
           <div className="sz-system-header-side">
-            <button type="button" className="sz-system-back" onClick={onClose}>← RETURN TO COLONIES</button>
+            {!embedded && <button type="button" className="sz-system-back" onClick={onClose}>← RETURN TO COLONIES</button>}
             <div className="sz-system-chips" aria-label="System status">
-              <span className="sz-system-chip">HOME <b>{home.name.toUpperCase()}</b></span>
+              {!embedded && <span className="sz-system-chip">HOME <b>{home.name.toUpperCase()}</b></span>}
               <span className="sz-system-chip">CYCLE <b>{save.missionsSinceStart}</b></span>
               <span className="sz-system-chip">{charted} CHARTED · {signals} SIGNALS</span>
             </div>
