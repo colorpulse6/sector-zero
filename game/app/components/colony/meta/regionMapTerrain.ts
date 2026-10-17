@@ -11,6 +11,8 @@ import type { PlanetBiome } from "../shared/colonyTypes";
 export interface TerrainPalette {
   /** Chart floor colour. */
   base: string;
+  /** Middle floor tone for the diagonal wash. */
+  mid: string;
   /** Darker floor tone used for the outer vignette. */
   deep: string;
   /** Elevation contour stroke. */
@@ -26,14 +28,14 @@ export interface TerrainPalette {
 }
 
 export const BIOME_PALETTES: Record<PlanetBiome, TerrainPalette> = {
-  desert: { base: "#141008", deep: "#090705", contour: "#8a5a22", ridge: "#c47a2a", haze: "rgba(214, 140, 52, .16)", grid: "rgba(214, 160, 90, .08)", label: "Desert basin" },
-  volcanic: { base: "#160a08", deep: "#0a0504", contour: "#8a2a1e", ridge: "#ff5a36", haze: "rgba(255, 90, 54, .14)", grid: "rgba(255, 120, 90, .07)", label: "Volcanic plain" },
-  ice: { base: "#0a1218", deep: "#05090d", contour: "#3f7a99", ridge: "#9adcff", haze: "rgba(140, 210, 255, .14)", grid: "rgba(160, 220, 255, .07)", label: "Ice shelf" },
-  ocean: { base: "#061018", deep: "#03080c", contour: "#1f5f80", ridge: "#3fb3e0", haze: "rgba(60, 170, 220, .14)", grid: "rgba(90, 190, 230, .07)", label: "Archipelago" },
-  jungle: { base: "#08140a", deep: "#040a05", contour: "#2f7a3a", ridge: "#5fd36a", haze: "rgba(90, 210, 110, .12)", grid: "rgba(120, 220, 140, .07)", label: "Jungle canopy" },
-  urban: { base: "#0d0f16", deep: "#06070b", contour: "#4a5570", ridge: "#9fb0d8", haze: "rgba(160, 180, 230, .12)", grid: "rgba(170, 190, 240, .08)", label: "Urban sprawl" },
-  barren: { base: "#100f0e", deep: "#070706", contour: "#5f5a52", ridge: "#a39a8c", haze: "rgba(170, 160, 140, .12)", grid: "rgba(190, 180, 160, .07)", label: "Barren crust" },
-  toxic: { base: "#0d1208", deep: "#060904", contour: "#6f8a1e", ridge: "#b8e03a", haze: "rgba(180, 220, 60, .12)", grid: "rgba(190, 230, 90, .07)", label: "Toxic flats" },
+  desert: { base: "#141008", mid: "#1a1510", deep: "#090705", contour: "#a98a5e", ridge: "#c9a36a", haze: "rgba(140, 118, 80, .20)", grid: "rgba(214, 160, 90, .08)", label: "Desert basin" },
+  volcanic: { base: "#160a08", mid: "#1a0d0b", deep: "#0a0504", contour: "#8a2a1e", ridge: "#ff5a36", haze: "rgba(255, 90, 54, .14)", grid: "rgba(255, 120, 90, .07)", label: "Volcanic plain" },
+  ice: { base: "#0a1218", mid: "#0f1a22", deep: "#05090d", contour: "#3f7a99", ridge: "#9adcff", haze: "rgba(140, 210, 255, .14)", grid: "rgba(160, 220, 255, .07)", label: "Ice shelf" },
+  ocean: { base: "#061018", mid: "#0a1820", deep: "#03080c", contour: "#1f5f80", ridge: "#3fb3e0", haze: "rgba(60, 170, 220, .14)", grid: "rgba(90, 190, 230, .07)", label: "Archipelago" },
+  jungle: { base: "#08140a", mid: "#0d1a10", deep: "#040a05", contour: "#2f7a3a", ridge: "#5fd36a", haze: "rgba(90, 210, 110, .12)", grid: "rgba(120, 220, 140, .07)", label: "Jungle canopy" },
+  urban: { base: "#0d0f16", mid: "#13161f", deep: "#06070b", contour: "#4a5570", ridge: "#9fb0d8", haze: "rgba(160, 180, 230, .12)", grid: "rgba(170, 190, 240, .08)", label: "Urban sprawl" },
+  barren: { base: "#100f0e", mid: "#161514", deep: "#070706", contour: "#5f5a52", ridge: "#a39a8c", haze: "rgba(170, 160, 140, .12)", grid: "rgba(190, 180, 160, .07)", label: "Barren crust" },
+  toxic: { base: "#0d1208", mid: "#131a0e", deep: "#060904", contour: "#6f8a1e", ridge: "#b8e03a", haze: "rgba(180, 220, 60, .12)", grid: "rgba(190, 230, 90, .07)", label: "Toxic flats" },
 };
 
 export interface ContourRing {
