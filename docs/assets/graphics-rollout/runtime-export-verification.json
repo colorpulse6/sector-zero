@@ -1,0 +1,282 @@
+{
+  "runtimePngCount": 55,
+  "runtimePngBytes": 35399315,
+  "publicEqualsStaticExport": true,
+  "files": [
+    {
+      "path": "game/public/sprites/actors/hostile/attack.png",
+      "bytes": 1226215,
+      "sha256": "19e988506f625a216f850154cd252338a5c429ddef9b9d525e3f20009f9f7712"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/death.png",
+      "bytes": 272115,
+      "sha256": "72b7d40c51eaca724f874a96b0d50b6af437c2caa12c796f516c551480d506dc"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/hurt.png",
+      "bytes": 383768,
+      "sha256": "3b68f9122a8a439d0df995654a49b7d573074de03547d29bcf16be7dd28d0fd1"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/idle.png",
+      "bytes": 986265,
+      "sha256": "1c5c098e6d4b68272e7bbadc2dad61227de389a2fcb86645845408f766f4f56a"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/walk.png",
+      "bytes": 1666114,
+      "sha256": "d37f7ddd57fb1fb2fb8e60936535841702620c5debc6c7e5b124df74e4fb0af7"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-bartender/idle.png",
+      "bytes": 698220,
+      "sha256": "9d166ef2d7ab45f943033c05451e4ae3d75953ebbba9de5216b33ac60a77f515"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-bartender/walk.png",
+      "bytes": 1536103,
+      "sha256": "ee5657031031c20802cf33d9f3bd44eb8ce28af1c1a4488f22483f5b7beffdac"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-regular/idle.png",
+      "bytes": 608391,
+      "sha256": "d44685eacbb65a8a931f1711e503d0f422ca996d5ea4bef57f8a17d42b0502b0"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-regular/walk.png",
+      "bytes": 1347992,
+      "sha256": "49dfe4c4b23566add262eb8ec9492567e528a872fe99d8b8b2cdb38efac1cf35"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-signal-chaser/idle.png",
+      "bytes": 611881,
+      "sha256": "64e7ebd01758a5f0c66015e40f2beadf398c3cf642d5be04e868eb371b901957"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-signal-chaser/walk.png",
+      "bytes": 1332908,
+      "sha256": "bc1f87c340966ca6c5c68b944323517e2f89e8c97da245e61af296ce39547aca"
+    },
+    {
+      "path": "game/public/sprites/actors/kael/idle.png",
+      "bytes": 717681,
+      "sha256": "a48f46799fe21df58d927b92244e1310c115889fd88f2e3a2e352e21536f80cd"
+    },
+    {
+      "path": "game/public/sprites/actors/kael/walk.png",
+      "bytes": 1605663,
+      "sha256": "6de8a4694dec6b5a9772e85675df614e7141e5a36f06d8d80a74e0763dfc97d5"
+    },
+    {
+      "path": "game/public/sprites/actors/reyes/idle.png",
+      "bytes": 652853,
+      "sha256": "3ea6e6f75bcf230d3e4251a741b6c2d4e9d2e0396fbd9294a139c77a96aba249"
+    },
+    {
+      "path": "game/public/sprites/actors/reyes/walk.png",
+      "bytes": 1469597,
+      "sha256": "fb49234aa9744c058f6bf3ce91447e68600789413f4403f548c359e843e21a8d"
+    },
+    {
+      "path": "game/public/sprites/actors/scavenger/idle.png",
+      "bytes": 683105,
+      "sha256": "c98734df377a71ed4c511b702ea7b70633ee06c73c874f1979feff08995f8ca5"
+    },
+    {
+      "path": "game/public/sprites/actors/scavenger/walk.png",
+      "bytes": 1496446,
+      "sha256": "ed61b86f6279ae8561fc0d8bf6bf073ea374f5930cc981c83b42b72ded93298e"
+    },
+    {
+      "path": "game/public/sprites/actors/survivor/idle.png",
+      "bytes": 633723,
+      "sha256": "3108fac0f0c5ec976fb0bee5ba715bfbe68bb3f8bd1a9f89f5b070e1b181f877"
+    },
+    {
+      "path": "game/public/sprites/actors/survivor/walk.png",
+      "bytes": 1417604,
+      "sha256": "39be4a4d51db7842ddb6f9e476b8f48bd8a1ea59e77429260b695502d5ca1a96"
+    },
+    {
+      "path": "game/public/sprites/actors/voss/idle.png",
+      "bytes": 614183,
+      "sha256": "68e776cc35c8cb8597d3189bd4a7e14ad0219c816a729ba8456f4eb57fc45951"
+    },
+    {
+      "path": "game/public/sprites/actors/voss/walk.png",
+      "bytes": 1344345,
+      "sha256": "6058f1967769a96bb98820ca4659d2273e59a51308d7a1ccd182be36d4778b25"
+    },
+    {
+      "path": "game/public/sprites/environment/foundation.png",
+      "bytes": 401900,
+      "sha256": "2a0cb0f7ab004003e497a1cf2e3da7d8913f272e0bdc3a2adfb1405bf7668383"
+    },
+    {
+      "path": "game/public/sprites/environment/landing-pad.png",
+      "bytes": 309103,
+      "sha256": "0289a03c44644d4042976f6b4da866e8a2d9dfde9a13de204c27dfe482bc4740"
+    },
+    {
+      "path": "game/public/sprites/explore/scrapyard-outpost-ground.png",
+      "bytes": 2876441,
+      "sha256": "be81a4f43e852e9cbc2d33b0302d30e00e0d6f19805c96a4ef31c07d461bf510"
+    },
+    {
+      "path": "game/public/sprites/explore/scrapyard-outpost-sky.png",
+      "bytes": 1708158,
+      "sha256": "091bfd601f4c3ec1ccc5037a91c0cc4019756608722c51e1662ac66ddbd6f107"
+    },
+    {
+      "path": "game/public/sprites/interiors/bunk.png",
+      "bytes": 200713,
+      "sha256": "bff5150ce1fa711ff87ff3e460c25eef3ecb1161a2f3e7fdc26e9f8976dbc957"
+    },
+    {
+      "path": "game/public/sprites/interiors/farm-crate.png",
+      "bytes": 264210,
+      "sha256": "ae498f918026882f9d60162761fdfc2f1f9ec93afd698f75d3d81edb93b2c657"
+    },
+    {
+      "path": "game/public/sprites/interiors/purifier-pump.png",
+      "bytes": 200142,
+      "sha256": "0bc0fedd0ef3934d8da1b602ed8ada5f42b4e8d7496929678636dbee78662dd6"
+    },
+    {
+      "path": "game/public/sprites/interiors/solar-panel.png",
+      "bytes": 199029,
+      "sha256": "47d80ec81841ad11089be5540bc0de212ca5247a86040666a1667d78e4609485"
+    },
+    {
+      "path": "game/public/sprites/props/scaffolding.png",
+      "bytes": 217309,
+      "sha256": "a88e9fa2d5932b7e3e976fc30995e182dcaf5ca0a817e221b23e946cbf996a44"
+    },
+    {
+      "path": "game/public/sprites/walls/farm.png",
+      "bytes": 315774,
+      "sha256": "5bfafd8e361c55feb349af4c720b5260bbf38dd61cd13213f10bddc5406b09d8"
+    },
+    {
+      "path": "game/public/sprites/walls/habitat.png",
+      "bytes": 330551,
+      "sha256": "c420e871d29b8438224672af80b4cf995ba43cd1c29bebbe8d5bbc416197e408"
+    },
+    {
+      "path": "game/public/sprites/walls/purifier.png",
+      "bytes": 347186,
+      "sha256": "5e8cf1efa3f0367ab82b01b04f63de0a6bb08a302dd656f6e20e5c74b0bd8b0c"
+    },
+    {
+      "path": "game/public/sprites/walls/solar.png",
+      "bytes": 345671,
+      "sha256": "f143589982693a1a33b5a5d7ba1baedf18f248887b9a04dbd58ec186ebfea33e"
+    },
+    {
+      "path": "game/public/sprites/world/farm-floor.png",
+      "bytes": 324327,
+      "sha256": "f3076604a2b9eb707da612541c908aead484d70e9952c5700a777a2034eb37c4"
+    },
+    {
+      "path": "game/public/sprites/world/farm-wall.png",
+      "bytes": 270961,
+      "sha256": "b72c0add59ee02a33f2fc0b487d8e3bfbd428871eab3a56fc62dab49ea3ddcab"
+    },
+    {
+      "path": "game/public/sprites/world/habitat-floor.png",
+      "bytes": 333483,
+      "sha256": "e62d3d1d5ccd87b210d9684a304a048bf5b21ce6f3cca797508f791616b6356d"
+    },
+    {
+      "path": "game/public/sprites/world/habitat-wall.png",
+      "bytes": 289160,
+      "sha256": "ce57438da9b0ead8c3f03be14dc14c6e8db79cbf97fd7e1114b5cd41cedbc0c9"
+    },
+    {
+      "path": "game/public/sprites/world/mine-extractor.png",
+      "bytes": 212697,
+      "sha256": "ecf608c01f75bf6329a227385a3d1745cf48da923ccb1188e2c244edd806e01a"
+    },
+    {
+      "path": "game/public/sprites/world/mine-floor.png",
+      "bytes": 392015,
+      "sha256": "23b8d3eae464c96a98c6ab157f59c04305939cae712354b6c9673283be4b73c3"
+    },
+    {
+      "path": "game/public/sprites/world/mine-wall.png",
+      "bytes": 387565,
+      "sha256": "6bc9fee30e112912115fc6144e19ca2bc57e2fafa820f0e91a8fd64bd4d1eb6e"
+    },
+    {
+      "path": "game/public/sprites/world/purifier-floor.png",
+      "bytes": 315484,
+      "sha256": "01bddfe6abf21479d44f5fcdb0f5a556cb1afc6a1fe6c5529a1eca99206c3dac"
+    },
+    {
+      "path": "game/public/sprites/world/purifier-wall.png",
+      "bytes": 286228,
+      "sha256": "045399f96107e0e76154345a15b56cb6834a245fe743c455456ececd3821b62d"
+    },
+    {
+      "path": "game/public/sprites/world/ruin-ceiling.png",
+      "bytes": 341410,
+      "sha256": "bd8e303ab5a8b80af1b8b60a3909fa488662fd13308997d7ec0a34d11c78ba0b"
+    },
+    {
+      "path": "game/public/sprites/world/ruin-column.png",
+      "bytes": 200309,
+      "sha256": "e9e8437be2c47974442883222afb2622ec8b36aee920722a2f3490e513ae96bd"
+    },
+    {
+      "path": "game/public/sprites/world/ruin-floor.png",
+      "bytes": 395757,
+      "sha256": "2ecbdfd7a8e5060bf571b7d15042dbf74aaf5fd358e0db43bdc176adf148ff42"
+    },
+    {
+      "path": "game/public/sprites/world/ruin-wall.png",
+      "bytes": 395926,
+      "sha256": "886ff7f1da477b09f5837528765ae115e21977ef906b7badf3d9f0c275ebb0b1"
+    },
+    {
+      "path": "game/public/sprites/world/solar-floor.png",
+      "bytes": 309982,
+      "sha256": "bd5094a859fd84f1a0c35ca0a50175c72f12e38fa538553191870eb9b07fafcb"
+    },
+    {
+      "path": "game/public/sprites/world/solar-wall.png",
+      "bytes": 286459,
+      "sha256": "e811fd01295a5d785f0a4c63f14acabfb1b22e5f4946b7d812b490cc2ba65f23"
+    },
+    {
+      "path": "game/public/sprites/world/station-ceiling.png",
+      "bytes": 286234,
+      "sha256": "2813e3fcda0a78f500f39032cc95d1f076f0e4133ec24588c1c03cc745759d21"
+    },
+    {
+      "path": "game/public/sprites/world/station-console.png",
+      "bytes": 213272,
+      "sha256": "c584f9901d67815b269a2bf350ef2486075a47079cefe217caea51fc715fe020"
+    },
+    {
+      "path": "game/public/sprites/world/station-floor.png",
+      "bytes": 366806,
+      "sha256": "66428b1c093042fb3e36bd58fb54d685804e3bbe44d12d8be91ea2c2d065b54e"
+    },
+    {
+      "path": "game/public/sprites/world/station-wall.png",
+      "bytes": 279960,
+      "sha256": "b34475d20ef673f9838860dfd05af2814173fbc7831d943d5c2b475728ed492f"
+    },
+    {
+      "path": "game/public/sprites/world/supply-canisters.png",
+      "bytes": 205174,
+      "sha256": "24a8766dbfb4817449fb705324101766f97fc659ece20ab61a2d389ad48cc232"
+    },
+    {
+      "path": "game/public/sprites/world/utility-ceiling.png",
+      "bytes": 284747,
+      "sha256": "ffdc5df8791dd30218b6bd545adf03bf26fb8a81862103227f374b87156ad0c3"
+    }
+  ]
+}

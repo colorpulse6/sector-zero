@@ -1,0 +1,556 @@
+{
+  "blenderVersion": "4.4.3",
+  "assets": [
+    {
+      "id": "facade-solar",
+      "meshes": 284,
+      "curves": 0,
+      "vertices": 2352,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "facade-farm",
+      "meshes": 251,
+      "curves": 1,
+      "vertices": 2104,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "facade-purifier",
+      "meshes": 276,
+      "curves": 0,
+      "vertices": 2656,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "facade-habitat",
+      "meshes": 256,
+      "curves": 0,
+      "vertices": 2160,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "landing-pad",
+      "meshes": 191,
+      "curves": 0,
+      "vertices": 1592,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "foundation",
+      "meshes": 217,
+      "curves": 18,
+      "vertices": 1864,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "scaffolding",
+      "meshes": 52,
+      "curves": 0,
+      "vertices": 928,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.310145616531372,
+        6.644974348546384e-09,
+        0.4333789348602295
+      ],
+      "cameraOrthoScale": 2.670644998550415
+    },
+    {
+      "id": "solar-panel",
+      "meshes": 68,
+      "curves": 1,
+      "vertices": 608,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.2919700145721436,
+        7.046483574413287e-08,
+        0.4203636348247528
+      ],
+      "cameraOrthoScale": 2.2304093837738037
+    },
+    {
+      "id": "farm-crate",
+      "meshes": 102,
+      "curves": 1,
+      "vertices": 848,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.2685226202011108,
+        -9.284951474342051e-09,
+        0.4351130723953247
+      ],
+      "cameraOrthoScale": 1.910747766494751
+    },
+    {
+      "id": "purifier-pump",
+      "meshes": 123,
+      "curves": 2,
+      "vertices": 1320,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.3039093017578125,
+        -5.9240129246518336e-08,
+        0.4312308430671692
+      ],
+      "cameraOrthoScale": 2.453195571899414
+    },
+    {
+      "id": "bunk",
+      "meshes": 110,
+      "curves": 0,
+      "vertices": 1056,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.290435552597046,
+        -9.938361245076521e-10,
+        0.4337485432624817
+      ],
+      "cameraOrthoScale": 2.3478341102600098
+    },
+    {
+      "id": "solar-wall",
+      "meshes": 284,
+      "curves": 0,
+      "vertices": 2352,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "solar-floor",
+      "meshes": 211,
+      "curves": 0,
+      "vertices": 1752,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "farm-wall",
+      "meshes": 251,
+      "curves": 1,
+      "vertices": 2104,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "farm-floor",
+      "meshes": 282,
+      "curves": 0,
+      "vertices": 2320,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "purifier-wall",
+      "meshes": 276,
+      "curves": 0,
+      "vertices": 2656,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "purifier-floor",
+      "meshes": 203,
+      "curves": 0,
+      "vertices": 1688,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "habitat-wall",
+      "meshes": 256,
+      "curves": 0,
+      "vertices": 2160,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "habitat-floor",
+      "meshes": 188,
+      "curves": 0,
+      "vertices": 1568,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "mine-wall",
+      "meshes": 333,
+      "curves": 0,
+      "vertices": 2756,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "mine-floor",
+      "meshes": 167,
+      "curves": 18,
+      "vertices": 1400,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "utility-ceiling",
+      "meshes": 181,
+      "curves": 0,
+      "vertices": 1544,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "station-wall",
+      "meshes": 271,
+      "curves": 2,
+      "vertices": 2296,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "station-floor",
+      "meshes": 309,
+      "curves": 0,
+      "vertices": 2536,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "station-ceiling",
+      "meshes": 181,
+      "curves": 0,
+      "vertices": 1544,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "ruin-wall",
+      "meshes": 333,
+      "curves": 1,
+      "vertices": 2756,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "ruin-floor",
+      "meshes": 133,
+      "curves": 18,
+      "vertices": 1064,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "ruin-ceiling",
+      "meshes": 177,
+      "curves": 1,
+      "vertices": 1512,
+      "cameraLocation": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "cameraRotationEuler": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cameraOrthoScale": 2.0
+    },
+    {
+      "id": "mine-extractor",
+      "meshes": 289,
+      "curves": 2,
+      "vertices": 3305,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.3197168111801147,
+        -1.2599755905284837e-08,
+        0.42835456132888794
+      ],
+      "cameraOrthoScale": 2.7822203636169434
+    },
+    {
+      "id": "station-console",
+      "meshes": 162,
+      "curves": 1,
+      "vertices": 1344,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.2914890050888062,
+        -4.698888389498279e-09,
+        0.43715208768844604
+      ],
+      "cameraOrthoScale": 2.2401137351989746
+    },
+    {
+      "id": "ruin-column",
+      "meshes": 53,
+      "curves": 1,
+      "vertices": 472,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.3032349348068237,
+        -1.8054894468377825e-08,
+        0.4352748394012451
+      ],
+      "cameraOrthoScale": 2.3403520584106445
+    },
+    {
+      "id": "supply-canisters",
+      "meshes": 61,
+      "curves": 0,
+      "vertices": 864,
+      "cameraLocation": [
+        3.700000047683716,
+        -8.0,
+        3.4000000953674316
+      ],
+      "cameraRotationEuler": [
+        1.2752935886383057,
+        -8.68121574626457e-09,
+        0.4337485134601593
+      ],
+      "cameraOrthoScale": 1.7819172143936157
+    }
+  ],
+  "externalImageFiles": [],
+  "sourcePath": "docs/assets/graphics-rollout/world/world-kit.blend",
+  "sourceBytes": 1496481,
+  "sourceSha256": "004c38b81e1212ee7b2639a64fdfc1e3d2dc6dbf22805528fc976c72976d351a",
+  "totalMeshes": 6531,
+  "totalVertices": 57481,
+  "status": "verified"
+}

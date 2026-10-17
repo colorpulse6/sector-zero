@@ -1,0 +1,166 @@
+{
+  "blender": "4.4.3",
+  "seed": 20260906,
+  "assets": [
+    {
+      "id": "facade-solar",
+      "objects": 284,
+      "builder": "solar-wall"
+    },
+    {
+      "id": "facade-farm",
+      "objects": 252,
+      "builder": "farm-wall"
+    },
+    {
+      "id": "facade-purifier",
+      "objects": 276,
+      "builder": "purifier-wall"
+    },
+    {
+      "id": "facade-habitat",
+      "objects": 256,
+      "builder": "habitat-wall"
+    },
+    {
+      "id": "landing-pad",
+      "objects": 191,
+      "builder": "landing-pad"
+    },
+    {
+      "id": "foundation",
+      "objects": 235,
+      "builder": "foundation"
+    },
+    {
+      "id": "scaffolding",
+      "objects": 52,
+      "builder": "scaffolding"
+    },
+    {
+      "id": "solar-panel",
+      "objects": 69,
+      "builder": "solar-panel"
+    },
+    {
+      "id": "farm-crate",
+      "objects": 103,
+      "builder": "farm-crate"
+    },
+    {
+      "id": "purifier-pump",
+      "objects": 125,
+      "builder": "purifier-pump"
+    },
+    {
+      "id": "bunk",
+      "objects": 110,
+      "builder": "bunk"
+    },
+    {
+      "id": "solar-wall",
+      "objects": 284,
+      "builder": "solar-wall"
+    },
+    {
+      "id": "solar-floor",
+      "objects": 211,
+      "builder": "solar-floor"
+    },
+    {
+      "id": "farm-wall",
+      "objects": 252,
+      "builder": "farm-wall"
+    },
+    {
+      "id": "farm-floor",
+      "objects": 282,
+      "builder": "farm-floor"
+    },
+    {
+      "id": "purifier-wall",
+      "objects": 276,
+      "builder": "purifier-wall"
+    },
+    {
+      "id": "purifier-floor",
+      "objects": 203,
+      "builder": "purifier-floor"
+    },
+    {
+      "id": "habitat-wall",
+      "objects": 256,
+      "builder": "habitat-wall"
+    },
+    {
+      "id": "habitat-floor",
+      "objects": 188,
+      "builder": "habitat-floor"
+    },
+    {
+      "id": "mine-wall",
+      "objects": 333,
+      "builder": "mine-wall"
+    },
+    {
+      "id": "mine-floor",
+      "objects": 185,
+      "builder": "mine-floor"
+    },
+    {
+      "id": "utility-ceiling",
+      "objects": 181,
+      "builder": "utility-ceiling"
+    },
+    {
+      "id": "station-wall",
+      "objects": 273,
+      "builder": "station-wall"
+    },
+    {
+      "id": "station-floor",
+      "objects": 309,
+      "builder": "station-floor"
+    },
+    {
+      "id": "station-ceiling",
+      "objects": 181,
+      "builder": "station-ceiling"
+    },
+    {
+      "id": "ruin-wall",
+      "objects": 334,
+      "builder": "ruin-wall"
+    },
+    {
+      "id": "ruin-floor",
+      "objects": 151,
+      "builder": "ruin-floor"
+    },
+    {
+      "id": "ruin-ceiling",
+      "objects": 178,
+      "builder": "ruin-ceiling"
+    },
+    {
+      "id": "mine-extractor",
+      "objects": 291,
+      "builder": "mine-extractor"
+    },
+    {
+      "id": "station-console",
+      "objects": 163,
+      "builder": "station-console"
+    },
+    {
+      "id": "ruin-column",
+      "objects": 54,
+      "builder": "ruin-column"
+    },
+    {
+      "id": "supply-canisters",
+      "objects": 61,
+      "builder": "supply-canisters"
+    }
+  ]
+}

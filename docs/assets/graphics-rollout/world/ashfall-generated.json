@@ -1,0 +1,28 @@
+{
+  "date": "2026-09-06",
+  "assets": [
+    {
+      "id": "ashfall-sky",
+      "runtimePath": "/sprites/explore/scrapyard-outpost-sky.png",
+      "source": "docs/assets/graphics-rollout/world/ashfall-panorama-source.png",
+      "method": "native-imagegen",
+      "description": "Native image generation: continuous rust-red Ashfall cloud panorama with one low sun, distant wreckage and mountains confined to the lower skyline. Replaces the previous visible splice; renderer now samples camera ray angles.",
+      "width": 1774,
+      "height": 887,
+      "bytes": 1708158,
+      "sha256": "091bfd601f4c3ec1ccc5037a91c0cc4019756608722c51e1662ac66ddbd6f107"
+    },
+    {
+      "id": "ashfall-ground",
+      "runtimePath": "/sprites/explore/scrapyard-outpost-ground.png",
+      "source": "docs/assets/graphics-rollout/world/ashfall-ground-source.png",
+      "method": "native-imagegen",
+      "description": "Native image generation: seamless diffuse top-down compacted basalt dust and iron-rich brown sand, sparse fine stones, restrained variation without tracks or a tile grid.",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 2876441,
+      "sha256": "be81a4f43e852e9cbc2d33b0302d30e00e0d6f19805c96a4ef31c07d461bf510"
+    }
+  ],
+  "processing": "Generated originals copied unchanged. Runtime Canvas decoding supplies power-of-two textures and mip levels; no generated source pixels edited offline."
+}

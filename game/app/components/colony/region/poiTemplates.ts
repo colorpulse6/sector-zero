@@ -1,3 +1,4 @@
+import { createCombatDressing } from "../../engine/worldArt";
 import { createKeplerBlackBoxFirstPersonState } from "../../engine/keplerBlackBoxMission";
 import { createBoardingState } from "../../engine/boardingLevel";
 import type { GroundEntity, GroundState, TileMap } from "../../engine/types";
@@ -14,6 +15,7 @@ export function createFirstPersonRuinTemplate(seed: number) {
   const state = createKeplerBlackBoxFirstPersonState(false);
   return {
     ...state,
+    ...createCombatDressing(state.map, "ruin"),
     enemies: state.enemies.map((enemy, index) => ({
       ...enemy,
       hp: enemy.hp + seededInt(seed, index + 1, 0, 1),

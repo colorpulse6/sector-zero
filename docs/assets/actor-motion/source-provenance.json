@@ -1,0 +1,115 @@
+{
+  "date": "2026-09-06",
+  "method": "Built-in imagegen for 5 front material references; Blender Cycles20 for every runtime frame. No external paid API or image CLI.",
+  "seed": "not exposed by built-in imagegen",
+  "generated_references": {
+    "voss": {
+      "input": {
+        "path": "game/public/sprites/boarding/npc-voss.png",
+        "bytes": 763513,
+        "sha256": "b2c93e6659d8137a150c64888078d84bdd9d575953851a5426d79faf78cca943"
+      },
+      "output": {
+        "path": "docs/assets/actor-motion/source/voss-front.png",
+        "bytes": 1752810,
+        "sha256": "5697e3e69f12e4efa6433cc262640b8098d62ff971bfe1eb15f7bf5f18c49059"
+      },
+      "output_identifier": "exec-eb392e70-4e97-455a-8758-6fb071e9618a",
+      "prompt": "Use case: identity-preserve. Edit target: the attached existing Voss full-body NPC reference. Create exactly this same commander as a highly detailed realistic dark science-fiction character surface reference for a 3D Blender model. Preserve his stern angular mature male face, dark swept hair, cyan optical implant on the right side of the image, long dark navy command coat with split tails, small service bars, dark utility trousers, gloves, narrow practical boots. Retain front-facing full body neutral relaxed standing pose with arms separated slightly and feet fully visible. More detailed worn cloth, stitched seams, scuffed leather, oxidized metal and realistic anatomy; clean silhouette. No oversized hands or feet, no bodybuilder anatomy, no toy look. Do not add a backpack, tablet, scanner, new equipment or new color scheme. Tall portrait composition, single person on genuine transparent background, no ground shadow. Maintain the overall positioning of the supplied reference because it will be projected as a texture onto a rig. High resolution, restrained neutral lighting, no bright rim fog, no text.",
+      "modifications": "Generated source pixels unmodified; backdrop excluded by Blender material mask. Never used as a runtime billboard."
+    },
+    "reyes": {
+      "input": {
+        "path": "game/public/sprites/boarding/npc-reyes.png",
+        "bytes": 35855,
+        "sha256": "b0af8a11b0136ba25dbc57a993b6c6834c22f6ef278bf77abb33fb630c373b6b"
+      },
+      "output": {
+        "path": "docs/assets/actor-motion/source/reyes-front.png",
+        "bytes": 1710135,
+        "sha256": "1c30f962e640d730bc2217dd0e69755935177a16e34496ed38494e0f5670f4cb"
+      },
+      "output_identifier": "exec-34818b3b-91b9-4e28-b75b-3e9f316303b8",
+      "prompt": "Use case: identity-preserve. Edit target: the attached existing Reyes full-body NPC reference. Create exactly the same female pilot identity as a highly detailed realistic dark science-fiction character surface reference for a 3D Blender model. Preserve her alert feminine face, warm medium skin, short practical dark hair, goggles resting on the forehead, worn orange pressure flight suit with dark reinforced panels, dark torso harness, utility belt and one thigh holster. Full body straight-on neutral standing stance, both arms relaxed beside body and slightly separated, natural slim athletic female proportions, small practical gloved hands and boots, feet fully visible. Detailed worn orange canvas, repaired black leather, pressure seals, stitching, scuffs and buckles. Avoid bodybuilder shoulders, inflated sleeves, oversized boots, male face, toy plastic. Do not add backpack, scanner, tablet or weapon held toward viewer. Tall portrait image, exactly one character on genuine transparent background, no ground shadow, no text. Maintain existing costume and identity and approximate full-body positioning for UV projection; neutral lighting, detailed realistic 3D/game concept finish.",
+      "modifications": "Generated source pixels unmodified; backdrop excluded by Blender material mask. Never used as a runtime billboard."
+    },
+    "kael": {
+      "input": {
+        "path": "game/public/sprites/boarding/npc-kael.png",
+        "bytes": 36884,
+        "sha256": "0724125764885ac20351bae7a72defc8667c24eb3d84ebbb11c1267cbeaad16f"
+      },
+      "output": {
+        "path": "docs/assets/actor-motion/source/kael-front.png",
+        "bytes": 1732772,
+        "sha256": "fabf78977c12dfb97c02940ae57fb1d66feb1fcee2603faef1ebb53f48d6c7ef"
+      },
+      "output_identifier": "exec-1cef525a-536d-4cda-ac63-85eaa6ad5f09",
+      "prompt": "Use case: identity-preserve. Edit target is the supplied existing game NPC. Create a detailed realistic dark science-fiction front surface reference of exactly this same person, face and costume. Same slim young adult science officer, pale worn off-white lab coat, dark underlayers, tousled brown-grey hair, calm intelligent face. Preserve exact face and costume; practical black narrow boots and bare hands. No new instruments held. Full body straight front neutral standing stance, arms relaxed at sides but slightly apart, realistic slender anatomy with normal sized hands and feet. Subject extends from 4% to96% of image height, centered. Maintain the old identity and silhouette while adding visibly stitched worn fabric, scuffed leather, metal and real human anatomy. Dark desaturated industrial palette, restrained neutral lighting. Single character, portrait composition, flat solid very dark charcoal background #101010 (no checkerboard, no transparency simulation), no shadows on background, no text or border. No plastic toy style or inflated muscles.",
+      "modifications": "Generated source pixels unmodified; backdrop excluded by Blender material mask. Never used as a runtime billboard."
+    },
+    "survivor": {
+      "input": {
+        "path": "game/public/sprites/boarding/npc-survivor.png",
+        "bytes": 35226,
+        "sha256": "624e1ab8557fe38e97dd886b9ba305abe0866d6a00d7321b79e9dfab87c8be96"
+      },
+      "output": {
+        "path": "docs/assets/actor-motion/source/survivor-front.png",
+        "bytes": 1738517,
+        "sha256": "b2b4f8bec9b7b99600b39f06a31aefbf03c673c55c2e80e3627d404f9e3f3a7f"
+      },
+      "output_identifier": "exec-379b4cac-a39b-4788-9a2d-223f820357f5",
+      "prompt": "Use case: identity-preserve. Edit target is the supplied existing game NPC. Create a detailed realistic dark science-fiction front surface reference of exactly this same person, face and costume. Same weary male survivor, shaggy short dark hair, stubble, tired weathered face, thin worn charcoal work shirt with rolled sleeves, damaged dark trousers with visible torn knee patches, narrow battered boots, bare forearms and hands. Preserve vulnerability and practical clothing; no armor or new equipment. Full body straight front neutral standing stance, arms relaxed at sides but slightly apart, realistic slender anatomy with normal sized hands and feet. Subject extends from 4% to96% of image height, centered. Maintain the old identity and silhouette while adding visibly stitched worn fabric, scuffed leather, metal and real human anatomy. Dark desaturated industrial palette, restrained neutral lighting. Single character, portrait composition, flat solid very dark charcoal background #101010 (no checkerboard, no transparency simulation), no shadows on background, no text or border. No plastic toy style or inflated muscles.",
+      "modifications": "Generated source pixels unmodified; backdrop excluded by Blender material mask. Never used as a runtime billboard."
+    },
+    "scavenger": {
+      "input": {
+        "path": "game/public/sprites/boarding/npc-scavenger.png",
+        "bytes": 38227,
+        "sha256": "6d138fb21da84836662473690ec32284c6b5dce91f540ee3492a19a4c082a6e3"
+      },
+      "output": {
+        "path": "docs/assets/actor-motion/source/scavenger-front.png",
+        "bytes": 1850388,
+        "sha256": "2591a71efbad52bf98f0457df8671426276055023cf997780921fe61554681b1"
+      },
+      "output_identifier": "exec-41ac4d0c-7c5f-4440-bc81-24a995f50461",
+      "prompt": "Use case: identity-preserve. Edit target is the supplied existing game NPC. Create a detailed realistic dark science-fiction front surface reference of exactly this same person, face and costume. Same enclosed scavenger identity: face completely concealed by deep grey hood and dark respirator with two tiny amber eye reflections, practical worn grey segmented pressure armor, layered dark straps/pouches, battered trousers and boots. Keep the arms relaxed slightly apart so separate hands and torso can be used as texture references. Do not reveal a human face or add a rifle. Full body straight front neutral standing stance, arms relaxed at sides but slightly apart, realistic slender anatomy with normal sized hands and feet. Subject extends from 4% to96% of image height, centered. Maintain the old identity and silhouette while adding visibly stitched worn fabric, scuffed leather, metal and real human anatomy. Dark desaturated industrial palette, restrained neutral lighting. Single character, portrait composition, flat solid very dark charcoal background #101010 (no checkerboard, no transparency simulation), no shadows on background, no text or border. No plastic toy style or inflated muscles.",
+      "modifications": "Generated source pixels unmodified; backdrop excluded by Blender material mask. Never used as a runtime billboard."
+    }
+  },
+  "existing_references": {
+    "hub-bartender": {
+      "path": "docs/assets/source/m3-hubs/cantina/hub-bartender-billboard-source.png",
+      "bytes": 1780497,
+      "sha256": "7c90308404cb3a5dabae1f12683cd217cd7cb212d5bf4bfc04f034621cd75b6a"
+    },
+    "hub-regular": {
+      "path": "docs/assets/source/m3-hubs/cantina/hub-regular-billboard-source.png",
+      "bytes": 1766320,
+      "sha256": "06b09988c670c01d61b949c4ca1276e81afd7092a296e4d93ec874522cb16283"
+    },
+    "hub-signal-chaser": {
+      "path": "docs/assets/source/m3-hubs/cantina/hub-signal-chaser-billboard-source.png",
+      "bytes": 1736468,
+      "sha256": "c542524c5f4f074c1778fd087949e2d407e8de8b2e4ea4448fbb89900ae5ce7f"
+    },
+    "hostile": {
+      "path": "game/public/sprites/boarding/enemy-fp-front.png",
+      "bytes": 634368,
+      "sha256": "9d4f8ed578d5cdddf11458ad0d4ff6a35f8331e44faf3fbde7514dd62dcdb34d"
+    }
+  },
+  "shared_licensed_base": {
+    "path": "docs/assets/quartermaster-motion/source/quartermaster-base.blend",
+    "bytes": 19956664,
+    "sha256": "208a5435dafb40a082fc764b2bc4411dcc728246577a7175c7905ae51da9e9ba"
+  },
+  "source_license": "CC0-1.0; retained License_Standard.txt",
+  "blender_generator": {
+    "path": "game/scripts/actors/render_actors.py",
+    "bytes": 40109,
+    "sha256": "c18fc4532235788c73b73b742aff1b2a23be623c15e061f42ee4acde88422826"
+  }
+}
