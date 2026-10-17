@@ -911,6 +911,7 @@ export function GalaxyAtlasScreen({
               <div
                 ref={fieldRef}
                 data-sector-field="true"
+                data-scene={sceneReady ? "3d" : "plan"}
                 data-atlas-level={viewport.viewLevel}
                 data-route-band={routeMarker?.band}
                 data-route-state={routeMarker?.state}

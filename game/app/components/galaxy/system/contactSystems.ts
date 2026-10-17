@@ -119,6 +119,12 @@ function titleCase(label: string): string {
   return label.toLowerCase().replace(/(^|\s)\S/g, letter => letter.toUpperCase());
 }
 
+/** Star class for a fact: authored anchors keep theirs, procedural contacts are seeded. */
+export function starClassForFact(fact: AtlasCellFact): StarClass {
+  const authored = fact.contactId ? AUTHORED_CONTACT_SYSTEMS[fact.contactId] : undefined;
+  return authored?.starClass ?? STAR_CLASSES[fact.stableSeed % STAR_CLASSES.length];
+}
+
 /** Build the presented system for one stellar or signal fact, or null when fog hides it entirely. */
 export function starSystemForFact(run: GalaxyRunState, fact: AtlasCellFact): StarSystem | null {
   if (fact.kind !== "stellar_contact" && fact.kind !== "signal") return null;
@@ -131,7 +137,7 @@ export function starSystemForFact(run: GalaxyRunState, fact: AtlasCellFact): Sta
   if (!systemKnowledge) return null;
 
   const authored = fact.contactId ? AUTHORED_CONTACT_SYSTEMS[fact.contactId] : undefined;
-  const starClass: StarClass = authored?.starClass ?? STAR_CLASSES[fact.stableSeed % STAR_CLASSES.length];
+  const starClass: StarClass = starClassForFact(fact);
   // Fog: anything known only as a signal carries no worlds, whatever the underlying fact is.
   const planetIds: PlanetId[] = fact.kind === "signal" || systemKnowledge === "signal"
     ? []

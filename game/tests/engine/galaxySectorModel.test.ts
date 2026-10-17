@@ -5,7 +5,7 @@ import { planRoute } from "../../app/components/engine/galaxy/routePlanner";
 import { coord } from "../../app/components/engine/galaxy/coordinates";
 import { migrateSave } from "../../app/components/engine/save";
 import { applyGalaxyFixture, findGalaxyFixture } from "../../app/components/galaxy/devFixtures";
-import { buildSectorModel, highestBand, sectorStars } from "../../app/components/galaxy/sector/sectorModel";
+import { buildSectorModel, elevationForFact, highestBand, sectorStars } from "../../app/components/galaxy/sector/sectorModel";
 import {
   cameraRadiusForZoom,
   cellSceneSize,
@@ -59,6 +59,27 @@ test("a fresh run yields the five known contacts in listbox order, with the colo
   assert.equal(signal.contactId, null);
   assert.equal(signal.knowledge, "signal");
   assert.match(signal.targetId, /^coordinate:/);
+});
+
+test("stars carry their class colour and a deterministic elevation; signals carry no class", () => {
+  const stars = sectorStars(createFreshGalaxyRun());
+  const byId = new Map(stars.map(star => [star.targetId, star]));
+  assert.equal(byId.get("contact:vanguard")?.starClass, "F");
+  assert.equal(byId.get("contact:ashfall")?.starClass, "G");
+  assert.equal(byId.get("contact:hostile-picket")?.starClass, "M");
+  assert.equal(byId.get("contact:kepler")?.starClass, "K");
+  const signal = stars.find(star => star.knowledge === "signal")!;
+  assert.equal(signal.starClass, null);
+  for (const star of stars) assert.ok(star.elevation >= -1 && star.elevation <= 1, `${star.targetId} ${star.elevation}`);
+  assert.deepEqual(sectorStars(createFreshGalaxyRun()).map(star => star.elevation), stars.map(star => star.elevation));
+  const dense = sectorStars(fixtureRun("dense-sector"));
+  const distinct = new Set(dense.map(star => star.elevation.toFixed(3)));
+  assert.ok(distinct.size > dense.length * 0.6, `elevations should spread, got ${distinct.size} of ${dense.length}`);
+  assert.ok(dense.some(star => star.elevation > 0.4) && dense.some(star => star.elevation < -0.4));
+  // Golden values: saved sectors must not reshuffle their heights if the hash is touched.
+  assert.equal(elevationForFact("contact:ashfall"), 0.179);
+  assert.equal(elevationForFact("contact:vanguard"), -0.553);
+  assert.equal(elevationForFact("signal:0001"), 0.768);
 });
 
 test("a route plan becomes planned legs coloured by the overall band; a blind target is exposed", () => {

@@ -11,7 +11,8 @@ import type {
 import type { AtlasTarget, RoutePlan } from "../../engine/galaxy/routePlanner";
 import { sameCoordinate } from "../../engine/galaxy/coordinates";
 import { selectedTargetIdFor } from "../atlasViewport";
-import { contactIdForPlanet, contactLabel, latestKnowledge } from "../system/contactSystems";
+import { contactIdForPlanet, contactLabel, latestKnowledge, starClassForFact } from "../system/contactSystems";
+import type { StarClass } from "../system/starSystems";
 
 /**
  * Pure view model for the Galaxy Atlas sector field.
@@ -33,6 +34,10 @@ export interface SectorStar {
   threat: ThreatBand;
   colonies: number;
   vessel: boolean;
+  /** Spectral class for the star colour; null while only a signal is known (fog). */
+  starClass: StarClass | null;
+  /** Decorative height above or below the galactic plane, in [-1, 1], stable per fact id. */
+  elevation: number;
 }
 
 export type SectorLegState = "planned" | "done" | "active" | "pending";
@@ -85,6 +90,19 @@ function colonyCount(run: GalaxyRunState, contactId: string | null): number {
   return run.colonies.filter(colony => contactIdForPlanet(colony.planetId) === contactId).length;
 }
 
+/** FNV-1a over the fact id, mapped to [-1, 1]; decorative only, never part of game state. */
+export function elevationForFact(factId: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < factId.length; index += 1) {
+    hash ^= factId.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  hash = (hash ^ (hash >>> 16)) >>> 0;
+  hash = Math.imul(hash, 0x7feb352d) >>> 0;
+  hash = (hash ^ (hash >>> 15)) >>> 0;
+  return Math.round(((hash % 2001) / 1000 - 1) * 1000) / 1000;
+}
+
 /** Known contacts in the same order the CONTACTS listbox uses. */
 export function sectorStars(run: GalaxyRunState): SectorStar[] {
   return safeValues(run.atlas.materializedFacts)
@@ -110,6 +128,8 @@ export function sectorStars(run: GalaxyRunState): SectorStar[] {
         threat: observedThreat(run, fact.contactId ? [fact.id, fact.contactId] : [fact.id]),
         colonies: colonyCount(run, fact.contactId),
         vessel,
+        starClass: knowledge.state === "signal" || fact.kind === "signal" ? null : starClassForFact(fact),
+        elevation: elevationForFact(fact.id),
       };
     })
     .filter((star): star is SectorStar => star !== null)

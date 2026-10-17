@@ -195,6 +195,24 @@
 .sz-atlas-label strong { display: block; font-size: 13px; font-weight: 500; color: #e4e2d6; }
 .sz-atlas-label > span { display: block; margin-top: 3px; color: #9baca9; font-size: 8px; letter-spacing: .1em; }
 .sz-atlas-landmark[data-labelled="false"] .sz-atlas-label { display: none; }
+/* Live 3D scene: the rendered stars carry the look. Landmark rings become invisible hit targets
+   with a faint ring on hover or focus; the plan fallback keeps its visible dots. */
+.sz-atlas-field[data-scene="3d"] { background: #010309; }
+.sz-atlas-field[data-scene="3d"]::after { background: none; }
+.sz-atlas-field[data-scene="3d"] .sz-atlas-marker,
+.sz-atlas-field[data-scene="3d"] .sz-atlas-landmark[data-knowledge="visited"] .sz-atlas-marker,
+.sz-atlas-field[data-scene="3d"] .sz-atlas-landmark[data-colony="true"] .sz-atlas-marker,
+.sz-atlas-field[data-scene="3d"] .sz-atlas-landmark[data-selected="true"] .sz-atlas-marker {
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.sz-atlas-field[data-scene="3d"] .sz-atlas-marker::before { opacity: 0; }
+.sz-atlas-field[data-scene="3d"] .sz-atlas-landmark:hover .sz-atlas-marker,
+.sz-atlas-field[data-scene="3d"] .sz-atlas-landmark:focus-visible .sz-atlas-marker { border-color: #d8f4f080; }
+.sz-atlas-field[data-scene="3d"] .sz-atlas-label { text-shadow: 0 0 6px #000, 0 1px 10px #000; }
 .sz-atlas-landmark[data-visible="false"] { opacity: 0; pointer-events: none; }
 .sz-atlas-field[data-atlas-level="galaxy"] .sz-atlas-landmark[data-labelled="false"] { visibility: hidden; pointer-events: none; }
 .sz-atlas-field[data-atlas-level="galaxy"] .sz-atlas-marker,
