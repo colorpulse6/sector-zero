@@ -245,7 +245,6 @@ export async function createSystemScene(canvas: HTMLCanvasElement): Promise<Syst
   selectionMaterial.alpha = 0.9;
   const selectionRing = MeshBuilder.CreateTorus("selection", { diameter: 0.55, thickness: 0.018, tessellation: 40 }, scene);
   selectionRing.material = selectionMaterial;
-  selectionRing.rotation.x = Math.PI / 2;
   selectionRing.isPickable = false;
   selectionRing.setEnabled(false);
 
@@ -383,7 +382,6 @@ export async function createSystemScene(canvas: HTMLCanvasElement): Promise<Syst
         }, scene));
         ring.material = ringMaterial;
         ring.parent = mesh;
-        ring.rotation.x = Math.PI / 2;
       }
       const orbitMaterial = trackMaterial(new StandardMaterial(`orbit-${planet.planetId}`, scene));
       orbitMaterial.disableLighting = true;
@@ -395,7 +393,6 @@ export async function createSystemScene(canvas: HTMLCanvasElement): Promise<Syst
         tessellation: 64,
       }, scene));
       orbit.material = orbitMaterial;
-      orbit.rotation.x = Math.PI / 2;
       bodies.push({
         id: `planet:${planet.planetId}`,
         kind: "planet",
