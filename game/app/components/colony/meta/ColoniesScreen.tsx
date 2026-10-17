@@ -17,6 +17,7 @@ export interface ColoniesScreenProps {
   onExit: () => void;
   onDescend?: (colonyId: string) => void;
   onRegionMap?: (colonyId: string) => void;
+  onSystemMap?: () => void;
   focusActive?: boolean;
   onRestoreFocus?: () => void;
 }
@@ -33,7 +34,7 @@ export function bootstrapColonyEvent(save: SaveData): ColonyEvent {
   });
 }
 
-export function ColoniesScreen({ save, onDispatch, onExit, onDescend, onRegionMap, focusActive = true, onRestoreFocus }: ColoniesScreenProps) {
+export function ColoniesScreen({ save, onDispatch, onExit, onDescend, onRegionMap, onSystemMap, focusActive = true, onRestoreFocus }: ColoniesScreenProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   useModalFocus({ active: focusActive, rootRef, onEscape: onExit, restoreFocus: onRestoreFocus,
     initialFocus: () => rootRef.current?.querySelector<HTMLElement>("[data-modal-initial]") ?? null });
@@ -58,7 +59,7 @@ export function ColoniesScreen({ save, onDispatch, onExit, onDescend, onRegionMa
       {save.colonies.length === 0 ? (
         <ColonyEmptyState onFound={handleFound} />
       ) : (
-        <PopulatedView save={save} onDispatch={onDispatch} onExit={onExit} onDescend={onDescend} onRegionMap={onRegionMap} />
+        <PopulatedView save={save} onDispatch={onDispatch} onExit={onExit} onDescend={onDescend} onRegionMap={onRegionMap} onSystemMap={onSystemMap} />
       )}
     </div>
   );
@@ -70,12 +71,14 @@ function PopulatedView({
   onExit,
   onDescend,
   onRegionMap,
+  onSystemMap,
 }: {
   save: SaveData;
   onDispatch: (event: ColonyEvent) => void;
   onExit: () => void;
   onDescend?: (colonyId: string) => void;
   onRegionMap?: (colonyId: string) => void;
+  onSystemMap?: () => void;
 }) {
   const [selectedColonyId, setSelectedColonyId] = useState(save.colonies[0]?.id ?? "");
   const colony = save.colonies.find(entry => entry.id === selectedColonyId) ?? save.colonies[0];
@@ -118,7 +121,12 @@ function PopulatedView({
         onBack={onExit}
         onDescend={onDescend ? () => onDescend(colony.id) : undefined}
       />
-      {onRegionMap && <div style={{ padding: 16 }}><button onClick={() => onRegionMap(colony.id)}>REGION — VIEW ONLY</button></div>}
+      {(onRegionMap || onSystemMap) && (
+        <div style={{ padding: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {onRegionMap && <button onClick={() => onRegionMap(colony.id)}>REGION — VIEW ONLY</button>}
+          {onSystemMap && <button onClick={onSystemMap}>SYSTEM MAP</button>}
+        </div>
+      )}
       <ColonyResourcePanel colony={colony} />
       <ColonyMetrics colony={colony} />
       <ColonyBuildingsList colony={colony} />

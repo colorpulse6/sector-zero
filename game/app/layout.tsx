@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import "./components/OpeningScreen.css";
 import "./components/colony/meta/RegionMapScreen.css";
+import "./components/galaxy/system/SystemAtlasScreen.css";
 
 const spaceMono = Space_Mono({
   variable: "--font-space-mono",

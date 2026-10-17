@@ -116,6 +116,7 @@ import {
 } from "./colony";
 import type { ColonyEvent, SceneStack } from "./colony";
 import { ColoniesScreen } from "./colony/meta";
+import { SystemAtlasScreen } from "./galaxy/system/SystemAtlasScreen";
 import { PoiOutcomeScreen, RegionMapScreen } from "./colony/meta";
 import { foundOutpost } from "./colony/region/siteEconomy";
 import { dispatchPoi, regionExpeditionRequestId, startRegionExpedition } from "./colony/region/poiDispatcher";
@@ -313,6 +314,7 @@ export default function Game() {
   const [sceneStack, setSceneStack] = useState<SceneStack | null>(null);
   const [exitMenuOpen, setExitMenuOpen] = useState(false);
   const [regionMapSurface, setRegionMapSurface] = useState<RegionMapSurface | null>(null);
+  const [systemAtlasOpen, setSystemAtlasOpen] = useState(false);
   const [activePoi, setActivePoi] = useState<ActivePoiDescriptor | null>(null);
   const [activePoiExperience, setActivePoiExperience] = useState<ExperienceMode | null>(null);
   const [pendingPoiResolution, setPendingPoiResolution] = useState<PendingPoiResolution | LegacyPreparedPoiResolution | null>(null);
@@ -1701,6 +1703,13 @@ export default function Game() {
         setGameState(launched.gameState);
         setSceneStack(launched.sceneStack);
         commitCockpitState({ ...cockpitStateRef.current, screen: "hub" });
+        return;
+      }
+
+      if (action === "goto-system-map") {
+        ensureAudio();
+        setShowStartScreen(false);
+        setSystemAtlasOpen(true);
         return;
       }
 
@@ -3221,13 +3230,14 @@ export default function Game() {
       {/* Colonies DOM overlay — mounts over the canvas when cockpit screen is "colonies" */}
       {showCockpit && cockpitState.screen === "colonies" && (
         <ColoniesScreen
-          focusActive={!regionMapSurface && !pendingPoiPresentation && !persistenceNavigationLocked}
+          focusActive={!regionMapSurface && !systemAtlasOpen && !pendingPoiPresentation && !persistenceNavigationLocked}
           onRestoreFocus={() => { if (coloniesInvokerRef.current?.getClientRects().length) coloniesInvokerRef.current.focus(); }}
           save={saveData}
           onDispatch={handleColonyDispatch}
           onExit={handleColoniesExit}
           onDescend={handleDescend}
           onRegionMap={(colonyId) => setRegionMapSurface({ source: "cockpit", actionsEnabled: false, originColonyId: colonyId, experience: "legacy" })}
+          onSystemMap={() => setSystemAtlasOpen(true)}
         />
       )}
 
@@ -3246,6 +3256,17 @@ export default function Game() {
             const originColonyId = sceneStack.current.state.colonyContext?.colonyId;
             if (!originColonyId) return;
             setRegionMapSurface({ source: "landing-pad", actionsEnabled: true, originColonyId, experience: "legacy" });
+          }}
+        />
+      )}
+      {systemAtlasOpen && (
+        <SystemAtlasScreen
+          focusActive={!regionMapSurface && !pendingPoiPresentation && !persistenceNavigationLocked}
+          save={saveData}
+          onClose={() => { if (!persistenceNavigationLocked) setSystemAtlasOpen(false); }}
+          onOpenRegion={(colonyId) => {
+            if (persistenceNavigationLocked) return;
+            setRegionMapSurface({ source: "cockpit", actionsEnabled: false, originColonyId: colonyId, experience: "legacy" });
           }}
         />
       )}
