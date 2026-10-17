@@ -5,6 +5,8 @@ import type { GalaxyCoordinate, ThreatBand } from "../../engine/galaxy/galaxyTyp
 import { selectedTargetIdFor } from "../atlasViewport";
 import { STAR_COLORS, type StarClass } from "../system/starSystems";
 import {
+  ATLAS_SKY_SEED,
+  COLONY_GOLD_HEX,
   createRandom,
   NEBULA_PALETTES,
   paintDustField,
@@ -12,6 +14,8 @@ import {
   paintGlow,
   paintNebula,
   paintSky,
+  SIGNAL_GLOW_HEX,
+  STAR_GLOW_HEX,
 } from "./sectorArt";
 import type { SectorModel, SectorRouteLeg } from "./sectorModel";
 import { cameraRadiusForZoom, cellSceneSize, SECTOR_SCENE_SIZE, toScene } from "./sectorSpace";
@@ -55,25 +59,15 @@ const BAND_RANK: Readonly<Record<ThreatBand, number>> = Object.freeze({
 });
 
 /** Saturated halo colours per spectral class; STAR_COLORS stay the pale core palette. */
-const GLOW_HEX: Readonly<Record<StarClass, string>> = Object.freeze({
-  O: "#7d9bff",
-  B: "#93b2ff",
-  A: "#c6d6ff",
-  F: "#fff1d2",
-  G: "#ffdc8a",
-  K: "#ffa95e",
-  M: "#ff7450",
-});
-
-/** Signals show no class colour (fog): a dim grey-violet instead. */
-const SIGNAL_HEX = "#9d95c4";
-const COLONY_HEX = "#e3c77a";
+const GLOW_HEX = STAR_GLOW_HEX;
+const SIGNAL_HEX = SIGNAL_GLOW_HEX;
+const COLONY_HEX = COLONY_GOLD_HEX;
 const BLIND_HEX = "#c6a6ef";
 
 /** Scene units a star rises or sinks at elevation ±1. Decorative; the plane holds the coordinate. */
 const ELEVATION_SCALE = 3.4;
 const GLIDE_MS = 250;
-const SKY_SEED = 0x5ec702;
+const SKY_SEED = ATLAS_SKY_SEED;
 const DUST_SEED = 0x0d0570;
 const NEBULA_SEED = 0x6e6b1a;
 const ALPHA_ADD = 1;

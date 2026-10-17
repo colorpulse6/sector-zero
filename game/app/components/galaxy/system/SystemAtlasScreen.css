@@ -94,6 +94,24 @@
 .sz-system-action:disabled { opacity: .45; cursor: not-allowed; }
 .sz-system :is(button, [role="option"]):focus-visible { outline: 2px solid #e0fff9; outline-offset: 5px; }
 
+/* 3D scene live: the canvas carries the look. Planet markers become quiet hit targets over the
+   rendered worlds; neighbour markers stay small but visible because they are pinned to the edge. */
+.sz-system-field[data-scene="3d"] { background: #010309; }
+.sz-system-field[data-scene="3d"]::after { background: radial-gradient(ellipse at center, transparent 64%, #00000059 100%); }
+.sz-system-field[data-scene="3d"] .sz-system-corner { border-color: #9fb6d2; opacity: .45; }
+.sz-system-field[data-scene="3d"] .sz-system-marker { background: transparent; border-color: transparent; box-shadow: none; }
+.sz-system-field[data-scene="3d"] .sz-system-marker::before { content: none; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark:hover .sz-system-marker { border-color: #d0f6ec59; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark[aria-selected="true"] .sz-system-marker { border-color: #d0f6ec8c; background: transparent; box-shadow: none; animation: none; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark[data-colony="true"] .sz-system-marker { border-color: #e3c77a4d; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark[data-kind="system"] { display: grid; place-items: center; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark[data-kind="system"] .sz-system-marker { width: 30px; height: 30px; border-color: #c9d7ea52; background: #02060ccc; box-shadow: 0 0 14px #9fb6ff26; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark[data-kind="system"] .sz-system-marker::before { content: ""; width: 6px; height: 6px; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark[data-knowledge="signal"] .sz-system-marker { border-style: dashed; border-color: #9d95c466; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark[data-kind="system"][aria-selected="true"] .sz-system-marker { border-color: #d0f6ec; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark-label { top: 50px; }
+.sz-system-field[data-scene="3d"] .sz-system-landmark-label > span { color: #a7b4c4; }
+
 @media (min-width: 1500px) { .sz-system-layout { grid-template-columns: minmax(0, 1fr) 350px; gap: 40px; } }
 @media (max-width: 900px) {
   .sz-system-shell { padding: 22px 20px; }
@@ -152,6 +170,14 @@
   height: 100%;
   flex: 1;
   min-height: 220px;
+}
+/* Narrow screens stack the embedded view like the dialog: chart, then detail, page-scrolled. */
+@media (max-width: 900px) {
+  .sz-system.sz-system--embedded { height: auto; overflow: visible; }
+  .sz-system--embedded .sz-system-shell { height: auto; }
+  .sz-system--embedded .sz-system-layout { grid-template-columns: minmax(0, 1fr); }
+  .sz-system--embedded .sz-system-chart { height: auto; }
+  .sz-system--embedded .sz-system-field { height: 410px; flex: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

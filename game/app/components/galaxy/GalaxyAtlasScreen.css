@@ -475,6 +475,8 @@
 @media (max-width: 900px) {
   .sz-atlas-shell { padding: 22px 16px 28px; }
   .sz-atlas-field { height: 470px; }
+  /* The SYSTEM level stacks its own chart and detail, so the field grows to fit them. */
+  .sz-atlas[data-atlas-view="system"] .sz-atlas-field { height: auto; overflow: visible; }
 }
 @media (max-width: 390px) {
   .sz-atlas-shell { padding: 16px 12px 24px; }

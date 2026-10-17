@@ -4,7 +4,26 @@
  * every session paints the same sky. Nothing here touches Babylon, `window` or `document`.
  */
 
+import type { StarClass } from "../system/starSystems";
+
 export type Random = () => number;
+
+/** Saturated halo colours per spectral class, shared by the sector and system scenes. */
+export const STAR_GLOW_HEX: Readonly<Record<StarClass, string>> = Object.freeze({
+  O: "#7d9bff",
+  B: "#93b2ff",
+  A: "#c6d6ff",
+  F: "#fff1d2",
+  G: "#ffdc8a",
+  K: "#ffa95e",
+  M: "#ff7450",
+});
+
+/** Signals show no class colour (fog): a dim grey-violet instead. */
+export const SIGNAL_GLOW_HEX = "#9d95c4";
+export const COLONY_GOLD_HEX = "#e3c77a";
+/** One sky for every atlas level, so moving between levels keeps the same backdrop. */
+export const ATLAS_SKY_SEED = 0x5ec702;
 
 /** mulberry32: small, fast, good enough for decoration. */
 export function createRandom(seed: number): Random {

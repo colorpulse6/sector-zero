@@ -12,6 +12,7 @@ import {
   DEFAULT_CATALOGUE,
   findSystem,
   homeSystem,
+  nearestNeighbours,
   neighboursOf,
   planetName,
   systemLabel,
@@ -100,13 +101,15 @@ export function SystemAtlasScreen({
   const [systemId, setSystemId] = useState(() => findSystem(initialSystemId ?? "", catalogue)?.id ?? homeSystem(catalogue).id);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     const system = findSystem(initialSystemId ?? "", catalogue) ?? homeSystem(catalogue);
-    return selectionFor(system, neighboursOf(system.id, catalogue), initialSelectedId);
+    return selectionFor(system, nearestNeighbours(system.id, catalogue), initialSelectedId);
   });
   const [sceneReady, setSceneReady] = useState(false);
   const [gliding, setGliding] = useState(false);
 
   const system = findSystem(systemId, catalogue) ?? homeSystem(catalogue);
-  const neighbours = useMemo(() => neighboursOf(system.id, catalogue), [system.id, catalogue]);
+  // Every known system counts in the chips; only the nearest few are drawn so a dense sector stays legible.
+  const allNeighbours = useMemo(() => neighboursOf(system.id, catalogue), [system.id, catalogue]);
+  const neighbours = useMemo(() => nearestNeighbours(system.id, catalogue), [system.id, catalogue]);
   const landmarks = planSystemLayout(system, neighbours, save.missionsSinceStart);
   const colonyPlanetIds = save.colonies.map(colony => colony.planetId);
   const colonyKey = save.colonies.map(colony => `${colony.id}:${colony.planetId}`).join("|");
@@ -156,7 +159,7 @@ export function SystemAtlasScreen({
       const latest = latestRef.current;
       const cat = catalogueRef.current;
       const current = findSystem(latest.systemId, cat) ?? homeSystem(cat);
-      handle.setSystem(current, neighboursOf(current.id, cat), latest.cycle, latest.colonies);
+      handle.setSystem(current, nearestNeighbours(current.id, cat), latest.cycle, latest.colonies);
       handle.focusLandmark(latest.selectedId);
       unsubscribe = handle.onFrame((projected: ProjectedLandmark[]) => {
         const next = new Map<string, LivePoint>();
@@ -194,8 +197,9 @@ export function SystemAtlasScreen({
   }, [selectedId, sceneReady, systemId]);
 
   const home = homeSystem(catalogue);
-  const charted = neighbours.filter(entry => entry.system.knowledge !== "signal").length;
-  const signals = neighbours.filter(entry => entry.system.knowledge === "signal").length;
+  const charted = allNeighbours.filter(entry => entry.system.knowledge !== "signal").length;
+  const signals = allNeighbours.filter(entry => entry.system.knowledge === "signal").length;
+  const neighbourCount = neighbours.length < allNeighbours.length ? `${neighbours.length} OF ${allNeighbours.length}` : `${neighbours.length}`;
   const selectedPlanet = system.planets.find(planet => `planet:${planet.planetId}` === selectedId) ?? null;
   const selectedNeighbour = neighbours.find(entry => entry.system.id === selectedId) ?? null;
   const selectedColony = selectedPlanet ? save.colonies.find(colony => colony.planetId === selectedPlanet.planetId) ?? null : null;
@@ -239,7 +243,7 @@ export function SystemAtlasScreen({
     glidingRef.current = true;
     setGliding(true);
     try {
-      await sceneRef.current?.glideToSystem(next.id);
+      await sceneRef.current?.glideToSystem(next, nearestNeighbours(next.id, catalogue));
     } catch {
       // A failed glide still changes the view; the flat plan stays usable.
     }
@@ -247,7 +251,7 @@ export function SystemAtlasScreen({
     if (!mountedRef.current) return;
     setGliding(false);
     setSystemId(next.id);
-    setSelectedId(selectionFor(next, neighboursOf(next.id, catalogue)));
+    setSelectedId(selectionFor(next, nearestNeighbours(next.id, catalogue)));
     livePoints.current = new Map();
   };
 
@@ -290,12 +294,13 @@ export function SystemAtlasScreen({
           <div className="sz-system-chart">
             <div className="sz-system-map-caption" aria-hidden="true">
               <span>{hiddenSystem ? "UNRESOLVED CONTACT" : `${system.starClass}-CLASS STAR`}</span>
-              <span>{hiddenSystem ? "SIGNAL ONLY" : `${system.planets.length} WORLDS · ${neighbours.length} NEIGHBOURS`}</span>
+              <span>{hiddenSystem ? "SIGNAL ONLY" : `${system.planets.length} WORLDS · ${neighbourCount} NEIGHBOURS`}</span>
             </div>
             <div
               className="sz-system-field"
               ref={fieldRef}
               data-system-field="true"
+              data-scene={sceneReady ? "3d" : "plan"}
               onPointerEnter={() => sceneRef.current?.setSpinPaused(true)}
               onPointerLeave={() => sceneRef.current?.setSpinPaused(false)}
             >

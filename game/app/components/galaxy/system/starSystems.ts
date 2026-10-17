@@ -167,6 +167,18 @@ export function neighboursOf(systemId: string, catalogue: SystemCatalogue = DEFA
     .sort((left, right) => left.distanceUnits - right.distanceUnits || left.system.id.localeCompare(right.system.id));
 }
 
+/** The system view shows only the nearest systems so a dense sector stays legible. */
+export const NEIGHBOUR_LIMIT = 6;
+
+/** The nearest `limit` neighbours of a system (see `neighboursOf`), nearest first. */
+export function nearestNeighbours(
+  systemId: string,
+  catalogue: SystemCatalogue = DEFAULT_CATALOGUE,
+  limit: number = NEIGHBOUR_LIMIT,
+): SystemNeighbour[] {
+  return neighboursOf(systemId, catalogue).slice(0, Math.max(0, Math.floor(limit)));
+}
+
 /** Label shown for a system; signal-only systems never disclose their name. */
 export function systemLabel(system: StarSystem): string {
   return system.knowledge === "signal" ? "UNKNOWN SYSTEM" : system.name;

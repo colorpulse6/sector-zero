@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   STAR_SYSTEMS,
+  NEIGHBOUR_LIMIT,
   homeSystem,
+  nearestNeighbours,
   neighboursOf,
   planetScenePosition,
   systemForPlanet,
@@ -42,6 +44,26 @@ test("neighbours sort nearest first with positive distances and stable bearings"
     assert.ok(Number.isFinite(neighbour.bearing));
   }
   assert.deepEqual(neighboursOf("system:nowhere"), []);
+});
+
+test("nearest neighbours cap a dense catalogue to the closest systems in order", () => {
+  const home = homeSystem();
+  const crowd = Array.from({ length: 40 }, (_, index) => ({
+    ...home,
+    id: `system:crowd-${index}`,
+    knowledge: "charted" as const,
+    position: { x: Math.cos(index) * (index + 1), y: Math.sin(index) * (index + 1) },
+    planets: [],
+  }));
+  const catalogue = { systems: [home, ...crowd], homeId: home.id };
+  const all = neighboursOf(home.id, catalogue);
+  const nearest = nearestNeighbours(home.id, catalogue);
+  assert.equal(all.length, 40);
+  assert.equal(nearest.length, NEIGHBOUR_LIMIT);
+  assert.deepEqual(nearest.map(entry => entry.system.id), all.slice(0, NEIGHBOUR_LIMIT).map(entry => entry.system.id));
+  assert.equal(nearestNeighbours(home.id, catalogue, 2).length, 2);
+  assert.equal(nearestNeighbours(home.id, catalogue, -1).length, 0);
+  assert.equal(nearestNeighbours(home.id).length, Math.min(NEIGHBOUR_LIMIT, STAR_SYSTEMS.length - 1));
 });
 
 test("signal-only systems never disclose their name", () => {
