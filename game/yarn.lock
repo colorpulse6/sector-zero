@@ -12,6 +12,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@babylonjs/core@npm:^9.31.0":
+  version: 9.31.0
+  resolution: "@babylonjs/core@npm:9.31.0"
+  checksum: 10c0/9c3e36f67d34a27c893de90ae5a5ea64587a3d0207d290d327adb0ff4d214ccda28a53bdeea3c480448e14b5a1d79e8a36cdc0866bc9a682209d8e72b4160098
+  languageName: node
+  linkType: hard
+
 "@emnapi/core@npm:^1.8.1":
   version: 1.9.2
   resolution: "@emnapi/core@npm:1.9.2"
@@ -1761,6 +1768,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "sector-zero-game@workspace:."
   dependencies:
+    "@babylonjs/core": "npm:^9.31.0"
     "@playwright/test": "npm:^1.61.1"
     "@tailwindcss/postcss": "npm:^4.0.5"
     "@types/node": "npm:^20"
