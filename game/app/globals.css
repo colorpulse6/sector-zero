@@ -20,6 +20,11 @@ body {
   user-select: none;
 }
 
+/* The opening screen scrolls independently; gameplay retains touch ownership. */
+body:has([data-opening-screen]) {
+  touch-action: pan-y;
+}
+
 @keyframes sectorCrawl {
   0% { transform: translateY(100%); }
   100% { transform: translateY(-100%); }

@@ -17,10 +17,16 @@ export interface ColonyNpc {
   path: Tile[];                   // remaining waypoints to targetTile ([] once arrived)
   pathComputed: boolean;          // A* run once on first step
   millSeed: number;               // deterministic idle-mill offset key
-  millCounter?: number;           // accumulates dtF while idle-milling; drives the deterministic drift
-  millAnchorX?: number;           // idle-mill anchor, captured from posX/posY the first frame the
-  millAnchorY?: number;           //   path empties — mill drifts around this, so an unreachable
-                                  //   target mills at spawn instead of teleporting to the target
+  /** A stationary pause, short local walk, pause, then return to this visit's station. */
+  localMotion?: {
+    phase: "pause" | "outbound" | "awayPause" | "return";
+    remainingMs: number;
+    anchorX: number; anchorY: number;
+    awayX: number; awayY: number;
+  };
+  millCounter?: number; // Legacy visit field; no longer drives continuous movement.
+  quartermasterMotion?: import("./quartermasterMotion").QuartermasterMotion;
+  quartermasterStepRemainderMs?: number;
 }
 
 export interface GeneratedNpcs { fpNpcs: FPNPC[]; sidecar: ColonyNpc[]; }

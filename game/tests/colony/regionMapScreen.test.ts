@@ -25,7 +25,7 @@ test("region map hides unknown stats and cockpit mode is view-only", () => {
   assert.doesNotMatch(html, />SURVEY/);
   assert.doesNotMatch(html, />TRAVEL/);
   assert.doesNotMatch(html, /Found outpost at/);
-  assert.match(html, /COCKPIT VIEW[^<]*—[^<]*REGION ACTIONS ARE UNAVAILABLE/);
+  assert.match(html, /Descend to the landing pad to survey or travel\./);
 });
 
 test("node options contain no direct actions and one selected action renders outside the listbox", () => {
@@ -65,7 +65,7 @@ test("selected origin and cockpit selections render zero actions with explicit u
     save: save(), originColonyId: "home", source: "landing-pad", actionsEnabled: true, onClose() {},
   }));
   assert.equal((originHtml.match(/data-region-action="true"/g) ?? []).length, 0);
-  assert.match(originHtml, /ORIGIN NODE[^<]*—[^<]*NO ACTION AVAILABLE/);
+  assert.match(originHtml, /Choose a destination to plan your next expedition\./);
 
   const surveyed = surveyRegionNode(save(), "home", "ashfall-cinder-relay");
   assert.equal(surveyed.ok, true);
@@ -78,7 +78,7 @@ test("selected origin and cockpit selections render zero actions with explicit u
     onClose() {}, onTravel() {},
   }));
   assert.equal((cockpitHtml.match(/data-region-action="true"/g) ?? []).length, 0);
-  assert.match(cockpitHtml, /COCKPIT VIEW[^<]*—[^<]*REGION ACTIONS ARE UNAVAILABLE/);
+  assert.match(cockpitHtml, /Descend to the landing pad to survey or travel\./);
 });
 
 test("selected POIs disclose the correct encounter label only after intel permits it", () => {
@@ -128,7 +128,7 @@ test("unknown selection reveals no real name, engine, template, stats, or action
     onSurvey() {}, onTravel() {}, onFound() {},
   }));
   assert.match(html, /UNKNOWN SIGNAL/);
-  assert.match(html, /INTEL INSUFFICIENT/);
+  assert.match(html, /Explore connected sites to learn more about this signal\./);
   assert.doesNotMatch(html, /Glassknife Canyon|ground-canyon-glassknife|GROUND-RUN|ORE DENSITY|WATER TABLE|BUILDABLE SLOTS/);
   assert.equal((html.match(/data-region-action="true"/g) ?? []).length, 0);
 });
@@ -147,9 +147,95 @@ test("Region source labels and return controls do not imply action permission", 
       assert.match(html, new RegExp(provenance));
       assert.match(html, new RegExp(back));
       assert.equal((html.match(/data-region-action="true"/g) ?? []).length, actionsEnabled ? 1 : 0);
-      if (!actionsEnabled) assert.match(html, /REGION ACTIONS ARE UNAVAILABLE/);
+      if (!actionsEnabled) assert.match(html, /View only/);
       if (source !== "cockpit") assert.doesNotMatch(html, /COCKPIT VIEW/);
       if (source !== "landing-pad") assert.doesNotMatch(html, /PAD LINK/);
     }
   }
+});
+
+test("landmarks and route endpoints use the same saved coordinate space", () => {
+  const state = save();
+  const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
+    save: state, originColonyId: "home", source: "landing-pad", actionsEnabled: true,
+    initialSelectedNodeId: "ashfall-cinder-relay", onClose() {}, onSurvey() {},
+  }));
+  const map = state.planets.find(planet => planet.id === "ashfall")!.regionMap;
+  for (const node of map.nodes) {
+    const label = node.intel === "unknown" ? "UNKNOWN SIGNAL" : node.name;
+    const options = html.match(/<[^>]+role="option"[^>]*>/g) ?? [];
+    assert.ok(options.some(option => option.includes(`aria-label="${label}, ${node.intel}"`)
+      && option.includes(`left:${node.coords.x}%`) && option.includes(`top:${node.coords.y}%`)), label);
+  }
+  const origin = map.nodes.find(node => node.id === "ashfall-forward-camp")!;
+  const selected = map.nodes.find(node => node.id === "ashfall-cinder-relay")!;
+  assert.match(html, new RegExp(`x1="${origin.coords.x}" y1="${origin.coords.y}" x2="${selected.coords.x}" y2="${selected.coords.y}"[^>]*data-route-state="selected"`));
+  assert.equal((html.match(/data-region-origin="true"/g) ?? []).length, 1);
+  assert.match(html, /EXPEDITION ORIGIN/);
+});
+
+test("unknown landmarks and routes reveal no hidden identity or destination type", () => {
+  const state = save();
+  const map = state.planets.find(planet => planet.id === "ashfall")!.regionMap;
+  // A latent contact not connected to known space must not be rendered at all.
+  map.nodes.push({ ...map.nodes[3], id: "hidden-node", name: "Hidden Fortress", coords: { x: 6, y: 8 } });
+  map.edges.push(["ashfall-glassknife-canyon", "hidden-node"]);
+  const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
+    save: state, originColonyId: "home", source: "landing-pad", actionsEnabled: true,
+    initialSelectedNodeId: "ashfall-glassknife-canyon", onClose() {},
+  }));
+  assert.doesNotMatch(html, /Hidden Fortress|hidden-node|glassknife|ironreach|GROUND-RUN/);
+  assert.equal((html.match(/data-landmark="unknown"/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /data-route-state="selected"/);
+  assert.match(html, /data-route-state="unknown"/);
+});
+
+test("site statistics and named connections are optional while the founding cost stays visible", () => {
+  const surveyed = surveyRegionNode(save(), "home", "ashfall-basalt-basin");
+  assert.ok(surveyed.ok);
+  if (!surveyed.ok) return;
+  const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
+    save: surveyed.save, originColonyId: "home", source: "landing-pad", actionsEnabled: true,
+    initialSelectedNodeId: "ashfall-basalt-basin", onClose() {}, onFound() {},
+  }));
+  assert.match(html, /<details[^>]*><summary[^>]*>SITE INTEL<\/summary>[\s\S]*ORE DENSITY/);
+  assert.doesNotMatch(html, /<details[^>]*open/);
+  assert.match(html, /FOUND OUTPOST · 300 METAL · 50 FOOD · 50 WATER/);
+  assert.doesNotMatch(html.slice(0, html.indexOf('data-region-detail-panel="true"')), /Connections:/);
+});
+
+test("an eligible action without a connected callback is visibly disabled", () => {
+  const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
+    save: save(), originColonyId: "home", source: "landing-pad", actionsEnabled: true,
+    initialSelectedNodeId: "ashfall-cinder-relay", onClose() {},
+  }));
+  assert.match(html, /<button[^>]*data-region-action="true"[^>]*disabled=""/);
+});
+
+test("rumored colony sites do not disclose statistics inside collapsed site intel", () => {
+  const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
+    save: save(), originColonyId: "home", source: "landing-pad", actionsEnabled: true,
+    initialSelectedNodeId: "ashfall-basalt-basin", onClose() {}, onSurvey() {},
+  }));
+  assert.doesNotMatch(html, /ORE DENSITY|WATER TABLE|BUILDABLE SLOTS/);
+});
+
+test("a founded outpost becomes the route origin without moving saved landmarks", () => {
+  const surveyed = surveyRegionNode(save(), "home", "ashfall-basalt-basin");
+  assert.ok(surveyed.ok);
+  if (!surveyed.ok) return;
+  const founded = foundOutpost(surveyed.save, "home", "ashfall-basalt-basin", "Basin Camp");
+  assert.ok(founded.ok);
+  if (!founded.ok) return;
+  const html = renderToStaticMarkup(React.createElement(RegionMapScreen, {
+    save: founded.save, originColonyId: founded.colonyId, source: "landing-pad", actionsEnabled: true,
+    initialSelectedNodeId: "ashfall-glassknife-canyon", onClose() {}, onSurvey() {},
+  }));
+  const origin = (html.match(/<[^>]+role="option"[^>]*>/g) ?? []).find(option => option.includes('data-region-origin="true"'));
+  assert.ok(origin?.includes('aria-label="Basalt Basin, claimed"'));
+  const lines = html.match(/<line[^>]*data-route-state="selected"[^>]*>/g) ?? [];
+  assert.equal(lines.length, 1);
+  const nodes = founded.save.planets.find(planet => planet.id === "ashfall")!.regionMap.nodes;
+  const basin = nodes.find(node => node.id === "ashfall-basalt-basin")!;
+  assert.match(lines[0], new RegExp(`x1="${basin.coords.x}" y1="${basin.coords.y}"`));
 });

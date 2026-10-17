@@ -5,55 +5,69 @@ export interface GameMode {
   description: string;
   slug: string;
   image: string;
+  imageDescription: string;
 }
 
 export const GAME_MODES: GameMode[] = [
   {
     id: "shooter",
-    name: "Vertical Shooter",
-    tagline: "MODE 01",
-    description: "8 worlds, 40 levels, multi-phase bosses. The original campaign.",
+    name: "Space combat",
+    tagline: "01",
+    description:
+      "Pilot your fighter through enemy formations and take on the bosses guarding eight hostile sectors.",
     slug: "vertical-shooter",
     image: "/images/modes/shooter.png",
-  },
-  {
-    id: "ground",
-    name: "Ground Run & Gun",
-    tagline: "MODE 02",
-    description: "Contra-style side-scrolling with gravity, jumping, and 4+ enemy types.",
-    slug: "ground-run-and-gun",
-    image: "/images/modes/ground.png",
+    imageDescription: "a fighter battles through the Hollow Core",
   },
   {
     id: "boarding",
-    name: "Ship Boarding",
-    tagline: "MODE 03",
-    description: "Top-down dungeon crawler with corridors and line-of-sight AI.",
+    name: "Boarding actions",
+    tagline: "02",
+    description:
+      "Breach enemy ships. Fight through narrow corridors, break line of sight, and hunt for salvage.",
     slug: "ship-boarding",
     image: "/images/modes/boarding.png",
+    imageDescription: "a top-down view of an enemy ship interior",
   },
   {
     id: "raycaster",
-    name: "First-Person Raycaster",
-    tagline: "MODE 04",
-    description: "Wolfenstein-style 3D with textured walls, billboard enemies, and hitscan combat.",
+    name: "First-person exploration",
+    tagline: "03",
+    description:
+      "Step out of the cockpit. Explore abandoned stations and face the threats waiting around the next corner.",
     slug: "first-person-raycaster",
     image: "/images/modes/raycaster.png",
+    imageDescription: "a first-person view down a station corridor",
+  },
+  {
+    id: "ground",
+    name: "Ground assault",
+    tagline: "04",
+    description:
+      "Take the fight planetside. Jump between platforms and push through hostile terrain on foot.",
+    slug: "ground-run-and-gun",
+    image: "/images/modes/ground.png",
+    imageDescription: "a pilot crosses a side-scrolling alien landscape",
   },
   {
     id: "turret",
-    name: "Ship Turret",
-    tagline: "MODE 05",
-    description: "Star Wars gunner mode with mouse-aim crosshair and 5 waves of enemies.",
+    name: "Turret defense",
+    tagline: "05",
+    description:
+      "Take the Vanguard’s gunner seat. Track incoming fighters and hold the line through waves of attackers.",
     slug: "ship-turret",
     image: "/images/modes/turret.png",
+    imageDescription: "the gunner’s view from the Vanguard turret",
   },
   {
     id: "multiphase",
-    name: "Multi-Phase Levels",
-    tagline: "MODE 06",
-    description: "Cinematic transitions chain different modes into epic multi-part missions.",
+    name: "Multi-phase missions",
+    tagline: "06",
+    description:
+      "Go from space combat to boarding and beyond in connected missions that test every part of your loadout.",
     slug: "multi-phase-levels",
     image: "/images/modes/multiphase.png",
+    imageDescription:
+      "the Revenant boss encounter during a multi-phase mission",
   },
 ];

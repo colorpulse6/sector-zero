@@ -1,0 +1,10 @@
+{
+  "commit": "working-tree",
+  "project": "desktop-keyboard",
+  "viewport": "1280x900",
+  "inputMethod": "keyboard",
+  "saveFixture": "freshLegacy + shipped day fixture + 300 credits + Verdania completed + introSeen",
+  "route": "Legacy -> Colonies -> Descend -> walk to Quartermaster -> dialogue -> Hull Repair Kit -> reload",
+  "expectedOutcome": "Real colony rendering crops the animated atlas; dialogue freezes player, weapon, and visible actor pixels; one purchase persists 300 credits to zero and one Hull Repair Kit through reload.",
+  "observedOutcome": "Atlas, dialogue freeze, exact purchase write, and reload assertions passed without page errors."
+}

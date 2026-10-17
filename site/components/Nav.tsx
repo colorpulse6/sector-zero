@@ -1,39 +1,46 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const navLinks = [
-  { href: "/news", label: "NEWS" },
-  { href: "/about", label: "ABOUT" },
-  { href: "/coming-soon", label: "COLONY" },
+  { href: "/about/", label: "About" },
+  { href: "/news/", label: "Updates" },
+  { href: "/coming-soon/", label: "Colony" },
 ];
 
 export default function Nav() {
+  const pathname = usePathname();
+
   return (
-    <nav className="flex items-center justify-between px-6 py-4 border-b border-border-hud bg-deep-lighter/50">
-      <Link
-        href="/"
-        className="font-mono text-sm font-bold tracking-[0.2em] text-cyan-accent"
-      >
-        SECTOR ZERO
-      </Link>
-      <div className="flex gap-6">
-        {navLinks.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="font-mono text-xs tracking-wider text-text-muted hover:text-cyan-accent transition-colors"
-          >
-            {link.label}
-          </Link>
-        ))}
+    <header className="site-header">
+      <nav aria-label="Main navigation" className="site-nav page-grid">
+        <Link href="/" className="wordmark" aria-label="Sector Zero home">
+          <span>SECTOR</span>
+          <span>ZERO</span>
+        </Link>
+        <div className="nav-links">
+          {navLinks.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              aria-current={
+                pathname === href.slice(0, -1) || pathname.startsWith(href)
+                  ? "page"
+                  : undefined
+              }
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
         <a
           href="https://colorpulse6.github.io/sector-zero/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-mono text-xs tracking-wider text-cyan-accent hover:text-white transition-colors"
+          className="cta-button nav-play"
         >
-          PLAY
+          Play now <span aria-hidden="true">↗</span>
         </a>
-      </div>
-    </nav>
+      </nav>
+    </header>
   );
 }

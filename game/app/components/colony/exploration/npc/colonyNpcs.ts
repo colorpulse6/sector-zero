@@ -21,6 +21,7 @@
 import type { FPNPC, FPDialogLine, FPShopItem, BoardingMap } from "../../../engine/types";
 import type { ColonyState, ColonyBuilding, FactionStanding, GameClock } from "../../shared/colonyTypes";
 import { SPRITES } from "../../../engine/sprites";
+import { initializeNpcPresentation } from "../../../engine/actorPresentation";
 import { OUTPOST_TEMPLATE, type Slot } from "../outpostTemplate";
 import { BUILDING_FOOTPRINTS } from "../buildingTiles";
 import { assignSlots } from "../colonyLayout";
@@ -208,7 +209,13 @@ export function generateColonyNpcs(
       canBuy: spec.canBuy,
       walkSprites: spec.walkSprites,
       idleSprites: spec.idleSprites,
+      atlasClockOwner: "colony",
+      ...(spec.kind === "quartermaster" ? { atlasAnimation: {
+        set: "quartermaster" as const, facingAngle: Math.PI / 2,
+        action: "idle" as const, clockMs: 0, walkDistance: 0,
+      } } : {}),
     });
+    initializeNpcPresentation(fpNpcs[fpNpcs.length - 1]);
   };
 
   let id = 0;

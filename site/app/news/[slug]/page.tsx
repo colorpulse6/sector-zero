@@ -17,47 +17,40 @@ interface PostPageProps {
 export default async function PostPage({ params }: PostPageProps) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
-
-  if (!post) {
-    notFound();
-  }
+  if (!post) notFound();
 
   return (
-    <article className="py-12 px-6 max-w-3xl mx-auto">
-      <Link
-        href="/news"
-        className="font-mono text-xs text-text-muted hover:text-cyan-accent transition-colors tracking-wider"
-      >
-        &larr; BACK TO TRANSMISSIONS
+    <article className="article-page page-grid">
+      <Link href="/news/" className="text-link">
+        ← All transmissions
       </Link>
-
-      <div className="mt-6 mb-4 flex items-center gap-3">
-        <span className="font-mono text-[0.6rem] tracking-wider text-purple-accent/80 border border-purple-accent/30 px-1.5 py-0.5">
-          {post.tag}
-        </span>
-        <span className="font-mono text-[0.6rem] text-text-muted">
-          {post.date}
-        </span>
-      </div>
-
-      <h1 className="font-mono text-2xl tracking-wider text-cyan-accent mb-6">
-        {post.title}
-      </h1>
-
+      <header className="article-heading">
+        <div className="post-meta">
+          <span>{post.tag}</span>
+          <time dateTime={post.date}>{post.date}</time>
+        </div>
+        <h1>{post.title}</h1>
+        <p className="page-lead">{post.summary}</p>
+      </header>
       {post.heroImage && (
-        <div className="relative w-full h-64 mb-8 border border-border-hud overflow-hidden">
+        <figure className="article-hero">
           <Image
             src={withBasePath(post.heroImage)}
-            alt={post.title}
-            fill
-            className="object-contain bg-deep-lighter"
+            alt={`Gameplay capture for ${post.title}`}
+            width={470}
+            height={805}
+            priority
+            sizes="(max-width: 600px) 90vw, 360px"
           />
-        </div>
+          <figcaption>Sector Zero · In-game capture</figcaption>
+        </figure>
       )}
-
-      <div className="prose prose-invert prose-sm max-w-none [&>p]:text-text-primary [&>p]:text-sm [&>p]:leading-relaxed [&>p]:mb-4">
+      <div className="article-body">
         <MDXRemote source={post.content} components={mdxComponents} />
       </div>
+      <Link href="/news/" className="text-link article-back">
+        ← More transmissions
+      </Link>
     </article>
   );
 }

@@ -3,33 +3,27 @@ import Image from "next/image";
 import type { GameMode } from "@/data/modes";
 import { withBasePath } from "@/lib/basePath";
 
-interface ModeCardProps {
-  mode: GameMode;
-}
-
-export default function ModeCard({ mode }: ModeCardProps) {
+export default function ModeCard({ mode }: { mode: GameMode }) {
   return (
-    <Link href={`/news/${mode.slug}`} className="mode-card block">
-      <div className="flex items-stretch">
-        <div className="w-24 h-24 relative bg-gradient-to-br from-purple-accent/20 to-cyan-accent/10 flex-shrink-0">
-          <Image
-            src={withBasePath(mode.image)}
-            alt={mode.name}
-            fill
-            className="object-cover"
-          />
-        </div>
-        <div className="p-3 flex-1 min-w-0">
-          <p className="font-mono text-[0.6rem] tracking-wider text-purple-accent/80">
-            {mode.tagline}
-          </p>
-          <h3 className="font-mono text-sm text-cyan-accent mt-0.5 truncate">
-            {mode.name}
-          </h3>
-          <p className="text-xs text-text-muted mt-1 line-clamp-2">
-            {mode.description}
-          </p>
-        </div>
+    <Link href={`/news/${mode.slug}/`} className="mode-card">
+      <div className="mode-preview">
+        <span className="preview-index" aria-hidden="true">
+          {mode.tagline}
+        </span>
+        <Image
+          src={withBasePath(mode.image)}
+          alt={`${mode.name} gameplay: ${mode.imageDescription}`}
+          fill
+          sizes="(max-width: 600px) 90vw, (max-width: 960px) 44vw, 350px"
+          className="gameplay-image"
+        />
+      </div>
+      <div className="mode-copy">
+        <h3>
+          {mode.name}
+          <span aria-hidden="true">↗</span>
+        </h3>
+        <p>{mode.description}</p>
       </div>
     </Link>
   );

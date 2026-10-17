@@ -1,0 +1,1389 @@
+{
+  "schemaVersion": 1,
+  "seed": 20260906,
+  "generator": "game/scripts/world-assets/render_world.py",
+  "sourceBlend": "docs/assets/graphics-rollout/world/world-kit.blend",
+  "provenance": "Original parameterized Blender geometry and procedural materials; no imported models, image textures, paid service or external runtime dependency.",
+  "runtimeDimensions": [
+    512,
+    512
+  ],
+  "sourceTileDimensions": [
+    512,
+    512
+  ],
+  "sourcePropDimensions": [
+    1024,
+    1024
+  ],
+  "assets": [
+    {
+      "id": "facade-solar",
+      "kind": "tile",
+      "builder": "solar-wall",
+      "path": "walls/solar.png",
+      "runtimePath": "/sprites/walls/solar.png",
+      "productionPath": "game/public/sprites/walls/solar.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/facade-solar.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 416968,
+      "sourceSha256": "ef6f505cc01a4182bccb251e17c760012d5d527aeea5034194cb8207ff4ac5da",
+      "bytes": 345671,
+      "sha256": "f143589982693a1a33b5a5d7ba1baedf18f248887b9a04dbd58ec186ebfea33e",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.298,
+        "wrapYMeanRgbDelta": 11.409,
+        "interiorXMeanRgbDelta": 3.773,
+        "interiorYMeanRgbDelta": 4.471,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.298,
+        "wrapYMeanRgbDelta": 11.409,
+        "interiorXMeanRgbDelta": 3.773,
+        "interiorYMeanRgbDelta": 4.471,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "facade-farm",
+      "kind": "tile",
+      "builder": "farm-wall",
+      "path": "walls/farm.png",
+      "runtimePath": "/sprites/walls/farm.png",
+      "productionPath": "game/public/sprites/walls/farm.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/facade-farm.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 390211,
+      "sourceSha256": "51c12146ea46d813684291ceddf2102747033b3e736b2cd64b1fc704e5cdd1d2",
+      "bytes": 315774,
+      "sha256": "5bfafd8e361c55feb349af4c720b5260bbf38dd61cd13213f10bddc5406b09d8",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 17.387,
+        "wrapYMeanRgbDelta": 13.441,
+        "interiorXMeanRgbDelta": 3.732,
+        "interiorYMeanRgbDelta": 3.571,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 17.387,
+        "wrapYMeanRgbDelta": 13.441,
+        "interiorXMeanRgbDelta": 3.732,
+        "interiorYMeanRgbDelta": 3.571,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "facade-purifier",
+      "kind": "tile",
+      "builder": "purifier-wall",
+      "path": "walls/purifier.png",
+      "runtimePath": "/sprites/walls/purifier.png",
+      "productionPath": "game/public/sprites/walls/purifier.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/facade-purifier.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 418849,
+      "sourceSha256": "546fc3159229b3b877da03a79bb894b3542a58dd9f323d272303d634522d3ae7",
+      "bytes": 347186,
+      "sha256": "5e8cf1efa3f0367ab82b01b04f63de0a6bb08a302dd656f6e20e5c74b0bd8b0c",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 16.005,
+        "wrapYMeanRgbDelta": 12.967,
+        "interiorXMeanRgbDelta": 4.019,
+        "interiorYMeanRgbDelta": 3.209,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 16.005,
+        "wrapYMeanRgbDelta": 12.967,
+        "interiorXMeanRgbDelta": 4.019,
+        "interiorYMeanRgbDelta": 3.209,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "facade-habitat",
+      "kind": "tile",
+      "builder": "habitat-wall",
+      "path": "walls/habitat.png",
+      "runtimePath": "/sprites/walls/habitat.png",
+      "productionPath": "game/public/sprites/walls/habitat.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/facade-habitat.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 401552,
+      "sourceSha256": "8ac9332e19de61c3adc50c1f48ece12c09d3b67bdcfd26da3d00d7b766c4e854",
+      "bytes": 330551,
+      "sha256": "c420e871d29b8438224672af80b4cf995ba43cd1c29bebbe8d5bbc416197e408",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 14.04,
+        "wrapYMeanRgbDelta": 10.945,
+        "interiorXMeanRgbDelta": 3.536,
+        "interiorYMeanRgbDelta": 3.094,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 14.04,
+        "wrapYMeanRgbDelta": 10.945,
+        "interiorXMeanRgbDelta": 3.536,
+        "interiorYMeanRgbDelta": 3.094,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "landing-pad",
+      "kind": "tile",
+      "builder": "landing-pad",
+      "path": "environment/landing-pad.png",
+      "runtimePath": "/sprites/environment/landing-pad.png",
+      "productionPath": "game/public/sprites/environment/landing-pad.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/landing-pad.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 395521,
+      "sourceSha256": "7f81d18a687f20ccccfe92460a0aee8e82a2966052ee7e4b652ced9cf19b0380",
+      "bytes": 309103,
+      "sha256": "0289a03c44644d4042976f6b4da866e8a2d9dfde9a13de204c27dfe482bc4740",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.962,
+        "wrapYMeanRgbDelta": 11.003,
+        "interiorXMeanRgbDelta": 3.189,
+        "interiorYMeanRgbDelta": 2.378,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.962,
+        "wrapYMeanRgbDelta": 11.003,
+        "interiorXMeanRgbDelta": 3.189,
+        "interiorYMeanRgbDelta": 2.378,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "foundation",
+      "kind": "tile",
+      "builder": "foundation",
+      "path": "environment/foundation.png",
+      "runtimePath": "/sprites/environment/foundation.png",
+      "productionPath": "game/public/sprites/environment/foundation.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/foundation.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 463963,
+      "sourceSha256": "b75ca402b8436731189a57c99dfe55eec853b11311ead2b8cd4faf6f6c3d9199",
+      "bytes": 401900,
+      "sha256": "2a0cb0f7ab004003e497a1cf2e3da7d8913f272e0bdc3a2adfb1405bf7668383",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.48,
+        "wrapYMeanRgbDelta": 10.913,
+        "interiorXMeanRgbDelta": 4.922,
+        "interiorYMeanRgbDelta": 4.419,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.48,
+        "wrapYMeanRgbDelta": 10.913,
+        "interiorXMeanRgbDelta": 4.922,
+        "interiorYMeanRgbDelta": 4.419,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "scaffolding",
+      "kind": "prop",
+      "builder": "scaffolding",
+      "path": "props/scaffolding.png",
+      "runtimePath": "/sprites/props/scaffolding.png",
+      "productionPath": "game/public/sprites/props/scaffolding.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/scaffolding.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        118,
+        56,
+        907,
+        984
+      ],
+      "runtimeAlphaBounds": [
+        39,
+        2,
+        473,
+        512
+      ],
+      "sourceBytes": 1069357,
+      "sourceSha256": "5a7f912229b6b6d1cac9a945ff7a6cbf93b1a6ee335a3337476d364a2eee3990",
+      "bytes": 217309,
+      "sha256": "a88e9fa2d5932b7e3e976fc30995e182dcaf5ca0a817e221b23e946cbf996a44",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "solar-panel",
+      "kind": "prop",
+      "builder": "solar-panel",
+      "path": "interiors/solar-panel.png",
+      "runtimePath": "/sprites/interiors/solar-panel.png",
+      "productionPath": "game/public/sprites/interiors/solar-panel.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/solar-panel.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        109,
+        50,
+        895,
+        976
+      ],
+      "runtimeAlphaBounds": [
+        39,
+        2,
+        472,
+        512
+      ],
+      "sourceBytes": 1040894,
+      "sourceSha256": "46a3e3bbe3f7013f5409e9573d33299c330af72a61c9553bb7f90899d16c61b0",
+      "bytes": 199029,
+      "sha256": "47d80ec81841ad11089be5540bc0de212ca5247a86040666a1667d78e4609485",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "farm-crate",
+      "kind": "prop",
+      "builder": "farm-crate",
+      "path": "interiors/farm-crate.png",
+      "runtimePath": "/sprites/interiors/farm-crate.png",
+      "productionPath": "game/public/sprites/interiors/farm-crate.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/farm-crate.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        59,
+        150,
+        983,
+        952
+      ],
+      "runtimeAlphaBounds": [
+        12,
+        88,
+        500,
+        512
+      ],
+      "sourceBytes": 1222502,
+      "sourceSha256": "f295af0e33b76db95bc31967d465e28d4934652a46414ead606d32d783d850e8",
+      "bytes": 264210,
+      "sha256": "ae498f918026882f9d60162761fdfc2f1f9ec93afd698f75d3d81edb93b2c657",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "purifier-pump",
+      "kind": "prop",
+      "builder": "purifier-pump",
+      "path": "interiors/purifier-pump.png",
+      "runtimePath": "/sprites/interiors/purifier-pump.png",
+      "productionPath": "game/public/sprites/interiors/purifier-pump.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/purifier-pump.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        144,
+        108,
+        866,
+        985
+      ],
+      "runtimeAlphaBounds": [
+        46,
+        2,
+        466,
+        512
+      ],
+      "sourceBytes": 970270,
+      "sourceSha256": "b5e7bf4dcb648a89383c23e2547fa2905e5b37605e307b9f852381bb12c48082",
+      "bytes": 200142,
+      "sha256": "0bc0fedd0ef3934d8da1b602ed8ada5f42b4e8d7496929678636dbee78662dd6",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "bunk",
+      "kind": "prop",
+      "builder": "bunk",
+      "path": "interiors/bunk.png",
+      "runtimePath": "/sprites/interiors/bunk.png",
+      "productionPath": "game/public/sprites/interiors/bunk.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/bunk.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        50,
+        67,
+        978,
+        969
+      ],
+      "runtimeAlphaBounds": [
+        12,
+        38,
+        500,
+        512
+      ],
+      "sourceBytes": 1060246,
+      "sourceSha256": "fde6d2b5ac4130b34f7a7ce731fcd67b0b6ded024787db33a4b98b785d44be7f",
+      "bytes": 200713,
+      "sha256": "bff5150ce1fa711ff87ff3e460c25eef3ecb1161a2f3e7fdc26e9f8976dbc957",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "solar-wall",
+      "kind": "tile",
+      "builder": "solar-wall",
+      "path": "world/solar-wall.png",
+      "runtimePath": "/sprites/world/solar-wall.png",
+      "productionPath": "game/public/sprites/world/solar-wall.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/solar-wall.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 373844,
+      "sourceSha256": "a89ced1ae15834026a6ad3db033aafe8b4989b7e41f23b5720291f2c7cca646c",
+      "bytes": 286459,
+      "sha256": "e811fd01295a5d785f0a4c63f14acabfb1b22e5f4946b7d812b490cc2ba65f23",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.737,
+        "wrapYMeanRgbDelta": 11.301,
+        "interiorXMeanRgbDelta": 2.943,
+        "interiorYMeanRgbDelta": 3.672,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.737,
+        "wrapYMeanRgbDelta": 11.301,
+        "interiorXMeanRgbDelta": 2.943,
+        "interiorYMeanRgbDelta": 3.672,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "solar-floor",
+      "kind": "tile",
+      "builder": "solar-floor",
+      "path": "world/solar-floor.png",
+      "runtimePath": "/sprites/world/solar-floor.png",
+      "productionPath": "game/public/sprites/world/solar-floor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/solar-floor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 393963,
+      "sourceSha256": "ebb9b4a9d7d79fc31ace9227f075e311bc345d92012bfa695ba5a7618635159a",
+      "bytes": 309982,
+      "sha256": "bd5094a859fd84f1a0c35ca0a50175c72f12e38fa538553191870eb9b07fafcb",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 17.011,
+        "wrapYMeanRgbDelta": 11.133,
+        "interiorXMeanRgbDelta": 3.609,
+        "interiorYMeanRgbDelta": 2.508,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 17.011,
+        "wrapYMeanRgbDelta": 11.133,
+        "interiorXMeanRgbDelta": 3.609,
+        "interiorYMeanRgbDelta": 2.508,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "farm-wall",
+      "kind": "tile",
+      "builder": "farm-wall",
+      "path": "world/farm-wall.png",
+      "runtimePath": "/sprites/world/farm-wall.png",
+      "productionPath": "game/public/sprites/world/farm-wall.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/farm-wall.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 357564,
+      "sourceSha256": "1f9156578b5aa345afe9764f15eb040bdcfc3bba9f9bf0b788930aea63faafb1",
+      "bytes": 270961,
+      "sha256": "b72c0add59ee02a33f2fc0b487d8e3bfbd428871eab3a56fc62dab49ea3ddcab",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 17.648,
+        "wrapYMeanRgbDelta": 13.403,
+        "interiorXMeanRgbDelta": 3.147,
+        "interiorYMeanRgbDelta": 2.97,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 17.648,
+        "wrapYMeanRgbDelta": 13.403,
+        "interiorXMeanRgbDelta": 3.147,
+        "interiorYMeanRgbDelta": 2.97,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "farm-floor",
+      "kind": "tile",
+      "builder": "farm-floor",
+      "path": "world/farm-floor.png",
+      "runtimePath": "/sprites/world/farm-floor.png",
+      "productionPath": "game/public/sprites/world/farm-floor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/farm-floor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 408494,
+      "sourceSha256": "5f43bcf243fc45bfb735a3318e943ea174e9456dcd971591a8a41013cb0195b2",
+      "bytes": 324327,
+      "sha256": "f3076604a2b9eb707da612541c908aead484d70e9952c5700a777a2034eb37c4",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.794,
+        "wrapYMeanRgbDelta": 11.524,
+        "interiorXMeanRgbDelta": 3.079,
+        "interiorYMeanRgbDelta": 4.342,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.794,
+        "wrapYMeanRgbDelta": 11.524,
+        "interiorXMeanRgbDelta": 3.079,
+        "interiorYMeanRgbDelta": 4.342,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "purifier-wall",
+      "kind": "tile",
+      "builder": "purifier-wall",
+      "path": "world/purifier-wall.png",
+      "runtimePath": "/sprites/world/purifier-wall.png",
+      "productionPath": "game/public/sprites/world/purifier-wall.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/purifier-wall.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 373421,
+      "sourceSha256": "d3ceee241f4082223c94510dc501967c65f722766f2a72b9aac5b45d6298d586",
+      "bytes": 286228,
+      "sha256": "045399f96107e0e76154345a15b56cb6834a245fe743c455456ececd3821b62d",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 16.559,
+        "wrapYMeanRgbDelta": 12.878,
+        "interiorXMeanRgbDelta": 3.166,
+        "interiorYMeanRgbDelta": 2.408,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 16.559,
+        "wrapYMeanRgbDelta": 12.878,
+        "interiorXMeanRgbDelta": 3.166,
+        "interiorYMeanRgbDelta": 2.408,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "purifier-floor",
+      "kind": "tile",
+      "builder": "purifier-floor",
+      "path": "world/purifier-floor.png",
+      "runtimePath": "/sprites/world/purifier-floor.png",
+      "productionPath": "game/public/sprites/world/purifier-floor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/purifier-floor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 399945,
+      "sourceSha256": "dcf53e726ba0fcb423c02d00e284fa8c14529ca6866c3bd76dbd65a408c88339",
+      "bytes": 315484,
+      "sha256": "01bddfe6abf21479d44f5fcdb0f5a556cb1afc6a1fe6c5529a1eca99206c3dac",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.646,
+        "wrapYMeanRgbDelta": 11.458,
+        "interiorXMeanRgbDelta": 2.868,
+        "interiorYMeanRgbDelta": 3.988,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.646,
+        "wrapYMeanRgbDelta": 11.458,
+        "interiorXMeanRgbDelta": 2.868,
+        "interiorYMeanRgbDelta": 3.988,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "habitat-wall",
+      "kind": "tile",
+      "builder": "habitat-wall",
+      "path": "world/habitat-wall.png",
+      "runtimePath": "/sprites/world/habitat-wall.png",
+      "productionPath": "game/public/sprites/world/habitat-wall.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/habitat-wall.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 371885,
+      "sourceSha256": "d7ebd85a22844f3cf03282299888d2bf8c0eb89d17c2f8c978679be386582d11",
+      "bytes": 289160,
+      "sha256": "ce57438da9b0ead8c3f03be14dc14c6e8db79cbf97fd7e1114b5cd41cedbc0c9",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 14.587,
+        "wrapYMeanRgbDelta": 10.844,
+        "interiorXMeanRgbDelta": 2.924,
+        "interiorYMeanRgbDelta": 2.489,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 14.587,
+        "wrapYMeanRgbDelta": 10.844,
+        "interiorXMeanRgbDelta": 2.924,
+        "interiorYMeanRgbDelta": 2.489,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "habitat-floor",
+      "kind": "tile",
+      "builder": "habitat-floor",
+      "path": "world/habitat-floor.png",
+      "runtimePath": "/sprites/world/habitat-floor.png",
+      "productionPath": "game/public/sprites/world/habitat-floor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/habitat-floor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 410624,
+      "sourceSha256": "6fdf3a05e44a87f05880e656183db6c103c0b1f42ffa48785e0e0cd0ae2be726",
+      "bytes": 333483,
+      "sha256": "e62d3d1d5ccd87b210d9684a304a048bf5b21ce6f3cca797508f791616b6356d",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.232,
+        "wrapYMeanRgbDelta": 11.012,
+        "interiorXMeanRgbDelta": 1.802,
+        "interiorYMeanRgbDelta": 7.657,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.232,
+        "wrapYMeanRgbDelta": 11.012,
+        "interiorXMeanRgbDelta": 1.802,
+        "interiorYMeanRgbDelta": 7.657,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "mine-wall",
+      "kind": "tile",
+      "builder": "mine-wall",
+      "path": "world/mine-wall.png",
+      "runtimePath": "/sprites/world/mine-wall.png",
+      "productionPath": "game/public/sprites/world/mine-wall.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/mine-wall.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 446667,
+      "sourceSha256": "ad1a5a0ea3e2b8479685142db3aa4103381ac95d8291cbb4973a15ffd5057de6",
+      "bytes": 387565,
+      "sha256": "6bc9fee30e112912115fc6144e19ca2bc57e2fafa820f0e91a8fd64bd4d1eb6e",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 26.654,
+        "wrapYMeanRgbDelta": 23.114,
+        "interiorXMeanRgbDelta": 4.758,
+        "interiorYMeanRgbDelta": 4.622,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 26.654,
+        "wrapYMeanRgbDelta": 23.114,
+        "interiorXMeanRgbDelta": 4.758,
+        "interiorYMeanRgbDelta": 4.622,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "mine-floor",
+      "kind": "tile",
+      "builder": "mine-floor",
+      "path": "world/mine-floor.png",
+      "runtimePath": "/sprites/world/mine-floor.png",
+      "productionPath": "game/public/sprites/world/mine-floor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/mine-floor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 456252,
+      "sourceSha256": "172205ac69db347fc7341045bafa72bf988bf16d5952028e59e1d2d4b4cb0371",
+      "bytes": 392015,
+      "sha256": "23b8d3eae464c96a98c6ab157f59c04305939cae712354b6c9673283be4b73c3",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.428,
+        "wrapYMeanRgbDelta": 11.702,
+        "interiorXMeanRgbDelta": 4.942,
+        "interiorYMeanRgbDelta": 3.94,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.428,
+        "wrapYMeanRgbDelta": 11.702,
+        "interiorXMeanRgbDelta": 4.942,
+        "interiorYMeanRgbDelta": 3.94,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "utility-ceiling",
+      "kind": "tile",
+      "builder": "utility-ceiling",
+      "path": "world/utility-ceiling.png",
+      "runtimePath": "/sprites/world/utility-ceiling.png",
+      "productionPath": "game/public/sprites/world/utility-ceiling.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/utility-ceiling.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 372053,
+      "sourceSha256": "0605d0b8688270684d36098f5ba40b02ef2826d74a500d0a3fc81acb16c79989",
+      "bytes": 284747,
+      "sha256": "ffdc5df8791dd30218b6bd545adf03bf26fb8a81862103227f374b87156ad0c3",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 14.132,
+        "wrapYMeanRgbDelta": 10.663,
+        "interiorXMeanRgbDelta": 2.769,
+        "interiorYMeanRgbDelta": 4.096,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 14.132,
+        "wrapYMeanRgbDelta": 10.663,
+        "interiorXMeanRgbDelta": 2.769,
+        "interiorYMeanRgbDelta": 4.096,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "station-wall",
+      "kind": "tile",
+      "builder": "station-wall",
+      "path": "world/station-wall.png",
+      "runtimePath": "/sprites/world/station-wall.png",
+      "productionPath": "game/public/sprites/world/station-wall.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/station-wall.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 369283,
+      "sourceSha256": "7718e90fc79bd39679fd5f5fe596ede938c836d2b1811dcafcf3d44d01260f4b",
+      "bytes": 279960,
+      "sha256": "b34475d20ef673f9838860dfd05af2814173fbc7831d943d5c2b475728ed492f",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 14.499,
+        "wrapYMeanRgbDelta": 11.708,
+        "interiorXMeanRgbDelta": 2.896,
+        "interiorYMeanRgbDelta": 2.643,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 14.499,
+        "wrapYMeanRgbDelta": 11.708,
+        "interiorXMeanRgbDelta": 2.896,
+        "interiorYMeanRgbDelta": 2.643,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "station-floor",
+      "kind": "tile",
+      "builder": "station-floor",
+      "path": "world/station-floor.png",
+      "runtimePath": "/sprites/world/station-floor.png",
+      "productionPath": "game/public/sprites/world/station-floor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/station-floor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 440653,
+      "sourceSha256": "a69acc164144c0d17fd77f4d838bb97a4da13b0567b285797bf2cd50d1c355d1",
+      "bytes": 366806,
+      "sha256": "66428b1c093042fb3e36bd58fb54d685804e3bbe44d12d8be91ea2c2d065b54e",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.565,
+        "wrapYMeanRgbDelta": 11.042,
+        "interiorXMeanRgbDelta": 3.612,
+        "interiorYMeanRgbDelta": 3.58,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.565,
+        "wrapYMeanRgbDelta": 11.042,
+        "interiorXMeanRgbDelta": 3.612,
+        "interiorYMeanRgbDelta": 3.58,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "station-ceiling",
+      "kind": "tile",
+      "builder": "station-ceiling",
+      "path": "world/station-ceiling.png",
+      "runtimePath": "/sprites/world/station-ceiling.png",
+      "productionPath": "game/public/sprites/world/station-ceiling.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/station-ceiling.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 373825,
+      "sourceSha256": "38c706ed71a3f09958092347a05af8c6e26d0adeff70ad0b0e46b4305135626f",
+      "bytes": 286234,
+      "sha256": "2813e3fcda0a78f500f39032cc95d1f076f0e4133ec24588c1c03cc745759d21",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 14.143,
+        "wrapYMeanRgbDelta": 10.65,
+        "interiorXMeanRgbDelta": 2.78,
+        "interiorYMeanRgbDelta": 4.129,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 14.143,
+        "wrapYMeanRgbDelta": 10.65,
+        "interiorXMeanRgbDelta": 2.78,
+        "interiorYMeanRgbDelta": 4.129,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "ruin-wall",
+      "kind": "tile",
+      "builder": "ruin-wall",
+      "path": "world/ruin-wall.png",
+      "runtimePath": "/sprites/world/ruin-wall.png",
+      "productionPath": "game/public/sprites/world/ruin-wall.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/ruin-wall.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 453576,
+      "sourceSha256": "d2e493b2695c3856c51ab58553ae8cee68754aaa4a44ec3190ddec265fd9ae3b",
+      "bytes": 395926,
+      "sha256": "886ff7f1da477b09f5837528765ae115e21977ef906b7badf3d9f0c275ebb0b1",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 33.626,
+        "wrapYMeanRgbDelta": 24.201,
+        "interiorXMeanRgbDelta": 4.777,
+        "interiorYMeanRgbDelta": 4.531,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 33.626,
+        "wrapYMeanRgbDelta": 24.201,
+        "interiorXMeanRgbDelta": 4.777,
+        "interiorYMeanRgbDelta": 4.531,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "ruin-floor",
+      "kind": "tile",
+      "builder": "ruin-floor",
+      "path": "world/ruin-floor.png",
+      "runtimePath": "/sprites/world/ruin-floor.png",
+      "productionPath": "game/public/sprites/world/ruin-floor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/ruin-floor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 458543,
+      "sourceSha256": "fa4ea1edda269f225dfb757ae55e2a4d1cc2c9a2a43708949b93b65b4a2e6f16",
+      "bytes": 395757,
+      "sha256": "2ecbdfd7a8e5060bf571b7d15042dbf74aaf5fd358e0db43bdc176adf148ff42",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 15.29,
+        "wrapYMeanRgbDelta": 10.951,
+        "interiorXMeanRgbDelta": 4.717,
+        "interiorYMeanRgbDelta": 4.244,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 15.29,
+        "wrapYMeanRgbDelta": 10.951,
+        "interiorXMeanRgbDelta": 4.717,
+        "interiorYMeanRgbDelta": 4.244,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "ruin-ceiling",
+      "kind": "tile",
+      "builder": "ruin-ceiling",
+      "path": "world/ruin-ceiling.png",
+      "runtimePath": "/sprites/world/ruin-ceiling.png",
+      "productionPath": "game/public/sprites/world/ruin-ceiling.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/ruin-ceiling.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "opaque",
+      "sourceWidth": 512,
+      "sourceHeight": 512,
+      "sourceAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "runtimeAlphaBounds": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceBytes": 415766,
+      "sourceSha256": "e1b8bd55aeb69b940a57a43e8f11804d62b7d75ae15f3d8c7178fc42c8f4465e",
+      "bytes": 341410,
+      "sha256": "bd8e303ab5a8b80af1b8b60a3909fa488662fd13308997d7ec0a34d11c78ba0b",
+      "seamMetrics": {
+        "wrapXMeanRgbDelta": 14.32,
+        "wrapYMeanRgbDelta": 10.383,
+        "interiorXMeanRgbDelta": 3.636,
+        "interiorYMeanRgbDelta": 4.66,
+        "reviewFlag": true
+      },
+      "rawSourceSeamMetrics": {
+        "wrapXMeanRgbDelta": 14.32,
+        "wrapYMeanRgbDelta": 10.383,
+        "interiorXMeanRgbDelta": 3.636,
+        "interiorYMeanRgbDelta": 4.66,
+        "reviewFlag": true
+      },
+      "tileEdgeBlendPixels": 0,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "mine-extractor",
+      "kind": "prop",
+      "builder": "mine-extractor",
+      "path": "world/mine-extractor.png",
+      "runtimePath": "/sprites/world/mine-extractor.png",
+      "productionPath": "game/public/sprites/world/mine-extractor.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/mine-extractor.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        117,
+        59,
+        879,
+        989
+      ],
+      "runtimeAlphaBounds": [
+        47,
+        2,
+        465,
+        512
+      ],
+      "sourceBytes": 1057518,
+      "sourceSha256": "7a8d05a41732f5abdf2a2082527932f6234afe1d435148f5d8f03a941b777101",
+      "bytes": 212697,
+      "sha256": "ecf608c01f75bf6329a227385a3d1745cf48da923ccb1188e2c244edd806e01a",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "station-console",
+      "kind": "prop",
+      "builder": "station-console",
+      "path": "world/station-console.png",
+      "runtimePath": "/sprites/world/station-console.png",
+      "productionPath": "game/public/sprites/world/station-console.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/station-console.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        138,
+        54,
+        903,
+        980
+      ],
+      "runtimeAlphaBounds": [
+        45,
+        2,
+        466,
+        512
+      ],
+      "sourceBytes": 1076539,
+      "sourceSha256": "5bf8e5be1e58c7915a08bd6f2c127096b6127235323f92344e7c067bcae3af42",
+      "bytes": 213272,
+      "sha256": "c584f9901d67815b269a2bf350ef2486075a47079cefe217caea51fc715fe020",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "ruin-column",
+      "kind": "prop",
+      "builder": "ruin-column",
+      "path": "world/ruin-column.png",
+      "runtimePath": "/sprites/world/ruin-column.png",
+      "productionPath": "game/public/sprites/world/ruin-column.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/ruin-column.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        229,
+        70,
+        811,
+        997
+      ],
+      "runtimeAlphaBounds": [
+        96,
+        2,
+        416,
+        512
+      ],
+      "sourceBytes": 1049930,
+      "sourceSha256": "e1a0d2cb4550c9fd264a10d10296de0147a5fe7ba3a4efb4311acfd4b70fe81c",
+      "bytes": 200309,
+      "sha256": "e9e8437be2c47974442883222afb2622ec8b36aee920722a2f3490e513ae96bd",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    },
+    {
+      "id": "supply-canisters",
+      "kind": "prop",
+      "builder": "supply-canisters",
+      "path": "world/supply-canisters.png",
+      "runtimePath": "/sprites/world/supply-canisters.png",
+      "productionPath": "game/public/sprites/world/supply-canisters.png",
+      "sourcePath": "docs/assets/graphics-rollout/world/renders/supply-canisters.png",
+      "width": 512,
+      "height": 512,
+      "alpha": "transparent",
+      "sourceWidth": 1024,
+      "sourceHeight": 1024,
+      "sourceAlphaBounds": [
+        72,
+        93,
+        958,
+        1017
+      ],
+      "runtimeAlphaBounds": [
+        12,
+        3,
+        500,
+        512
+      ],
+      "sourceBytes": 1044994,
+      "sourceSha256": "acdb96ac573cfea74313698add3cb00fe209c40e32a23ded46f3c0c3c7ce49e3",
+      "bytes": 205174,
+      "sha256": "24a8766dbfb4817449fb705324101766f97fc659ece20ab61a2d389ad48cc232",
+      "seamMetrics": null,
+      "rawSourceSeamMetrics": null,
+      "tileEdgeBlendPixels": null,
+      "status": "rendered-and-verified"
+    }
+  ],
+  "sourceBlendBytes": 1496481,
+  "sourceBlendSha256": "004c38b81e1212ee7b2639a64fdfc1e3d2dc6dbf22805528fc976c72976d351a",
+  "generatorSha256": "fd370ad5423ae2984dbcdf512c663f9964e24dbe737b72dcabde0fd8472442e8",
+  "catalogSha256": "c4c5da06717f26fad653e798e2f95e2b661010d153a4d10f28f922a8f90cfaf0"
+}

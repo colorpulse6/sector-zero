@@ -295,7 +295,7 @@ test("@pointer pending Galaxy POI return reloads the exact Ashfall Region before
   const region = page.getByRole("dialog", { name: "Region map" });
   await expect(region).toBeAttached();
   await expect(region.getByRole("heading", { name: "ASHFALL REGION" })).toBeVisible();
-  await expect(region.getByText(/ATLAS LINK —/)).toBeVisible();
+  await expect(region.getByText(/ATLAS LINK/)).toBeVisible();
   const status = page.getByRole("alert", { name: "Outcome persistence status" });
   await expect(status).toContainText("OUTCOME RETURN SAVE FAILED · RETRY");
   const legacyBytes = await readLegacyDomainBytes(page);

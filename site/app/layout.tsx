@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import { serializeJsonLd, VIDEO_GAME_JSON_LD } from "@/lib/structuredData";
@@ -10,8 +11,14 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+const orbitron = localFont({
+  src: "../public/fonts/Orbitron-Variable.ttf",
+  variable: "--font-orbitron",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Sector Zero  - Space Shooter Hub",
+  title: "Sector Zero — Answer the signal",
   description:
     "Pilot a strike fighter through 8 sectors of hostile space. 6 gameplay modes, RPG progression, and the Hollow awaits.",
   authors: [{ name: "Nic Barnes", url: "https://nichalasbarnes.com/" }],
@@ -33,10 +40,15 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${inter.variable} ${orbitron.variable} antialiased`}>
         <div className="min-h-screen flex flex-col">
+          <a href="#main-content" className="skip-link">
+            Skip to content
+          </a>
           <Nav />
-          <main className="flex-1">{children}</main>
+          <main id="main-content" tabIndex={-1} className="flex-1">
+            {children}
+          </main>
           <Footer />
         </div>
       </body>
