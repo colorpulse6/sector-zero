@@ -32,6 +32,8 @@ export interface SectorSceneHandle {
   onFrame(cb: (projected: ProjectedLandmark[]) => void): () => void;
   setReducedMotion(reduced: boolean): void;
   setSpinPaused(paused: boolean): void;
+  /** CSS pixels an overlay covers on the right edge; the view centres in the space left over. */
+  setViewInset(rightPx: number): void;
   resize(): void;
   dispose(): void;
 }
@@ -440,6 +442,9 @@ export async function createSectorScene(canvas: HTMLCanvasElement): Promise<Sect
   let pulse = 0;
   let storedTarget: ScenePoint = { x: 0, y: 0, z: 0 };
   let storedCenter: GalaxyCoordinate | null = null;
+  let insetTarget = 0;
+  let insetCurrent = 0;
+  let insetPrimed = false;
   let storedRadius = 60;
   const listeners = new Set<(projected: ProjectedLandmark[]) => void>();
   const anchors = new Map<string, Anchor>();
@@ -834,10 +839,25 @@ export async function createSectorScene(canvas: HTMLCanvasElement): Promise<Sect
     for (const material of activeTubes) material.alpha = activeAlpha;
   };
 
+  /**
+   * Shift the camera target on screen so the view centres in the area an overlay panel leaves
+   * free. The offset lives in the view matrix, so picking and landmark projection follow it.
+   * World units per CSS pixel at the target depth come from the vertical field of view.
+   */
+  const applyViewInset = (dt: number) => {
+    insetCurrent = reduced || Math.abs(insetTarget - insetCurrent) < 0.5
+      ? insetTarget
+      : insetCurrent + (insetTarget - insetCurrent) * Math.min(1, dt * 8);
+    const cssHeight = engine.getRenderHeight() * engine.getHardwareScalingLevel();
+    const unitsPerPixel = (2 * camera.radius * Math.tan(camera.fov / 2)) / Math.max(1, cssHeight);
+    camera.targetScreenOffset.x = -(insetCurrent / 2) * unitsPerPixel;
+  };
+
   engine.runRenderLoop(() => {
     if (disposed) return;
     const dt = Math.min(0.05, engine.getDeltaTime() / 1000);
     if (!reduced) pulse += dt;
+    applyViewInset(dt);
     animate();
     scene.render();
     publish();
@@ -945,6 +965,15 @@ export async function createSectorScene(canvas: HTMLCanvasElement): Promise<Sect
     setSpinPaused(next) {
       spinPaused = next;
       if (!disposed) applySpin();
+    },
+    setViewInset(rightPx) {
+      insetTarget = Number.isFinite(rightPx) ? Math.max(0, rightPx) : 0;
+      // The first measurement lands at once so the map does not slide in on open; later
+      // changes (panel toggle, resize) ease.
+      if (!insetPrimed) {
+        insetCurrent = insetTarget;
+        insetPrimed = true;
+      }
     },
     resize() {
       if (!disposed) applyScaling();

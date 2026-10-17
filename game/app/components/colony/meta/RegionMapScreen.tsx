@@ -109,7 +109,9 @@ function unavailableCopy(
 ): string {
   if (!actionsEnabled) return source === "cockpit"
     ? "Descend to the landing pad to survey or travel."
-    : "Survey and travel are unavailable from this view.";
+    : source === "atlas"
+      ? "Park the vessel at Ashfall to survey or travel."
+      : "Survey and travel are unavailable from this view.";
   if (node.intel === "unknown") return "Explore connected sites to learn more about this signal.";
   if (node.id === originNodeId) return "Choose a destination to plan your next expedition.";
   const checks = (["survey", "travel", "found"] as const).map(action => checkRegionAction(save, originColonyId, node.id, action));

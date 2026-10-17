@@ -20,6 +20,7 @@ import {
   type SystemNeighbour,
 } from "./starSystems";
 import { planSystemLayout, PLAN_TILT, type LandmarkPlan } from "./systemLayout";
+import type { AtlasRegionAccess } from "../regionAccess";
 import { createSystemScene, systemPlanetBiome, type ProjectedLandmark, type SystemSceneHandle } from "./SystemScene";
 
 export interface SystemAtlasScreenProps {
@@ -34,6 +35,8 @@ export interface SystemAtlasScreenProps {
   catalogue?: SystemCatalogue;
   /** Mounted inside the Galaxy Atlas. Drops the dialog shell and its own back control. */
   embedded?: boolean;
+  /** Galaxy rule for a system's region chart: full, view-only, or unavailable with a reason. */
+  regionAccess?: (systemId: string) => AtlasRegionAccess;
 }
 
 /** Matches the private plan scale in systemLayout.ts (percent per scene unit). */
@@ -79,6 +82,7 @@ export function SystemAtlasScreen({
   initialSelectedId,
   catalogue = DEFAULT_CATALOGUE,
   embedded = false,
+  regionAccess,
 }: SystemAtlasScreenProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
@@ -247,9 +251,15 @@ export function SystemAtlasScreen({
     livePoints.current = new Map();
   };
 
-  const action = selectedAction(hiddenSystem ? null : selectedPlanet, selectedNeighbour, selectedColony?.id ?? null, gliding, onOpenRegion, () => {
+  const access = regionAccess?.(system.id) ?? null;
+  const action = selectedAction(hiddenSystem ? null : selectedPlanet, selectedNeighbour, selectedColony?.id ?? null, gliding, onOpenRegion, access, () => {
     if (selectedNeighbour) void viewSystem(selectedNeighbour.system.id);
   });
+  const regionNote = selectedColony && access
+    ? access.status === "unavailable"
+      ? access.reason
+      : access.status === "view" ? "VIEW ONLY · PARK THE VESSEL HERE TO SURVEY OR TRAVEL" : null
+    : null;
 
   return (
     <div
@@ -368,6 +378,7 @@ export function SystemAtlasScreen({
                   type="button"
                   data-system-action="true"
                   aria-label={action.ariaLabel}
+                  aria-describedby={regionNote ? "system-region-note" : undefined}
                   disabled={action.disabled}
                   onClick={action.onClick}
                   className="sz-system-action"
@@ -377,6 +388,7 @@ export function SystemAtlasScreen({
               ) : (
                 <p>{unavailableCopy(selectedPlanet, selectedNeighbour, hiddenSystem)}</p>
               )}
+              {action && regionNote && <p id="system-region-note" className="sz-system-region-note">{regionNote}</p>}
             </div>
           </section>
         </div>
@@ -490,13 +502,15 @@ function selectedAction(
   colonyId: string | null,
   gliding: boolean,
   onOpenRegion: ((colonyId: string) => void) | undefined,
+  access: AtlasRegionAccess | null,
   onView: () => void,
 ): { label: string; ariaLabel: string; disabled: boolean; onClick: () => void } | null {
   if (planet && colonyId) {
+    const viewOnly = access?.status === "view";
     return {
-      label: "OPEN REGION CHART",
-      ariaLabel: `Open region chart for ${planetName(planet.planetId)}`,
-      disabled: gliding || !onOpenRegion,
+      label: viewOnly ? "VIEW REGION CHART" : "OPEN REGION CHART",
+      ariaLabel: `${viewOnly ? "View" : "Open"} region chart for ${planetName(planet.planetId)}`,
+      disabled: gliding || !onOpenRegion || access?.status === "unavailable",
       onClick: () => onOpenRegion?.(colonyId),
     };
   }

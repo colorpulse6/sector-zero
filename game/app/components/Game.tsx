@@ -135,6 +135,7 @@ import DevPanel from "./DevPanel";
 import { createGradePass } from "./engine/postFx";
 import { selectPreset, type GradeScene } from "./engine/postFx/presets";
 import { GalaxyAtlasScreen } from "./galaxy";
+import { atlasRegionAccess, REGION_CONTACT_ID } from "./galaxy/regionAccess";
 import OpeningScreen from "./OpeningScreen";
 import {
   attemptCanonicalTransitionPersistence,
@@ -1257,14 +1258,20 @@ export default function Game() {
   }, [persistCanonicalSave, regionMapSurface]);
 
   const handleOpenAshfallRegion = useCallback(() => {
-    const opened = openGalaxyRegion(saveDataRef.current, "contact:ashfall");
+    // Re-derive access here: only a vessel parked at a visited Ashfall may act in the region.
+    const access = atlasRegionAccess(saveDataRef.current.galaxyRun, REGION_CONTACT_ID);
+    if (access.status === "unavailable") {
+      setAtlasStatusMessage(`ASHFALL REGION UNAVAILABLE · ${access.reason}`);
+      return;
+    }
+    const opened = openGalaxyRegion(saveDataRef.current, REGION_CONTACT_ID);
     if (!opened.ok) {
       setAtlasStatusMessage(`ASHFALL REGION UNAVAILABLE · ${opened.reason.replaceAll("_", " ").toUpperCase()}`);
       return;
     }
     setRegionMapSurface({
       source: "atlas",
-      actionsEnabled: true,
+      actionsEnabled: access.status === "full",
       originColonyId: opened.originColony.id,
       experience: "galaxy",
     });

@@ -180,6 +180,7 @@ test("@keyboard Atlas repeated arrows retain selected-contact focus and trap Tab
 test("@keyboard plotted Atlas coordinates keep contacts reachable without changing the target on Tab", async ({ page }, info) => {
   await receipt(info, "keyboard", "galaxyAtAshfall", "Atlas -> plot custom coordinate -> Tab to contacts -> repeated arrows -> Escape", "Plotting keeps a contact in the Tab order without changing the plotted target on focus; arrows select from the focused contact and Escape restores Continue Galaxy.", async () => {
     const atlas = await openAtlas(page);
+    await atlas.locator("summary", { hasText: "PLOT COORDINATE" }).click();
     await atlas.getByRole("spinbutton", { name: "LOCAL X", exact: true }).fill("123");
     await atlas.getByRole("spinbutton", { name: "LOCAL Y", exact: true }).fill("456");
     const plot = atlas.getByRole("button", { name: "PLOT", exact: true });

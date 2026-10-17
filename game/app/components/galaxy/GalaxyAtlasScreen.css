@@ -15,6 +15,15 @@
   touch-action: pan-y;
 }
 .sz-atlas * { box-sizing: border-box; }
+.sz-atlas [hidden] { display: none !important; }
+.sz-atlas-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .sz-atlas-shell { max-width: 1680px; margin: auto; padding: 28px clamp(16px, 3.5vw, 64px) 40px; }
 .sz-atlas-header { border-bottom: 1px solid var(--atlas-line); padding-bottom: 16px; }
 .sz-atlas-brand { min-width: 0; }
@@ -29,7 +38,15 @@
 .sz-atlas-button,
 .sz-atlas-journal,
 .sz-atlas-form,
-.sz-atlas-legend {
+.sz-atlas-legend,
+.sz-atlas-toggle,
+.sz-atlas-level-note,
+.sz-atlas-meta,
+.sz-atlas-count,
+.sz-atlas-contact small,
+.sz-atlas-plot summary,
+.sz-atlas-breakdown summary,
+.sz-atlas-status {
   font-family: var(--font-space-mono), ui-monospace, monospace;
 }
 .sz-atlas-eyebrow { margin: 0 0 8px; color: var(--atlas-cyan); font-size: 10px; letter-spacing: .2em; }
@@ -72,8 +89,13 @@
 .sz-atlas-levels { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0; }
 .sz-atlas-levels [aria-pressed="true"] { background: #9ad5da; color: #08232c; border-color: #b7e3e2; }
 .sz-atlas-slash { color: #6d868a; }
-.sz-atlas-layout { align-items: start; }
-.sz-atlas-main, .sz-atlas-side { min-width: 0; display: grid; gap: 16px; }
+.sz-atlas-level-note { color: #8fa9ad; font-size: 9px; letter-spacing: .12em; }
+.sz-atlas-toggle { display: none; }
+.sz-atlas-layout { display: grid; gap: 16px; align-items: start; }
+.sz-atlas-main, .sz-atlas-side { min-width: 0; display: grid; gap: 16px; align-content: start; }
+.sz-atlas-stage { border: 1px solid var(--atlas-line); background: #0b161b; padding: 12px; }
+.sz-atlas-hud { display: grid; gap: 10px; min-width: 0; }
+.sz-atlas-hud-tools { display: grid; gap: 10px; min-width: 0; }
 .sz-atlas-panel { border: 1px solid var(--atlas-line); background: #0b161b; padding: 12px; }
 .sz-atlas-panel h2 { margin: 0 0 12px; color: var(--atlas-cyan); font-size: 13px; letter-spacing: .14em; font-weight: 500; }
 .sz-atlas-field {
@@ -217,9 +239,9 @@
 .sz-atlas-field[data-atlas-level="galaxy"] .sz-atlas-landmark[data-labelled="false"] { visibility: hidden; pointer-events: none; }
 .sz-atlas-field[data-atlas-level="galaxy"] .sz-atlas-marker,
 .sz-atlas-field[data-atlas-level="galaxy"] .sz-atlas-bracket { visibility: hidden; }
-.sz-atlas-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.sz-atlas-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sz-atlas-readout { color: #86aeb9; font-size: 11px; letter-spacing: .06em; }
-.sz-atlas-legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 12px 0 0; color: #bbc5bf; font-size: 11px; }
+.sz-atlas-legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 0; color: #bbc5bf; font-size: 11px; }
 .sz-atlas-legend > span { display: inline-flex; align-items: center; gap: 8px; }
 .sz-atlas-legend i { display: inline-block; width: 9px; height: 9px; }
 .sz-atlas-key-star { border-radius: 50%; background: #d7fff8; box-shadow: 0 0 6px #d7fff8; }
@@ -228,7 +250,12 @@
 .sz-atlas-key-signal { border: 1px dashed #b8b198; border-radius: 50%; }
 .sz-atlas-key-vessel { background: #e7fbff; transform: rotate(45deg); }
 .sz-atlas-key-route { width: 16px; height: 2px; background: #66d39e; }
-.sz-atlas-keys { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; color: #90a1a5; font-size: 10px; }
+.sz-atlas-keys { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; color: #90a1a5; font-size: 10px; }
+.sz-atlas-plot summary,
+.sz-atlas-breakdown summary { cursor: pointer; color: #9ad5da; font-size: 10px; letter-spacing: .14em; }
+.sz-atlas-plot[open] summary { margin-bottom: 8px; }
+.sz-atlas-breakdown { margin: 8px 0 4px; }
+.sz-atlas-breakdown[open] summary { margin-bottom: 8px; }
 .sz-atlas-keys kbd { padding: 1px 5px; border: 1px solid #9ad5da40; color: #d2e7ea; font-family: inherit; font-size: 9px; }
 .sz-atlas-form { display: grid; gap: 8px; }
 .sz-atlas-form label { display: grid; gap: 4px; min-width: 0; color: #96adaf; font-size: 10px; letter-spacing: .08em; }
@@ -243,7 +270,8 @@
   padding: 6px 8px;
 }
 .sz-atlas-alert { color: #ffbd66; }
-.sz-atlas-contacts { display: grid; gap: 8px; }
+.sz-atlas-contacts { display: grid; gap: 4px; }
+.sz-atlas-panel h2 .sz-atlas-count { margin-left: 6px; color: #6f9196; font-size: 10px; letter-spacing: .1em; }
 /* Large sectors list dozens of contacts: scroll inside the list so focus never drags the page away from the field. */
 .sz-atlas-contacts[role="listbox"] {
   max-height: min(440px, 56vh);
@@ -253,20 +281,40 @@
   scrollbar-width: thin;
   scrollbar-color: #4f7a7e transparent;
 }
+/* One line per contact: name and knowledge tag. Confidence and coordinate live in the target
+   card (and in hidden text for screen readers). */
 .sz-atlas-contact {
-  min-height: 50px;
-  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
   text-align: left;
-  border: 1px solid #9ac2c226;
-  background: #07131d;
+  border: 1px solid #9ac2c21f;
+  background: #07131d99;
   color: #e8fbff;
   font: inherit;
   cursor: pointer;
 }
-.sz-atlas-contact[aria-selected="true"] { border: 2px solid #9ad5da; background: #21404755; }
+.sz-atlas-contact:hover { border-color: #9ad5da55; }
+.sz-atlas .sz-atlas-contact[role="option"]:focus-visible { outline-offset: -3px; }
+.sz-atlas-contact strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.sz-atlas-contact small { flex: none; color: #86a6aa; font-size: 9px; letter-spacing: .12em; }
+.sz-atlas-contact small[data-knowledge="visited"] { color: #fff4e8; }
+.sz-atlas-contact small[data-knowledge="signal"] { color: #8d93a0; }
+.sz-atlas-contact[aria-selected="true"] { border-color: #9ad5da; background: #21404766; box-shadow: inset 3px 0 0 #9ad5da; }
 .sz-atlas-detail { border-top: 2px solid var(--atlas-cyan); padding-top: 18px; }
 .sz-atlas-kicker { margin: 0; color: #75a6b2; font-size: 10px; letter-spacing: .16em; }
 .sz-atlas-detail h2 { margin: 6px 0 14px; color: var(--atlas-white); font-size: 28px; font-weight: 500; letter-spacing: 0; outline: none; }
+.sz-atlas-meta { margin: -8px 0 12px; color: #86a6aa; font-size: 9px; letter-spacing: .1em; line-height: 1.5; }
+.sz-atlas-facts--grid { grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.sz-atlas-facts--grid > div { display: grid; gap: 3px; min-width: 0; }
+.sz-atlas-facts--grid dt { color: #7f9ea3; font-size: 9px; letter-spacing: .12em; }
+.sz-atlas-threat { margin: 12px 0 4px; font-size: 13px; letter-spacing: .04em; }
+.sz-atlas-region { display: grid; gap: 6px; margin-top: 14px; }
+.sz-atlas-region .sz-atlas-note { margin: 0; font-size: 10px; letter-spacing: .06em; }
 .sz-atlas-detail h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: .08em; }
 .sz-atlas-facts { display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; margin: 0; font-size: 11px; }
 .sz-atlas-facts dd { margin: 0; }
@@ -275,11 +323,154 @@
 .sz-atlas-journal { margin-top: 14px; border-top: 1px solid var(--atlas-line); padding-top: 10px; }
 .sz-atlas-journal summary { cursor: pointer; color: #9ad5da; letter-spacing: .14em; font-size: 11px; }
 .sz-atlas-journal ol { margin: 10px 0 0; padding-left: 18px; color: #b7c2c4; font-size: 11px; }
-.sz-atlas-status { min-height: 24px; color: #9bd9e2; }
+.sz-atlas-status { min-height: 18px; color: #9bd9e2; font-size: 10px; letter-spacing: .08em; }
 .sz-atlas-embedded { position: relative; z-index: 4; height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .sz-atlas-embedded .sz-atlas-back { align-self: flex-start; position: relative; z-index: 5; margin: 8px; }
 .sz-atlas-embedded .sz-system { flex: 1; min-height: 0; }
 .sz-atlas :is(button, [role="option"], summary):focus-visible { outline: 2px solid #e0fff9; outline-offset: 4px; }
+.sz-atlas[data-atlas-view="system"] .sz-atlas-side { display: none; }
+
+/* Desktop: the map fills the screen. The top bar, the bottom-left HUD and the slim panel float
+   over it, translucent, so the sector stays visible behind them. */
+@media (min-width: 901px) {
+  .sz-atlas { --atlas-panel-width: 300px; --atlas-gap: 16px; overflow: hidden; background: #010309; }
+  .sz-atlas-shell { position: relative; height: 100%; max-width: none; padding: 0; }
+  .sz-atlas-header {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    left: 0;
+    right: 0;
+    gap: 10px 14px !important;
+    padding: 12px 18px 20px;
+    border-bottom: 0;
+    background: linear-gradient(180deg, #010309f2 0%, #010309bd 60%, #01030900 100%);
+    pointer-events: none;
+  }
+  .sz-atlas-header > * { pointer-events: auto; }
+  .sz-atlas-header .sz-atlas-button { min-height: 34px; padding: 6px 11px; font-size: 10px; }
+  .sz-atlas-brand { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .sz-atlas-brand .sz-atlas-eyebrow { display: none; }
+  .sz-atlas-header h1 { font-size: 17px; letter-spacing: .08em; }
+  .sz-atlas-chips { margin-top: 0; }
+  /* Levels sit on one row; the REGION reason takes a short second row under them, in flow, so
+     it counts in the measured bar height and never overlaps a wrapped toggle. */
+  .sz-atlas-levels { display: grid; grid-template-rows: auto auto; align-items: center; justify-content: start; gap: 3px 6px; margin: 0; }
+  .sz-atlas-levels > * { grid-row: 1; }
+  /* Four levels and three slashes: span all seven implicit columns. */
+  .sz-atlas-levels > .sz-atlas-level-note { grid-row: 2; grid-column: 1 / span 7; justify-self: end; white-space: nowrap; }
+  .sz-atlas-toggle {
+    display: inline-block;
+    margin-left: auto;
+    max-width: 240px;
+    min-height: 34px;
+    padding: 6px 12px;
+    overflow: hidden;
+    border: 1px solid #9ad5da55;
+    background: #9ad5da12;
+    color: var(--atlas-white);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .sz-atlas-toggle:hover { border-color: #d0f6ec; }
+  .sz-atlas-layout { position: absolute; inset: 0; display: block; }
+  .sz-atlas-main { display: block; }
+  .sz-atlas-stage {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--atlas-top, 72px) 0 var(--atlas-bottom, 140px);
+    border: 0;
+    background: #010309;
+    container-type: size;
+  }
+  /* Same free area as the 3D view's camera shift: everything left of the panel's edge. */
+  .sz-atlas[data-panel="open"] .sz-atlas-stage { padding-right: calc(var(--atlas-panel-width) + var(--atlas-gap)); }
+  .sz-atlas-field { position: absolute; inset: 0; height: auto; }
+  /* Without WebGL the flat plan stays square in the free area, so plan percentages and plan
+     picking keep their meaning. */
+  .sz-atlas-field[data-scene="plan"]:not([data-atlas-level="system"]) {
+    position: relative;
+    inset: auto;
+    width: min(100cqw, 100cqh);
+    height: min(100cqw, 100cqh);
+  }
+  .sz-atlas-field[data-scene="3d"] .sz-atlas-corner { display: none; }
+  .sz-atlas-field[data-scene="3d"] .sz-atlas-caption { top: calc(var(--atlas-top, 72px) + 6px); bottom: auto; left: 20px; }
+  .sz-atlas-hud {
+    position: absolute;
+    z-index: 15;
+    left: var(--atlas-gap);
+    bottom: var(--atlas-gap);
+    max-width: min(560px, calc(100% - var(--atlas-panel-width) - 4 * var(--atlas-gap)));
+    max-height: calc(100% - var(--atlas-top, 72px) - 2 * var(--atlas-gap));
+    overflow-y: auto;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid #9ad5da1f;
+    background: #03080ecc;
+    backdrop-filter: blur(8px);
+  }
+  .sz-atlas-hud-tools { gap: 8px; }
+  .sz-atlas-hud .sz-atlas-button { min-width: 34px; min-height: 34px; padding: 4px 9px; }
+  .sz-atlas-hud .sz-atlas-legend { gap: 6px 14px; font-size: 10px; }
+  .sz-atlas-hud .sz-atlas-form input { min-height: 32px; }
+  .sz-atlas-side {
+    position: absolute;
+    z-index: 18;
+    top: var(--atlas-top, 72px);
+    right: var(--atlas-gap);
+    width: var(--atlas-panel-width);
+    max-height: calc(100% - var(--atlas-top, 72px) - var(--atlas-gap));
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid #9ad5da26;
+    background: #040a10c4;
+    backdrop-filter: blur(12px);
+    scrollbar-width: thin;
+    scrollbar-color: #4f7a7e transparent;
+  }
+  .sz-atlas[data-panel="closed"] .sz-atlas-side { display: none; }
+  .sz-atlas-side .sz-atlas-panel { flex: none; border: 0; background: transparent; padding: 12px 14px; }
+  .sz-atlas-side .sz-atlas-panel h2 { margin-bottom: 10px; font-size: 11px; }
+  .sz-atlas-side .sz-atlas-contacts[role="listbox"] { max-height: min(232px, 30vh); padding: 1px 4px 1px 1px; }
+  .sz-atlas-side .sz-atlas-contact { min-height: 34px; padding: 6px 9px; }
+  .sz-atlas-side .sz-atlas-detail { border-top: 1px solid #9ad5da26; padding-top: 14px; }
+  .sz-atlas-side .sz-atlas-detail h2 { margin: 4px 0 12px; font-size: 20px; }
+  .sz-atlas-side .sz-atlas-detail h3 { margin: 14px 0 6px; color: #9ad5da; font-size: 10px; font-weight: 500; letter-spacing: .14em; }
+  .sz-atlas-side .sz-atlas-detail p { margin: 6px 0; font-size: 11px; line-height: 1.45; }
+  .sz-atlas-side .sz-atlas-detail .sz-atlas-meta { margin: -8px 0 12px; font-size: 9px; }
+  .sz-atlas-side .sz-atlas-detail .sz-atlas-threat { margin: 12px 0 4px; font-size: 13px; }
+  .sz-atlas-side .sz-atlas-detail .sz-atlas-button { width: 100%; min-height: 36px; margin-top: 6px; }
+  .sz-atlas-side .sz-atlas-detail .sz-atlas-region .sz-atlas-note { margin: 0; color: #8fa9ad; font-size: 9px; letter-spacing: .1em; }
+  .sz-atlas-side .sz-atlas-journal { margin-top: 10px; }
+  .sz-atlas-embedded .sz-atlas-back { min-height: 34px; margin: 0 0 8px; padding: 6px 12px; font-size: 10px; }
+  .sz-atlas-embedded .sz-system-header { margin-bottom: 10px; }
+  .sz-atlas-embedded .sz-system-header h1 { font-size: 22px; }
+  .sz-atlas-embedded .sz-system-eyebrow { margin-bottom: 4px; }
+  /* The contact count is in the panel; drop the chip so the bar stays one row on smaller desktops. */
+  @media (max-width: 1180px) { .sz-atlas-chip:nth-child(3) { display: none; } }
+  .sz-atlas[data-atlas-view="system"] .sz-atlas-embedded {
+    padding: var(--atlas-top, 72px) var(--atlas-gap) var(--atlas-bottom, 60px);
+  }
+  .sz-atlas-embedded .sz-system-layout { grid-template-columns: minmax(0, 1fr) var(--atlas-panel-width); }
+  .sz-atlas-embedded .sz-system-detail {
+    align-self: start;
+    padding: 14px;
+    border: 1px solid #9ad5da26;
+    border-top: 2px solid var(--atlas-cyan);
+    background: #040a10c4;
+    backdrop-filter: blur(12px);
+  }
+  .sz-atlas-embedded .sz-system-chart { border-color: #9ad5da1f; background: #02060c; }
+}
 
 @media (max-width: 900px) {
   .sz-atlas-shell { padding: 22px 16px 28px; }

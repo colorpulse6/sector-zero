@@ -247,13 +247,14 @@ test("Atlas exposes semantic levels, equivalent controls, and one selected targe
   assert.ok((html.match(/data-selected-target="contact:ashfall"/g) ?? []).length >= 3);
 });
 
-test("480px Atlas layout stacks its main panels and wraps coordinate controls", () => {
+test("Atlas layout is a HUD over the field: a panel toggle, a collapsible side panel and wrapping coordinate controls", () => {
   const html = screen();
 
-  assert.match(
-    html,
-    /data-atlas-layout="responsive"[^>]*style="[^"]*grid-template-columns:repeat\(auto-fit, minmax\(min\(100%, 360px\), 1fr\)\)/,
-  );
+  assert.match(html, /data-atlas-layout="hud"/);
+  assert.match(html, /data-panel="open"/);
+  assert.match(html, /aria-expanded="true"[^>]*aria-controls="atlas-side"[^>]*>HIDE PANEL/);
+  assert.match(html, /<aside id="atlas-side"/);
+  assert.match(html, /<summary>PLOT COORDINATE<\/summary>/);
   assert.match(
     html,
     /data-coordinate-layout="wrapping"[^>]*style="[^"]*grid-template-columns:repeat\(auto-fit, minmax\(min\(100%, 110px\), 1fr\)\)/,

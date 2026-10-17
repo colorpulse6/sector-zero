@@ -49,6 +49,7 @@ import { fromScene, SECTOR_SCENE_SIZE, toScene } from "./sector/sectorSpace";
 import { createSectorScene, type SectorSceneHandle } from "./sector/SectorScene";
 import { fallbackContactLabel, systemCatalogueForRun } from "./system/contactSystems";
 import { SystemAtlasScreen } from "./system/SystemAtlasScreen";
+import { atlasRegionAccess, REGION_CONTACT_ID } from "./regionAccess";
 
 export interface GalaxyAtlasScreenProps {
   run: GalaxyRunState | null;
@@ -471,6 +472,10 @@ export function GalaxyAtlasScreen({
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [sceneReady, setSceneReady] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const headerRef = useRef<HTMLElement>(null);
+  const hudRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
   const detailsHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -522,14 +527,14 @@ export function GalaxyAtlasScreen({
   const targetContactId = selectedContactId(selectedTarget);
   const selectedOperation = operationForTarget(operations, targetContactId);
   const activeInterruptionId = interruptedOperationId(run);
-  const ashfallVisited = run !== null && safeValues(run.atlas.knowledge).some(
-    (record) => record.subjectId === "contact:ashfall" && record.state === "visited",
-  );
-  const ashfallRegionAvailable =
-    run?.vessel.status === "stationary" &&
-    run.vessel.contactId === "contact:ashfall" &&
-    targetContactId === "contact:ashfall" &&
-    ashfallVisited;
+  const regionAccess = atlasRegionAccess(run, targetContactId);
+  const regionOpenable = regionAccess.status !== "unavailable" && onOpenAshfallRegion !== undefined;
+  const regionLevelNote = regionAccess.status === "unavailable"
+    ? regionAccess.reason
+    : regionAccess.status === "view" ? "VIEW ONLY" : null;
+  const regionPanelNote = regionAccess.status === "unavailable"
+    ? regionAccess.reason
+    : regionAccess.status === "view" ? "VIEW ONLY · PARK THE VESSEL AT ASHFALL TO SURVEY OR TRAVEL" : null;
   const currentSelectedId = selectedTarget === null
     ? null
     : selectedTargetIdFor(selectedTarget);
@@ -540,7 +545,13 @@ export function GalaxyAtlasScreen({
   const sceneMounted = showField && viewport.viewLevel !== "system";
 
   useModalFocus({ active: focusActive, rootRef, onEscape: onClose, restoreFocus: onRestoreFocus,
-    initialFocus: () => rootRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ?? null });
+    initialFocus: () => {
+      const root = rootRef.current;
+      const option = root?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ?? null;
+      // A collapsed panel hides the contacts; its toggle keeps focus inside the atlas.
+      if (option && option.getClientRects().length > 0) return option;
+      return root?.querySelector<HTMLElement>(".sz-atlas-toggle") ?? null;
+    } });
 
   useEffect(() => {
     const control = pendingControlFocusRef.current;
@@ -600,6 +611,45 @@ export function GalaxyAtlasScreen({
       setSceneReady(false);
     };
   }, [sceneMounted]);
+
+  // The top bar and HUD float over the stage; publish their heights so the stage, the overlay
+  // panel and the embedded system view can keep clear of them.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const header = headerRef.current;
+    const hud = hudRef.current;
+    if (!root || !header || !hud) return;
+    const publish = () => {
+      root.style.setProperty("--atlas-top", `${Math.ceil(header.getBoundingClientRect().height)}px`);
+      root.style.setProperty("--atlas-bottom", `${Math.ceil(hud.getBoundingClientRect().height) + 16}px`);
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(header);
+    observer.observe(hud);
+    return () => observer.disconnect();
+  }, [showField]);
+
+  // While the overlay panel covers the field, the 3D view centres in the space left of it.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const field = fieldRef.current;
+    if (!scene || !field) return;
+    const measure = () => {
+      const panel = asideRef.current;
+      const fieldBox = field.getBoundingClientRect();
+      const panelBox = panel?.getBoundingClientRect();
+      const overlaps = panelBox !== undefined && panelBox.width > 0 && panelBox.height > 0
+        && panelBox.left < fieldBox.right && panelBox.right > fieldBox.left
+        && panelBox.top < fieldBox.bottom && panelBox.bottom > fieldBox.top;
+      scene.setViewInset(overlaps ? fieldBox.right - panelBox.left : 0);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(field);
+    if (asideRef.current) observer.observe(asideRef.current);
+    return () => observer.disconnect();
+  }, [sceneReady, panelOpen, viewport.viewLevel]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -846,6 +896,7 @@ export function GalaxyAtlasScreen({
       ? { band: sectorModel.route.band, state: "planned" as const }
       : null;
   const vesselStar = sectorModel.stars.find((star) => star.vessel) ?? null;
+  const selectedLabel = targetLabel(selectedTarget, contacts);
 
   return (
     <div
@@ -855,10 +906,13 @@ export function GalaxyAtlasScreen({
       aria-modal="true"
       aria-label="Galaxy Atlas"
       className="sz-atlas"
+      data-atlas-view={viewport.viewLevel}
+      data-panel={panelOpen ? "open" : "closed"}
     >
       <div className="sz-atlas-shell">
         <header
-          style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}
+          ref={headerRef}
+          style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}
           className="sz-atlas-header"
         >
           <Button onClick={onCloseRef.current}>← CLOSE ATLAS</Button>
@@ -871,43 +925,60 @@ export function GalaxyAtlasScreen({
               <span className="sz-atlas-chip">{knownCount} KNOWN · {colonyTotal} COLONIES</span>
             </div>
           </div>
+
+          <nav aria-label="Atlas levels" className="sz-atlas-levels">
+            <Button
+              aria-pressed={viewport.viewLevel === "galaxy"}
+              onClick={() => dispatchViewport({ type: "set-view", viewLevel: "galaxy" })}
+            >
+              GALAXY
+            </Button>
+            <span className="sz-atlas-slash" aria-hidden="true">/</span>
+            <Button
+              aria-pressed={viewport.viewLevel === "sector"}
+              onClick={() => dispatchViewport({ type: "set-view", viewLevel: "sector" })}
+            >
+              SECTOR
+            </Button>
+            <span className="sz-atlas-slash" aria-hidden="true">/</span>
+            <Button
+              aria-pressed={viewport.viewLevel === "system"}
+              disabled={!systemLevelAvailable}
+              onClick={() => dispatchViewport({ type: "set-view", viewLevel: "system" })}
+            >
+              SYSTEM
+            </Button>
+            <span className="sz-atlas-slash" aria-hidden="true">/</span>
+            <Button
+              disabled={!regionOpenable}
+              aria-describedby={regionLevelNote ? "atlas-region-note" : undefined}
+              onClick={onOpenAshfallRegion}
+            >
+              REGION
+            </Button>
+            {regionLevelNote && <span id="atlas-region-note" className="sz-atlas-level-note">{regionLevelNote}</span>}
+          </nav>
+
+          {viewport.viewLevel !== "system" && (
+            <button
+              type="button"
+              className="sz-atlas-toggle"
+              aria-expanded={panelOpen}
+              aria-controls="atlas-side"
+              onClick={() => setPanelOpen((open) => !open)}
+            >
+              {panelOpen ? (
+                <>HIDE PANEL<span aria-hidden="true"> ▸</span></>
+              ) : (
+                <><span className="sz-atlas-sr">SHOW PANEL · </span><span aria-hidden="true">◂ </span>{selectedLabel}</>
+              )}
+            </button>
+          )}
         </header>
 
-        <nav aria-label="Atlas levels" className="sz-atlas-levels">
-          <Button
-            aria-pressed={viewport.viewLevel === "galaxy"}
-            onClick={() => dispatchViewport({ type: "set-view", viewLevel: "galaxy" })}
-          >
-            GALAXY
-          </Button>
-          <span className="sz-atlas-slash" aria-hidden="true">/</span>
-          <Button
-            aria-pressed={viewport.viewLevel === "sector"}
-            onClick={() => dispatchViewport({ type: "set-view", viewLevel: "sector" })}
-          >
-            SECTOR
-          </Button>
-          <span className="sz-atlas-slash" aria-hidden="true">/</span>
-          <Button
-            aria-pressed={viewport.viewLevel === "system"}
-            disabled={!systemLevelAvailable}
-            onClick={() => dispatchViewport({ type: "set-view", viewLevel: "system" })}
-          >
-            SYSTEM
-          </Button>
-          <span className="sz-atlas-slash" aria-hidden="true">/</span>
-          <Button disabled={!ashfallRegionAvailable || !onOpenAshfallRegion} onClick={onOpenAshfallRegion}>
-            REGION
-          </Button>
-        </nav>
-
-        <div
-          data-atlas-layout="responsive"
-          className="sz-atlas-layout"
-          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 16, alignItems: "start" }}
-        >
+        <div data-atlas-layout="hud" className="sz-atlas-layout">
           <main className="sz-atlas-main">
-            <section aria-label="Atlas field" className="sz-atlas-panel">
+            <section aria-label="Atlas field" className="sz-atlas-stage">
               <div
                 ref={fieldRef}
                 data-sector-field="true"
@@ -963,6 +1034,8 @@ export function GalaxyAtlasScreen({
                       save={legacySave}
                       initialSystemId={systemInitialId}
                       onClose={() => dispatchViewport({ type: "set-view", viewLevel: "sector" })}
+                      onOpenRegion={onOpenAshfallRegion ? () => onOpenAshfallRegion() : undefined}
+                      regionAccess={(systemId) => atlasRegionAccess(run, systemId)}
                     />
                   </div>
                 ) : (
@@ -1098,84 +1171,90 @@ export function GalaxyAtlasScreen({
                   </>
                 )}
               </div>
+            </section>
 
-              <div aria-label="Atlas pan and zoom controls" className="sz-atlas-controls">
-                {(["left", "right", "up", "down"] as const).map((direction) => (
+            <div ref={hudRef} className="sz-atlas-hud">
+              <div className="sz-atlas-hud-tools" hidden={viewport.viewLevel === "system"}>
+                <div aria-label="Atlas pan and zoom controls" className="sz-atlas-controls">
+                  {(["left", "right", "up", "down"] as const).map((direction) => (
+                    <Button
+                      key={direction}
+                      aria-label={`PAN ${direction.toUpperCase()}`}
+                      disabled={viewport.viewLevel !== "sector"}
+                      onClick={(event) => dispatchFromControl(
+                        panActionFromTouchControl(direction),
+                        event.currentTarget,
+                      )}
+                    >
+                      {direction === "left" ? "←" : direction === "right" ? "→" : direction === "up" ? "↑" : "↓"}
+                    </Button>
+                  ))}
                   <Button
-                    key={direction}
-                    aria-label={`PAN ${direction.toUpperCase()}`}
+                    aria-label="ZOOM OUT"
                     disabled={viewport.viewLevel !== "sector"}
-                    onClick={(event) => dispatchFromControl(
-                      panActionFromTouchControl(direction),
-                      event.currentTarget,
-                    )}
+                    onClick={(event) => dispatchFromControl(zoomAction(viewport.zoom / 1.4), event.currentTarget)}
                   >
-                    {direction === "left" ? "←" : direction === "right" ? "→" : direction === "up" ? "↑" : "↓"}
+                    −
                   </Button>
-                ))}
-                <Button
-                  aria-label="ZOOM OUT"
-                  disabled={viewport.viewLevel !== "sector"}
-                  onClick={(event) => dispatchFromControl(zoomAction(viewport.zoom / 1.4), event.currentTarget)}
-                >
-                  −
-                </Button>
-                <Button
-                  aria-label="ZOOM IN"
-                  disabled={viewport.viewLevel !== "sector"}
-                  onClick={(event) => dispatchFromControl(zoomAction(viewport.zoom * 1.4), event.currentTarget)}
-                >
-                  +
-                </Button>
-                <output className="sz-atlas-readout">
-                  CENTER {viewport.center.localX},{viewport.center.localY} · ZOOM {viewport.zoom.toFixed(2)}×
-                </output>
+                  <Button
+                    aria-label="ZOOM IN"
+                    disabled={viewport.viewLevel !== "sector"}
+                    onClick={(event) => dispatchFromControl(zoomAction(viewport.zoom * 1.4), event.currentTarget)}
+                  >
+                    +
+                  </Button>
+                  <output className="sz-atlas-readout">
+                    CENTER {viewport.center.localX},{viewport.center.localY} · ZOOM {viewport.zoom.toFixed(2)}×
+                  </output>
+                </div>
+                <div className="sz-atlas-legend" aria-label="Map legend">
+                  <span><i className="sz-atlas-key-star" />Star</span>
+                  <span><i className="sz-atlas-key-visited" />Visited</span>
+                  <span><i className="sz-atlas-key-colony" />Colony</span>
+                  <span><i className="sz-atlas-key-signal" />Signal</span>
+                  <span><i className="sz-atlas-key-vessel" />Vessel</span>
+                  <span><i className="sz-atlas-key-route" />Route</span>
+                </div>
+                <p className="sz-atlas-keys" aria-hidden="true">
+                  <span><kbd>Drag</kbd> orbit</span>
+                  <span><kbd>Wheel</kbd> zoom</span>
+                  <span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> pan</span>
+                  <span><kbd>Esc</kbd> close</span>
+                </p>
+                <details className="sz-atlas-plot">
+                  <summary>PLOT COORDINATE</summary>
+                  <form
+                    data-coordinate-layout="wrapping"
+                    className="sz-atlas-form"
+                    onSubmit={submitCoordinate}
+                    style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 110px), 1fr))", gap: 8, alignItems: "end" }}
+                  >
+                    {(["sectorX", "sectorY", "localX", "localY"] as const).map((field) => (
+                      <label key={field}>
+                        <span>{field.replace(/([A-Z])/g, " $1").toUpperCase()}</span>
+                        <input
+                          name={field}
+                          type="number"
+                          step="1"
+                          value={coordinateInput[field]}
+                          onChange={(event) => setCoordinateInput((current) => ({ ...current, [field]: event.target.value }))}
+                        />
+                      </label>
+                    ))}
+                    <Button type="submit">PLOT</Button>
+                  </form>
+                  {formError !== null && <p role="alert" className="sz-atlas-alert">{formError}</p>}
+                </details>
               </div>
-              <div className="sz-atlas-legend" aria-label="Map legend">
-                <span><i className="sz-atlas-key-star" />Star</span>
-                <span><i className="sz-atlas-key-visited" />Visited</span>
-                <span><i className="sz-atlas-key-colony" />Colony</span>
-                <span><i className="sz-atlas-key-signal" />Signal</span>
-                <span><i className="sz-atlas-key-vessel" />Vessel</span>
-                <span><i className="sz-atlas-key-route" />Route</span>
+              <div role="status" aria-live="polite" className="sz-atlas-status">
+                {statusMessage ?? (routeResult?.ok ? `ROUTE READY · ${selectedLabel}` : routeReasons[0] ?? `ATLAS READY · ${selectedLabel}`)}
               </div>
-              <p className="sz-atlas-keys" aria-hidden="true">
-                <span><kbd>Drag</kbd> orbit</span>
-                <span><kbd>Wheel</kbd> zoom</span>
-                <span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> pan</span>
-                <span><kbd>Esc</kbd> close</span>
-              </p>
-            </section>
-
-            <section className="sz-atlas-panel">
-              <h2>PLOT COORDINATE</h2>
-              <form
-                data-coordinate-layout="wrapping"
-                className="sz-atlas-form"
-                onSubmit={submitCoordinate}
-                style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 110px), 1fr))", gap: 8, alignItems: "end" }}
-              >
-                {(["sectorX", "sectorY", "localX", "localY"] as const).map((field) => (
-                  <label key={field}>
-                    <span>{field.replace(/([A-Z])/g, " $1").toUpperCase()}</span>
-                    <input
-                      name={field}
-                      type="number"
-                      step="1"
-                      value={coordinateInput[field]}
-                      onChange={(event) => setCoordinateInput((current) => ({ ...current, [field]: event.target.value }))}
-                    />
-                  </label>
-                ))}
-                <Button type="submit">PLOT</Button>
-              </form>
-              {formError !== null && <p role="alert" className="sz-atlas-alert">{formError}</p>}
-            </section>
+            </div>
           </main>
 
-          <aside className="sz-atlas-side">
+          <aside id="atlas-side" ref={asideRef} aria-label="Atlas panel" className="sz-atlas-side">
             <section className="sz-atlas-panel">
-              <h2>CONTACTS</h2>
+              <h2>CONTACTS <span className="sz-atlas-count">{contacts.length}</span></h2>
               <div role="listbox" aria-label="Atlas contacts" className="sz-atlas-contacts">
                 {contacts.map((contact) => {
                   const selected = currentSelectedId === contact.targetId;
@@ -1212,8 +1291,9 @@ export function GalaxyAtlasScreen({
                         }
                       }}
                     >
-                      <strong>{contact.label}</strong><br />
-                      <small>{contact.knowledgeState.toUpperCase()} · CONFIDENCE {contact.confidence.toUpperCase()} · {coordinateLabel(contact.coordinate)}</small>
+                      <strong>{contact.label}</strong>
+                      <small data-knowledge={contact.knowledgeState}>{contact.knowledgeState.toUpperCase()}</small>
+                      <span className="sz-atlas-sr"> · CONFIDENCE {contact.confidence.toUpperCase()} · {coordinateLabel(contact.coordinate)}</span>
                     </button>
                   );
                 })}
@@ -1231,8 +1311,13 @@ export function GalaxyAtlasScreen({
                 ref={detailsHeadingRef}
                 tabIndex={-1}
               >
-                {targetLabel(selectedTarget, contacts)}
+                {selectedLabel}
               </h2>
+              {selectedContact && (
+                <p className="sz-atlas-meta">
+                  {selectedContact.knowledgeState.toUpperCase()} · CONFIDENCE {selectedContact.confidence.toUpperCase()} · {coordinateLabel(selectedContact.coordinate)}
+                </p>
+              )}
               {blindTarget && <p className="sz-atlas-blind">BLIND COORDINATE · UNKNOWN CONTRIBUTORS POSSIBLE</p>}
 
               {travel?.state === "interrupted" && activeInterruptionId !== null ? (
@@ -1265,24 +1350,27 @@ export function GalaxyAtlasScreen({
                 </div>
               ) : routePlan !== null ? (
                 <div data-selected-target={currentSelectedId ?? undefined}>
-                  <dl className="sz-atlas-facts">
-                    <dt>DISTANCE</dt><dd>{routePlan.distanceUnits} UNITS</dd>
-                    <dt>CYCLES</dt><dd>{routePlan.elapsedCycles}</dd>
-                    <dt>SUPPLY</dt><dd>{routePlan.supplyCost} · RESERVE {routePlan.projectedReserve}</dd>
-                    <dt>CONFIDENCE</dt><dd>{routePlan.threat.overall.confidence.toUpperCase()}</dd>
+                  <dl className="sz-atlas-facts sz-atlas-facts--grid">
+                    <div><dt>DISTANCE</dt><dd>{routePlan.distanceUnits} UNITS</dd></div>
+                    <div><dt>CYCLES</dt><dd>{routePlan.elapsedCycles}</dd></div>
+                    <div><dt>SUPPLY</dt><dd>{routePlan.supplyCost} · RESERVE {routePlan.projectedReserve}</dd></div>
+                    <div><dt>CONFIDENCE</dt><dd>{routePlan.threat.overall.confidence.toUpperCase()}</dd></div>
                   </dl>
-                  <p style={{ color: bandColor(routePlan.threat.overall.band) }}>{routePlan.threat.overall.presentation}</p>
-                  <dl className="sz-atlas-facts">
-                    {THREAT_DIMENSIONS.map((dimension) => (
-                      <React.Fragment key={dimension}>
-                        <dt>{dimension.toUpperCase()}</dt>
-                        <dd style={{ color: bandColor(routePlan.threat.dimensions[dimension].band) }}>
-                          {routePlan.threat.dimensions[dimension].band.toUpperCase()} · {routePlan.threat.dimensions[dimension].confidence.toUpperCase()}
-                          {routePlan.threat.dimensions[dimension].unknownContributors.length > 0 ? " · UNKNOWN CONTRIBUTORS" : ""}
-                        </dd>
-                      </React.Fragment>
-                    ))}
-                  </dl>
+                  <p className="sz-atlas-threat" style={{ color: bandColor(routePlan.threat.overall.band) }}>{routePlan.threat.overall.presentation}</p>
+                  <details className="sz-atlas-breakdown">
+                    <summary>THREAT BREAKDOWN</summary>
+                    <dl className="sz-atlas-facts">
+                      {THREAT_DIMENSIONS.map((dimension) => (
+                        <React.Fragment key={dimension}>
+                          <dt>{dimension.toUpperCase()}</dt>
+                          <dd style={{ color: bandColor(routePlan.threat.dimensions[dimension].band) }}>
+                            {routePlan.threat.dimensions[dimension].band.toUpperCase()} · {routePlan.threat.dimensions[dimension].confidence.toUpperCase()}
+                            {routePlan.threat.dimensions[dimension].unknownContributors.length > 0 ? " · UNKNOWN CONTRIBUTORS" : ""}
+                          </dd>
+                        </React.Fragment>
+                      ))}
+                    </dl>
+                  </details>
                   <Button
                     data-selected-target={currentSelectedId ?? undefined}
                     disabled={!onCommitTravel}
@@ -1323,19 +1411,19 @@ export function GalaxyAtlasScreen({
                 </div>
               )}
 
-              {targetContactId === "contact:ashfall" && (
-                <div>
-                  <Button disabled={!ashfallRegionAvailable || !onOpenAshfallRegion} onClick={onOpenAshfallRegion}>
-                    OPEN ASHFALL REGION
+              {targetContactId === REGION_CONTACT_ID && (
+                <div className="sz-atlas-region">
+                  <Button
+                    disabled={!regionOpenable}
+                    aria-describedby={regionPanelNote ? "atlas-region-panel-note" : undefined}
+                    onClick={onOpenAshfallRegion}
+                  >
+                    {regionAccess.status === "view" ? "VIEW ASHFALL REGION" : "OPEN ASHFALL REGION"}
                   </Button>
-                  {!ashfallRegionAvailable && <p className="sz-atlas-note">REGION LINK REQUIRES A VISITED ASHFALL ARRIVAL.</p>}
+                  {regionPanelNote && <p id="atlas-region-panel-note" className="sz-atlas-note">{regionPanelNote}</p>}
                 </div>
               )}
             </section>
-
-            <div role="status" aria-live="polite" className="sz-atlas-status">
-              {statusMessage ?? (routeResult?.ok ? `ROUTE READY · ${targetLabel(selectedTarget, contacts)}` : routeReasons[0] ?? `ATLAS READY · ${targetLabel(selectedTarget, contacts)}`)}
-            </div>
           </aside>
         </div>
       </div>

@@ -87,8 +87,10 @@
 .sz-system-facts dd { margin: 0; color: #dfdfd3; text-align: right; }
 .sz-system-action-area { margin: 24px 0; }
 .sz-system-action-area > p { margin: 0; padding: 16px; background: #a5c2c208; border-left: 1px solid #a5c2c24d; color: #b9c8cc; font-size: 13px; line-height: 1.65; }
+.sz-system-action-area > .sz-system-region-note { margin-top: 10px; padding: 0; background: none; border: 0; color: #9bb4bd; font-family: var(--font-space-mono), ui-monospace, monospace; font-size: 10px; letter-spacing: .08em; line-height: 1.5; }
 .sz-system-action { display: block; width: 100%; min-height: 52px; padding: 16px; border: 1px solid #b7e3e2; background: #9ad5da; color: #08232c; font-size: 11px; font-weight: 700; letter-spacing: .04em; line-height: 1.7; cursor: pointer; }
 .sz-system-action:hover { background: #c1ecea; }
+.sz-system-action:disabled { border-color: #9ad5da40; background: transparent; color: #8aa3a6; cursor: not-allowed; }
 .sz-system-action:disabled { opacity: .45; cursor: not-allowed; }
 .sz-system :is(button, [role="option"]):focus-visible { outline: 2px solid #e0fff9; outline-offset: 5px; }
 
