@@ -104,6 +104,11 @@ export const BUILDING_FOOTPRINTS: Partial<Record<BuildingType, FootprintSpec>> =
  */
 export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = {
   solar_array_stub: {
+    environmentArt: {
+      wallSpriteId: SPRITES.WORLD_SOLAR_WALL,
+      floorSpriteId: SPRITES.WORLD_SOLAR_FLOOR,
+      ceilingSpriteId: SPRITES.WORLD_UTILITY_CEILING,
+    },
     width: 6, height: 6,
     tiles: [
       "######",
@@ -117,6 +122,11 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
     spawn: { x: 2, y: 5, facing: "north" },
   },
   farm_stub: {
+    environmentArt: {
+      wallSpriteId: SPRITES.WORLD_FARM_WALL,
+      floorSpriteId: SPRITES.WORLD_FARM_FLOOR,
+      ceilingSpriteId: SPRITES.WORLD_UTILITY_CEILING,
+    },
     width: 6, height: 6,
     tiles: [
       "######",
@@ -130,6 +140,11 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
     spawn: { x: 2, y: 5, facing: "north" },
   },
   purifier_stub: {
+    environmentArt: {
+      wallSpriteId: SPRITES.WORLD_PURIFIER_WALL,
+      floorSpriteId: SPRITES.WORLD_PURIFIER_FLOOR,
+      ceilingSpriteId: SPRITES.WORLD_UTILITY_CEILING,
+    },
     width: 6, height: 6,
     tiles: [
       "######",
@@ -143,6 +158,11 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
     spawn: { x: 2, y: 5, facing: "north" },
   },
   habitat_stub: {
+    environmentArt: {
+      wallSpriteId: SPRITES.WORLD_HABITAT_WALL,
+      floorSpriteId: SPRITES.WORLD_HABITAT_FLOOR,
+      ceilingSpriteId: SPRITES.WORLD_UTILITY_CEILING,
+    },
     width: 6, height: 6,
     tiles: [
       "######",
@@ -161,16 +181,21 @@ export const INTERIOR_TEMPLATES: Record<InteriorTemplateId, InteriorTemplate> = 
     spawn: { x: 2, y: 5, facing: "north" },
   },
   mine_stub: {
+    environmentArt: {
+      wallSpriteId: SPRITES.WORLD_MINE_WALL,
+      floorSpriteId: SPRITES.WORLD_MINE_FLOOR,
+      ceilingSpriteId: SPRITES.WORLD_UTILITY_CEILING,
+    },
     width: 6, height: 6,
     tiles: [
       "######",
       "#....#",
-      "#.R..#",   // R = extraction rig (reuses the purifier pump sprite — no new PNG)
+      "#.R..#",   // R = dedicated mining extractor
       "#....#",
       "#....#",
       "##D###",
     ],
-    propSlots: [{ x: 2, y: 2, spriteId: SPRITES.INTERIOR_PURIFIER_PUMP, scale: 1.2 }],
+    propSlots: [{ x: 2, y: 2, spriteId: SPRITES.WORLD_MINE_EXTRACTOR, scale: 1.2 }],
     spawn: { x: 2, y: 5, facing: "north" },
   },
   cantina: {

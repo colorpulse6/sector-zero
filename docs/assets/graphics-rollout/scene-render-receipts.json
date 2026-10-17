@@ -1,0 +1,778 @@
+[
+  {
+    "scene": "ashfall",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 3.5,
+    "y": 2.5,
+    "heading": 0,
+    "actors": [
+      {
+        "id": "npc:1",
+        "name": "Commander Voss",
+        "set": "voss",
+        "action": "idle",
+        "clock": 3165.47,
+        "x": 6.5,
+        "y": 6.5,
+        "facing": -2.2143,
+        "distance": 0
+      },
+      {
+        "id": "npc:2",
+        "name": "Lt. Reyes",
+        "set": "reyes",
+        "action": "idle",
+        "clock": 3165.47,
+        "x": 6.5,
+        "y": 14.5,
+        "facing": -1.8158,
+        "distance": 0
+      },
+      {
+        "id": "npc:3",
+        "name": "Doc Kael",
+        "set": "kael",
+        "action": "idle",
+        "clock": 3165.47,
+        "x": 20.5,
+        "y": 18.5,
+        "facing": -2.3865,
+        "distance": 0
+      }
+    ],
+    "sources": {
+      "paths": 6,
+      "loaded": 6,
+      "reservedBytes": 37748736,
+      "residentBytes": 37748736
+    },
+    "frames": {
+      "bytes": 1572864,
+      "entries": 12,
+      "slots": 12,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 4.699999809265137,
+      "p95": 5.300000190734863,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "colony",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 11.5,
+    "y": 22.5,
+    "heading": -1.5708,
+    "actors": [
+      {
+        "id": "npc:0",
+        "name": "Overseer Seed SEED GROWN",
+        "set": "voss",
+        "action": "idle",
+        "clock": 624.6,
+        "x": 10.7121,
+        "y": 11.2879,
+        "facing": -0.7854,
+        "distance": 0.3
+      },
+      {
+        "id": "npc:1",
+        "name": "Quartermaster",
+        "set": "quartermaster",
+        "action": "idle",
+        "clock": 433.3333,
+        "x": 10.5,
+        "y": 18.5,
+        "facing": 1.5708,
+        "distance": 0
+      },
+      {
+        "id": "npc:2",
+        "name": "Colonist",
+        "set": "survivor",
+        "action": "idle",
+        "clock": 166.2,
+        "x": 4.2879,
+        "y": 6.7121,
+        "facing": 2.3562,
+        "distance": 0.3
+      },
+      {
+        "id": "npc:3",
+        "name": "Colonist",
+        "set": "scavenger",
+        "action": "walk",
+        "clock": 3032.77,
+        "x": 5.5,
+        "y": 10.9645,
+        "facing": 1.5708,
+        "distance": 5.4645
+      },
+      {
+        "id": "npc:4",
+        "name": "Colonist",
+        "set": "survivor",
+        "action": "walk",
+        "clock": 3032.77,
+        "x": 17.5,
+        "y": 17.0355,
+        "facing": -1.5708,
+        "distance": 5.4645
+      },
+      {
+        "id": "npc:5",
+        "name": "Colonist",
+        "set": "scavenger",
+        "action": "walk",
+        "clock": 3032.77,
+        "x": 5.5,
+        "y": 10.9645,
+        "facing": 1.5708,
+        "distance": 5.4645
+      },
+      {
+        "id": "npc:6",
+        "name": "Colonist",
+        "set": "survivor",
+        "action": "walk",
+        "clock": 3032.77,
+        "x": 16.0355,
+        "y": 18.5,
+        "facing": 3.1416,
+        "distance": 5.4645
+      }
+    ],
+    "sources": {
+      "paths": 9,
+      "loaded": 9,
+      "reservedBytes": 58720256,
+      "residentBytes": 58720256
+    },
+    "frames": {
+      "bytes": 9830400,
+      "entries": 75,
+      "slots": 75,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 7.099999904632568,
+      "p95": 9.800000190734863,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "solar_array",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 2.5,
+    "y": 5.5,
+    "heading": -1.5708,
+    "actors": [],
+    "sources": {
+      "paths": 0,
+      "loaded": 0,
+      "reservedBytes": 0,
+      "residentBytes": 0
+    },
+    "frames": {
+      "bytes": 0,
+      "entries": 0,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 8.699999809265137,
+      "p95": 9.800000190734863,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "farm",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 2.5,
+    "y": 5.5,
+    "heading": -1.5708,
+    "actors": [],
+    "sources": {
+      "paths": 0,
+      "loaded": 0,
+      "reservedBytes": 0,
+      "residentBytes": 0
+    },
+    "frames": {
+      "bytes": 0,
+      "entries": 0,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 8.5,
+      "p95": 9.5,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "water_purifier",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 2.5,
+    "y": 5.5,
+    "heading": -1.5708,
+    "actors": [],
+    "sources": {
+      "paths": 0,
+      "loaded": 0,
+      "reservedBytes": 0,
+      "residentBytes": 0
+    },
+    "frames": {
+      "bytes": 0,
+      "entries": 0,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 8.699999809265137,
+      "p95": 9.800000190734863,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "habitat_module",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 2.5,
+    "y": 5.5,
+    "heading": -1.5708,
+    "actors": [],
+    "sources": {
+      "paths": 0,
+      "loaded": 0,
+      "reservedBytes": 0,
+      "residentBytes": 0
+    },
+    "frames": {
+      "bytes": 0,
+      "entries": 0,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 8.899999618530273,
+      "p95": 9.899999618530273,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "mine",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 2.5,
+    "y": 5.5,
+    "heading": -1.5708,
+    "actors": [],
+    "sources": {
+      "paths": 0,
+      "loaded": 0,
+      "reservedBytes": 0,
+      "residentBytes": 0
+    },
+    "frames": {
+      "bytes": 0,
+      "entries": 0,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 9.5,
+      "p95": 9.800000190734863,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "cantina",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 5.5,
+    "y": 9.5,
+    "heading": -1.5708,
+    "actors": [
+      {
+        "id": "npc:1",
+        "name": "BARTENDER",
+        "set": "hub-bartender",
+        "action": "idle",
+        "clock": 3033.87,
+        "x": 3.5,
+        "y": 2.5,
+        "facing": 1.2925,
+        "distance": 0
+      },
+      {
+        "id": "npc:2",
+        "name": "REGULAR",
+        "set": "hub-regular",
+        "action": "idle",
+        "clock": 3033.87,
+        "x": 4.5,
+        "y": 6.5,
+        "facing": 1.249,
+        "distance": 0
+      },
+      {
+        "id": "npc:3",
+        "name": "SIGNAL CHASER",
+        "set": "hub-signal-chaser",
+        "action": "idle",
+        "clock": 3033.87,
+        "x": 9.5,
+        "y": 5.5,
+        "facing": 2.3562,
+        "distance": 0
+      }
+    ],
+    "sources": {
+      "paths": 6,
+      "loaded": 6,
+      "reservedBytes": 37748736,
+      "residentBytes": 37748736
+    },
+    "frames": {
+      "bytes": 1572864,
+      "entries": 12,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 9.600000381469727,
+      "p95": 11.800000190734863,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "station",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 2.5,
+    "y": 2.5,
+    "heading": 0,
+    "actors": [
+      {
+        "id": "enemy:1",
+        "name": "Hostile 1 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 8.625,
+        "y": 2.625,
+        "facing": -3.1212,
+        "distance": 0
+      },
+      {
+        "id": "enemy:2",
+        "name": "Hostile 2 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 12.625,
+        "y": 5.625,
+        "facing": -2.8422,
+        "distance": 0
+      },
+      {
+        "id": "enemy:3",
+        "name": "Hostile 3 · sentry",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 3.625,
+        "y": 9.625,
+        "facing": -1.7274,
+        "distance": 0
+      },
+      {
+        "id": "enemy:4",
+        "name": "Hostile 4 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 2.625,
+        "y": 12.625,
+        "facing": -1.5831,
+        "distance": 0
+      },
+      {
+        "id": "enemy:5",
+        "name": "Hostile 5 · charger",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 8.625,
+        "y": 10.625,
+        "facing": -2.2168,
+        "distance": 0
+      },
+      {
+        "id": "enemy:6",
+        "name": "Hostile 6 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 12.625,
+        "y": 13.625,
+        "facing": -2.3092,
+        "distance": 0
+      },
+      {
+        "id": "enemy:7",
+        "name": "Hostile 7 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 20.625,
+        "y": 6.625,
+        "facing": -2.9178,
+        "distance": 0
+      },
+      {
+        "id": "enemy:8",
+        "name": "Hostile 8 · sentry",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 23.625,
+        "y": 6.625,
+        "facing": -2.9488,
+        "distance": 0
+      },
+      {
+        "id": "enemy:9",
+        "name": "Hostile 9 · charger",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 20.625,
+        "y": 12.625,
+        "facing": -2.6322,
+        "distance": 0
+      },
+      {
+        "id": "enemy:10",
+        "name": "Hostile 10 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 5.625,
+        "y": 18.625,
+        "facing": -1.7622,
+        "distance": 0
+      },
+      {
+        "id": "enemy:11",
+        "name": "Hostile 11 · charger",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 8.625,
+        "y": 20.625,
+        "facing": -1.8967,
+        "distance": 0
+      },
+      {
+        "id": "enemy:12",
+        "name": "Hostile 12 · sentry",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 15.625,
+        "y": 18.625,
+        "facing": -2.254,
+        "distance": 0
+      },
+      {
+        "id": "enemy:13",
+        "name": "Hostile 13 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 15.625,
+        "y": 24.625,
+        "facing": -2.1062,
+        "distance": 0
+      },
+      {
+        "id": "enemy:14",
+        "name": "Hostile 14 · charger",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 18.625,
+        "y": 22.625,
+        "facing": -2.2463,
+        "distance": 0
+      },
+      {
+        "id": "enemy:15",
+        "name": "Hostile 15 · sentry",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 20.625,
+        "y": 23.625,
+        "facing": -2.2799,
+        "distance": 0
+      },
+      {
+        "id": "enemy:16",
+        "name": "Hostile 16 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 2934.17,
+        "x": 22.625,
+        "y": 24.625,
+        "facing": -2.3089,
+        "distance": 0
+      }
+    ],
+    "sources": {
+      "paths": 5,
+      "loaded": 5,
+      "reservedBytes": 37224448,
+      "residentBytes": 37224448
+    },
+    "frames": {
+      "bytes": 1048576,
+      "entries": 4,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 6.5,
+      "p95": 6.900000095367432,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "kepler",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 1.5,
+    "y": 1.5,
+    "heading": 0,
+    "actors": [
+      {
+        "id": "enemy:1",
+        "name": "Hostile 1 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3057.67,
+        "x": 4.5,
+        "y": 3.5,
+        "facing": -2.5536,
+        "distance": 0
+      },
+      {
+        "id": "enemy:2",
+        "name": "Hostile 2 · charger",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3057.67,
+        "x": 9.5,
+        "y": 5.5,
+        "facing": -2.6779,
+        "distance": 0
+      },
+      {
+        "id": "enemy:3",
+        "name": "Hostile 3 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3057.67,
+        "x": 6.5,
+        "y": 7.5,
+        "facing": -2.2655,
+        "distance": 0
+      },
+      {
+        "id": "enemy:4",
+        "name": "Hostile 4 · sentry",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3057.67,
+        "x": 12.5,
+        "y": 9.5,
+        "facing": -2.5128,
+        "distance": 0
+      },
+      {
+        "id": "enemy:5",
+        "name": "Hostile 5 · charger",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3057.67,
+        "x": 4.5,
+        "y": 12.5,
+        "facing": -1.837,
+        "distance": 0
+      },
+      {
+        "id": "enemy:6",
+        "name": "Hostile 6 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3057.67,
+        "x": 14.5,
+        "y": 14.5,
+        "facing": -2.3562,
+        "distance": 0
+      }
+    ],
+    "sources": {
+      "paths": 5,
+      "loaded": 5,
+      "reservedBytes": 37224448,
+      "residentBytes": 37224448
+    },
+    "frames": {
+      "bytes": 1048576,
+      "entries": 4,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 6.5,
+      "p95": 7.199999809265137,
+      "res": "full",
+      "mode": "full"
+    }
+  },
+  {
+    "scene": "cinder",
+    "paused": false,
+    "credits": 300,
+    "dialogue": false,
+    "shopOpen": false,
+    "x": 1.5,
+    "y": 1.5,
+    "heading": 0,
+    "actors": [
+      {
+        "id": "enemy:1",
+        "name": "Hostile 1 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3066.77,
+        "x": 4.5,
+        "y": 3.5,
+        "facing": -2.5536,
+        "distance": 0
+      },
+      {
+        "id": "enemy:2",
+        "name": "Hostile 2 · charger",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3066.77,
+        "x": 9.5,
+        "y": 5.5,
+        "facing": -2.6779,
+        "distance": 0
+      },
+      {
+        "id": "enemy:3",
+        "name": "Hostile 3 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3066.77,
+        "x": 6.5,
+        "y": 7.5,
+        "facing": -2.2655,
+        "distance": 0
+      },
+      {
+        "id": "enemy:4",
+        "name": "Hostile 4 · sentry",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3066.77,
+        "x": 12.5,
+        "y": 9.5,
+        "facing": -2.5128,
+        "distance": 0
+      },
+      {
+        "id": "enemy:5",
+        "name": "Hostile 5 · charger",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3066.77,
+        "x": 4.5,
+        "y": 12.5,
+        "facing": -1.837,
+        "distance": 0
+      },
+      {
+        "id": "enemy:6",
+        "name": "Hostile 6 · grunt",
+        "set": "hostile",
+        "action": "idle",
+        "clock": 3066.77,
+        "x": 14.5,
+        "y": 14.5,
+        "facing": -2.3562,
+        "distance": 0
+      }
+    ],
+    "sources": {
+      "paths": 5,
+      "loaded": 5,
+      "reservedBytes": 37224448,
+      "residentBytes": 37224448
+    },
+    "frames": {
+      "bytes": 1048576,
+      "entries": 4,
+      "slots": 91,
+      "budget": 41943040
+    },
+    "render": {
+      "p50": 6.400000095367432,
+      "p95": 6.699999809265137,
+      "res": "full",
+      "mode": "full"
+    }
+  }
+]

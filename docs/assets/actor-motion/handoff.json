@@ -1,0 +1,385 @@
+{
+  "status": "complete; actor lane frozen",
+  "actors": 9,
+  "atlases": 21,
+  "frames": 910,
+  "runtime_bytes": 21305172,
+  "final_runtime_delta": [
+    {
+      "path": "game/public/sprites/actors/hostile/attack.png",
+      "sha256": "19e988506f625a216f850154cd252338a5c429ddef9b9d525e3f20009f9f7712",
+      "bytes": 1226215
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/hurt.png",
+      "sha256": "3b68f9122a8a439d0df995654a49b7d573074de03547d29bcf16be7dd28d0fd1",
+      "bytes": 383768
+    }
+  ],
+  "all_other_runtime_atlases_unchanged": true,
+  "hostile_source_sha256": "e93b0e21a4d6bef8d1751d8e5a4bd54e97797d9c24311ea2302acffc39dd9f3e",
+  "hostile_pose_evidence": {
+    "actor_front": "-Y",
+    "claw_advance_toward_front": {
+      "Curved finger talon": 0.547969,
+      "Curved finger talon.001": 0.589318,
+      "Curved finger talon.002": 0.630667,
+      "Curved finger talon.003": 0.547969,
+      "Curved finger talon.004": 0.589318,
+      "Curved finger talon.005": 0.630667
+    },
+    "hurt_skull_recoil_toward_positive_y": 0.335496
+  },
+  "files": [
+    {
+      "path": "game/scripts/actors/pack_atlases.py",
+      "bytes": 6617,
+      "sha256": "cf0e32eb299a875c27780e6993b6b35b86506b21579da4cbf0c3a6c1faef7fc5"
+    },
+    {
+      "path": "game/scripts/actors/render_actors.py",
+      "bytes": 40109,
+      "sha256": "c18fc4532235788c73b73b742aff1b2a23be623c15e061f42ee4acde88422826"
+    },
+    {
+      "path": "game/scripts/actors/verify_sources.py",
+      "bytes": 5210,
+      "sha256": "d3bcb0985b0e0e4da42eccf00efa5ebc480531b62a3cca2b78e5134c31b20dba"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/attack.png",
+      "bytes": 1226215,
+      "sha256": "19e988506f625a216f850154cd252338a5c429ddef9b9d525e3f20009f9f7712"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/death.png",
+      "bytes": 272115,
+      "sha256": "72b7d40c51eaca724f874a96b0d50b6af437c2caa12c796f516c551480d506dc"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/hurt.png",
+      "bytes": 383768,
+      "sha256": "3b68f9122a8a439d0df995654a49b7d573074de03547d29bcf16be7dd28d0fd1"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/idle.png",
+      "bytes": 986265,
+      "sha256": "1c5c098e6d4b68272e7bbadc2dad61227de389a2fcb86645845408f766f4f56a"
+    },
+    {
+      "path": "game/public/sprites/actors/hostile/walk.png",
+      "bytes": 1666114,
+      "sha256": "d37f7ddd57fb1fb2fb8e60936535841702620c5debc6c7e5b124df74e4fb0af7"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-bartender/idle.png",
+      "bytes": 698220,
+      "sha256": "9d166ef2d7ab45f943033c05451e4ae3d75953ebbba9de5216b33ac60a77f515"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-bartender/walk.png",
+      "bytes": 1536103,
+      "sha256": "ee5657031031c20802cf33d9f3bd44eb8ce28af1c1a4488f22483f5b7beffdac"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-regular/idle.png",
+      "bytes": 608391,
+      "sha256": "d44685eacbb65a8a931f1711e503d0f422ca996d5ea4bef57f8a17d42b0502b0"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-regular/walk.png",
+      "bytes": 1347992,
+      "sha256": "49dfe4c4b23566add262eb8ec9492567e528a872fe99d8b8b2cdb38efac1cf35"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-signal-chaser/idle.png",
+      "bytes": 611881,
+      "sha256": "64e7ebd01758a5f0c66015e40f2beadf398c3cf642d5be04e868eb371b901957"
+    },
+    {
+      "path": "game/public/sprites/actors/hub-signal-chaser/walk.png",
+      "bytes": 1332908,
+      "sha256": "bc1f87c340966ca6c5c68b944323517e2f89e8c97da245e61af296ce39547aca"
+    },
+    {
+      "path": "game/public/sprites/actors/kael/idle.png",
+      "bytes": 717681,
+      "sha256": "a48f46799fe21df58d927b92244e1310c115889fd88f2e3a2e352e21536f80cd"
+    },
+    {
+      "path": "game/public/sprites/actors/kael/walk.png",
+      "bytes": 1605663,
+      "sha256": "6de8a4694dec6b5a9772e85675df614e7141e5a36f06d8d80a74e0763dfc97d5"
+    },
+    {
+      "path": "game/public/sprites/actors/reyes/idle.png",
+      "bytes": 652853,
+      "sha256": "3ea6e6f75bcf230d3e4251a741b6c2d4e9d2e0396fbd9294a139c77a96aba249"
+    },
+    {
+      "path": "game/public/sprites/actors/reyes/walk.png",
+      "bytes": 1469597,
+      "sha256": "fb49234aa9744c058f6bf3ce91447e68600789413f4403f548c359e843e21a8d"
+    },
+    {
+      "path": "game/public/sprites/actors/scavenger/idle.png",
+      "bytes": 683105,
+      "sha256": "c98734df377a71ed4c511b702ea7b70633ee06c73c874f1979feff08995f8ca5"
+    },
+    {
+      "path": "game/public/sprites/actors/scavenger/walk.png",
+      "bytes": 1496446,
+      "sha256": "ed61b86f6279ae8561fc0d8bf6bf073ea374f5930cc981c83b42b72ded93298e"
+    },
+    {
+      "path": "game/public/sprites/actors/survivor/idle.png",
+      "bytes": 633723,
+      "sha256": "3108fac0f0c5ec976fb0bee5ba715bfbe68bb3f8bd1a9f89f5b070e1b181f877"
+    },
+    {
+      "path": "game/public/sprites/actors/survivor/walk.png",
+      "bytes": 1417604,
+      "sha256": "39be4a4d51db7842ddb6f9e476b8f48bd8a1ea59e77429260b695502d5ca1a96"
+    },
+    {
+      "path": "game/public/sprites/actors/voss/idle.png",
+      "bytes": 614183,
+      "sha256": "68e776cc35c8cb8597d3189bd4a7e14ad0219c816a729ba8456f4eb57fc45951"
+    },
+    {
+      "path": "game/public/sprites/actors/voss/walk.png",
+      "bytes": 1344345,
+      "sha256": "6058f1967769a96bb98820ca4659d2273e59a51308d7a1ccd182be36d4778b25"
+    },
+    {
+      "path": "docs/assets/actor-motion/README.md",
+      "bytes": 5708,
+      "sha256": "55abd4c005d397aa3127e77e1acb3c28e4ea9b1f24718a7ffe6fb9578daa21db"
+    },
+    {
+      "path": "docs/assets/actor-motion/all-directions.png",
+      "bytes": 1180361,
+      "sha256": "afe3903409762aab1112d4d14cbc94dbcd1d1df5ec8d551c2b7b187f54615803"
+    },
+    {
+      "path": "docs/assets/actor-motion/asset-manifest.json",
+      "bytes": 257192,
+      "sha256": "3bb82fa279beac7668b7c89eda65cb293ddeab75799fb6fcff70e74779b82dad"
+    },
+    {
+      "path": "docs/assets/actor-motion/hostile-attack.gif",
+      "bytes": 196364,
+      "sha256": "5239b313570398eb2dbc7de5f787fbb413eaafcabcfba651e091a6cc4b12190d"
+    },
+    {
+      "path": "docs/assets/actor-motion/hostile-death.gif",
+      "bytes": 115537,
+      "sha256": "7eb454434107c733a019dfa5474a4dfe9a40a6f37d38c5c31759d53cd05de8c3"
+    },
+    {
+      "path": "docs/assets/actor-motion/hostile-directions.png",
+      "bytes": 218314,
+      "sha256": "6a4cfa658f84b321482598976408f859e4d3dde74602cf99aa935293bcbc5a55"
+    },
+    {
+      "path": "docs/assets/actor-motion/hostile-editable.blend",
+      "bytes": 935158,
+      "sha256": "e93b0e21a4d6bef8d1751d8e5a4bd54e97797d9c24311ea2302acffc39dd9f3e"
+    },
+    {
+      "path": "docs/assets/actor-motion/hostile-poses.png",
+      "bytes": 299862,
+      "sha256": "8c958f28e730d2fd73b5d617ab9a4ee35e9650d8776243ce0850ecbdfbe2fc3e"
+    },
+    {
+      "path": "docs/assets/actor-motion/hostile-sample-review.png",
+      "bytes": 144383,
+      "sha256": "625064e3bea036862ed2631f607c7203dbbe0acd90b477b8de41767996aa71de"
+    },
+    {
+      "path": "docs/assets/actor-motion/hostile-source-verification.json",
+      "bytes": 11237,
+      "sha256": "052ce2465262654bf29ade13474dd68d7bb3a9c594234cfa49e3320d46f59324"
+    },
+    {
+      "path": "docs/assets/actor-motion/hostile-walk.gif",
+      "bytes": 415967,
+      "sha256": "40b909293ba43099467e743285a0f59263f5f9523672f090436325154871a0ad"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-bartender-directions.png",
+      "bytes": 152190,
+      "sha256": "1f834a1462c1a9eab0cb0b4c519af2c2796081cadb138858ee5bb0010d1c6d3e"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-bartender-source-verification.json",
+      "bytes": 7656,
+      "sha256": "528022df8c9381ef764e0d01fe48439ccbbd3d40097b25c4f639c81d150ee4a1"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-bartender-walk.gif",
+      "bytes": 293647,
+      "sha256": "eb0ec7dca47f66ed712c0aaa8f2a1174cbc2a1b71d35a0be28c4dc7a44c00235"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-regular-directions.png",
+      "bytes": 127112,
+      "sha256": "0ab7c5fda5e5af76887e0ef0d440bdf522488719fb364998fea6ef0c1ab28280"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-regular-source-verification.json",
+      "bytes": 7650,
+      "sha256": "955d1b69ef16fa3a85e73713243dea1a9894ab1683e244d324d371785964461d"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-regular-walk.gif",
+      "bytes": 254674,
+      "sha256": "3381aa45610ab043810be644c68e2c4bad34911879401ff47d51e9714232e976"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-signal-chaser-directions.png",
+      "bytes": 125878,
+      "sha256": "1f0e5dcb9c1920722571b04bc0b236b87b32797d02df080db536efe8de6f6877"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-signal-chaser-source-verification.json",
+      "bytes": 7668,
+      "sha256": "803dde7be0c9a7798c9558e5af734d20081447ef6c6bcaa38b9a651a8efc0fc6"
+    },
+    {
+      "path": "docs/assets/actor-motion/hub-signal-chaser-walk.gif",
+      "bytes": 268230,
+      "sha256": "c5c21aa1a766160974c32ef28a563cc72deaba1d5977f3ba04bcbe01050a45e3"
+    },
+    {
+      "path": "docs/assets/actor-motion/kael-directions.png",
+      "bytes": 160506,
+      "sha256": "4e57c89e575bf2b695909ae49e8919152d8b37b98d1d26c3d76fdafc0a92a271"
+    },
+    {
+      "path": "docs/assets/actor-motion/kael-source-verification.json",
+      "bytes": 7615,
+      "sha256": "06451e14f446b8406dd783010363062a3d1ab08b2928d400546d4d0983000650"
+    },
+    {
+      "path": "docs/assets/actor-motion/kael-walk.gif",
+      "bytes": 287768,
+      "sha256": "64bb885396561a245b2216b4effc3da25b85f3a73e5f670c818036b0adf598f8"
+    },
+    {
+      "path": "docs/assets/actor-motion/reopened-source-verification.json",
+      "bytes": 44832,
+      "sha256": "1030446d353adce16bcb791eec1b2377af6e753542903c02fe8402f9d0674518"
+    },
+    {
+      "path": "docs/assets/actor-motion/reyes-directions.png",
+      "bytes": 136116,
+      "sha256": "418b4a247f24c3aa27c0d88f3abf7cb0db1a5c0ceaf10c3559f928e379539463"
+    },
+    {
+      "path": "docs/assets/actor-motion/reyes-source-verification.json",
+      "bytes": 7618,
+      "sha256": "5297f7ff42bb4fca039b9fcf3045b416a1869dfb00bafd888437489e3c19cce6"
+    },
+    {
+      "path": "docs/assets/actor-motion/reyes-walk.gif",
+      "bytes": 250540,
+      "sha256": "96b19b707010d2fe6639850d6cbaf7fae98ee59375b58c366a2b949f06376489"
+    },
+    {
+      "path": "docs/assets/actor-motion/sample-identity-review.png",
+      "bytes": 144383,
+      "sha256": "625064e3bea036862ed2631f607c7203dbbe0acd90b477b8de41767996aa71de"
+    },
+    {
+      "path": "docs/assets/actor-motion/scavenger-directions.png",
+      "bytes": 145235,
+      "sha256": "1f1de15eda5926cd585660979af4e3248feaebdf3234286e45646079863eeb52"
+    },
+    {
+      "path": "docs/assets/actor-motion/scavenger-source-verification.json",
+      "bytes": 7629,
+      "sha256": "1559c9803a876472283374bffd172cb99e026fd40cd62cbe451fd1a6d6de2ff9"
+    },
+    {
+      "path": "docs/assets/actor-motion/scavenger-walk.gif",
+      "bytes": 299811,
+      "sha256": "2801f4ef3656d8fa57f29c3d7822f670af438ffa2fe6059740844b5dfbbe1e3b"
+    },
+    {
+      "path": "docs/assets/actor-motion/source/License_Standard.txt",
+      "bytes": 782,
+      "sha256": "c232257c8a2545520aa120cda96acb23d00a355d2e3339cba20b7ebf56f28a09"
+    },
+    {
+      "path": "docs/assets/actor-motion/source/kael-front.png",
+      "bytes": 1732772,
+      "sha256": "fabf78977c12dfb97c02940ae57fb1d66feb1fcee2603faef1ebb53f48d6c7ef"
+    },
+    {
+      "path": "docs/assets/actor-motion/source/reyes-front.png",
+      "bytes": 1710135,
+      "sha256": "1c30f962e640d730bc2217dd0e69755935177a16e34496ed38494e0f5670f4cb"
+    },
+    {
+      "path": "docs/assets/actor-motion/source/scavenger-front.png",
+      "bytes": 1850388,
+      "sha256": "2591a71efbad52bf98f0457df8671426276055023cf997780921fe61554681b1"
+    },
+    {
+      "path": "docs/assets/actor-motion/source/survivor-front.png",
+      "bytes": 1738517,
+      "sha256": "b2b4f8bec9b7b99600b39f06a31aefbf03c673c55c2e80e3627d404f9e3f3a7f"
+    },
+    {
+      "path": "docs/assets/actor-motion/source/voss-front.png",
+      "bytes": 1752810,
+      "sha256": "5697e3e69f12e4efa6433cc262640b8098d62ff971bfe1eb15f7bf5f18c49059"
+    },
+    {
+      "path": "docs/assets/actor-motion/source-provenance.json",
+      "bytes": 10619,
+      "sha256": "f6d580ea1985d097169643470397cceccd7a797d0af365558d2bd9f08f311cea"
+    },
+    {
+      "path": "docs/assets/actor-motion/survivor-directions.png",
+      "bytes": 133686,
+      "sha256": "caae01e1c71aea72ee65f2627ab83f259bc00059a25544dcf679c6c0918eaa77"
+    },
+    {
+      "path": "docs/assets/actor-motion/survivor-source-verification.json",
+      "bytes": 7628,
+      "sha256": "2e8ceffed3ec9e5343c7bb2d3136768c751703bca5f3f64706d03287b052d2a4"
+    },
+    {
+      "path": "docs/assets/actor-motion/survivor-walk.gif",
+      "bytes": 254431,
+      "sha256": "6cbc2134576616f8f2dc2239d97a7c8720fa23ad33651dd64e5a9334c1ea82a1"
+    },
+    {
+      "path": "docs/assets/actor-motion/verification-summary.json",
+      "bytes": 9711,
+      "sha256": "a57847cad2e29f62f5ec255421fa1d0f9846d7c26914df86043035e2a23ca350"
+    },
+    {
+      "path": "docs/assets/actor-motion/voss-directions.png",
+      "bytes": 131009,
+      "sha256": "6855bf3be41d3b9c0534d91f8dc658aef5c12f3e5eb17d22f8da0cdaa2ca2247"
+    },
+    {
+      "path": "docs/assets/actor-motion/voss-editable.blend",
+      "bytes": 23700083,
+      "sha256": "0485db6be3490c97499af0931d003b9cfff56661e1ab609f3b7c63faa8da87eb"
+    },
+    {
+      "path": "docs/assets/actor-motion/voss-source-verification.json",
+      "bytes": 7616,
+      "sha256": "1f7e2edc9b532771fe5bc340d5eaa5f7085a4a362437f1a2c579a2b7f17c9078"
+    },
+    {
+      "path": "docs/assets/actor-motion/voss-walk.gif",
+      "bytes": 285011,
+      "sha256": "1224825d129e94c9e9d5d227b6b3c341782c3b7afe2688019280b3afefbe73e2"
+    }
+  ]
+}

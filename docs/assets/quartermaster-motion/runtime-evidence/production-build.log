@@ -1,0 +1,29 @@
+   ▲ Next.js 15.3.1
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 0ms
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/7) ...
+   Generating static pages (1/7)
+   Generating static pages (3/7)
+   Generating static pages (5/7)
+ ✓ Generating static pages (7/7)
+   Finalizing page optimization ...
+   Collecting build traces ...
+   Exporting (0/3) ...
+ ✓ Exporting (3/3)
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     111 kB         350 kB
+├ ○ /_not-found                            978 B         102 kB
+├ ○ /apple-icon.png                          0 B            0 B
+├ ○ /icon.png                                0 B            0 B
+└ ○ /quartermaster-pilot                 6.92 kB         245 kB
++ First Load JS shared by all             101 kB
+  ├ chunks/4bd1b696-7a2894ee9e077aa3.js  53.2 kB
+  ├ chunks/684-b27124aed7eea943.js       46.1 kB
+  └ other shared chunks (total)          1.92 kB
+
+
+○  (Static)  prerendered as static content

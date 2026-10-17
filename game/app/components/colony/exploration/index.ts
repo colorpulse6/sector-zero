@@ -7,6 +7,7 @@ import { type SceneStack, type SceneLayer, pushInterior, popToExterior, isInInte
 import type { ColonyContext, DoorInteractResult, LandingPadResult } from "./colonyContext";
 import { generateColonyNpcs } from "./npc/colonyNpcs";
 import { stepColonyNpcs } from "./npc/npcStep";
+import { QUARTERMASTER_WORKSTATION } from "../../engine/fpRender/npcAtlas";
 
 export type { SceneStack, SceneLayer } from "./sceneStack";
 export type { ColonyContext, DoorInteractResult, LandingPadResult } from "./colonyContext";
@@ -26,6 +27,16 @@ export function enterColonyExploration(save: SaveData, colonyId: ColonyId): Ente
   // Standings drive greeting tone + quartermaster prices/refusal.
   const { fpNpcs, sidecar } = generateColonyNpcs(colony, save.gameClock, firstPersonState.map, save.factionStandings);
   firstPersonState.npcs = fpNpcs;
+  const station = sidecar.find(npc => npc.kind === "quartermaster")?.postTile;
+  if (station) {
+    // Equipment behind the post leaves its south-facing approach open.
+    const x = station.x + 0.5, y = station.y - 0.5;
+    if (firstPersonState.map.tiles[Math.floor(y)]?.[Math.floor(x)] === "floor") {
+      firstPersonState.props = [...(firstPersonState.props ?? []), {
+        id: -100, x, y, sprite: QUARTERMASTER_WORKSTATION, scale: 0.85, label: "SUPPLY STATION",
+      }];
+    }
+  }
   const exteriorLayer: SceneLayer = {
     kind: "exterior",
     buildingId: null,

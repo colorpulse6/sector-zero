@@ -51,7 +51,7 @@ test("generateInteriorState: onLandingPadInteract returns not_on_pad", () => {
   assert.equal(result.kind, "not_on_pad");
 });
 
-test("generateInteriorState: stub interiors preserve Ashfall art, props, and zero NPCs", () => {
+test("generateInteriorState: utility interiors use enclosed room art and preserve prop counts and zero NPCs", () => {
   const expectedProps = {
     solar_array: [{ sprite: SPRITES.INTERIOR_SOLAR_PANEL, scale: 1.0 }],
     farm: [{ sprite: SPRITES.INTERIOR_FARM_CRATE, scale: 1.0 }],
@@ -62,15 +62,15 @@ test("generateInteriorState: stub interiors preserve Ashfall art, props, and zer
       { sprite: SPRITES.INTERIOR_BUNK, scale: 1.0 },
       { sprite: SPRITES.INTERIOR_BUNK, scale: 1.0 },
     ],
-    mine: [{ sprite: SPRITES.INTERIOR_PURIFIER_PUMP, scale: 1.2 }],
+    mine: [{ sprite: SPRITES.WORLD_MINE_EXTRACTOR, scale: 1.2 }],
   } as const;
 
   for (const type of Object.keys(expectedProps) as Array<keyof typeof expectedProps>) {
     const state = generateInteriorState(stubBuilding(type), 42, 12);
-    assert.equal(state.environmentArt?.skySprite, SPRITES.EXPLORE_OUTPOST_SKY);
-    assert.equal(state.environmentArt?.wallSprite, SPRITES.EXPLORE_OUTPOST_WALL_INTERIOR);
-    assert.equal(state.environmentArt?.floorSprite, SPRITES.EXPLORE_OUTPOST_FLOOR_METAL);
-    assert.equal(state.environmentArt?.ceilingSprite, undefined);
+    assert.equal(state.environmentArt?.skySprite, undefined);
+    assert.ok(state.environmentArt?.wallSprite?.startsWith("/sprites/world/"));
+    assert.ok(state.environmentArt?.floorSprite?.startsWith("/sprites/world/"));
+    assert.equal(state.environmentArt?.ceilingSprite, SPRITES.WORLD_UTILITY_CEILING);
     assert.deepEqual(state.props?.map(({ sprite, scale }) => ({ sprite, scale })), expectedProps[type]);
     assert.deepEqual(state.npcs, []);
 

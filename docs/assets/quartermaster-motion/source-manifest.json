@@ -1,0 +1,127 @@
+{
+  "author": "Quaternius",
+  "pack": "Universal Base Characters Standard",
+  "product_url": "https://quaternius.com/packs/universalbasecharacters.html",
+  "download_page": "https://quaternius.itch.io/universal-base-characters",
+  "download_date": "2026-09-06",
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "archive_bytes": 128968391,
+  "archive_sha256": "fdbf1804c90dfc1ea03e992bff7da2dfd1a79318e13270a660180f9308455f40",
+  "imported_files": [
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Male_FullBody.bin",
+      "imported_name": "Superhero_Male_FullBody.bin",
+      "bytes": 720076,
+      "sha256": "459003f9745853ae562a85506a2b94dd56515c1f37728f9fa3d2ce1a3e4cd92f"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf",
+      "imported_name": "Superhero_Male_FullBody.gltf",
+      "bytes": 30989,
+      "sha256": "e7fcea214ecf8855afbf910b50de6f9c7d1decfb71ca28bad8a4481452dafeb4"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/T_Eye_Brown.png",
+      "imported_name": "T_Eye_Brown.png",
+      "bytes": 35958,
+      "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/T_Eye_Normal.png",
+      "imported_name": "T_Eye_Normal_png.png",
+      "bytes": 15099,
+      "sha256": "9ed61f7726a54fe346a78b9e5a18905d8e2b88f86235d97f53cd207a26f3f8c7"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/T_Hair_1_BaseColor.png",
+      "imported_name": "T_Hair_1_BaseColor.png",
+      "bytes": 1570376,
+      "sha256": "bc7aa863bd22ab0a995cd838cceb4d3a5186ee54ee2fb0108fad85d20c057e6e"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/T_Hair_1_Normal.png",
+      "imported_name": "T_Hair_1_Normal_png.png",
+      "bytes": 4326126,
+      "sha256": "57fd0ad8c96a4d01b38769637e066cecaa285b456f6e48ce00863754a457affb"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/T_Superhero_Male_Dark.png",
+      "imported_name": "T_Superhero_Male_Dark.png",
+      "bytes": 1384380,
+      "sha256": "df680cbc1967a61e85998bfafb8f7bc0a36dd604bb3266486c4b06b1a184bb45"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/T_Superhero_Male_Normal.png",
+      "imported_name": "T_Superhero_Male_Normal.png",
+      "bytes": 4252937,
+      "sha256": "9b25cf9200216eb754b79cf4c63b5380c419780788322f3c57cdd2b3e02679a6"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Base Characters/Godot - UE/T_Superhero_Male_Roughness.png",
+      "imported_name": "T_Superhero_Male_Roughness.png",
+      "bytes": 3152049,
+      "sha256": "c70dabf48574cda55644d556beae1ee7cf1bdcf68a50d259d20f2f2358f27991"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Hairstyles/Origin at 0/glTF (Godot)/Hair_Buzzed.bin",
+      "imported_name": "Hair_Buzzed.bin",
+      "bytes": 19892,
+      "sha256": "89992fc7a5319df6f2908e44a3b694329fac4b500629a573224702e5fdd16f77"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Hairstyles/Origin at 0/glTF (Godot)/Hair_Buzzed.gltf",
+      "imported_name": "Hair_Buzzed.gltf",
+      "bytes": 2006,
+      "sha256": "43752a4c8f2464eb2494a8ab179bf7ad237638a3d47fb3de0a38361db40e1451"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Hairstyles/Origin at 0/glTF (Godot)/T_Hair_1_BaseColor.png",
+      "imported_name": "T_Hair_1_BaseColor.png",
+      "bytes": 1570376,
+      "sha256": "bc7aa863bd22ab0a995cd838cceb4d3a5186ee54ee2fb0108fad85d20c057e6e"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Hairstyles/Origin at 0/glTF (Godot)/T_Hair_1_Normal.png",
+      "imported_name": "T_Hair_1_Normal.png",
+      "bytes": 4326126,
+      "sha256": "57fd0ad8c96a4d01b38769637e066cecaa285b456f6e48ce00863754a457affb"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Hairstyles/Origin at 0/glTF (Godot)/Hair_Beard.bin",
+      "imported_name": "Hair_Beard.bin",
+      "bytes": 25276,
+      "sha256": "781cf9b719d75a9f8d73881d2ca0713fe580d774edc96adaded392aad37a72b7"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Hairstyles/Origin at 0/glTF (Godot)/Hair_Beard.gltf",
+      "imported_name": "Hair_Beard.gltf",
+      "bytes": 2005,
+      "sha256": "c91ef54606aad25a9d1191deaba90cb411c0067d8cef262b2f4819f242e5b365"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Hairstyles/Origin at 0/glTF (Godot)/T_Hair_1_BaseColor.png",
+      "imported_name": "T_Hair_1_BaseColor.png",
+      "bytes": 1570376,
+      "sha256": "bc7aa863bd22ab0a995cd838cceb4d3a5186ee54ee2fb0108fad85d20c057e6e"
+    },
+    {
+      "archive_path": "Universal Base Characters[Standard]/Hairstyles/Origin at 0/glTF (Godot)/T_Hair_1_Normal.png",
+      "imported_name": "T_Hair_1_Normal.png",
+      "bytes": 4326126,
+      "sha256": "57fd0ad8c96a4d01b38769637e066cecaa285b456f6e48ce00863754a457affb"
+    }
+  ],
+  "uri_repairs": "Two *_png.png normal-map URIs reference missing names; copied byte-identical corresponding .png files from the same archive.",
+  "packed_base": {
+    "path": "source/quartermaster-base.blend",
+    "bytes": 19956664,
+    "sha256": "208a5435dafb40a082fc764b2bc4411dcc728246577a7175c7905ae51da9e9ba"
+  },
+  "existing_hero_reference": {
+    "path": "docs/assets/pilot/quartermaster-hero-v1-alpha.png",
+    "bytes": 1442285,
+    "sha256": "48ebe7a83e4a13804e576836c33c9ba30d0bdd0350a079387606c1fcdb5d0e9f",
+    "usage": "Rest-space UV color projection on real front-facing head and garment mesh; original pixels unchanged."
+  }
+}

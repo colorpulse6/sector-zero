@@ -1,0 +1,510 @@
+{
+  "actors": {
+    "voss": {
+      "bones": 65,
+      "meshes": 48,
+      "fcurves": 650,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            512,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 614183,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1344345,
+          "distinct_pixel_poses_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        }
+      ]
+    },
+    "kael": {
+      "bones": 65,
+      "meshes": 44,
+      "fcurves": 650,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            512,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 717681,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1605663,
+          "distinct_pixel_poses_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        }
+      ]
+    },
+    "reyes": {
+      "bones": 65,
+      "meshes": 46,
+      "fcurves": 650,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            512,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 652853,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1469597,
+          "distinct_pixel_poses_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        }
+      ]
+    },
+    "survivor": {
+      "bones": 65,
+      "meshes": 42,
+      "fcurves": 650,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            512,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 633723,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1417604,
+          "distinct_pixel_poses_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        }
+      ]
+    },
+    "scavenger": {
+      "bones": 65,
+      "meshes": 31,
+      "fcurves": 650,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            512,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 683105,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1496446,
+          "distinct_pixel_poses_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        }
+      ]
+    },
+    "hub-bartender": {
+      "bones": 65,
+      "meshes": 29,
+      "fcurves": 650,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            512,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 698220,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1536103,
+          "distinct_pixel_poses_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        }
+      ]
+    },
+    "hub-regular": {
+      "bones": 65,
+      "meshes": 33,
+      "fcurves": 650,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            512,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 608391,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1347992,
+          "distinct_pixel_poses_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        }
+      ]
+    },
+    "hub-signal-chaser": {
+      "bones": 65,
+      "meshes": 69,
+      "fcurves": 650,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            512,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 611881,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1332908,
+          "distinct_pixel_poses_per_row": [
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ]
+        }
+      ]
+    },
+    "hostile": {
+      "bones": 11,
+      "meshes": 86,
+      "fcurves": 66,
+      "atlases": [
+        {
+          "clip": "idle",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 986265,
+          "distinct_pixel_poses_per_row": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ]
+        },
+        {
+          "clip": "walk",
+          "dimensions": [
+            2048,
+            2048
+          ],
+          "cells": 64,
+          "bytes": 1666114,
+          "distinct_pixel_poses_per_row": [
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5
+          ]
+        },
+        {
+          "clip": "attack",
+          "dimensions": [
+            1024,
+            2048
+          ],
+          "cells": 32,
+          "bytes": 1226215,
+          "distinct_pixel_poses_per_row": [
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4,
+            4
+          ]
+        },
+        {
+          "clip": "hurt",
+          "dimensions": [
+            256,
+            2048
+          ],
+          "cells": 8,
+          "bytes": 383768,
+          "distinct_pixel_poses_per_row": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "clip": "death",
+          "dimensions": [
+            1536,
+            256
+          ],
+          "cells": 6,
+          "bytes": 272115,
+          "distinct_pixel_poses_per_row": [
+            6
+          ]
+        }
+      ]
+    }
+  },
+  "atlases": 21,
+  "frames": 910,
+  "runtime_bytes": 21305172,
+  "retained_blends": 2,
+  "source_replays": {
+    "voss": {
+      "identical_pixels": true,
+      "clip": "idle",
+      "column": 0,
+      "unpacked_images": 0,
+      "render_settings": {
+        "engine": "CYCLES",
+        "samples": 20,
+        "seed": 0,
+        "animated_seed": false
+      }
+    },
+    "hostile": {
+      "identical_pixels": true,
+      "clip": "attack",
+      "column": 2,
+      "unpacked_images": 0,
+      "render_settings": {
+        "engine": "CYCLES",
+        "samples": 20,
+        "seed": 0,
+        "animated_seed": false
+      }
+    }
+  },
+  "checks": [
+    "RGBA dimensions match contract",
+    "Every native cell nonempty and strictly inside canvas",
+    "Atlas and source hashes match",
+    "Retained source front replays match shipped pixels",
+    "All retained source images packed",
+    "Only one representative human blend plus hostile blend",
+    "Every animated directional row has multiple distinct poses; symmetric hostile return phases repeat (idle 3 distinct of 4, walk 5 distinct of 8)"
+  ],
+  "hostile_strike_recoil_evidence": {
+    "actor_front": "-Y",
+    "claw_advance_toward_front": {
+      "Curved finger talon": 0.547969,
+      "Curved finger talon.001": 0.589318,
+      "Curved finger talon.002": 0.630667,
+      "Curved finger talon.003": 0.547969,
+      "Curved finger talon.004": 0.589318,
+      "Curved finger talon.005": 0.630667
+    },
+    "hurt_skull_recoil_toward_positive_y": 0.335496
+  }
+}
