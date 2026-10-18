@@ -52,6 +52,7 @@ import { SystemAtlasScreen } from "./system/SystemAtlasScreen";
 import { atlasRegionAccess, REGION_CONTACT_ID } from "./regionAccess";
 import { resolveFieldClick, type FieldClickCandidate } from "./fieldClick";
 import { galaxyColonyAccess, galaxyColonyAtContact } from "../engine/galaxy/galaxyColony";
+import { galaxyColonyManagementAccess } from "../engine/galaxy/galaxyColonyManagement";
 
 export interface GalaxyAtlasScreenProps {
   run: GalaxyRunState | null;
@@ -70,6 +71,8 @@ export interface GalaxyAtlasScreenProps {
   onOpenAshfallRegion?: () => void;
   /** GC1: walk a galaxy colony in first person. The caller re-derives access before launching. */
   onDescendToColony?: (colonyId: string) => void;
+  /** GC2-A: open colony management. The caller re-derives access before opening. */
+  onManageColony?: (colonyId: string) => void;
 }
 
 interface AtlasContactView extends AtlasViewportContact {
@@ -483,6 +486,7 @@ export function GalaxyAtlasScreen({
   onFinalizeTravel,
   onOpenAshfallRegion,
   onDescendToColony,
+  onManageColony,
   focusActive = true,
 }: GalaxyAtlasScreenProps) {
   const contacts = useMemo(() => contactViews(run), [run]);
@@ -574,6 +578,8 @@ export function GalaxyAtlasScreen({
   const descendColonyId = galaxyColonyAtContact(run, targetContactId);
   const descendAccess = galaxyColonyAccess(run, descendColonyId);
   const descendable = descendAccess.status === "full" && onDescendToColony !== undefined;
+  const manageAccess = galaxyColonyManagementAccess(run, descendColonyId);
+  const manageable = manageAccess.status === "full" && onManageColony !== undefined;
   const currentSelectedId = selectedTarget === null
     ? null
     : selectedTargetIdFor(selectedTarget);
@@ -1446,6 +1452,16 @@ export function GalaxyAtlasScreen({
                   </Button>
                   {descendAccess.status === "unavailable" && (
                     <p id="atlas-descend-note" className="sz-atlas-note">{descendAccess.reason}</p>
+                  )}
+                  <Button
+                    disabled={!manageable}
+                    aria-describedby={manageAccess.status === "unavailable" ? "atlas-manage-note" : undefined}
+                    onClick={() => onManageColony?.(descendColonyId)}
+                  >
+                    MANAGE COLONY
+                  </Button>
+                  {manageAccess.status === "unavailable" && (
+                    <p id="atlas-manage-note" className="sz-atlas-note">{manageAccess.reason}</p>
                   )}
                 </div>
               )}

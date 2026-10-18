@@ -5,11 +5,12 @@ export interface ExitMenuProps {
   onTakeOff: () => void;
   onStay: () => void;
   onRegionMap?: () => void;
+  onManageColony?: () => void;
   focusActive?: boolean;
   onRestoreFocus?: () => void;
 }
 
-export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap, focusActive = true, onRestoreFocus }: ExitMenuProps) {
+export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap, onManageColony, focusActive = true, onRestoreFocus }: ExitMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const resumeRef = useRef<HTMLButtonElement>(null);
   useModalFocus({ active: focusActive, rootRef, initialFocus: () => resumeRef.current,
@@ -60,6 +61,7 @@ export function LandingPadExitMenu({ onTakeOff, onStay, onRegionMap, focusActive
           Take Off
         </button>
         {onRegionMap && <button onClick={onRegionMap} style={{ padding: "12px 24px", background: "rgba(0,240,255,.08)", color: tokens.cyan, border: `1px solid ${tokens.cyan}`, fontFamily: tokens.mono }}>REGION MAP</button>}
+        {onManageColony && <button onClick={onManageColony} style={{ padding: "12px 24px", background: "rgba(0,240,255,.08)", color: tokens.cyan, border: `1px solid ${tokens.cyan}`, fontFamily: tokens.mono }}>COLONY MANAGEMENT</button>}
         <button
           ref={resumeRef}
           onClick={onStay}
