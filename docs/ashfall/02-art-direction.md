@@ -12,8 +12,8 @@ only colour that belongs to the camp is the light it makes.
 
 ## Measured palette
 
-Surface values are the mean colour of the live asset (`magick -resize 1x1`). They are facts about
-the art already shipping, not aspirations.
+Surface values are the mean colour of the live asset (`magick -resize 1x1`). They are direct
+file measurements of the art already shipping, not aspirations and not gameplay evidence.
 
 | Role | Hex | Source | Rule |
 | --- | --- | --- | --- |
@@ -47,11 +47,12 @@ No chrome, no glass that is not a screen, no painted colour on any surface.
 
 ## Light
 
-- **Day (the only galaxy condition today).** The projection clock pins the walk at 07:00, which
+- **Day (the only galaxy condition today, and the accepted condition for GC2-A).** The
+  projection clock pins the walk at 07:00, which
   `bucketForHour` classifies as day: identity tint, no point lights. The sky panorama carries a low
   sun on the horizon band; surfaces are lit flat. This is acceptable and is what the baseline
   captures show.
-- **Night (legacy clock; galaxy after D4).** Tint `hueShift -20, saturation 0.7, lightness 0.55`;
+- **Night (legacy clock only; a later galaxy slice, D4, not a prerequisite).** Tint `hueShift -20, saturation 0.7, lightness 0.55`;
   porch lights at operational doors; cool lights at scaffolds. Proposed addition: the Relay Mast
   carries an ember point light (`#d1341a`, power 1.2) while lit, so the camp has one red source
   visible from the pad at night. Lights are inverse-square in tile units (`lighting.ts`).
@@ -95,14 +96,14 @@ the exterior.
 
 ## Proposed vs current, visual
 
-| Element | Current (RUNS) | Proposed | New art needed |
+| Element | Current (SOURCE-REVIEWED) | Proposed | New art needed |
 | --- | --- | --- | --- |
 | Sky, ground, pad, foundation, scaffolding, six facades | live | keep | none |
 | Perimeter frame | live (stone-plate look) | keep for the lock; variant later (D6) | none now |
 | Quartermaster + station | live, approved pilot | keep; add portrait | derivative only |
 | Overseer | Voss billboard, no portrait | hub-governor pair (D1) | none (register existing) |
 | Landmark | none | Relay Mast, lit/dark | 2 billboards (Kit C) |
-| Night at Ashfall in the galaxy | never | depends on D4 | none |
+| Night at Ashfall in the galaxy | never (07:00 clock, retained for GC2-A) | later slice (D4); not a prerequisite | none |
 
 ## Aesthetic acceptance conditions (what a capture must show)
 
@@ -112,7 +113,9 @@ Taken in the actual game at 480×854 from a fresh galaxy save, no dev fixture:
    and (once landed) the mast on one axis; horizon band readable; HUD legible.
 2. A dialog frame with the Overseer portrait and one state line that matches the save.
 3. The pad menu over the scene (contrast of the cyan panel against the rust sky).
-4. If D4 lands: the same arrival frame at night with porch/ember lights.
-5. One frame of the first building in each of its two states (scaffolding, facade).
+4. Later, only once D4 lands (not a condition for the first daylight slice): the same arrival
+   frame at night with porch/ember lights.
+5. One frame of the first building (GC2-A: Solar Array) in each of its two states (scaffolding,
+   facade).
 
 Concept images, boards and this document do not close the gate; the captures do.

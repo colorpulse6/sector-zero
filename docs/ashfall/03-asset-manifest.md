@@ -1,8 +1,10 @@
 # 03 — Asset manifest: bounded first kit
 
-Every entry names its exact runtime consumer on `30b0726`. Sizes were measured this turn
-(VERIFIED). No file was added under `game/public` and `sprites.ts` was not edited; registration
-is the Manager's integration step.
+Every entry names its exact runtime consumer on `30b0726` (SOURCE-REVIEWED). Sizes are direct
+file measurements made this turn (`sips`, `magick`); that is a file check, not gameplay evidence.
+No file was added under `game/public` and `sprites.ts` was not edited; registration is the
+Manager's integration step. The reference board uses short two-line display labels; the label →
+file table is in `boards/README.md`.
 
 ## Runtime slot constraints (from source)
 
@@ -70,7 +72,7 @@ entry as the m3-hubs contract requires. C3 reuses an approved source under its e
 | Plaza paving tile (512²) | the pixel-graphics spec left it pending; plaza reads fine as ground |
 | Relay Tech NPC identity (billboard + portrait) | a third named NPC needs a runtime slot the generator does not have |
 | Marketplace / Town Hall registration | separate slices; salvage diff exists |
-| Night variants of any facade | night does not exist in the galaxy walk until D4 |
+| Night variants of any facade | the galaxy walk stays at 07:00 through GC2-A; night is a later slice (D4) |
 
 ## What changes in code for Kit B and C (for Manager; not edited here)
 

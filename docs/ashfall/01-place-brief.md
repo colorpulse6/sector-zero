@@ -10,12 +10,18 @@ Nothing here renames or re-seeds anything.
 **One line.** A survey camp that lost its lander and kept its mast lit: two people on a dust plain
 who have been calling for a ship, and yours is the one that answered.
 
+**Canon note.** The run carries only these facts: a charted contact with `distressSignal: true`,
+`fact:ashfall-distress`, and a founded colony with no buildings, no stockpile and population 0
+(SOURCE-REVIEWED). The lander loss, the "waiting for a ship" framing and the named Overseer are
+authored proposals for Nic's acceptance, not recovered canon.
+
 **What it is.** Ashfall Primary is a tier-1 outpost on a desert world under a permanent rust
 overcast. It was founded at cycle 0 of the run by the colony reducer, which is why it has an
 overseer and a quartermaster but no buildings, no stockpile and a population of zero on the
-books. In fiction: the camp's survey lander came down hard, the crew have lived out of its hull
-since, and the distress mast has been transmitting the whole time (`fact:ashfall-distress`;
-the Atlas shows the contact as charted with `distressSignal: true`). The environmental threat band
+books. Proposed fiction (PROPOSED, not canon): the camp's survey lander came down hard, the crew
+have lived out of its hull since, and the distress mast has been transmitting the whole time.
+The facts behind it are `fact:ashfall-distress` and the Atlas contact charted with
+`distressSignal: true` (SOURCE-REVIEWED). The environmental threat band
 is moderate; military, political, logistical and anomalous bands are low. It is dangerous because
 of dust and distance, not because of an enemy.
 
@@ -33,7 +39,7 @@ player starts neutral. Rank drives greeting tone, quartermaster prices and the t
 
 ## Why the player comes here
 
-| Reason | Backing fact (RUNS) |
+| Reason | Backing fact (SOURCE-REVIEWED) |
 | --- | --- |
 | It is the only colony in the run and the only place with a region chart | `COLONY_CONTACTS` maps one colony; `REGION_CONTACT_ID` is `contact:ashfall` |
 | The distress signal is the first charted lead from Vanguard | starting knowledge `knowledge:ashfall-distress`; operation `op:ashfall-sortie` available at cycle 0 |
@@ -93,14 +99,14 @@ y7    #.CCCC............DDDD.#
 y8    #.CCCCoooooooo....DDDD.#   o  plaza (x 6..13, y 8..14)          template
 y9    #.CCCCoooooooo....DDDD.#
 y10   #.CCCCoooooooo....DDDD.#
-y11   #.....ooooOooo.........#   O  Overseer post, plaza centre (10,11) RUNS
+y11   #.....ooooOooo.........#   O  Overseer post, plaza centre (10,11) SOURCE-REVIEWED
 y12   #.LL..oooooooo.........#   L  grounded lander hull, x 2..3, y 12..13  DEFERRED prop
 y13   #.LL..oooooooo.........#
 y14   #.....oooooooo.........#
 y15   #.EEEE............FFFF.#
 y16   #.EEEE............FFFF.#
-y17   #.EEEE....W.......FFFF.#   W  SUPPLY STATION prop (10,17)         RUNS
-y18   #.EEEE....Q.......FFFF.#   Q  Quartermaster stall (10,18)         RUNS
+y17   #.EEEE....W.......FFFF.#   W  SUPPLY STATION prop (10,17)         SOURCE-REVIEWED
+y18   #.EEEE....Q.......FFFF.#   Q  Quartermaster stall (10,18)         SOURCE-REVIEWED
 y19   #.........PPPP.........#   P  landing pad (x 10..13, y 19..22)    template, textured
 y20   #.........PPPP.........#
 y21   #.........PPPP.........#
@@ -109,20 +115,20 @@ y23   ########################
 ```
 
 Slot order is seed-rotated (`assignSlots`, `layoutSeed % 6`, seed 4107 → rotation 3), so the first
-commissioned building lands in slot 3 (E-mid, x 18..21 × y 7..10), the second in slot 4 (SW), the third in slot 5 (SE), and so on. The designer
+commissioned building (the GC2-A Solar Array) lands in slot 3 (E-mid, x 18..21 × y 7..10), the second in slot 4 (SW), the third in slot 5 (SE), and so on. The designer
 does not choose slots; the layout rule does. The plaza stays clear of buildings by construction.
 
 ### Named places
 
 | Place | Tiles | What the player can do | Status |
 | --- | --- | --- | --- |
-| The Pad | 10..13 × 19..22 | spawn; interact for Take Off / Region map | RUNS |
-| The Stall and Station | Q (10,18), W (10,17) | talk, shop (A), exchange (B proposed) | RUNS / PROPOSED |
-| The Plaza | 6..13 × 8..14 | meet the Overseer; colonists gather at dusk (legacy clock) | RUNS |
+| The Pad | 10..13 × 19..22 | spawn; interact for Take Off / Region map | SOURCE-REVIEWED; PRIOR EVIDENCE (GC1) |
+| The Stall and Station | Q (10,18), W (10,17) | talk, shop (A), exchange (B proposed, gated) | SOURCE-REVIEWED / PROPOSED |
+| The Plaza | 6..13 × 8..14 | meet the Overseer; colonists gather at dusk (legacy clock) | SOURCE-REVIEWED |
 | The Mast | (10,6) | read the camp's state at a glance | PROPOSED |
-| Slot 3 (E-mid) | 18..21 × 7..10 | first building: scaffolding, then facade and door | RUNS layout; GC2 for galaxy commissioning |
-| Cantina | any slot, 4×4 | drink, rumours, three scheduled NPCs | RUNS interior; needs commissioning (200 metal, 3 cycles) |
-| Off-site: Cinder Relay Ruins | region node | survey, then a first-person expedition; +80 metal | RUNS (from the pad) |
+| Slot 3 (E-mid) | 18..21 × 7..10 | first building (GC2-A: Solar Array): scaffolding, then facade and door | SOURCE-REVIEWED layout; GC2-A for galaxy commissioning |
+| Cantina | any slot, 4×4 | drink, rumours, three scheduled NPCs | SOURCE-REVIEWED interior; needs commissioning (200 metal, 3 cycles; not in GC2-A) |
+| Off-site: Cinder Relay Ruins | region node | survey, then a first-person expedition; +80 metal, once | PRIOR EVIDENCE (GC1, from the pad) |
 
 ## Material, light and colour (summary; full rules in 02)
 
@@ -134,13 +140,13 @@ porch lamps, cyan only on screens. Full palette, measured from the live assets, 
 
 | Change in state | Visible in the place | Mechanism | Status |
 | --- | --- | --- | --- |
-| Building commissioned | foundation tile + scaffolding billboard in its slot | `generateExteriorState` | RUNS (legacy); galaxy after GC2-A |
-| Building completes | facade walls with a south door; door lit at night | same; night window 20:00–06:00 | RUNS (legacy clock only; see D4) |
-| Population grows | one colonist billboard per 4 population, up to 10; barks by happiness tier | `generateColonyNpcs` | RUNS |
-| Happiness band | Overseer's morale line; colonist bark pool | `buildGovernorDialog`, `buildColonistBark` | RUNS |
-| Faction rank | greeting tone; prices; refusal at hated/hostile | `factionLedger` | RUNS |
-| Sortie secures the zone | Relay Mast goes dark; Overseer line changes | prop swap on run state | PROPOSED |
-| Metal delivered | Quartermaster and Overseer name the yard total | new dialog lines from `colony.resources` | PROPOSED |
+| Building commissioned | foundation tile + scaffolding billboard in its slot | `generateExteriorState` | SOURCE-REVIEWED (legacy); galaxy after GC2-A |
+| Building completes | facade walls with a south door; door lit at night | same; night window 20:00–06:00 | SOURCE-REVIEWED (legacy clock only; the galaxy walk stays at 07:00 for GC2-A; night is a later slice, D4) |
+| Population grows | one colonist billboard per 4 population, up to 10; barks by happiness tier | `generateColonyNpcs` | SOURCE-REVIEWED |
+| Happiness band | Overseer's morale line; colonist bark pool | `buildGovernorDialog`, `buildColonistBark` | SOURCE-REVIEWED |
+| Faction rank | greeting tone; prices; refusal at hated/hostile | `factionLedger` | SOURCE-REVIEWED |
+| Sortie secures the zone | Relay Mast goes dark; Overseer line changes | prop swap on run state | PROPOSED; separate small runtime slice |
+| Metal delivered | Quartermaster and Overseer name the yard total | new dialog lines from `colony.resources` | PROPOSED; separate small runtime slice |
 
 ## Explicit non-goals for the first lock
 

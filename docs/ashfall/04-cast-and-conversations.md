@@ -2,10 +2,13 @@
 
 ## Cast
 
-Two roles exist in every fresh-run walk; colonists appear with population. Names are proposed;
-the runtime shows role labels today (`Overseer Ashfall Primary`, `Quartermaster`, `Colonist`).
+Two roles exist in every fresh-run walk; colonists appear with population. Names, pronouns and
+backstory are authored proposals, not recovered canon; the runtime shows role labels today
+(`Overseer Ashfall Primary`, `Quartermaster`, `Colonist`). Labels: SOURCE-REVIEWED means read in
+source on `30b0726`, not executed; PROPOSED means no runtime. Every proposed line is a separate
+small runtime slice (builder changes at the end), not part of GC2-A.
 
-| Role | Runtime today (RUNS) | Proposed identity | Assets | Conversational purpose | State it reads |
+| Role | Runtime today (SOURCE-REVIEWED) | Proposed identity (authored, not canon) | Assets | Conversational purpose | State it reads |
 | --- | --- | --- | --- | --- | --- |
 | Overseer | name `Overseer Ashfall Primary`, Voss billboard, type `lore`, post at plaza centre, dialog from `buildGovernorDialog` | **Overseer Idowu** (she/her), the survey camp's lead; portrait hub-governor | B1, B2 | arrival welcome; colony status; what the camp needs; acknowledges operation results; records the consequence on return | population, growth, tier, buildings and their status, happiness, threats, faction rank; proposed: resources, sortie fact, capacity |
 | Quartermaster | name `Quartermaster`, pilot atlas, type `merchant`, stall by the pad, dialog from `buildQuartermasterDialog`, shop from `buildQuartermasterShop` | **Quartermaster Dace** (he/him); portrait from the pilot hero | Kit A + C3 | fixed-price trade; proposed exchange; the practical voice: costs, cycles, what metal buys | faction rank, colony tier (stock count); proposed: colony metal, ship supply |
@@ -32,7 +35,7 @@ the runtime shows role labels today (`Overseer Ashfall Primary`, `Quartermaster`
 State: `population.total 0, growthRate 0, tier 1, buildings [], happiness 50, activeThreats [],
 rank neutral, op:ashfall-sortie available, resources.metal 0`.
 
-**RUNS today** (`buildGovernorDialog`, neutral):
+**In source today (SOURCE-REVIEWED)** (`buildGovernorDialog`, neutral):
 
 > Governor: Welcome to the colony, pilot. Here's where we stand.
 > Governor: Population's holding steady. We're at 0 now.
@@ -54,19 +57,20 @@ Warm variant (liked/allied): "Idowu. The camp owes you more than it can pay. Her
 
 ## Conversation 2 — Colony need (at the stall, same visit)
 
-**RUNS today**: "Supplies for the road, if you've got the credits." Then the shop lists Hull
-Repair Kit ◆300 and Cryo Charge ◆350; any purchase flashes PURCHASE UNAVAILABLE (legacy unlock;
-0 credits).
+**In source today (SOURCE-REVIEWED)**: "Supplies for the road, if you've got the credits." Then
+the shop lists Hull Repair Kit ◆300 and Cryo Charge ◆350; any galaxy purchase flashes PURCHASE
+UNAVAILABLE (legacy planet-clear unlock). The fresh run is at 0 credits at this point; its only
+income is one-off (Quick Draw 200, Kepler 200), enough for one kit once the unlock is fixed.
 
 **PROPOSED** (portrait `PORTRAIT_QUARTERMASTER`):
 
 | Speaker | Line | Fact source |
 | --- | --- | --- |
 | Quartermaster | Dace. I keep the station. Credits buy kits. Metal buys everything else out here. | neutral opener |
-| Quartermaster | Yard's at zero metal. An array is eighty, a roof is a hundred. | `colony.resources.metal`; `PHASE_1_BUILD_OPTIONS` solar 80, habitat 100 |
+| Quartermaster | Yard's at zero metal. An array is eighty, a roof is a hundred. | `colony.resources.metal`; `PHASE_1_BUILD_OPTIONS` solar 80, habitat 100 (GC2-A commissions the array only; the roof is a later slice) |
 | Quartermaster | The relay ruins north of the camp are a cycle out and full of scrap. Survey first. You don't walk into a rumour. | node `ashfall-cinder-relay` intel `rumored`, adjacent; survey cost 1 cycle; travel requires surveyed |
 
-Cold: "Shop's closed. To you, anyway. The camp doesn't forget. Move along." (RUNS, unchanged.)
+Cold: "Shop's closed. To you, anyway. The camp doesn't forget. Move along." (SOURCE-REVIEWED, unchanged.)
 
 ## Conversation 3 — Operation result (after a Cinder Relay expedition delivered +80 metal)
 
@@ -88,7 +92,7 @@ The line must be generated from the fact, not from the visit count, so it is ide
 
 ## Conversation 4 — Trade
 
-**A, fixed-price (RUNS display; purchase blocked):** opener as above, then the shop panel. With
+**A, fixed-price (SOURCE-REVIEWED: rows display; purchase blocked):** opener as above, then the shop panel. With
 A1 in place and credits ≥ 300 the flash is silent on success (consumables flash nothing by design)
 and the row count changes. Proposed specific refusal copy instead of the generic flash:
 
@@ -103,24 +107,26 @@ and the row count changes. Proposed specific refusal copy instead of the generic
 
 | Speaker | Line | Fact source |
 | --- | --- | --- |
-| Quartermaster | Station's open. Twenty metal buys you one unit of supply. We cut it from salvage. | exchange rate constant (Colony-owned) |
-| Quartermaster | Yard's at eighty. Ship's holding nine of twelve. | `colony.resources.metal`; `run.resources.supply`; cap |
+| Quartermaster | Station's open. Twenty metal buys you one unit of supply. We cut it from salvage. | exchange rate constant (Colony-owned; 20 is an UNAPPROVED placeholder, the line changes with the number) |
+| Quartermaster | Yard's at eighty. Ship's holding nine of twelve. | `colony.resources.metal`; `run.resources.supply`; cap (UNAPPROVED placeholder 12) |
 
-Refusal lines for B are in 05 (yard short, ship full, not parked, stale).
+Refusal lines for B are in 05 (yard short, hold full, not parked, stale). B is gated on GC2-B
+metal recovery and the treasury rule; these lines are not scheduled until then.
 
-## Conversation 5 — Return (leave, travel, come back; after GC2-A completes a habitat)
+## Conversation 5 — Return (leave, travel, come back; after GC2-A completes the Solar Array)
 
-State: one `habitat_module` operational; `population.capacity 10, total 0`; metal 60.
+State: one `solar_array` operational; `population.total 0`; metal 80 (80 from the relay run,
+−80 for the array, +80 from the second expedition or the sortie).
 
-**RUNS today**: "Tier one — all 1 of our buildings are operational." (parked wording.)
+**In source today (SOURCE-REVIEWED)**: "Tier one — all 1 of our buildings are operational." (parked wording.)
 
 **PROPOSED**:
 
 | Speaker | Line | Fact source |
 | --- | --- | --- |
-| Overseer | You came back. The habitat's up. First roof on Ashfall that isn't a hull. | building type `habitat_module`, status `operational` |
-| Overseer | Ten beds, nobody in them yet. That changes the moment morale holds. | `capacity 10`, `total 0`; growth rule needs happiness > 60 and spare capacity |
-| Quartermaster | Yard's at sixty. Station's still open. | `resources.metal` |
+| Overseer | You came back. The array's up. First thing on Ashfall that makes more than it burns. | building type `solar_array`, status `operational` |
+| Overseer | Ten on the grid and nothing drawing on it yet. Next thing we raise plugs into that. | `derivePowerGrid`: capacity 10 (`solar_array`), demand 0 with no other operational building |
+| Quartermaster | Yard's at eighty. Station's still open. | `resources.metal` |
 
 If the building is still constructing on return: "Scaffold's up in the east slot. One more
 cycle." (status `constructing`, `buildProgressCycles`, slot from `assignSlots`).
