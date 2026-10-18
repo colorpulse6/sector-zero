@@ -6,6 +6,7 @@ import { createAffinityLabel } from "./floatingLabels";
 import { hasSkill, getSkillEffect } from "./skillTree";
 import { stepWeaponMotion } from "./weaponMotion";
 import { initializeActorPresentation, playEnemyAction, stepEnemyPresentation, stepStationaryNpcPresentation } from "./actorPresentation";
+import { getObjectiveInteraction } from "./firstPersonInteraction";
 import { syncActorAssets } from "./actorAssets";
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -22,7 +23,6 @@ const ENEMY_CONTACT_RANGE = 0.5; // tiles — melee damage
 const ENEMY_CONTACT_DAMAGE = 1;
 const SENTRY_FIRE_RANGE = 8;
 const SENTRY_FIRE_RATE = 120;
-const OBJECTIVE_PICKUP_RANGE = 0.55;
 
 type FacingVector = Pick<FirstPersonState, "dirX" | "dirY" | "planeX" | "planeY">;
 
@@ -143,6 +143,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   if (!fp) return;
   initializeActorPresentation(fp);
   syncActorAssets(fp);
+  const interactPressed = keys.interact === true && fp.interactHeld !== true;
+  fp.interactHeld = keys.interact === true;
   if (gs.levelCompleteTimer > 0) return;
 
   // Frame-rate-independence factor: 1.0 at 60fps (dtMs = 16.67), capped at 3
@@ -229,7 +231,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       // Nav and buy are mutually exclusive per frame: if the selection moved this
       // frame, don't also act on it — a held direction landing on LEAVE the same
       // frame shoot fires must not close the shop instead of buying the prior row.
-      if (!navigated && keys.shoot && fp.gunCooldown <= 0) {
+      if (!navigated && (keys.shoot || interactPressed) && fp.gunCooldown <= 0) {
         fp.gunCooldown = 15; // Debounce
         const idx = ds.selectedIndex ?? 0;
         if (idx === leaveIndex) {
@@ -245,7 +247,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
           }
         }
       }
-    } else if (keys.shoot && fp.gunCooldown <= 0) {
+    } else if ((keys.shoot || interactPressed) && fp.gunCooldown <= 0) {
       // ── Dialog advance + display-only shop (Ashfall + any non-buyable merchant) ──
       // Unchanged observable behavior: shoot advances lines, opens a merchant's
       // shop at the end, closes an open display-only shop, then closes the dialog.
@@ -318,11 +320,20 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   }
   // ─── End colony hook block ───
 
-  // ── NPC Interaction (press shoot near NPC) ──
-  // Same outer gate as before (npcs present, shoot held, gunCooldown ready); the
-  // proximity/facing/open body now lives in tryOpenNpcDialog (§H1). Opening a
-  // dialog returns, skipping the shot this frame — behavior-identical.
-  if (fp.npcs && keys.shoot && fp.gunCooldown <= 0) {
+  // Pickups retain the existing outcome authority and take priority over firing.
+  let pickedUp = false;
+  if (interactPressed && getObjectiveInteraction(fp)) {
+    fp.objectiveCollected = true;
+    fp.objectivePickup = undefined;
+    fp.goalReached = true;
+    gs.xp += 250;
+    gs.audioEvents.push(AudioEvent.POWER_UP_COLLECT);
+    pickedUp = true;
+  }
+
+  // E interacts without firing. The existing shoot shortcut still opens NPC
+  // dialogue for compatibility; a successful pickup takes priority over both.
+  if (!pickedUp && fp.npcs && (keys.shoot || interactPressed) && fp.gunCooldown <= 0) {
     if (tryOpenNpcDialog(gs, fp)) return;
   }
 
@@ -332,7 +343,7 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   if (fp.gunCooldown > 0) fp.gunCooldown = Math.max(0, fp.gunCooldown - dtF);
   if (fp.gunFireTimer > 0) fp.gunFireTimer = Math.max(0, fp.gunFireTimer - dtF);
 
-  if (keys.shoot && fp.gunCooldown <= 0) {
+  if (!pickedUp && keys.shoot && fp.gunCooldown <= 0) {
     fp.gunFireTimer = GUN_FLASH_DURATION;
     fp.gunCooldown = GUN_FIRE_RATE;
     gs.audioEvents.push(AudioEvent.PLAYER_SHOOT);
@@ -520,24 +531,11 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   // ── Invincibility ──
   if (gs.player.invincibleTimer > 0) gs.player.invincibleTimer = Math.max(0, gs.player.invincibleTimer - dtF);
 
-  // ── Objective pickup ──
-  if (fp.objectivePickup && !fp.objectiveCollected) {
-    const pickupDX = fp.objectivePickup.x - posX;
-    const pickupDY = fp.objectivePickup.y - posY;
-    if (Math.sqrt(pickupDX * pickupDX + pickupDY * pickupDY) <= OBJECTIVE_PICKUP_RANGE) {
-      fp.objectiveCollected = true;
-      fp.objectivePickup = undefined;
-      fp.goalReached = true;
-      gs.xp += 250;
-      gs.audioEvents.push(AudioEvent.POWER_UP_COLLECT);
-    }
-  }
-
   // ── Goal check ──
   const goalCol = Math.floor(posX);
   const goalRow = Math.floor(posY);
   if (goalCol >= 0 && goalCol < fp.map.width && goalRow >= 0 && goalRow < fp.map.height) {
-    if (fp.map.tiles[goalRow][goalCol] === "goal") {
+    if (fp.map.tiles[goalRow][goalCol] === "goal" && !fp.objectivePickup) {
       fp.goalReached = true;
     }
   }
@@ -612,7 +610,8 @@ export function __runFirstPersonSelfTests(): void {
     bomb: false,
     jump: false,
   });
-  console.assert(objectiveState.objectiveCollected, "Objective pickup should collect when player is within range");
+  updateFirstPerson(objectiveGame, { left: false, right: false, up: false, down: false, strafeLeft: false, strafeRight: false, shoot: false, bomb: false, jump: false, interact: true });
+  console.assert(objectiveState.objectiveCollected, "Objective pickup should collect on Interact within range");
   console.assert(objectiveState.goalReached, "Objective pickup should mark the mission complete");
 
   // ── Frame-rate independence (Task 6) ──

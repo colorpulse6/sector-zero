@@ -6,21 +6,28 @@ import { installSaveFixture } from "./helpers/saveFixture";
 
 type InputObservation = { sprite: string; x: number; worldX: number; cameraX: number; y: number; bullets: number; time: number };
 declare global {
-  interface Window { inputObservations: InputObservation[] }
+  interface Window { inputObservations: InputObservation[]; inputTexts: string[] }
 }
 
 // Read-only rendering observation: no game state access or test-only controls.
-async function openFirstPerson(page: Page) {
+async function openFirstPerson(page: Page, launch = "FIRST PERSON") {
   await installSaveFixture(page, freshLegacy);
   await page.addInitScript(() => {
     window.inputObservations = [];
+    window.inputTexts = [];
+    const originalText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function(text, x, y, maxWidth) {
+      if (this.canvas.id === "sector-zero-game-canvas") window.inputTexts.push(String(text));
+      if (maxWidth === undefined) originalText.call(this, text, x, y);
+      else originalText.call(this, text, x, y, maxWidth);
+    };
     let gun = false;
     let map: { x: number; y: number } | null = null;
     let position = { x: 0, y: 0 };
     const active = (ctx: CanvasRenderingContext2D) => ctx.canvas.id === "sector-zero-game-canvas";
     const fillRect = CanvasRenderingContext2D.prototype.fillRect;
     CanvasRenderingContext2D.prototype.fillRect = function(x, y, w, h) {
-      if (active(this) && y === 6 && w === h && this.fillStyle === "rgba(0, 0, 0, 0.7)") map = { x: x + 2, y: y + 2 };
+      if (active(this) && y === 6 && x + w === 474 && this.fillStyle === "rgba(0, 0, 0, 0.7)") map = { x: x + 2, y: y + 2 };
       fillRect.call(this, x, y, w, h);
     };
     const arc = CanvasRenderingContext2D.prototype.arc;
@@ -44,7 +51,7 @@ async function openFirstPerson(page: Page) {
   await page.getByRole("button", { name: "DEV", exact: true }).click();
   await expect(page.getByRole("button", { name: "GROUND RUN", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "BOARDING", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "FIRST PERSON", exact: true }).click();
+  await page.getByRole("button", { name: launch, exact: true }).click();
   await page.getByRole("button", { name: "X", exact: true }).click();
   await page.locator("#sector-zero-game-canvas").focus();
   await page.waitForFunction(() => window.inputObservations.at(-1)?.sprite === "idle");
@@ -164,7 +171,7 @@ test("@touch cancel releases the Fire control without cancelling a keyboard owne
     }
   });
   await openFirstPerson(page);
-  const box = await page.getByRole("group", { name: "First-person controls" }).getByRole("button", { name: "Fire / interact", exact: true }).boundingBox();
+  const box = await page.getByRole("group", { name: "First-person controls" }).getByRole("button", { name: "Fire", exact: true }).boundingBox();
   expect(box).not.toBeNull();
   const session = await page.context().newCDPSession(page);
   const startTouch = () => session.send("Input.dispatchTouchEvent", {
@@ -202,3 +209,40 @@ test("@touch cancel releases the Fire control without cancelling a keyboard owne
     observedOutcome: "Keyboard shooting survived the first cancellation; touch-only shooting stopped after cancellation at 480x854.",
   });
 });
+
+
+for (const input of ["keyboard", "touch"] as const) {
+  test(`@${input} objective supplies wait for an explicit interaction without firing`, async ({ page }, info) => {
+    test.setTimeout(60_000);
+    await openFirstPerson(page, "ASHFALL CAMP");
+    // Walk the actual open route along the west and south edges. The observer
+    // reads rendered minimap coordinates; it never changes application state.
+    for (const [key, axis, target] of [["d", "y", 22.45], ["w", "x", 22.45]] as const) {
+      await page.keyboard.down(key);
+      try {
+        await page.waitForFunction(({ axis, target }) => (window.inputObservations.at(-1)?.[axis] ?? 0) >= target, { axis, target });
+      } finally { await page.keyboard.up(key); }
+    }
+    await observeFrames(page, 6);
+    await expect.poll(() => page.evaluate(() => window.inputTexts.includes("[E / INTERACT] Pick up FIELD SENSOR"))).toBe(true);
+    expect(await page.evaluate(() => window.inputTexts.some(text => text.includes("OBJECTIVE COMPLETE")))).toBe(false);
+    const start = await page.evaluate(() => window.inputObservations.length);
+    const promptCapture = info.outputPath("pickup-prompt.png");
+    await page.screenshot({ path: promptCapture });
+    await info.attach("pickup-prompt", { path: promptCapture, contentType: "image/png" });
+    if (input === "touch") await page.getByRole("button", { name: "Interact", exact: true }).tap();
+    else {
+      await page.keyboard.down("e");
+      await observeFrames(page, 3);
+      await page.keyboard.up("e");
+    }
+    await expect.poll(() => page.evaluate(() => window.inputTexts.some(text => text.includes("OBJECTIVE COMPLETE")))).toBe(true);
+    expect(await page.evaluate(start => window.inputObservations.slice(start).every(frame => frame.bullets === 0), start)).toBe(true);
+    await attachBrowserReceipt(info, {
+      inputMethod: input, saveFixture: "freshLegacy",
+      route: `DEV -> ASHFALL CAMP -> keyboard walk onto field sensor -> ${input === "touch" ? "touch Interact" : "E"}`,
+      expectedOutcome: "Standing on the objective leaves it available; explicit interaction completes the mission without firing.",
+      observedOutcome: "Pickup prompt remained after walking onto the sensor; interaction completed the mission with no gun-fire frames.",
+    });
+  });
+}

@@ -231,7 +231,7 @@ async function openMode(page: Page, launch: string, skipBriefing = true) {
 
 const profiles = [
   { launch: "1-1", name: "Shooter", actions: ["Move left", "Move right", "Move up", "Move down", "Fire", "Bomb"] },
-  { launch: "FIRST PERSON", name: "First-person", actions: ["Move forward", "Move backward", "Strafe left", "Strafe right", "Look left", "Look right", "Fire / interact"] },
+  { launch: "FIRST PERSON", name: "First-person", actions: ["Move forward", "Move backward", "Strafe left", "Strafe right", "Look left", "Look right", "Interact", "Fire"] },
   { launch: "TURRET", name: "Turret", actions: ["Fire"] },
   { launch: "DAY", name: "Colony", actions: ["Move forward", "Move backward", "Strafe left", "Strafe right", "Look left", "Look right", "Interact"] },
 ] as const;
@@ -493,7 +493,7 @@ test("@touch first person separates forward strafe look and fire with simultaneo
       expect(looking.every((f) => !f.gun)).toBe(true);
       await fingers.up(1);
     }
-    await fingers.down(3, action(page, "Fire / interact"));
+    await fingers.down(3, action(page, "Fire"));
     const fire = await frames(page, "fp", 20);
     still(fire, "fp");
     expect(fire.some((f) => f.gun)).toBe(true);
@@ -613,14 +613,14 @@ test("@touch cancel blur pause and mode changes discard old control holds until 
     still(await frames(page, "fp", 8), "fp");
     await fingers.up(1);
     await fingers.down(1, action(page, "Move forward"));
-    await fingers.down(2, action(page, "Fire / interact"));
+    await fingers.down(2, action(page, "Fire"));
     await frames(page, "fp", 6);
     await fingers.tap(9, page.getByTitle("Pause (ESC)", { exact: true }));
     await expect(action(page, "RESUME")).toBeVisible();
     await fingers.tap(9, action(page, "RESUME"));
     await expect(action(page, "RESUME")).toBeHidden();
     await fingers.move(1, action(page, "Move backward"));
-    await fingers.move(2, action(page, "Fire / interact"));
+    await fingers.move(2, action(page, "Fire"));
     await frames(page, "fp", 18);
     const resumed = await frames(page, "fp", 8);
     still(resumed, "fp");
@@ -643,13 +643,13 @@ test("@pointer visible action buttons support held keyboard and mouse activation
   await installSaveFixture(page, freshLegacy);
   await page.goto("/");
   await switchMode(page, "FIRST PERSON");
-  await action(page, "Fire / interact").focus();
+  await action(page, "Fire").focus();
   await page.keyboard.down("Space");
   expect((await frames(page, "fp", 18)).some((f) => f.gun)).toBe(true);
   await page.keyboard.up("Space");
   await frames(page, "fp", 20);
   expect((await frames(page, "fp", 8)).every((f) => !f.gun)).toBe(true);
-  const fire = await center(action(page, "Fire / interact"));
+  const fire = await center(action(page, "Fire"));
   await page.mouse.move(fire.x, fire.y); await page.mouse.down();
   expect((await frames(page, "fp", 18)).some((f) => f.gun)).toBe(true);
   await page.mouse.up();
@@ -663,7 +663,7 @@ test("@pointer visible action buttons support held keyboard and mouse activation
   await page.keyboard.up("ArrowRight");
   expect(after.at(-1)!.turret!.x).toBeGreaterThan(before.x);
   expect(after.every((f) => !f.turretFire)).toBe(true);
-  await receipt(page, testInfo, "first-person buttons -> keyboard/mouse -> turret keyboard aim", "freshLegacy", "Visible Fire / interact buttons retain their named behavior under keyboard/mouse activation; focusing turret aim allows arrow-key positioning without firing.", "pointer");
+  await receipt(page, testInfo, "first-person buttons -> keyboard/mouse -> turret keyboard aim", "freshLegacy", "Visible Fire buttons retain their named behavior under keyboard/mouse activation; focusing turret aim allows arrow-key positioning without firing.", "pointer");
 });
 
 test("@pointer focused turret arrows continue from keyboard aim and release on blur", async ({ page }, testInfo) => {

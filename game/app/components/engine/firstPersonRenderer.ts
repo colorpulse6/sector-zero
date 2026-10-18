@@ -1,3 +1,4 @@
+import { getObjectiveInteraction } from "./firstPersonInteraction";
 import {
   CANVAS_WIDTH,
   GAME_AREA_HEIGHT,
@@ -303,6 +304,7 @@ export function drawFPDialogBox(
   const ds = fp.dialogState;
   if (!ds || !ds.active) return;
 
+  const interactionKey = fp.colonyContext ? "Z" : "E";
   const boxH = ds.shopOpen ? 300 : 140;
   const boxY = GAME_AREA_HEIGHT - boxH - 10;
   const boxX = 16;
@@ -341,14 +343,14 @@ export function drawFPDialogBox(
     ctx.font = "9px monospace";
     if (canBuy) {
       ctx.textAlign = "right";
-      const headerHint = selectedIndex === leaveIndex ? "[Z] LEAVE" : "[Z] BUY  ↑↓ SELECT";
+      const headerHint = selectedIndex === leaveIndex ? `[${interactionKey}] LEAVE` : `[${interactionKey}] BUY  ↑↓ SELECT`;
       ctx.fillText(headerHint, boxX + boxW - 12, boxY + 12);
       ctx.textAlign = "left";
     } else {
       // Display-only shop (Ashfall) — unchanged from pre-Phase-5a rendering:
       // left-aligned (textAlign is still "left" from the header above), drawn
       // inset from the right edge rather than flush against it.
-      ctx.fillText("[Z] Close Shop", boxX + boxW - 110, boxY + 12);
+      ctx.fillText(`[${interactionKey}] Close Shop`, boxX + boxW - 110, boxY + 12);
     }
 
     for (let i = 0; i < ds.shopItems.length; i++) {
@@ -475,10 +477,10 @@ export function drawFPDialogBox(
     // been shown this session (§I per-session gate), so key off ds.shopSeen — this
     // keeps the prompt accurate now that reopening is no longer `!npc.interacted`.
     const prompt = ds.currentLine < ds.lines.length - 1
-      ? "[Z] Continue"
+      ? `[${interactionKey}] Continue`
       : npc?.type === "merchant" && !ds.shopSeen
-        ? "[Z] Open Shop"
-        : "[Z] Close";
+        ? `[${interactionKey}] Open Shop`
+        : `[${interactionKey}] Close`;
 
     const promptPulse = 0.5 + 0.5 * Math.sin(frameCount * 0.08);
     ctx.globalAlpha = promptPulse;
@@ -562,8 +564,16 @@ export function drawFirstPerson(
     ctx.restore();
   }
 
+  const pickupTarget = state.levelCompleteTimer === 0 ? getObjectiveInteraction(fp) : null;
+  if (pickupTarget) {
+    ctx.fillStyle = "#aaffcc";
+    ctx.font = "bold 12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(`[E / INTERACT] Pick up ${pickupTarget.label}`, CANVAS_WIDTH / 2, GAME_AREA_HEIGHT / 2 + 60, CANVAS_WIDTH - 24);
+  }
+
   // ── NPC interaction prompt ──
-  if (fp.npcs && !fp.dialogState?.active) {
+  if (fp.npcs && !fp.dialogState?.active && !pickupTarget) {
     for (const npc of fp.npcs) {
       const dx = npc.x - fp.posX;
       const dy = npc.y - fp.posY;
@@ -574,7 +584,7 @@ export function drawFirstPerson(
         ctx.font = "bold 11px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(`[Z] Talk to ${npc.name}`, CANVAS_WIDTH / 2, GAME_AREA_HEIGHT / 2 + 60);
+        ctx.fillText(`[${fp.colonyContext ? "Z" : "E"}] Talk to ${npc.name}`, CANVAS_WIDTH / 2, GAME_AREA_HEIGHT / 2 + 60);
         break;
       }
     }
@@ -590,7 +600,7 @@ export function drawFirstPerson(
     ctx.fillStyle = "#44668844";
     ctx.font = "9px monospace";
     ctx.textAlign = "center";
-    ctx.fillText("← → TURN   ↑ ↓ / W S MOVE   A D STRAFE   Z INTERACT", CANVAS_WIDTH / 2, GAME_AREA_HEIGHT - 8);
+    ctx.fillText(fp.colonyContext ? "← → TURN   W S MOVE   A D STRAFE   Z INTERACT" : "← → TURN   W S MOVE   A D STRAFE   Z FIRE   E INTERACT", CANVAS_WIDTH / 2, GAME_AREA_HEIGHT - 8);
   }
 
   ctx.restore();

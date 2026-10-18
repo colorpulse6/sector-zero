@@ -421,16 +421,25 @@ export default function Game() {
   }), [persistCanonicalSave]);
 
   const heldInputRef = useRef(createEmptyInputState());
+  const pendingInteractionRef = useRef(false);
   const keysRef = useRef<Keys>(toEngineKeys(heldInputRef.current));
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
   const touchActiveRef = useRef(false);
   const canvasTouchIdRef = useRef<number | null>(null);
   const turretAimRef = useRef<{ position: NormalizedAim; held: boolean } | null>(null);
   const commitHeldInput = useCallback((next: HeldInputState) => {
+    const nextKeys = toEngineKeys(next);
+    if (nextKeys.interact && !toEngineKeys(heldInputRef.current).interact) {
+      pendingInteractionRef.current = true;
+    }
     heldInputRef.current = next;
-    keysRef.current = toEngineKeys(next);
+    // Retain a brief E/touch press until a simulation tick can consume it.
+    // Releasing its source must not erase a tap between animation frames.
+    if (pendingInteractionRef.current) nextKeys.interact = true;
+    keysRef.current = nextKeys;
   }, []);
   const clearHeldInput = useCallback(() => {
+    pendingInteractionRef.current = false;
     commitHeldInput(createEmptyInputState());
     turretAimRef.current = null;
     touchPosRef.current = null;
@@ -2553,6 +2562,10 @@ export default function Game() {
       simAccumulatorRef.current = frame.remainingMs;
       let newState = frame.state;
       const simMs = frame.simulatedMs;
+      if (simMs > 0 && pendingInteractionRef.current) {
+        pendingInteractionRef.current = false;
+        keysRef.current = toEngineKeys(heldInputRef.current);
+      }
       if (frame.boundaryChanged) clearHeldInput();
       if (newState === gameState) {
         // No tick this callback: nothing changed, skip the React commit and

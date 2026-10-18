@@ -31,7 +31,7 @@ const FIRE = control("Fire", "FIRE", "primary");
 const BOMB = control("Bomb", "BOMB", "secondary");
 const LOOK_LEFT = control("Look left", "LOOK ◀", "turn-left");
 const LOOK_RIGHT = control("Look right", "LOOK ▶", "turn-right");
-const FIRST_PERSON_ACTION = control("Fire / interact", "FIRE / INTERACT", "primary");
+const FIRST_PERSON_INTERACT = control("Interact", "INTERACT", "interact");
 const COLONY_ACTION = control("Interact", "INTERACT", "primary");
 const TURRET_AIM_KEYS: Readonly<Partial<Record<string, Control>>> = {
   ArrowLeft: control("Aim turret", "", "move-left"),
@@ -367,7 +367,8 @@ export default function TouchControls({ mode, onPress, onRelease, onAim }: Touch
             {renderButton(LOOK_RIGHT, { flex: 1 })}
           </div>
         )}
-        {renderButton(firstPerson ? mode === "colony-exploration" ? COLONY_ACTION : FIRST_PERSON_ACTION : FIRE, { minHeight: 52 })}
+        {mode === "first-person" && renderButton(FIRST_PERSON_INTERACT, { minHeight: 44 })}
+        {renderButton(mode === "colony-exploration" ? COLONY_ACTION : FIRE, { minHeight: 52 })}
         {!firstPerson && mode !== "turret" && renderButton(BOMB)}
       </div>
     </div>

@@ -18,7 +18,7 @@ export interface KeyboardInput {
 export type InputIntent =
   | "move-left" | "move-right" | "move-up" | "move-down"
   | "turn-left" | "turn-right" | "strafe-left" | "strafe-right"
-  | "primary" | "secondary"
+  | "primary" | "secondary" | "interact"
   | "ui-left" | "ui-right" | "ui-up" | "ui-down" | "activate" | "back"
   | "pause" | "mute";
 
@@ -26,7 +26,7 @@ export type HeldInputState = Readonly<Record<string, InputIntent>>;
 
 export function getTouchControlHint(mode: GameMode): string {
   switch (mode) {
-    case "first-person": return "First-person: Move / strafe · Look · Fire / interact";
+    case "first-person": return "First-person: Move / strafe · Look · Fire · E / Interact";
     case "colony-exploration": return "Colony: Move / strafe · Look · Interact";
     case "turret": return "Turret: Aim area · Fire";
     default: return "Shooter: Move pad · Fire · Bomb";
@@ -52,7 +52,7 @@ const FIRST_PERSON_BINDINGS: KeyBindings = {
 
 const GAMEPLAY_BINDINGS: Record<GameMode, KeyBindings> = {
   shooter: SHOOTER_BINDINGS,
-  "first-person": FIRST_PERSON_BINDINGS,
+  "first-person": { ...FIRST_PERSON_BINDINGS, e: "interact" },
   turret: SHOOTER_BINDINGS,
   "base-defense": SHOOTER_BINDINGS,
   "mech-duel": SHOOTER_BINDINGS,
@@ -128,7 +128,7 @@ const ENGINE_FLAGS: Partial<Record<InputIntent, keyof Keys>> = {
   "move-right": "right", "turn-right": "right", "ui-right": "right",
   "move-up": "up", "ui-up": "up", "move-down": "down", "ui-down": "down",
   "strafe-left": "strafeLeft", "strafe-right": "strafeRight",
-  primary: "shoot", activate: "shoot", secondary: "bomb",
+  primary: "shoot", activate: "shoot", secondary: "bomb", interact: "interact",
 };
 
 export function toEngineKeys(state: HeldInputState): Keys {

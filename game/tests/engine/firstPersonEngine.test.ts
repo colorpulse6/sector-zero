@@ -5,6 +5,7 @@ import {
   __runFirstPersonSelfTests,
 } from "../../app/components/engine/firstPersonEngine";
 import type {
+  GameState,
   BoardingMap,
   FPDialogState,
   FPServiceId,
@@ -77,7 +78,7 @@ function makeFpGame(fpOverrides: Record<string, unknown> = {}) {
     audioEvents: [],
   };
   // Loosely typed on purpose: updateFirstPerson only touches the fields above.
-  return { game: game as never, fp };
+  return { game: game as unknown as GameState, fp: fp as unknown as FirstPersonState };
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -822,4 +823,49 @@ test("shop(M3) drain: unknown runtime service IDs fail closed without mutation",
     );
     assert.deepEqual(save, before, `${runtimeId}: the application boundary does not mutate the input`);
   }
+});
+
+// Explicit objective interaction: walking over cargo must not silently end a mission.
+test("pickup: requires a fresh Interact press and claims the objective once without firing", () => {
+  const g = makeFpGame({ objectivePickup: { x: 2.7, y: 2.5, label: "SUPPLIES" }, objectiveCollected: false });
+  updateFirstPerson(g.game, NO_KEYS);
+  assert.equal(g.fp.objectiveCollected, false);
+  updateFirstPerson(g.game, keys({ interact: true, shoot: true }));
+  assert.equal(g.fp.objectiveCollected, true);
+  assert.equal(g.fp.goalReached, true);
+  assert.equal(g.fp.gunFireTimer, 0);
+  assert.equal(g.game.xp, 750);
+  updateFirstPerson(g.game, keys({ interact: true }));
+  assert.equal(g.game.xp, 750);
+});
+
+test("pickup: held Interact before approaching needs release and a fresh press", () => {
+  const g = makeFpGame({ objectivePickup: { x: 3.8, y: 2.5, label: "SUPPLIES" }, objectiveCollected: false });
+  updateFirstPerson(g.game, keys({ interact: true }));
+  g.fp.posX = 3.3;
+  updateFirstPerson(g.game, keys({ interact: true }));
+  assert.equal(g.fp.objectiveCollected, false);
+  updateFirstPerson(g.game, NO_KEYS);
+  updateFirstPerson(g.game, keys({ interact: true }));
+  assert.equal(g.fp.objectiveCollected, true);
+});
+
+test("pickup: blocks interactions behind the player and through a wall", () => {
+  const behind = makeFpGame({ objectivePickup: { x: 1.7, y: 2.5, label: "SUPPLIES" }, objectiveCollected: false });
+  updateFirstPerson(behind.game, keys({ interact: true }));
+  assert.equal(behind.fp.objectiveCollected, false);
+  const map = structuredClone(OPEN_MAP);
+  map.tiles[2][3] = "wall";
+  const blocked = makeFpGame({ posX: 2.8, map, objectivePickup: { x: 3.2, y: 2.5, label: "SUPPLIES" }, objectiveCollected: false });
+  updateFirstPerson(blocked.game, keys({ interact: true }));
+  assert.equal(blocked.fp.objectiveCollected, false);
+});
+
+test("pickup: the goal tile cannot bypass an unclaimed objective", () => {
+  const map = structuredClone(OPEN_MAP);
+  map.tiles[2][2] = "goal";
+  const g = makeFpGame({ map, objectivePickup: { x: 2.7, y: 2.5, label: "SUPPLIES" }, objectiveCollected: false });
+  updateFirstPerson(g.game, NO_KEYS);
+  assert.equal(g.fp.goalReached, false);
+  assert.equal(g.game.levelCompleteTimer, 0);
 });

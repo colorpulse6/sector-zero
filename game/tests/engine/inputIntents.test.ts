@@ -401,3 +401,15 @@ test("turret: paused gameplay does not consume explicit aim or fire", () => {
   assert.equal(next.turretState!.crosshairY, 0.5);
   assert.equal(next.turretState!.bolts.length, 0);
 });
+
+test("E is a separate first-person Interact action with independent ownership", () => {
+  assert.equal(mapKeyboardIntent({ key: "e" }, gameplay("first-person")), "interact");
+  assert.equal(mapKeyboardIntent({ key: "e" }, gameplay("shooter")), null);
+  assert.equal(mapKeyboardIntent({ key: "e" }, { surface: "blocked" }), null);
+  let held = pressInputSource(createEmptyInputState(), "fire", "primary");
+  held = pressInputSource(held, "interact", "interact");
+  held = releaseInputSource(held, "fire");
+  assert.equal(toEngineKeys(held).interact, true);
+  assert.equal(toEngineKeys(held).shoot, false);
+  assert.equal(toEngineKeys(releaseInputSource(held, "interact")).interact, undefined);
+});

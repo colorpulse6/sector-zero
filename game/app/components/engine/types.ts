@@ -445,6 +445,8 @@ export interface Keys {
   strafeLeft: boolean;
   strafeRight: boolean;
   shoot: boolean;
+  /** Dedicated FPS interaction; absent on older input fixtures. */
+  interact?: boolean;
   bomb: boolean;
   jump: boolean;  // Reserved legacy key field; no active binding
 }
@@ -1020,6 +1022,8 @@ export interface FirstPersonState {
     label: string;
   };
   objectiveCollected?: boolean;
+  /** Holding Interact before approaching must not claim a pickup. */
+  interactHeld?: boolean;
   enemies: FPEnemy[];
   gunFireTimer: number;   // Frames since last shot (for muzzle flash)
   gunCooldown: number;    // Frames until can fire again
