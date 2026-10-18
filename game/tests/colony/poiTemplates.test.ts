@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createFirstPersonWreckTemplate, createFirstPersonRuinTemplate, createFirstPersonCanyonTemplate } from "../../app/components/colony/region/poiTemplates";
 
 for (const create of [createFirstPersonRuinTemplate, createFirstPersonWreckTemplate, createFirstPersonCanyonTemplate]) {
-  test(`${create.name} is deterministic with a valid spawn and reachable objective`, () => {
+  test(`${create.name} is deterministic with a valid spawn and objective`, () => {
     const state = create(11);
     assert.deepEqual(state, create(11));
     assert.notDeepEqual(state, create(12));
@@ -19,6 +19,7 @@ for (const create of [createFirstPersonRuinTemplate, createFirstPersonWreckTempl
       visited.add(key);
       queue.push([x+1,y], [x-1,y], [x,y+1], [x,y-1]);
     }
+    // The existing Cinder/Kepler disconnected objective is recorded under Blockers.
     if (create !== createFirstPersonRuinTemplate) assert.ok(visited.has(`${Math.floor(state.objectivePickup!.x)},${Math.floor(state.objectivePickup!.y)}`));
   });
 }

@@ -3215,6 +3215,7 @@ for (const [oldEngine, nodeId, templateId] of [
     const raw = JSON.parse(JSON.stringify({ ...save,
       outcomeRecoveryRecords: [{ version: 2, kind: "legacy_poi_prepared", envelope: terminal }] }));
     raw.outcomeRecoveryRecords[0].envelope.routeIdentity.engine = oldEngine;
+    Object.freeze(raw);
     const loaded = migrateSave(raw);
     assert.equal(loaded.credits, 1234);
     assert.deepEqual(loaded.materials, save.materials);
@@ -3255,6 +3256,13 @@ for (const [oldEngine, nodeId, templateId] of [
     const { stableHash } = require("../../app/components/engine/galaxy/coordinates");
     fact.id = `history:poi-prepared-v2:${stableHash(`poi-prepared-v2:${canonical}`).toString(16).padStart(8, "0")}:${encodeURIComponent(canonical)}`;
     const raw = JSON.parse(JSON.stringify({ ...save, galaxyRun: { ...run, historyFacts: [...run.historyFacts, fact] } }));
+    Object.freeze(raw);
+    const tampered = JSON.parse(JSON.stringify(raw));
+    const badFact = tampered.galaxyRun.historyFacts.find((entry: { kind: string }) => entry.kind === "poi_completion_prepared");
+    badFact.id = badFact.id.replace(/:[0-9a-f]{8}:/, ":badbad00:");
+    const rejected = migrateSave(tampered);
+    assert.deepEqual(rejected.galaxyRun?.resources, run.resources);
+    assert.equal(rejected.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
     const loaded = migrateSave(raw);
     assert.deepEqual(loaded.galaxyRun?.resources, run.resources);
     assert.deepEqual(migrateSave(JSON.parse(JSON.stringify(loaded))), loaded);

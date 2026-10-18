@@ -632,7 +632,6 @@ export function createHydrationSafeSave(): SaveData {
   return createDefaultSave();
 }
 
-/** Migrate old saves that lack new fields */
 /** Only canonical old POI identities are remapped; arbitrary invalid authority still fails closed. */
 function remapRemovedPoiIdentity(value: unknown): unknown {
   const identity = exactOwnData(value, ["kind", "originColonyId", "nodeId", "engine", "templateId", "rewardEligible"]);
@@ -650,8 +649,10 @@ function migrateRemovedModeAuthority(raw: Record<string, unknown>): Record<strin
   // Copy descriptors only on change: malformed/getter-bearing input remains visible to the strict validators.
   let result = raw;
   const replace = (key: string, value: unknown) => {
-    if (result === raw) result = Object.defineProperties({}, Object.getOwnPropertyDescriptors(raw));
-    Object.defineProperty(result, key, { value, writable: true, enumerable: true, configurable: true });
+    result = Object.defineProperties({}, {
+      ...Object.getOwnPropertyDescriptors(result),
+      [key]: { value, writable: true, enumerable: true, configurable: true },
+    });
   };
   const recoveryField = snapshotOwnField(raw, "outcomeRecoveryRecords");
   const records = recoveryField.kind === "data" ? snapshotDenseArray(recoveryField.value) : null;
@@ -720,6 +721,7 @@ function migrateRemovedModeAuthority(raw: Record<string, unknown>): Record<strin
   return result;
 }
 
+/** Migrate old saves field by field, without mutating the supplied snapshot. */
 export function migrateSave(raw: Record<string, unknown>): SaveData {
   raw = migrateRemovedModeAuthority(raw);
   const colonies = migrateColonies(raw.colonies);
