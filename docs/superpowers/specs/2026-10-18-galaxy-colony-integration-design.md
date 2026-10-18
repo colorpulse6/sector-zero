@@ -62,6 +62,8 @@ Each milestone gets its own short plan; GC1 is first.
 - **Exit:** the landing-pad menu's TAKE OFF returns to the Atlas (to the hub once GC3 lands).
   Region expeditions launched from the pad keep working.
 - **Reload:** a save taken inside the galaxy colony remounts there instead of failing.
+  *(Superseded by "GC1 as built" below: a walk is not a saved location; reload returns to the
+  experience gate and CONTINUE GALAXY opens the Atlas.)*
 - **No cycle cost.** Descending to a colony you are parked at is not travel; the colony's
   in-world clock is presentational (colony spec §D).
 - **Verify:** unit tests for the rule, projection and merge (including "legacy fields
@@ -92,10 +94,20 @@ Each milestone gets its own short plan; GC1 is first.
 
 ### GC2 — Colony management in the galaxy run
 
-The COLONIES management screens (planner, roster, stockpile, region chart, system map) run on
-the galaxy projection and merge back like GC1. Entry from the Atlas target card, from the
-landing pad, and from the hub (GC3). Building, commissioning and dispatch follow the existing
-colony reducers and cycle rules.
+Revised 2026-10-18 after the Ashfall parallel brief (`docs/handoffs/2026-10-18-ashfall-parallel-brief.md`).
+Management does **not** merge a UI projection back like GC1, and GC1's visit allowlist stays as
+it is. Each management action is a validated command against the current canonical save, with
+an explicit allowed change. Entry from the landing pad and the Atlas target card now; from the
+hub in GC3. GC2 ships in two slices:
+
+- **GC2-A** — reachable management, a validated commission command, one supported building
+  (Solar Array), progress through existing cycle-bearing actions, save/reload, the building
+  visible on the next descent. Spec `2026-10-18-gc2a-galaxy-colony-management-design.md`,
+  plan `../plans/2026-10-18-gc2a-galaxy-colony-management.md`. Status: proposed, awaiting
+  manager review.
+- **GC2-B** — the first galaxy-native merchant unlock with honest shop display, a repeatable
+  resource path, written resource ownership, more building types and the regional outpost
+  access rule. Proposed in the GC2-A spec §8; needs the decisions listed there.
 
 ### GC3 — The hub for the galaxy run
 
