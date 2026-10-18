@@ -155,6 +155,11 @@ import {
   resumeTravelToBoundary,
 } from "./engine/galaxy/travelResolver";
 import { projectGalaxyRunToLegacySave } from "./engine/galaxy/galaxyProjection";
+import {
+  applyGalaxyColonyPurchase,
+  galaxyColonyContactId,
+  openGalaxyColony,
+} from "./engine/galaxy/galaxyColony";
 import { authorizeOperationLaunch } from "./engine/operations/operationCatalog";
 import type { OperationResultKind } from "./engine/operations/operationOutcome";
 import type {
@@ -264,6 +269,42 @@ export function createColonyExteriorLaunchState(
     gameState: {
       ...baseState,
       outcomeAttempt: createOutcomeAttempt(save, context, "colony"),
+      screen: GameScreen.PLAYING,
+      currentMode: "colony-exploration",
+      currentPhase: 0,
+      totalPhases: 1,
+      firstPersonState: entered.firstPersonState,
+      briefingTimer: 0,
+      devInvincible: false,
+    },
+  };
+}
+
+/**
+ * Galaxy descent (GC1): walk a galaxy colony on a disposable projection of the run. The
+ * attempt's authority is the canonical galaxy save; TAKE OFF returns to the Galaxy Atlas.
+ */
+export function createGalaxyColonyLaunchState(
+  save: SaveData,
+  colonyId: string,
+  provenance: "atlas" | "continue" = "atlas",
+): { gameState: GameState; sceneStack: SceneStack } {
+  const opened = openGalaxyColony(save, colonyId);
+  if (!opened.ok) throw new Error(opened.reason);
+  const entered = enterColonyExploration(opened.projectedSave, colonyId);
+  const context = launchContextFromSave(
+    opened.projectedSave,
+    colonyMissionDescriptor(colonyId, "exterior"),
+    "galaxy",
+    provenance,
+    "galaxy-atlas",
+  );
+  const baseState = createGameState(1, 1, context);
+  return {
+    sceneStack: entered.sceneStack,
+    gameState: {
+      ...baseState,
+      outcomeAttempt: createOutcomeAttempt(opened.parent, context, "colony"),
       screen: GameScreen.PLAYING,
       currentMode: "colony-exploration",
       currentPhase: 0,
@@ -1007,6 +1048,10 @@ export default function Game() {
       try { colonyLaunch = createColonyExteriorLaunchState(canonical, mount.colonyId, "continue"); }
       catch { return failMount("COLONY RETURN COULD NOT BE MOUNTED · RELOAD TO RECONCILE"); }
     }
+    if (mount.surface === "galaxy-colony-exterior" || mount.surface === "galaxy-landing-pad") {
+      try { colonyLaunch = createGalaxyColonyLaunchState(canonical, mount.colonyId, "continue"); }
+      catch { return failMount("GALAXY COLONY RETURN COULD NOT BE MOUNTED · RELOAD TO RECONCILE"); }
+    }
     if (mount.surface === "galaxy-region") {
       const opened = openGalaxyRegion(canonical, "contact:ashfall");
       if (!opened.ok || opened.originColony.id !== mount.originColonyId) {
@@ -1059,10 +1104,12 @@ export default function Game() {
         break;
       case "legacy-colony-exterior":
       case "legacy-landing-pad":
+      case "galaxy-colony-exterior":
+      case "galaxy-landing-pad":
         if (colonyLaunch === null) return false;
         setGameState(colonyLaunch.gameState);
         setSceneStack(colonyLaunch.sceneStack);
-        setExitMenuOpen(mount.surface === "legacy-landing-pad");
+        setExitMenuOpen(mount.surface === "legacy-landing-pad" || mount.surface === "galaxy-landing-pad");
         break;
       case "galaxy-atlas":
         setShowGalaxyAtlas(true);
@@ -1075,12 +1122,10 @@ export default function Game() {
           experience: "galaxy",
         });
         break;
-      case "galaxy-colony-exterior":
-      case "galaxy-landing-pad":
-        return failMount("GALAXY COLONY RETURN IS NOT AVAILABLE · RELOAD TO RECONCILE");
     }
     audioRef.current?.switchMusic("menu");
-    if (mount.surface === "legacy-cockpit" || mount.surface === "legacy-star-map" || mount.surface === "legacy-colony-exterior") {
+    if (mount.surface === "legacy-cockpit" || mount.surface === "legacy-star-map" ||
+      mount.surface === "legacy-colony-exterior" || mount.surface === "galaxy-colony-exterior") {
       requestAnimationFrame(() => { if (!document.querySelector('[data-persistence-recovery]')) canvasRef.current?.focus(); });
     }
     return true;
@@ -1182,6 +1227,24 @@ export default function Game() {
     requestAnimationFrame(() => canvasRef.current?.focus());
   }, [commitCockpitState, ensureAudio]);
 
+  const handleGalaxyDescend = useCallback((colonyId: string) => {
+    // The launch re-derives access: only a vessel parked at the colony's contact may descend.
+    let launched: ReturnType<typeof createGalaxyColonyLaunchState>;
+    try { launched = createGalaxyColonyLaunchState(saveDataRef.current, colonyId); }
+    catch (cause) {
+      setAtlasStatusMessage(`DESCENT UNAVAILABLE · ${cause instanceof Error ? cause.message : "RELOAD TO RECONCILE"}`);
+      return;
+    }
+    ensureAudio();
+    setRegionMapSurface(null);
+    setExitMenuOpen(false);
+    atlasShouldRestoreFocusRef.current = true;
+    setShowGalaxyAtlas(false);
+    setGameState(launched.gameState);
+    setSceneStack(launched.sceneStack);
+    requestAnimationFrame(() => canvasRef.current?.focus());
+  }, [ensureAudio]);
+
   const handleRegionExpedition = useCallback((kind: "survey" | "poi", targetNodeId: string) => {
     const surface = regionMapSurface;
     if (!surface || !surface.actionsEnabled || expeditionRequestRef.current) return;
@@ -1277,6 +1340,18 @@ export default function Game() {
     });
     // Keep the Atlas invoker connected while its Region dialog owns focus.
   }, []);
+
+  // GC1: a colony walk launched with galaxy authority runs on a projection of the run.
+  const galaxyColonyId = gameState?.currentMode === "colony-exploration" &&
+    gameState.outcomeAttempt?.persistenceAuthority === "galaxy" &&
+    gameState.outcomeAttempt.routeIdentity.kind === "colony"
+    ? gameState.outcomeAttempt.routeIdentity.colonyId
+    : null;
+  const colonyEngineSave = useMemo(() => {
+    if (galaxyColonyId === null) return saveData;
+    const opened = openGalaxyColony(saveData, galaxyColonyId);
+    return opened.ok ? opened.projectedSave : null;
+  }, [galaxyColonyId, saveData]);
 
   const galaxyRegionView = useMemo(() => {
     if (regionMapSurface?.experience !== "galaxy") return null;
@@ -2461,8 +2536,8 @@ export default function Game() {
         if (req && req.kind === "show_exit_menu") {
           setExitMenuOpen(true);
           if (fp) fp.colonyTransitionRequest = undefined;
-        } else {
-          const nextStack = stepColonyExploration(sceneStack, saveData, simMs);
+        } else if (colonyEngineSave) {
+          const nextStack = stepColonyExploration(sceneStack, colonyEngineSave, simMs);
           if (nextStack !== sceneStack) {
             setSceneStack(nextStack);
             // When stack layer changes (interior enter/exit), propagate the new
@@ -2486,8 +2561,13 @@ export default function Game() {
           // the buy rank from the explored colony's primary faction — the same
           // rank the shop's displayed costs were built with, so the charge
           // always equals the display for consumables. Services ignore rank.
-          const buyRank = colonyMerchantRank(saveData.colonies, saveData.factionStandings, sceneStack?.colonyId);
-          const nextSave = applyShopPurchase(saveData, buyReq, buyRank);
+          const nextSave = galaxyColonyId !== null
+            ? applyGalaxyColonyPurchase(saveData, galaxyColonyId, buyReq)
+            : applyShopPurchase(
+              saveData,
+              buyReq,
+              colonyMerchantRank(saveData.colonies, saveData.factionStandings, sceneStack?.colonyId),
+            );
           if (nextSave) {
             saveSave(nextSave);
             adoptCanonicalSave(nextSave);
@@ -2519,7 +2599,7 @@ export default function Game() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [adoptCanonicalSave, clearHeldInput, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface]);
+  }, [adoptCanonicalSave, clearHeldInput, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface, galaxyColonyId, colonyEngineSave]);
 
   // Auto-trigger ending when game engine sets ENDING screen (final boss defeated)
   useEffect(() => {
@@ -2581,9 +2661,10 @@ export default function Game() {
       : mount.surface === "legacy-star-map"
         ? showMap && starMapState.selectedWorld === mount.world &&
           starMapState.selectedLevel === mount.level && starMapState.expanded
-        : mount.surface === "legacy-colony-exterior" || mount.surface === "legacy-landing-pad"
+        : mount.surface === "legacy-colony-exterior" || mount.surface === "legacy-landing-pad" ||
+          mount.surface === "galaxy-colony-exterior" || mount.surface === "galaxy-landing-pad"
           ? sceneStack?.colonyId === mount.colonyId && gameState?.currentMode === "colony-exploration" &&
-            (mount.surface !== "legacy-landing-pad" || exitMenuOpen)
+            ((mount.surface !== "legacy-landing-pad" && mount.surface !== "galaxy-landing-pad") || exitMenuOpen)
           : mount.surface === "galaxy-atlas"
             ? showGalaxyAtlas
             : mount.surface === "galaxy-region"
@@ -2858,6 +2939,7 @@ export default function Game() {
           onResumeTravel={persistenceNavigationLocked ? () => {} : handleResumeTravel}
           onFinalizeTravel={persistenceNavigationLocked ? () => {} : handleFinalizeTravel}
           onOpenAshfallRegion={persistenceNavigationLocked ? () => {} : handleOpenAshfallRegion}
+          onDescendToColony={persistenceNavigationLocked ? () => {} : handleGalaxyDescend}
           onRestoreFocus={restoreAtlasInvokerFocus}
           onClose={persistenceNavigationLocked
             ? () => {}
@@ -3262,6 +3344,19 @@ export default function Game() {
             if (persistenceNavigationLocked) return;
             const originColonyId = sceneStack.current.state.colonyContext?.colonyId;
             if (!originColonyId) return;
+            if (galaxyColonyId !== null) {
+              // Galaxy region charts exist for the region contact only; re-derive access here.
+              const contactId = galaxyColonyContactId(galaxyColonyId);
+              const access = atlasRegionAccess(saveDataRef.current.galaxyRun, contactId);
+              if (contactId !== REGION_CONTACT_ID || access.status === "unavailable") return;
+              setRegionMapSurface({
+                source: "landing-pad",
+                actionsEnabled: access.status === "full",
+                originColonyId: galaxyColonyId,
+                experience: "galaxy",
+              });
+              return;
+            }
             setRegionMapSurface({ source: "landing-pad", actionsEnabled: true, originColonyId, experience: "legacy" });
           }}
         />

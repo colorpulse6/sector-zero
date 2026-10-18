@@ -92,6 +92,8 @@
 .sz-system-action:hover { background: #c1ecea; }
 .sz-system-action:disabled { border-color: #9ad5da40; background: transparent; color: #8aa3a6; cursor: not-allowed; }
 .sz-system-action:disabled { opacity: .45; cursor: not-allowed; }
+.sz-system-action--secondary { margin-top: 10px; background: transparent; color: #c9eeec; }
+.sz-system-action--secondary:hover { background: #9ad5da1f; }
 .sz-system :is(button, [role="option"]):focus-visible { outline: 2px solid #e0fff9; outline-offset: 5px; }
 
 /* 3D scene live: the canvas carries the look. Planet markers become quiet hit targets over the

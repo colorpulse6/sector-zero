@@ -50,6 +50,7 @@ import { createSectorScene, type SectorSceneHandle } from "./sector/SectorScene"
 import { fallbackContactLabel, systemCatalogueForRun } from "./system/contactSystems";
 import { SystemAtlasScreen } from "./system/SystemAtlasScreen";
 import { atlasRegionAccess, REGION_CONTACT_ID } from "./regionAccess";
+import { galaxyColonyAccess, galaxyColonyAtContact } from "../engine/galaxy/galaxyColony";
 
 export interface GalaxyAtlasScreenProps {
   run: GalaxyRunState | null;
@@ -66,6 +67,8 @@ export interface GalaxyAtlasScreenProps {
   onResumeTravel?: () => void;
   onFinalizeTravel?: () => void;
   onOpenAshfallRegion?: () => void;
+  /** GC1: walk a galaxy colony in first person. The caller re-derives access before launching. */
+  onDescendToColony?: (colonyId: string) => void;
 }
 
 interface AtlasContactView extends AtlasViewportContact {
@@ -447,6 +450,7 @@ export function GalaxyAtlasScreen({
   onResumeTravel,
   onFinalizeTravel,
   onOpenAshfallRegion,
+  onDescendToColony,
   focusActive = true,
 }: GalaxyAtlasScreenProps) {
   const contacts = useMemo(() => contactViews(run), [run]);
@@ -535,6 +539,9 @@ export function GalaxyAtlasScreen({
   const regionPanelNote = regionAccess.status === "unavailable"
     ? regionAccess.reason
     : regionAccess.status === "view" ? "VIEW ONLY · PARK THE VESSEL AT ASHFALL TO SURVEY OR TRAVEL" : null;
+  const descendColonyId = galaxyColonyAtContact(run, targetContactId);
+  const descendAccess = galaxyColonyAccess(run, descendColonyId);
+  const descendable = descendAccess.status === "full" && onDescendToColony !== undefined;
   const currentSelectedId = selectedTarget === null
     ? null
     : selectedTargetIdFor(selectedTarget);
@@ -1036,6 +1043,8 @@ export function GalaxyAtlasScreen({
                       onClose={() => dispatchViewport({ type: "set-view", viewLevel: "sector" })}
                       onOpenRegion={onOpenAshfallRegion ? () => onOpenAshfallRegion() : undefined}
                       regionAccess={(systemId) => atlasRegionAccess(run, systemId)}
+                      onDescend={onDescendToColony}
+                      descendAccess={(colonyId) => galaxyColonyAccess(run, colonyId)}
                     />
                   </div>
                 ) : (
@@ -1407,6 +1416,21 @@ export function GalaxyAtlasScreen({
                     <p className="sz-atlas-note">
                       UNAVAILABLE · {selectedOperation.availability.reasons.join(", ").replaceAll("_", " ").toUpperCase()}
                     </p>
+                  )}
+                </div>
+              )}
+
+              {descendColonyId !== null && (
+                <div className="sz-atlas-region">
+                  <Button
+                    disabled={!descendable}
+                    aria-describedby={descendAccess.status === "unavailable" ? "atlas-descend-note" : undefined}
+                    onClick={() => onDescendToColony?.(descendColonyId)}
+                  >
+                    DESCEND TO COLONY
+                  </Button>
+                  {descendAccess.status === "unavailable" && (
+                    <p id="atlas-descend-note" className="sz-atlas-note">{descendAccess.reason}</p>
                   )}
                 </div>
               )}

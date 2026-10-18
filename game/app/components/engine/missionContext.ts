@@ -811,7 +811,9 @@ function assertCompatibilityShell(context: LaunchContext, world: number, level: 
     assertPolicy(
       context,
       authority,
-      ["cockpit", "landing-pad", "retry", "continue"],
+      authority === "legacy"
+        ? ["cockpit", "landing-pad", "retry", "continue"]
+        : ["atlas", "cockpit", "landing-pad", "retry", "continue"],
       authority === "legacy"
         ? ["legacy-cockpit", "legacy-colony-exterior", "legacy-landing-pad"]
         : ["galaxy-atlas", "galaxy-colony-exterior", "galaxy-landing-pad"],

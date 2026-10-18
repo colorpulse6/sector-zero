@@ -22,6 +22,7 @@ import {
 } from "./starSystems";
 import { planSystemLayout, PLAN_TILT, type LandmarkPlan } from "./systemLayout";
 import type { AtlasRegionAccess } from "../regionAccess";
+import type { GalaxyColonyAccess } from "../../engine/galaxy/galaxyColony";
 import { createSystemScene, systemPlanetBiome, type ProjectedLandmark, type SystemSceneHandle } from "./SystemScene";
 
 export interface SystemAtlasScreenProps {
@@ -38,6 +39,10 @@ export interface SystemAtlasScreenProps {
   embedded?: boolean;
   /** Galaxy rule for a system's region chart: full, view-only, or unavailable with a reason. */
   regionAccess?: (systemId: string) => AtlasRegionAccess;
+  /** Galaxy descent (GC1): walk the selected colony in first person. Hidden when absent. */
+  onDescend?: (colonyId: string) => void;
+  /** Galaxy rule for descending to a colony: full, or unavailable with a reason. */
+  descendAccess?: (colonyId: string) => GalaxyColonyAccess;
 }
 
 /** Matches the private plan scale in systemLayout.ts (percent per scene unit). */
@@ -84,6 +89,8 @@ export function SystemAtlasScreen({
   catalogue = DEFAULT_CATALOGUE,
   embedded = false,
   regionAccess,
+  onDescend,
+  descendAccess,
 }: SystemAtlasScreenProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
@@ -259,6 +266,8 @@ export function SystemAtlasScreen({
   const action = selectedAction(hiddenSystem ? null : selectedPlanet, selectedNeighbour, selectedColony?.id ?? null, gliding, onOpenRegion, access, () => {
     if (selectedNeighbour) void viewSystem(selectedNeighbour.system.id);
   });
+  const descentAccess = selectedColony && !hiddenSystem && onDescend ? descendAccess?.(selectedColony.id) ?? null : null;
+  const descentNote = descentAccess?.status === "unavailable" ? descentAccess.reason : null;
   const regionNote = selectedColony && access
     ? access.status === "unavailable"
       ? access.reason
@@ -394,6 +403,22 @@ export function SystemAtlasScreen({
                 <p>{unavailableCopy(selectedPlanet, selectedNeighbour, hiddenSystem)}</p>
               )}
               {action && regionNote && <p id="system-region-note" className="sz-system-region-note">{regionNote}</p>}
+              {selectedColony && descentAccess && (
+                <>
+                  <button
+                    type="button"
+                    data-system-descend="true"
+                    aria-label={`Descend to ${selectedColony.name}`}
+                    aria-describedby={descentNote ? "system-descend-note" : undefined}
+                    disabled={gliding || descentAccess.status !== "full"}
+                    onClick={() => onDescend?.(selectedColony.id)}
+                    className="sz-system-action sz-system-action--secondary"
+                  >
+                    DESCEND TO COLONY
+                  </button>
+                  {descentNote && <p id="system-descend-note" className="sz-system-region-note">{descentNote}</p>}
+                </>
+              )}
             </div>
           </section>
         </div>
