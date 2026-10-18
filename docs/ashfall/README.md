@@ -24,6 +24,7 @@ roadmap. Every proposal is labelled against what the source on `30b0726` actuall
 | `boards/baseline-annotated.png` | The 2026-09-06 baseline capture with proposal callouts | built this turn (direct check); callouts PROPOSED |
 | `boards/candidates/quartermaster-portrait-candidate.png` | 512² derivative of the approved pilot hero for review | built this turn (direct check); not registered |
 | `boards/build-boards.sh` | Reproducible board build (ImageMagick already installed; nothing downloaded) | executed this turn (direct check) |
+| `07-runtime-slice-1-overseer.md` | Runtime slice 1: Ashfall Overseer presentation (reviewed hub-governor art under role keys) and factual lines from `ColonyState`; tests, browser evidence, integration notes | RAN (typecheck, unit suites, isolated browser spec); see the file |
 
 ## Evidence labels
 

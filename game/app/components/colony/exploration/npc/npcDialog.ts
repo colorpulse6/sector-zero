@@ -8,11 +8,13 @@
 // FPNPC construction (see ../npc/types.ts — ColonyNpc.happinessTier, millSeed).
 
 import type { FPDialogLine, FPShopItem, ConsumableId } from "../../../engine/types";
-import type { ColonyState, ColonyBuilding, BuildingType, Threat } from "../../shared/colonyTypes";
+import type { ColonyState, ColonyBuilding, ColonyResources, BuildingType, Threat } from "../../shared/colonyTypes";
 import { getConsumableDef } from "../../../engine/planets";
 import { adjustedBuyPrice, type FactionRank } from "../../shared/factionLedger";
+import { derivePowerGrid } from "../../shared/powerGrid";
 
 const GOVERNOR = "Governor";
+const OVERSEER = "Overseer";
 const QUARTERMASTER = "Quartermaster";
 const COLONIST = "Colonist";
 
@@ -127,13 +129,133 @@ function threatsLine(colony: ColonyState): FPDialogLine | null {
   return { speaker: GOVERNOR, text: `Keep your guard up: ${first.severity} ${label}${extra}` };
 }
 
+// ─── Ashfall Primary: the Overseer (design/ashfall-lock, runtime slice 1) ───
+//
+// The galaxy's one descendable colony gets a role-labelled Overseer with the
+// reviewed hub-governor portrait and short factual lines read from ColonyState:
+// zero buildings, the yard's metal, and the Solar Array going up or online.
+// No names, no backstory, no promises of trade, mast, housing or resupply.
+// Every other colony keeps the Governor readout below, byte for byte.
+
+/** SPRITES key for the Overseer's dialog portrait (sprites.ts). */
+export const ASHFALL_OVERSEER_PORTRAIT_KEY = "PORTRAIT_ASHFALL_OVERSEER";
+
+/** Structural twin of one `BUILD_SPECS` entry (colony/shared/colonyCatalog.ts on the
+ *  integration branch). Typed here so this module compiles before that table lands;
+ *  pass `BUILD_SPECS` straight through once it exists. */
+export interface BuildSpecLike {
+  readonly cost?: Readonly<Partial<ColonyResources>>;
+  readonly cyclesToBuild: number;
+}
+export type BuildSpecTable = Readonly<Partial<Record<BuildingType, BuildSpecLike>>>;
+
+export interface GovernorDialogContext {
+  /** Only Ashfall Primary gets the Overseer presentation. */
+  place: "ashfall-primary";
+  /** Shared build catalogue; when present, the zero-buildings line states the array's cost. */
+  buildSpecs?: BuildSpecTable;
+}
+
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+function yardLine(colony: ColonyState): string {
+  const metal = colony.resources.metal;
+  return metal > 0 ? `The yard's holding ${metal} metal.` : "The yard's empty.";
+}
+
+/** The Solar Array by its actual status; remaining cycles count down in the reducer. */
+function solarArrayLine(colony: ColonyState, array: ColonyBuilding): string {
+  switch (array.status) {
+    case "constructing": {
+      const left = array.buildProgressCycles;
+      if (left > 1) return `The solar array's going up. ${left} cycles to go.`;
+      if (left === 1) return "The solar array's going up. One more cycle and it's live.";
+      return "The solar array's going up. Due any cycle now.";
+    }
+    case "operational": {
+      const grid = derivePowerGrid(colony);
+      const draw = grid.demand > 0 ? `${grid.demand} drawn` : "nothing drawing on it yet";
+      return `The solar array's online. ${grid.capacity} power on the grid, ${draw}.`;
+    }
+    default:
+      return `The solar array's ${array.status}.`;
+  }
+}
+
+function ashfallWorksLines(colony: ColonyState, specs: BuildSpecTable | undefined): string[] {
+  const total = colony.buildings.length;
+  if (total === 0) {
+    const lines = [`No buildings yet. ${yardLine(colony)}`];
+    const spec = specs?.solar_array;
+    if (spec) {
+      const metal = spec.cost?.metal;
+      const time = plural(spec.cyclesToBuild, "cycle");
+      lines.push(metal !== undefined
+        ? `A solar array takes ${metal} metal and ${time} to raise.`
+        : `A solar array takes ${time} to raise.`);
+    }
+    return lines;
+  }
+
+  const array = colony.buildings.find((b) => b.type === "solar_array");
+  const lines: string[] = [];
+  if (!(total === 1 && array)) {
+    if (total === 1) {
+      const only = colony.buildings[0];
+      const state =
+        only.status === "operational" ? "and it's operational"
+        : only.status === "constructing" ? "and it's still going up"
+        : `and it's ${only.status}`;
+      lines.push(`One building on the books, ${state}.`);
+    } else {
+      const operational = colony.buildings.filter((b) => b.status === "operational").length;
+      const constructing = colony.buildings.filter((b) => b.status === "constructing").length;
+      const broken = colony.buildings.filter((b) => BROKEN_STATUSES.has(b.status)).length;
+      const parts = [`${operational} operational`];
+      if (constructing > 0) parts.push(`${constructing} going up`);
+      if (broken > 0) parts.push(`${broken} down`);
+      lines.push(`${total} buildings on the books: ${parts.join(", ")}.`);
+    }
+  }
+  if (array) lines.push(solarArrayLine(colony, array));
+  lines.push(yardLine(colony));
+  return lines;
+}
+
+function buildAshfallOverseerDialog(
+  colony: ColonyState,
+  rank: FactionRank,
+  specs: BuildSpecTable | undefined,
+): FPDialogLine[] {
+  const texts = [
+    GOVERNOR_GREETINGS[greetingTone(rank)],
+    populationLine(colony).text,
+    ...ashfallWorksLines(colony, specs),
+    happinessLine(colony).text,
+  ];
+  const threat = threatsLine(colony);
+  if (threat) texts.push(threat.text);
+  return texts.map((text) => ({ speaker: OVERSEER, text, portraitKey: ASHFALL_OVERSEER_PORTRAIT_KEY }));
+}
+
 /**
  * A pure status readout in the Governor's voice: a faction-standing greeting
  * (tone tracks the rank band), then population + growth trend, tier +
  * operational-vs-total buildings (naming any damaged/offline/destroyed one),
  * a happiness descriptor, and any active threats.
+ *
+ * With an Ashfall context the same facts come back in the Overseer's voice with
+ * the yard and Solar Array lines (see buildAshfallOverseerDialog). No context →
+ * the legacy readout, unchanged.
  */
-export function buildGovernorDialog(colony: ColonyState, rank: FactionRank = "neutral"): FPDialogLine[] {
+export function buildGovernorDialog(
+  colony: ColonyState,
+  rank: FactionRank = "neutral",
+  context?: GovernorDialogContext,
+): FPDialogLine[] {
+  if (context?.place === "ashfall-primary") return buildAshfallOverseerDialog(colony, rank, context.buildSpecs);
   const lines: FPDialogLine[] = [
     { speaker: GOVERNOR, text: GOVERNOR_GREETINGS[greetingTone(rank)] },
     populationLine(colony),

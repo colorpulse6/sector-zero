@@ -237,3 +237,129 @@ test("buildColonistBark: every line has a speaker and non-empty text across all 
     }
   }
 });
+
+// ─── Ashfall Primary: the Overseer (design/ashfall-lock, runtime slice 1) ───
+
+import { ASHFALL_OVERSEER_PORTRAIT_KEY, type BuildSpecTable } from "../../app/components/colony/exploration/npc/npcDialog";
+import { SPRITES } from "../../app/components/engine/sprites";
+import { makeBuilding } from "./fixtures";
+
+const ASHFALL = { place: "ashfall-primary" as const };
+// Shaped exactly like BUILD_SPECS.solar_array on the integration branch (colonyCatalog.ts).
+const SPECS: BuildSpecTable = { solar_array: { cost: { metal: 80 }, cyclesToBuild: 1 } };
+
+function ashfallColony(overrides: Parameters<typeof makeTestColony>[0] = {}) {
+  return makeTestColony({ id: "galaxy:ashfall-primary", name: "Ashfall Primary", ...overrides });
+}
+const texts = (lines: ReturnType<typeof buildGovernorDialog>) => lines.map((l) => l.text);
+
+test("Overseer: every Ashfall line is role-labelled and carries the registered portrait key", () => {
+  const lines = buildGovernorDialog(ashfallColony(), "neutral", ASHFALL);
+  assert.ok(lines.length >= 4);
+  for (const line of lines) {
+    assert.equal(line.speaker, "Overseer");
+    assert.equal(line.portraitKey, ASHFALL_OVERSEER_PORTRAIT_KEY);
+    assert.ok(line.text.length > 0 && line.text.length <= 150, `portrait layout budget: ${line.text}`);
+    assert.ok(!/Idowu|Dace|Vale|lander|mast|exchange|supply|housing|resupply/i.test(line.text), `no names or promises: ${line.text}`);
+  }
+  assert.equal(SPRITES[ASHFALL_OVERSEER_PORTRAIT_KEY as keyof typeof SPRITES], "/sprites/portraits/hub-governor.png");
+});
+
+test("Overseer: a fresh Ashfall Primary reports no buildings and an empty yard", () => {
+  const lines = texts(buildGovernorDialog(ashfallColony(), "neutral", ASHFALL));
+  assert.ok(lines.includes("No buildings yet. The yard's empty."), lines.join(" | "));
+  assert.ok(!lines.some((t) => /solar array/i.test(t)), "no array line without an array");
+});
+
+test("Overseer: the yard line states the colony's actual metal without claiming where it came from", () => {
+  const lines = texts(buildGovernorDialog(ashfallColony({ resources: { food: 0, water: 0, metal: 80, credits: 0 } }), "neutral", ASHFALL));
+  assert.ok(lines.includes("No buildings yet. The yard's holding 80 metal."), lines.join(" | "));
+  assert.ok(!lines.some((t) => /relay|expedition|sortie|mission/i.test(t)), "metal alone proves no provenance");
+});
+
+test("Overseer: the zero-buildings cost line comes from the shared build spec when one is passed", () => {
+  const withSpecs = texts(buildGovernorDialog(ashfallColony(), "neutral", { ...ASHFALL, buildSpecs: SPECS }));
+  assert.ok(withSpecs.includes("A solar array takes 80 metal and 1 cycle to raise."), withSpecs.join(" | "));
+  const twoCycles = texts(buildGovernorDialog(ashfallColony(), "neutral", { ...ASHFALL, buildSpecs: { solar_array: { cost: { metal: 80 }, cyclesToBuild: 2 } } }));
+  assert.ok(twoCycles.includes("A solar array takes 80 metal and 2 cycles to raise."), twoCycles.join(" | "));
+  const without = texts(buildGovernorDialog(ashfallColony(), "neutral", ASHFALL));
+  assert.ok(!without.some((t) => t.startsWith("A solar array takes")), "no cost line without a catalogue");
+});
+
+test("Overseer: a constructing Solar Array reports its remaining cycles, singular and plural", () => {
+  const one = ashfallColony({ buildings: [makeBuilding("solar_array", { status: "constructing", buildProgressCycles: 1 })] });
+  const oneLines = texts(buildGovernorDialog(one, "neutral", ASHFALL));
+  assert.ok(oneLines.includes("The solar array's going up. One more cycle and it's live."), oneLines.join(" | "));
+  assert.ok(oneLines.includes("The yard's empty."), oneLines.join(" | "));
+  assert.ok(!oneLines.some((t) => /on the books/.test(t)), "a lone array needs no summary line");
+
+  const two = ashfallColony({ buildings: [makeBuilding("solar_array", { status: "constructing", buildProgressCycles: 2 })] });
+  assert.ok(texts(buildGovernorDialog(two, "neutral", ASHFALL)).includes("The solar array's going up. 2 cycles to go."));
+});
+
+test("Overseer: an operational Solar Array reports the grid derived from colony state", () => {
+  const colony = ashfallColony({
+    buildings: [makeBuilding("solar_array", { status: "operational" })],
+    resources: { food: 0, water: 0, metal: 80, credits: 0 },
+  });
+  const lines = texts(buildGovernorDialog(colony, "neutral", ASHFALL));
+  assert.ok(lines.includes("The solar array's online. 10 power on the grid, nothing drawing on it yet."), lines.join(" | "));
+  assert.ok(lines.includes("The yard's holding 80 metal."), lines.join(" | "));
+
+  const drawing = ashfallColony({
+    buildings: [makeBuilding("solar_array", { status: "operational" }), makeBuilding("habitat_module", { status: "operational" })],
+  });
+  const drawingLines = texts(buildGovernorDialog(drawing, "neutral", ASHFALL));
+  assert.ok(drawingLines.includes("2 buildings on the books: 2 operational."), drawingLines.join(" | "));
+  assert.ok(drawingLines.includes("The solar array's online. 10 power on the grid, 2 drawn."), drawingLines.join(" | "));
+});
+
+test("Overseer: mixed rosters count correctly and a non-array single building reads in the singular", () => {
+  const mixed = ashfallColony({
+    buildings: [
+      makeBuilding("solar_array", { status: "operational" }),
+      makeBuilding("mine", { status: "constructing", buildProgressCycles: 2 }),
+      makeBuilding("farm", { status: "offline" }),
+    ],
+  });
+  const lines = texts(buildGovernorDialog(mixed, "neutral", ASHFALL));
+  assert.ok(lines.includes("3 buildings on the books: 1 operational, 1 going up, 1 down."), lines.join(" | "));
+
+  const habitatOnly = ashfallColony({ buildings: [makeBuilding("habitat_module", { status: "constructing", buildProgressCycles: 1 })] });
+  const habitatLines = texts(buildGovernorDialog(habitatOnly, "neutral", ASHFALL));
+  assert.ok(habitatLines.includes("One building on the books, and it's still going up."), habitatLines.join(" | "));
+});
+
+test("Overseer: greeting tone still tracks the rank band and the readout follows it", () => {
+  const colony = ashfallColony();
+  const cold = buildGovernorDialog(colony, "hostile", ASHFALL);
+  const neutral = buildGovernorDialog(colony, "neutral", ASHFALL);
+  const warm = buildGovernorDialog(colony, "allied", ASHFALL);
+  assert.equal(cold[0].text, buildGovernorDialog(colony, "hated")[0].text);
+  assert.equal(warm[0].text, buildGovernorDialog(colony, "liked")[0].text);
+  assert.notEqual(cold[0].text, neutral[0].text);
+  assert.notEqual(warm[0].text, neutral[0].text);
+  assert.deepEqual(texts(cold).slice(1), texts(neutral).slice(1));
+  assert.ok(texts(cold).includes("No buildings yet. The yard's empty."));
+});
+
+test("Overseer: threats still close the readout at Ashfall", () => {
+  const colony = ashfallColony({ activeThreats: [{ id: "t1", kind: "raid_incoming", severity: "minor", cyclesRemaining: 2 }] as never });
+  const lines = buildGovernorDialog(colony, "neutral", ASHFALL);
+  assert.ok(/raid inbound/.test(lines[lines.length - 1].text));
+  assert.equal(lines[lines.length - 1].speaker, "Overseer");
+});
+
+test("Governor: legacy and non-Ashfall colonies are untouched — no context means the old readout", () => {
+  const colony = makeTestColony({ buildings: [makeBuilding("solar_array", { status: "operational" })], resources: { food: 0, water: 0, metal: 80, credits: 0 } });
+  const legacy = buildGovernorDialog(colony);
+  assert.deepEqual(buildGovernorDialog(colony, "neutral", undefined), legacy);
+  for (const line of legacy) {
+    assert.equal(line.speaker, "Governor");
+    assert.equal(line.portraitKey, undefined);
+    assert.ok(!/yard|power on the grid/.test(line.text), `legacy line leaked Ashfall copy: ${line.text}`);
+  }
+  // Same id as Ashfall Primary but no context: the dialog builder alone never switches voice.
+  const sameId = makeTestColony({ id: "galaxy:ashfall-primary" });
+  assert.equal(buildGovernorDialog(sameId)[0].speaker, "Governor");
+});

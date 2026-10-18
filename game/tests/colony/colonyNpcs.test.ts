@@ -331,3 +331,90 @@ test("generateColonyNpcs: colonyNpcs.ts uses no Math.random / Date.now", async (
   assert.ok(!/Math\.random\s*\(/.test(src), "must not call Math.random");
   assert.ok(!/Date\.now\s*\(/.test(src), "must not call Date.now");
 });
+
+// ─── Ashfall Primary: Overseer presentation (design/ashfall-lock, runtime slice 1) ───
+
+import { SPRITES } from "../../app/components/engine/sprites";
+import { resolveNpcActorSet } from "../../app/components/engine/actorAssets";
+import { galaxyColonyContactId } from "../../app/components/engine/galaxy/galaxyColony";
+import { ASHFALL_PRIMARY_COLONY_ID, isAshfallPrimary } from "../../app/components/colony/exploration/npc/colonyNpcs";
+
+function ashfallPrimary(overrides: Partial<ColonyState> = {}): ColonyState {
+  return makeTestColony({ id: ASHFALL_PRIMARY_COLONY_ID, name: "Ashfall Primary", layoutSeed: 4107, ...overrides });
+}
+
+test("Ashfall gate: the colony id literal is the one galaxy colony mapped for descent", () => {
+  assert.equal(galaxyColonyContactId(ASHFALL_PRIMARY_COLONY_ID), "contact:ashfall", "id must be a descendable galaxy colony");
+  assert.equal(galaxyColonyContactId("test-colony-1"), null);
+  assert.equal(isAshfallPrimary({ id: ASHFALL_PRIMARY_COLONY_ID }), true);
+  assert.equal(isAshfallPrimary({ id: "test-colony-1" }), false);
+});
+
+test("Ashfall Primary's Overseer uses the reviewed hub-governor billboard as a static actor, not the Voss atlas", () => {
+  const colony = ashfallPrimary();
+  const map = generateExteriorState(colony, CLOCK).map;
+  const { fpNpcs, sidecar } = generateColonyNpcs(colony, CLOCK, map);
+  const overseer = fpNpcs.find((n) => n.name === "Overseer Ashfall Primary");
+  assert.ok(overseer, "role label is kept: Overseer <colony name>");
+  assert.equal(overseer.sprite, SPRITES.NPC_ASHFALL_OVERSEER);
+  assert.equal(overseer.sprite, "/sprites/boarding/npc-hub-governor.png");
+  assert.equal(overseer.atlasAnimation, undefined, "no actor atlas → the scene draws the static billboard");
+  assert.equal(resolveNpcActorSet(overseer), undefined);
+  assert.equal(overseer.walkSprites, undefined);
+  assert.equal(overseer.type, "lore");
+  assert.equal(sidecar[0].sprite, SPRITES.NPC_ASHFALL_OVERSEER);
+  for (const line of overseer.dialog) {
+    assert.equal(line.speaker, "Overseer");
+    assert.equal(line.portraitKey, "PORTRAIT_ASHFALL_OVERSEER");
+  }
+  assert.ok(overseer.dialog.some((l) => l.text === "No buildings yet. The yard's empty."));
+  // The quartermaster is untouched by the Ashfall presentation.
+  const qm = fpNpcs.find((n) => n.name === "Quartermaster");
+  assert.ok(qm);
+  assert.equal(qm.sprite, SPRITES.NPC_QUARTERMASTER);
+  assert.equal(qm.atlasAnimation?.set, "quartermaster");
+});
+
+test("Ashfall Primary's Overseer reads the Solar Array and yard from the colony it is given", () => {
+  const colony = ashfallPrimary({
+    buildings: [building("solar1", "solar_array", "constructing")],
+    resources: { food: 0, water: 0, metal: 0, credits: 0 },
+  });
+  colony.buildings[0].buildProgressCycles = 1;
+  const map = generateExteriorState(colony, CLOCK).map;
+  const overseer = generateColonyNpcs(colony, CLOCK, map).fpNpcs[0];
+  const lines = overseer.dialog.map((l) => l.text);
+  assert.ok(lines.includes("The solar array's going up. One more cycle and it's live."), lines.join(" | "));
+  assert.ok(lines.includes("The yard's empty."), lines.join(" | "));
+
+  const specs = { solar_array: { cost: { metal: 80 }, cyclesToBuild: 1 } };
+  const fresh = generateColonyNpcs(ashfallPrimary(), CLOCK, generateExteriorState(ashfallPrimary(), CLOCK).map, [], { buildSpecs: specs }).fpNpcs[0];
+  assert.ok(fresh.dialog.some((l) => l.text === "A solar array takes 80 metal and 1 cycle to raise."));
+});
+
+test("Ashfall presentation keeps the generator deterministic and position-identical", () => {
+  const colony = ashfallPrimary();
+  const map = generateExteriorState(colony, CLOCK).map;
+  const a = generateColonyNpcs(colony, CLOCK, map);
+  const b = generateColonyNpcs(colony, CLOCK, map);
+  assert.deepEqual(a.fpNpcs, b.fpNpcs);
+  assert.deepEqual(a.sidecar, b.sidecar);
+  // Same seed and roster as a non-Ashfall colony → identical tiles; only presentation differs.
+  const other = makeTestColony({ id: "test-colony-1", name: "Ashfall Primary", layoutSeed: 4107 });
+  const o = generateColonyNpcs(other, CLOCK, generateExteriorState(other, CLOCK).map);
+  assert.deepEqual(a.sidecar.map((n) => [n.posX, n.posY, n.targetTile]), o.sidecar.map((n) => [n.posX, n.posY, n.targetTile]));
+});
+
+test("Legacy isolation: any other colony keeps the Voss billboard, the Voss atlas and the Governor lines", () => {
+  for (const colony of [fullColony(), makeTestColony({ planetId: "ashfall" as never, name: "Ashfall Primary" })]) {
+    const map = generateExteriorState(colony, CLOCK).map;
+    const governor = generateColonyNpcs(colony, CLOCK, map).fpNpcs[0];
+    assert.equal(governor.sprite, SPRITES.NPC_VOSS);
+    assert.equal(governor.atlasAnimation?.set, "voss");
+    assert.equal(resolveNpcActorSet(governor), "voss");
+    for (const line of governor.dialog) {
+      assert.equal(line.speaker, "Governor");
+      assert.equal(line.portraitKey, undefined);
+    }
+  }
+});

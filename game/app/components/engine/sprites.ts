@@ -260,6 +260,10 @@ export const SPRITES = {
   NPC_QUARTERMASTER: "/sprites/boarding/npc-quartermaster.png",
   NPC_QUARTERMASTER_WALK_1: "/sprites/boarding/npc-quartermaster-walk-1.png",
   NPC_QUARTERMASTER_WALK_2: "/sprites/boarding/npc-quartermaster-walk-2.png",
+  // Ashfall Primary's Overseer (design/ashfall-lock): the production-reviewed hub-governor
+  // billboard and portrait from the M3 town-hall bundle, reused as-is under Ashfall role keys.
+  // Static billboard on purpose — no actor atlas exists for it (see actorAssets NPC_PATHS).
+  NPC_ASHFALL_OVERSEER: "/sprites/boarding/npc-hub-governor.png",
 
   TURRET_CROSSHAIR: "/sprites/turret/crosshair.png",
   TURRET_ENEMY_FIGHTER: "/sprites/turret/enemy-fighter.png",
@@ -328,6 +332,7 @@ export const SPRITES = {
   PORTRAIT_HUB_BARTENDER: "/sprites/portraits/hub-bartender.png",
   PORTRAIT_HUB_REGULAR: "/sprites/portraits/hub-regular.png",
   PORTRAIT_HUB_SIGNAL_CHASER: "/sprites/portraits/hub-signal-chaser.png",
+  PORTRAIT_ASHFALL_OVERSEER: "/sprites/portraits/hub-governor.png",
 };
 
 export async function preloadAll(): Promise<void> {
