@@ -1,9 +1,26 @@
 import { loadSprite, releaseSprite, SPRITES } from "./sprites";
-import type { FirstPersonState } from "./types";
+import type { FirstPersonState, FPEnemy } from "./types";
 
 export type ActorAction = "idle" | "walk" | "work" | "attack" | "hurt" | "death";
 export interface ActorClip { path: string; columns: number; rows: number; frameMs: number; loop?: boolean }
-export interface ActorSet { width: number; height: number; clips: Partial<Record<ActorAction, ActorClip>> }
+/** How the renderer frames an actor's cell as a billboard.
+ *  `scale` multiplies the classic billboard height (0.6 wall heights per unit).
+ *  `groundLine` is the fraction of the cell, from its top, where the feet stand;
+ *  a ground-anchored billboard puts that line on the projected floor. */
+export interface ActorPresentation { scale: number; groundLine: number }
+export interface ActorSet { width: number; height: number; clips: Partial<Record<ActorAction, ActorClip>>; presentation?: ActorPresentation }
+/** Shared hostile framing. The standing foot line is measured on the shipped
+ *  atlas (idle, attack and hurt cells end at row 237 of 256; walk 242; death 243),
+ *  so crouch and slump poses sink a few rows into the floor instead of hovering.
+ *  Scale 1.6 makes the 256 cell span 0.96 wall heights: the creature itself
+ *  (211 of 256 rows) stands 0.79 wall heights tall, about 1.4× a colonist. */
+export const HOSTILE_PRESENTATION: ActorPresentation = { scale: 1.6, groundLine: 237 / 256 };
+/** Visual identity per hostile type while all three share one atlas: the
+ *  charger is lean and fast, the sentry is the bulk that holds a room. */
+export const HOSTILE_TYPE_SCALE: Record<FPEnemy["type"], number> = { grunt: 1, charger: 0.9, sentry: 1.15 };
+export function enemyBillboardPresentation(enemy: Pick<FPEnemy, "type">): ActorPresentation {
+  return { scale: HOSTILE_PRESENTATION.scale * (HOSTILE_TYPE_SCALE[enemy.type] ?? 1), groundLine: HOSTILE_PRESENTATION.groundLine };
+}
 export const QUARTERMASTER_ATLASES = {
   idle: "/sprites/pilot/quartermaster/idle.png",
   walk: "/sprites/pilot/quartermaster/walk.png",
@@ -31,7 +48,7 @@ export const ACTOR_CATALOG = {
     attack: { path: "/sprites/actors/hostile/attack.png", columns: 4, rows: 8, frameMs: 100, loop: false },
     hurt: { path: "/sprites/actors/hostile/hurt.png", columns: 1, rows: 8, frameMs: 180, loop: false },
     death: { path: "/sprites/actors/hostile/death.png", columns: 6, rows: 1, frameMs: 80, loop: false },
-  } } as ActorSet,
+  }, presentation: HOSTILE_PRESENTATION } as ActorSet,
 };
 export type ActorSetId = keyof typeof ACTOR_CATALOG;
 const NPC_NAMES: Record<string, ActorSetId> = {
