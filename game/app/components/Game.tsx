@@ -116,7 +116,8 @@ import {
 import type { ColonyEvent, SceneStack } from "./colony";
 import { ColoniesScreen } from "./colony/meta";
 import { SystemAtlasScreen } from "./galaxy/system/SystemAtlasScreen";
-import { PoiOutcomeScreen, RegionMapScreen } from "./colony/meta";
+import { GalaxyColonyManagementScreen, PoiOutcomeScreen, RegionMapScreen } from "./colony/meta";
+import type { BuildOption } from "./colony/meta/ColonyCommissionMenu";
 import { foundOutpost } from "./colony/region/siteEconomy";
 import { dispatchPoi, regionExpeditionRequestId, startRegionExpedition } from "./colony/region/poiDispatcher";
 import {
@@ -159,6 +160,13 @@ import {
   galaxyColonyContactId,
   openGalaxyColony,
 } from "./engine/galaxy/galaxyColony";
+import {
+  GALAXY_COMMISSION_TYPES,
+  commitGalaxyColonyCommissionToStore,
+  galaxyColonyManagementAccess,
+  quoteGalaxyColonyCommission,
+  type GalaxyCommissionQuote,
+} from "./engine/galaxy/galaxyColonyManagement";
 import { authorizeOperationLaunch } from "./engine/operations/operationCatalog";
 import type { OperationResultKind } from "./engine/operations/operationOutcome";
 import type {
@@ -182,6 +190,9 @@ type RegionMapSurface = {
   originColonyId: string;
   experience: ExperienceMode;
 };
+
+/** GC2-A: galaxy colony management, opened from the Atlas or the landing pad. */
+type GalaxyManagementSurface = { colonyId: string; source: "atlas" | "landing-pad"; status: string | null };
 
 const COLONIES_HOTSPOT = COCKPIT_HOTSPOTS.find(hotspot => hotspot.id === "colonies")!;
 
@@ -355,6 +366,8 @@ export default function Game() {
   const [sceneStack, setSceneStack] = useState<SceneStack | null>(null);
   const [exitMenuOpen, setExitMenuOpen] = useState(false);
   const [regionMapSurface, setRegionMapSurface] = useState<RegionMapSurface | null>(null);
+  const [galaxyManagement, setGalaxyManagement] = useState<GalaxyManagementSurface | null>(null);
+  const galaxyManagementInvokerRef = useRef<HTMLElement | null>(null);
   const [systemAtlasOpen, setSystemAtlasOpen] = useState(false);
   const [activePoi, setActivePoi] = useState<ActivePoiDescriptor | null>(null);
   const [activePoiExperience, setActivePoiExperience] = useState<ExperienceMode | null>(null);
@@ -586,6 +599,7 @@ export default function Game() {
     setPoiOutcomeResolving(false);
     setPoiOutcomeError(null);
     setRegionMapSurface(null);
+    setGalaxyManagement(null);
     setShowGalaxyAtlas(!recoveryBlocked && recoveredAttempt === null);
     setAtlasStatusMessage(
       recoveryBlocked
@@ -621,6 +635,7 @@ export default function Game() {
       setPoiOutcomeResolving(false);
       setPoiOutcomeError(null);
       setRegionMapSurface(null);
+      setGalaxyManagement(null);
       return;
     }
     openMap();
@@ -751,6 +766,7 @@ export default function Game() {
     setPoiOutcomeResolving(false);
     setPoiOutcomeError(null);
     setRegionMapSurface(null);
+    setGalaxyManagement(null);
     setSceneStack(null);
     setExitMenuOpen(false);
     setAtlasStatusMessage(null);
@@ -791,6 +807,7 @@ export default function Game() {
       setPendingPoiResolution(null);
       setPendingPoiOutcomeAttempt(null);
       setRegionMapSurface(null);
+      setGalaxyManagement(null);
       setShowStartScreen(false);
       setShowCockpit(false);
       setShowMap(false);
@@ -1015,6 +1032,7 @@ export default function Game() {
     setExitMenuOpen(false);
     expeditionRequestRef.current = null;
     setRegionMapSurface(null);
+    setGalaxyManagement(null);
     setActivePoi(null);
     setActivePoiExperience(null);
     setPendingPoiResolution(null);
@@ -1078,6 +1096,7 @@ export default function Game() {
     setSceneStack(null);
     setExitMenuOpen(false);
     setRegionMapSurface(null);
+    setGalaxyManagement(null);
     setEndingPhase("off");
     setEndingChoice(null);
     setOutcomeCommitIssue(null);
@@ -1236,6 +1255,7 @@ export default function Game() {
     }
     ensureAudio();
     setRegionMapSurface(null);
+    setGalaxyManagement(null);
     setExitMenuOpen(false);
     atlasShouldRestoreFocusRef.current = true;
     setShowGalaxyAtlas(false);
@@ -1243,6 +1263,46 @@ export default function Game() {
     setSceneStack(launched.sceneStack);
     requestAnimationFrame(() => canvasRef.current?.focus());
   }, [ensureAudio]);
+
+  // GC2-A: colony management in a galaxy run.
+  const handleOpenGalaxyManagement = useCallback((colonyId: string, source: "atlas" | "landing-pad") => {
+    // Re-derive access: only a vessel parked at the colony's contact may manage it.
+    const access = galaxyColonyManagementAccess(saveDataRef.current.galaxyRun, colonyId);
+    if (access.status === "unavailable") {
+      if (source === "atlas") setAtlasStatusMessage(`MANAGEMENT UNAVAILABLE · ${access.reason}`);
+      return;
+    }
+    galaxyManagementInvokerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    clearHeldInput(); // management owns input from this frame; nothing held carries in or out
+    if (source === "landing-pad") setExitMenuOpen(false);
+    setGalaxyManagement({ colonyId, source, status: null });
+  }, [clearHeldInput]);
+
+  const handleCloseGalaxyManagement = useCallback(() => {
+    const surface = galaxyManagement;
+    clearHeldInput();
+    setGalaxyManagement(null);
+    if (surface?.source === "landing-pad") setExitMenuOpen(true);
+  }, [clearHeldInput, galaxyManagement]);
+
+  // The stored save is the authority, not the session ref. Same store shape as `outcomeStore`,
+  // but the write does not adopt; the handler adopts only after the write succeeds.
+  const managementStore = useMemo<CanonicalSaveStore>(() => ({ read: readCanonicalSaveStrict, write: saveSave }), []);
+
+  const handleGalaxyCommission = useCallback((quote: GalaxyCommissionQuote) => {
+    if (persistenceNavigationLocked) return;
+    const result = commitGalaxyColonyCommissionToStore(managementStore, quote);
+    if (!result.ok) {
+      // Show the stored state and the reason. The click is never re-priced and retried.
+      if (result.reconcile) adoptCanonicalSave(result.reconcile);
+      setGalaxyManagement(current => current && { ...current, status: result.message });
+      return;
+    }
+    adoptCanonicalSave(result.save); // already written
+    const label = quote.buildingType.replaceAll("_", " ").toUpperCase();
+    const cycles = `${quote.cyclesToBuild} CYCLE${quote.cyclesToBuild === 1 ? "" : "S"}`;
+    setGalaxyManagement(current => current && { ...current, status: `${label} COMMISSIONED · READY IN ${cycles}` });
+  }, [adoptCanonicalSave, managementStore, persistenceNavigationLocked]);
 
   const handleRegionExpedition = useCallback((kind: "survey" | "poi", targetNodeId: string) => {
     const surface = regionMapSurface;
@@ -1284,6 +1344,7 @@ export default function Game() {
     setPendingPoiOutcomeAttempt(null);
     setPoiOutcomeError(null);
     setRegionMapSurface(null);
+    setGalaxyManagement(null);
     setExitMenuOpen(false);
     setSceneStack(null);
     setShowCockpit(false);
@@ -1351,6 +1412,27 @@ export default function Game() {
     const opened = openGalaxyColony(saveData, galaxyColonyId);
     return opened.ok ? opened.projectedSave : null;
   }, [galaxyColonyId, saveData]);
+
+  // GC2-A: quotes come from the rendered canonical save. The commit re-reads the stored save and
+  // re-derives them, so a click on an outdated screen is refused as stale.
+  const galaxyManagementColony = galaxyManagement === null
+    ? null
+    : saveData.galaxyRun?.colonies.find(colony => colony.id === galaxyManagement.colonyId) ?? null;
+  const galaxyManagementColonyId = galaxyManagement?.colonyId ?? null;
+  const galaxyManagementQuotes = useMemo(() => {
+    if (galaxyManagementColonyId === null) return new Map<string, ReturnType<typeof quoteGalaxyColonyCommission>>();
+    return new Map(GALAXY_COMMISSION_TYPES.map(type =>
+      [type, quoteGalaxyColonyCommission(saveData, galaxyManagementColonyId, type)] as const));
+  }, [galaxyManagementColonyId, saveData]);
+  const handleGalaxyManagementBuild = useCallback((option: BuildOption) => {
+    const quoted = galaxyManagementQuotes.get(option.type);
+    if (!quoted) return;
+    if (!quoted.ok) {
+      setGalaxyManagement(current => current && { ...current, status: quoted.message });
+      return;
+    }
+    handleGalaxyCommission(quoted.quote);
+  }, [galaxyManagementQuotes, handleGalaxyCommission]);
 
   const galaxyRegionView = useMemo(() => {
     if (regionMapSurface?.experience !== "galaxy") return null;
@@ -1514,6 +1596,7 @@ export default function Game() {
       setShowMap(false);
       setShowGalaxyAtlas(false);
       setRegionMapSurface(null);
+      setGalaxyManagement(null);
       setSceneStack(null);
       setExitMenuOpen(false);
       setActivePlanetId(activePlanetId);
@@ -1700,6 +1783,7 @@ export default function Game() {
         setPoiOutcomeError(null);
         setPoiOutcomeResolving(false);
         setRegionMapSurface(null);
+        setGalaxyManagement(null);
         setSceneStack(null);
         setExitMenuOpen(false);
         setAtlasSelectedTarget(undefined);
@@ -1744,6 +1828,7 @@ export default function Game() {
         setPendingPoiResolution(null);
         setPendingPoiOutcomeAttempt(null);
         setRegionMapSurface(null);
+        setGalaxyManagement(null);
         setExitMenuOpen(false);
         ensureAudio();
         setShowStartScreen(false);
@@ -1928,7 +2013,7 @@ export default function Game() {
   const canvasInputBlocked = outcomeCommitIssue !== null || travelCommitIssue !== null ||
     (pendingOutcomeReturn !== null && endingPhase === "off") || showGalaxyAtlas ||
     (showCockpit && cockpitState.screen === "colonies") || !!regionMapSurface ||
-    !!pendingPoiResolution || exitMenuOpen;
+    !!pendingPoiResolution || exitMenuOpen || galaxyManagement !== null;
   const inputContext: InputContext = canvasInputBlocked ? { surface: "blocked" }
     : showStartScreen || showIntro || showCockpit || showMap || endingPhase !== "off" || !gameState
       ? { surface: "ui" }
@@ -2063,7 +2148,7 @@ export default function Game() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [inputContext, commitHeldInput, clearHeldInput, toggleMute, showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, retreatActiveRoute, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, pendingPoiResolution, activePoi, submitGameOutcome, outcomeCommitIssue, travelCommitIssue, pendingOutcomeReturn]);
+  }, [inputContext, commitHeldInput, clearHeldInput, toggleMute, showStartScreen, showIntro, endingPhase, choiceHover, showCockpit, cockpitState.screen, showMap, showGalaxyAtlas, gameState, activeOperationId, activeOperationContext, activePoiExperience, finishIntro, advanceEnding, confirmChoice, foldOperationResult, restartGame, nextLevel, returnToCockpit, retreatActiveRoute, shouldPromptKeplerMission, specialPromptChoice, exitMenuOpen, regionMapSurface, galaxyManagement, pendingPoiResolution, activePoi, submitGameOutcome, outcomeCommitIssue, travelCommitIssue, pendingOutcomeReturn]);
 
   // Release ownership independently of frame renders. Another input listener
   // may trigger a React update during keyup; replacing this listener during that
@@ -2437,8 +2522,10 @@ export default function Game() {
       lastFrameTsRef.current = now;
       simAccumulatorRef.current += rawDt;
 
-      // In colony-exploration mode, suppress input when exit menu is open (DOM handles it)
-      const effectiveKeys = (gameState.currentMode === "colony-exploration" && (exitMenuOpen || regionMapSurface))
+      // In colony-exploration mode, suppress input while a DOM surface owns it (exit menu,
+      // region map, galaxy management).
+      const effectiveKeys = (gameState.currentMode === "colony-exploration" &&
+        (exitMenuOpen || regionMapSurface || galaxyManagement))
         ? { left: false, right: false, up: false, down: false,
             strafeLeft: false, strafeRight: false,
             shoot: false, bomb: false, jump: false }
@@ -2545,7 +2632,7 @@ export default function Game() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [adoptCanonicalSave, clearHeldInput, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface, galaxyColonyId, colonyEngineSave]);
+  }, [adoptCanonicalSave, clearHeldInput, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface, galaxyManagement, galaxyColonyId, colonyEngineSave]);
 
   // Auto-trigger ending when game engine sets ENDING screen (final boss defeated)
   useEffect(() => {
@@ -2873,7 +2960,7 @@ export default function Game() {
 
       {showGalaxyAtlas && (
         <GalaxyAtlasScreen
-          focusActive={!regionMapSurface && !pendingPoiPresentation && !persistenceNavigationLocked}
+          focusActive={!regionMapSurface && !galaxyManagement && !pendingPoiPresentation && !persistenceNavigationLocked}
           run={saveData.galaxyRun}
           initialTarget={atlasSelectedTarget}
           statusMessage={atlasStatusMessage}
@@ -2886,6 +2973,7 @@ export default function Game() {
           onFinalizeTravel={persistenceNavigationLocked ? () => {} : handleFinalizeTravel}
           onOpenAshfallRegion={persistenceNavigationLocked ? () => {} : handleOpenAshfallRegion}
           onDescendToColony={persistenceNavigationLocked ? () => {} : handleGalaxyDescend}
+          onManageColony={persistenceNavigationLocked ? () => {} : (colonyId) => handleOpenGalaxyManagement(colonyId, "atlas")}
           onRestoreFocus={restoreAtlasInvokerFocus}
           onClose={persistenceNavigationLocked
             ? () => {}
@@ -3279,13 +3367,16 @@ export default function Game() {
       {/* Landing-pad exit menu — mounts over the canvas during colony-exploration */}
       {exitMenuOpen && sceneStack && (
         <LandingPadExitMenu
-          focusActive={!regionMapSurface && !pendingPoiPresentation && !persistenceNavigationLocked}
+          focusActive={!regionMapSurface && !galaxyManagement && !pendingPoiPresentation && !persistenceNavigationLocked}
           onRestoreFocus={() => { if (!document.querySelector('[role="dialog"], [data-persistence-recovery]')) canvasRef.current?.focus(); }}
           onTakeOff={() => {
             if (persistenceNavigationLocked) return;
             if (gameState) submitGameOutcome(gameState, "success");
           }}
           onStay={() => { if (!persistenceNavigationLocked) setExitMenuOpen(false); }}
+          onManageColony={galaxyColonyId !== null
+            ? () => { if (!persistenceNavigationLocked) handleOpenGalaxyManagement(galaxyColonyId, "landing-pad"); }
+            : undefined}
           onRegionMap={() => {
             if (persistenceNavigationLocked) return;
             const originColonyId = sceneStack.current.state.colonyContext?.colonyId;
@@ -3335,6 +3426,21 @@ export default function Game() {
           onSurvey={(id) => { if (!persistenceNavigationLocked) handleRegionExpedition("survey", id); }}
           onTravel={(id) => { if (!persistenceNavigationLocked) handleRegionExpedition("poi", id); }}
           onFound={persistenceNavigationLocked ? () => {} : handleFoundRegionOutpost}
+        />
+      )}
+      {galaxyManagement && galaxyManagementColony && saveData.galaxyRun && (
+        <GalaxyColonyManagementScreen
+          colony={galaxyManagementColony}
+          worldCycle={saveData.galaxyRun.worldCycle}
+          supportedTypes={GALAXY_COMMISSION_TYPES}
+          status={galaxyManagement.status}
+          onCommission={handleGalaxyManagementBuild}
+          onExit={() => { if (!persistenceNavigationLocked) handleCloseGalaxyManagement(); }}
+          focusActive={!pendingPoiPresentation && !persistenceNavigationLocked}
+          onRestoreFocus={() => {
+            const invoker = galaxyManagementInvokerRef.current;
+            if (invoker?.isConnected && invoker.getClientRects().length) invoker.focus();
+          }}
         />
       )}
       {pendingPoiPresentation && (
