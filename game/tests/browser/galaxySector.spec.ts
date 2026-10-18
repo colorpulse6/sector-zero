@@ -85,6 +85,70 @@ test("@pointer sector field selects stars, draws the threat-banded route, frames
   expect(await readInstalledSaveBytes(page)).toBe(before);
 });
 
+test("@pointer a click on a star's name or the glow beside its hit box selects the star, not a blind coordinate", async ({ page }, info) => {
+  const { atlas, field } = await openAtlas(page, freshGalaxy, "pointer");
+  const before = await readInstalledSaveBytes(page);
+  const heading = atlas.locator("#atlas-target-heading");
+  const blind = field.locator('[data-sector-marker="blind"]');
+  const ashfall = field.locator('[data-sector-landmark="contact:ashfall"]');
+  const onOpenField = (point: { x: number; y: number }) => page.evaluate(({ x, y }) => {
+    const hit = document.elementFromPoint(x, y);
+    return hit !== null && hit.closest("[data-sector-field]") !== null &&
+      hit.closest("button, [data-sector-landmark], [data-sector-marker]") === null;
+  }, point);
+  const selectKepler = async () => {
+    await field.locator('[data-sector-landmark="contact:kepler"]').click();
+    await expect(heading).toHaveText("KEPLER");
+  };
+
+  // Resting the pointer on the field holds the idle spin so landmarks stay put.
+  await field.hover({ position: { x: 8, y: 8 } });
+  await selectKepler();
+  const name = await ashfall.locator(".sz-atlas-label strong").evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const box = range.getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  // The name sits below the 48px hit box: before the fix this click plotted a blind coordinate.
+  expect(await onOpenField(name)).toBe(true);
+  await page.mouse.click(name.x, name.y);
+  await expect(heading).toHaveText("ASHFALL");
+  await expect(blind).toHaveCount(0);
+
+  await selectKepler();
+  const box = await ashfall.boundingBox();
+  if (!box) throw new Error("Ashfall landmark has no box");
+  const glow = { x: box.x + box.width / 2 + 28, y: box.y + box.height / 2 };
+  expect(await onOpenField(glow)).toBe(true);
+  await page.mouse.click(glow.x, glow.y);
+  await expect(heading).toHaveText("ASHFALL");
+  await expect(blind).toHaveCount(0);
+
+  // Open space far from every star still plots a blind coordinate.
+  const open = await field.evaluate((host) => {
+    const rect = host.getBoundingClientRect();
+    const centres = [...host.querySelectorAll("[data-sector-landmark], [data-sector-marker]")].map((element) => {
+      const r = element.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    for (let y = rect.top + rect.height * 0.2; y < rect.bottom - 40; y += 24) {
+      for (let x = rect.left + 40; x < rect.right - 40; x += 24) {
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || !host.contains(hit) || hit.closest("button, [data-sector-landmark], [data-sector-marker]")) continue;
+        if (centres.every((centre) => Math.hypot(centre.x - x, centre.y - y) > 120)) return { x, y };
+      }
+    }
+    return null;
+  });
+  if (!open) throw new Error("No open field space found");
+  await page.mouse.click(open.x, open.y);
+  await expect(blind).toHaveCount(1);
+  await expect(heading).not.toHaveText("ASHFALL");
+  expect(await readInstalledSaveBytes(page)).toBe(before);
+  await evidence(page, info, "pointer", "freshGalaxy", "Clicking Ashfall's name and the glow 28px beside its hit box selected Ashfall without a blind coordinate; open space still plotted one; the save was untouched.");
+});
+
 test("@keyboard contacts rove, pan and zoom keep focus on their controls, Escape returns to the experience gate", async ({ page }, info) => {
   const { atlas } = await openAtlas(page, freshGalaxy, "keyboard");
   const selected = atlas.locator('[role="option"][aria-selected="true"]');

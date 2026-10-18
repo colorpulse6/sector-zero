@@ -50,6 +50,7 @@ import { createSectorScene, type SectorSceneHandle } from "./sector/SectorScene"
 import { fallbackContactLabel, systemCatalogueForRun } from "./system/contactSystems";
 import { SystemAtlasScreen } from "./system/SystemAtlasScreen";
 import { atlasRegionAccess, REGION_CONTACT_ID } from "./regionAccess";
+import { resolveFieldClick, type FieldClickCandidate } from "./fieldClick";
 import { galaxyColonyAccess, galaxyColonyAtContact } from "../engine/galaxy/galaxyColony";
 
 export interface GalaxyAtlasScreenProps {
@@ -292,6 +293,37 @@ function starSubtitle(star: SectorStar): string {
   if (star.colonies > 0) return `${star.colonies} ${star.colonies === 1 ? "COLONY" : "COLONIES"}`;
   if (star.knowledge === "visited") return "VISITED";
   return "CHARTED";
+}
+
+function textBox(node: Element): DOMRect {
+  const range = node.ownerDocument.createRange();
+  range.selectNodeContents(node);
+  return range.getBoundingClientRect();
+}
+
+/** The landmark a click on open field space belongs to, measured where it sits on screen now. */
+function landmarkAtFieldPoint(field: HTMLElement, clientX: number, clientY: number): HTMLElement | null {
+  const elements = new Map<string, HTMLElement>();
+  const candidates: FieldClickCandidate[] = [];
+  for (const element of field.querySelectorAll<HTMLElement>("[data-sector-landmark], [data-sector-marker]")) {
+    if (element.dataset.visible === "false") continue;
+    const key = element.dataset.sectorLandmark ?? `marker:${element.dataset.sectorMarker ?? ""}`;
+    const box = element.getBoundingClientRect();
+    const labelBoxes = element.dataset.labelled === "true"
+      ? [...element.querySelectorAll(".sz-atlas-label > *")]
+        .map(textBox)
+        .filter(rect => rect.width > 0 && rect.height > 0)
+      : [];
+    elements.set(key, element);
+    candidates.push({
+      key,
+      center: { x: box.left + box.width / 2, y: box.top + box.height / 2 },
+      labelBoxes,
+      selected: element.dataset.selected === "true",
+    });
+  }
+  const key = resolveFieldClick(clientX, clientY, candidates);
+  return key === null ? null : elements.get(key) ?? null;
 }
 
 function placeLandmark(element: HTMLElement, point: LivePoint) {
@@ -777,6 +809,12 @@ export function GalaxyAtlasScreen({
   const selectFromPointer = (clientX: number, clientY: number) => {
     if (viewport.viewLevel !== "sector" || model === null) return;
     const field = fieldRef.current;
+    // A click on a star's name or on the glow just outside its hit box still means that star.
+    const landmark = field ? landmarkAtFieldPoint(field, clientX, clientY) : null;
+    if (landmark) {
+      landmark.click();
+      return;
+    }
     const scene = sceneRef.current;
     const picked = scene
       ? scene.pick(clientX, clientY)
@@ -784,37 +822,7 @@ export function GalaxyAtlasScreen({
         ? planPick(field, clientX, clientY)
         : null;
     if (!picked) return;
-    const coordinate = fromScene(picked.x, picked.z);
-    const rect = field?.getBoundingClientRect();
-    let nearest: SectorStar | null = null;
-    let best = ATLAS_CONTACT_HIT_RADIUS_PX;
-    if (rect) {
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      for (const star of model.stars) {
-        const live = livePoints.current.get(star.targetId);
-        const fallback = planPercent(star.coordinate);
-        const px = live?.x ?? (fallback.x / 100) * rect.width;
-        const py = live?.y ?? (fallback.y / 100) * rect.height;
-        if (live && !live.visible) continue;
-        const distance = Math.hypot(px - x, py - y);
-        if (distance <= best) {
-          best = distance;
-          nearest = star;
-        }
-      }
-    }
-    if (nearest) {
-      const star = nearest;
-      const contact = contacts.find((entry) => entry.targetId === star.targetId);
-      selectTarget(contact?.target ?? (
-        star.contactId
-          ? { kind: "contact", contactId: star.contactId }
-          : { kind: "coordinate", coordinate: star.coordinate }
-      ));
-      return;
-    }
-    selectTarget({ kind: "coordinate", coordinate });
+    selectTarget({ kind: "coordinate", coordinate: fromScene(picked.x, picked.z) });
   };
   selectRef.current = selectFromPointer;
 
@@ -1011,6 +1019,13 @@ export function GalaxyAtlasScreen({
                   pointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
                 }}
                 onPointerMove={(event) => {
+                  const host = event.currentTarget;
+                  const onOpenField = !(event.target instanceof Element &&
+                    event.target.closest("button, [data-sector-landmark], [data-sector-marker]"));
+                  const overLandmark = viewport.viewLevel === "sector" && onOpenField
+                    && landmarkAtFieldPoint(host, event.clientX, event.clientY) !== null;
+                  const hit = overLandmark ? "landmark" : "none";
+                  if (host.dataset.fieldHit !== hit) host.dataset.fieldHit = hit;
                   const gesture = pointerRef.current;
                   if (!gesture || gesture.id !== event.pointerId) return;
                   if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 4) gesture.moved = true;
