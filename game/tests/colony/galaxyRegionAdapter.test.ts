@@ -9,9 +9,7 @@ import { OUTPOST_FOUNDING_COST } from "../../app/components/colony/region/siteEc
 import { Events } from "../../app/components/colony/shared/colonyEvents";
 import { colonyReducer } from "../../app/components/colony/shared/colonyReducer";
 import { missionDeliveryEvent } from "../../app/components/colony/shared/missionDelivery";
-import { updateBoardingEngine } from "../../app/components/engine/boardingEngine";
 import { updateFirstPerson } from "../../app/components/engine/firstPersonEngine";
-import { updateGroundEngine } from "../../app/components/engine/groundEngine";
 import {
   createFreshGalaxyRun,
   startFreshGalaxy,
@@ -271,8 +269,8 @@ test("founding deducts only galaxy-colony resources and claims the deterministic
 test("galaxy POI sessions carry canonical presentation identity through every native engine", () => {
   const fixtures = [
     ["ashfall-cinder-relay", "firstPerson"],
-    ["ashfall-oathbreaker-wreck", "boarding"],
-    ["ashfall-glassknife-canyon", "groundRun"],
+    ["ashfall-oathbreaker-wreck", "firstPerson"],
+    ["ashfall-glassknife-canyon", "firstPerson"],
   ] as const;
 
   for (const [nodeId, engine] of fixtures) {
@@ -294,14 +292,6 @@ test("galaxy POI sessions carry canonical presentation identity through every na
       updateFirstPerson(gameState, { ...NO_KEYS, right: true });
       assert.ok(gameState.firstPersonState);
       session.state = gameState.firstPersonState!;
-    } else if (session.engine === "boarding") {
-      updateBoardingEngine(gameState, { ...NO_KEYS, jump: true });
-      assert.ok(gameState.boardingState);
-      session.state = gameState.boardingState!;
-    } else {
-      updateGroundEngine(gameState, { ...NO_KEYS, shoot: true });
-      assert.ok(gameState.groundState);
-      session.state = gameState.groundState!;
     }
     assert.notDeepEqual(session.state, initialNativeState, `${engine} update must mutate native session state`);
     let mutableStateReads = 0;

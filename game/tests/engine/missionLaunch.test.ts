@@ -351,9 +351,9 @@ test("mission descriptor factories cover every shipped core route with unique id
     colonyMissionDescriptor("colony:test", "exterior"),
     colonyMissionDescriptor("colony:test", "interior", "building:habitat"),
   ];
-  const poiAdapters = ["firstPerson", "boarding", "groundRun"] as const;
+  const poiAdapters = ["firstPerson", "firstPerson", "firstPerson"] as const;
   const pois = POI_TEMPLATE_IDS.map((templateId, index) =>
-    poiMissionDescriptor(`node:${templateId}`, poiAdapters[index]),
+    poiMissionDescriptor(`node:${templateId}`, poiAdapters[index], templateId),
   );
   const all = [...campaign, ...planets, ...special, ...operations, ...colonies, ...pois];
 
@@ -380,7 +380,7 @@ test("mission descriptor factories cover every shipped core route with unique id
   assert.equal(special[0].replayPolicy, "one-shot");
   assert.deepEqual(operations.map((descriptor) => descriptor.controlsProfile), ["shooter", "first-person", "shooter"]);
   assert.ok(colonies.every((descriptor) => descriptor.kind === "colony" && descriptor.controlsProfile === "colony-exploration"));
-  assert.deepEqual(pois.map((descriptor) => descriptor.controlsProfile), ["first-person", "boarding", "ground-run"]);
+  assert.deepEqual(pois.map((descriptor) => descriptor.controlsProfile), ["first-person", "first-person", "first-person"]);
   assert.ok(pois.every((descriptor) => descriptor.replayPolicy === "replay-variant"));
   assert.deepEqual(
     pois.map((descriptor) => descriptor.id),
@@ -398,7 +398,7 @@ test("descriptor factories reject invalid registry identity and launch authority
   assert.throws(() => Reflect.apply(operationMissionDescriptor, undefined, ["op:unknown"]), /Unknown Galaxy operation/);
   assert.throws(() => colonyMissionDescriptor("", "exterior"), /Colony ID/);
   assert.throws(() => colonyMissionDescriptor("colony:test", "interior"), /Interior building ID/);
-  assert.throws(() => poiMissionDescriptor("", "boarding"), /POI node ID/);
+  assert.throws(() => poiMissionDescriptor("", "firstPerson"), /POI node ID/);
   assert.throws(
     () => launchContextFromSave(
       createHydrationSafeSave(),
@@ -929,7 +929,7 @@ test("compatibility shells reject malformed or forged dynamic descriptors", () =
     ["POI title", poi, { ...poi.mission, title: "Forged Expedition" }],
     ["POI location", poi, { ...poi.mission, locationLabel: "node:forged" }],
     ["POI objective", poi, { ...poi.mission, objectiveLabel: "Collect forged cargo" }],
-    ["POI profile", poi, { ...poi.mission, controlsProfile: "boarding" }],
+    ["POI profile", poi, { ...poi.mission, controlsProfile: "turret" }],
     ["POI replay", poi, { ...poi.mission, replayPolicy: "repeatable" }],
     ["forged Colony prefix", colony, { ...colony.mission, id: "colony:forged-prefix" }],
     ["malformed Colony length", colony, { ...colony.mission, id: colony.mission.id.replace("colony:16:", "colony:016:") }],

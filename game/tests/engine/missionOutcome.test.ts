@@ -3155,7 +3155,7 @@ test("durable POI origin binding rejects substitution between two otherwise vali
   }));
   assert.equal(dispatchPoi(save, "home", "ashfall-oathbreaker-wreck").ok, true);
   assert.equal(dispatchPoi(save, "second-origin", "ashfall-oathbreaker-wreck").ok, true);
-  const descriptor = poiMissionDescriptor("ashfall-oathbreaker-wreck", "boarding");
+  const descriptor = poiMissionDescriptor("ashfall-oathbreaker-wreck", "firstPerson", "boarding-wreck-oathbreaker");
   const homeAttempt: OutcomeAttempt = {
     ...attempt(save, "poi", "origin-bound", "legacy", "legacy-colony-exterior", []),
     missionId: poiOutcomeMissionId(descriptor.id, "home"),
@@ -3163,7 +3163,7 @@ test("durable POI origin binding rejects substitution between two otherwise vali
       kind: "poi",
       originColonyId: "home",
       nodeId: "ashfall-oathbreaker-wreck",
-      engine: "boarding",
+      engine: "firstPerson",
       templateId: "boarding-wreck-oathbreaker",
       rewardEligible: true,
     },
@@ -3196,3 +3196,84 @@ test("durable POI origin binding rejects substitution between two otherwise vali
   });
   assert.equal(migrated.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
 });
+
+// Old serialized engines remain accepted only at the save migration boundary.
+for (const [oldEngine, nodeId, templateId] of [
+  ["boarding", "ashfall-oathbreaker-wreck", "boarding-wreck-oathbreaker"],
+  ["groundRun", "ashfall-glassknife-canyon", "ground-canyon-glassknife"],
+] as const) {
+  const surveyed = (base: SaveData) => ({ ...base, planets: base.planets.map(planet => ({ ...planet,
+    regionMap: { ...planet.regionMap, edges: planet.regionMap.edges.some(([from, to]) => from === "ashfall-forward-camp" && to === nodeId) ? planet.regionMap.edges : [...planet.regionMap.edges, ["ashfall-forward-camp", nodeId] as [string, string]], nodes: planet.regionMap.nodes.map(node => node.id === nodeId
+      ? { ...node, intel: "surveyed" as const, discovered: true } : node) } })) });
+  test(`removed-mode migration resumes legacy ${oldEngine} outcome exactly once without losing resources`, () => {
+    const save = surveyed(readyLegacyPoi(migrateSave({ credits: 1234, materials: ["kinetic-core"] })));
+    const routeIdentity = { kind: "poi" as const, originColonyId: "home", nodeId, templateId,
+      engine: "firstPerson" as const, rewardEligible: true };
+    const poiAttempt = { ...attempt(save, "poi", `old-${oldEngine}`, "legacy", "legacy-colony-exterior", LEGACY_POI_FIELDS),
+      missionId: poiOutcomeMissionId(poiMissionDescriptor(nodeId, "firstPerson", templateId).id, "home"), routeIdentity };
+    const terminal = envelope(poiAttempt, { version: 2, kind: "poi_prepared_v2" });
+    const raw = JSON.parse(JSON.stringify({ ...save,
+      outcomeRecoveryRecords: [{ version: 2, kind: "legacy_poi_prepared", envelope: terminal }] }));
+    raw.outcomeRecoveryRecords[0].envelope.routeIdentity.engine = oldEngine;
+    Object.freeze(raw);
+    const loaded = migrateSave(raw);
+    assert.equal(loaded.credits, 1234);
+    assert.deepEqual(loaded.materials, save.materials);
+    assert.deepEqual(migrateSave(JSON.parse(JSON.stringify(loaded))), loaded);
+    const recovered = recoverLegacyPreparedOutcome(loaded);
+    assert.ok(recovered, "old mode preparation must remain recoverable");
+    assert.equal(recovered.outcomeId, terminal.outcomeId);
+    assert.equal((recovered.routeIdentity as { engine: string }).engine, "firstPerson");
+    const store = memoryStore(loaded);
+    const final = { ...recovered, payload: { version: 2, kind: "poi_result_v2", destinationColonyId: "home" } };
+    assert.equal(commitOutcome(store.store, final).status, "committed");
+    const committed = structuredClone(store.current());
+    assert.equal(commitOutcome(store.store, final).status, "already_applied");
+    assert.deepEqual(store.current(), committed);
+    const appliedRaw = JSON.parse(JSON.stringify(committed));
+    appliedRaw.outcomeRecoveryRecords.find((record: { kind: string }) => record.kind === "applied_return").routeIdentity.engine = oldEngine;
+    const appliedLoaded = migrateSave(appliedRaw);
+    assert.ok(recoverOutcomeReturn(appliedLoaded));
+    assert.deepEqual(appliedLoaded.appliedOutcomeIds, committed.appliedOutcomeIds);
+    assert.deepEqual(appliedLoaded.colonies, committed.colonies);
+  });
+  test(`removed-mode migration resumes galaxy ${oldEngine} preparation with stable outcome id`, () => {
+    const base = atAshfall();
+    const projection = surveyed(projectGalaxyRunToLegacyState(base.galaxyRun!));
+    const run = { ...base.galaxyRun!, planets: projection.planets };
+    const save = { ...base, galaxyRun: run };
+    const originColonyId = "galaxy:ashfall-primary";
+    const routeIdentity = { kind: "poi" as const, originColonyId, nodeId, templateId,
+      engine: "firstPerson" as const, rewardEligible: true };
+    const launchId = `old-galaxy-${oldEngine}`;
+    const fact = createGalaxyPoiPreparedFact(run, routeIdentity, {
+      launchId, outcomeId: `${launchId}:success`, preparedRevision: save.saveRevision,
+    });
+    assert.ok(fact, "valid first-person preparation fixture");
+    const tuple = JSON.parse(decodeURIComponent(fact.id.split(":").slice(3).join(":")));
+    tuple[7] = oldEngine;
+    const canonical = JSON.stringify(tuple);
+    const { stableHash } = require("../../app/components/engine/galaxy/coordinates");
+    fact.id = `history:poi-prepared-v2:${stableHash(`poi-prepared-v2:${canonical}`).toString(16).padStart(8, "0")}:${encodeURIComponent(canonical)}`;
+    const raw = JSON.parse(JSON.stringify({ ...save, galaxyRun: { ...run, historyFacts: [...run.historyFacts, fact] } }));
+    Object.freeze(raw);
+    const tampered = JSON.parse(JSON.stringify(raw));
+    const badFact = tampered.galaxyRun.historyFacts.find((entry: { kind: string }) => entry.kind === "poi_completion_prepared");
+    badFact.id = badFact.id.replace(/:[0-9a-f]{8}:/, ":badbad00:");
+    const rejected = migrateSave(tampered);
+    assert.deepEqual(rejected.galaxyRun?.resources, run.resources);
+    assert.equal(rejected.outcomeRecoveryRecords[0]?.kind, "reconciliation_required");
+    const loaded = migrateSave(raw);
+    assert.deepEqual(loaded.galaxyRun?.resources, run.resources);
+    assert.deepEqual(migrateSave(JSON.parse(JSON.stringify(loaded))), loaded);
+    const recovered = recoverGalaxyPoiOutcomeAuthority(loaded);
+    assert.ok(recovered, "old mode preparation must remain recoverable");
+    assert.equal(recovered.launchId, launchId);
+    assert.equal((recovered.routeIdentity as { engine: string }).engine, "firstPerson");
+    const store = memoryStore(loaded);
+    const terminal = envelope(recovered, { version: 2, kind: "poi_result_v2", destinationColonyId: originColonyId });
+    assert.equal(commitOutcome(store.store, terminal).status, "committed");
+    assert.equal(commitOutcome(store.store, terminal).status, "already_applied");
+    assert.ok(store.current().appliedOutcomeIds.includes(`${launchId}:success`));
+  });
+}

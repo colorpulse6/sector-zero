@@ -7,7 +7,7 @@ export const POI_TEMPLATE_IDS = [
 ] as const;
 
 export type PoiTemplateId = typeof POI_TEMPLATE_IDS[number];
-export type PoiEncounterLabel = "FIRST-PERSON" | "BOARDING" | "GROUND-RUN";
+export type PoiEncounterLabel = "FIRST-PERSON";
 
 export function isSupportedPoiNode(node: RegionNode): node is RegionNode & { templateId: PoiTemplateId } {
   return (node.type === "ruins" && node.templateId === "fp-ruin-cinder-relay")
@@ -17,7 +17,5 @@ export function isSupportedPoiNode(node: RegionNode): node is RegionNode & { tem
 
 export function poiEncounterLabel(node: RegionNode): PoiEncounterLabel | null {
   if (!isSupportedPoiNode(node)) return null;
-  if (node.templateId === "fp-ruin-cinder-relay") return "FIRST-PERSON";
-  if (node.templateId === "boarding-wreck-oathbreaker") return "BOARDING";
-  return "GROUND-RUN";
+  return "FIRST-PERSON";
 }

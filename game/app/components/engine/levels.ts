@@ -1,3 +1,4 @@
+import { wrapAsMultiPhase } from "./phases";
 import { EnemyType, type WaveDefinition, type FormationType, type MultiPhaseLevelData } from "./types";
 
 export interface LevelData {
@@ -1154,24 +1155,14 @@ export function getMultiPhaseLevelData(
     };
   }
 
-  // ── World 1, Level 3: Ground Run-and-Gun ──
+  // World 1, Level 3 retains its shooter phase and completion reward.
   if (world === 1 && level === 3) {
-    return makeMultiPhase(
-      "ground-run",
-      "GROUND DEPLOYMENT",
-      "Phase 2: Reach the extraction point",
-      ["kinetic-core"]
-    );
+    return { ...wrapAsMultiPhase(baseLevel), completionRewards: ["kinetic-core"] };
   }
 
-  // ── World 2, Level 3: Ship Boarding ──
+  // World 2, Level 3 retains its shooter phase and completion reward.
   if (world === 2 && level === 3) {
-    return makeMultiPhase(
-      "boarding",
-      "DERELICT DETECTED",
-      "Phase 2: Board the vessel and extract the data core",
-      ["energy-cell"]
-    );
+    return { ...wrapAsMultiPhase(baseLevel), completionRewards: ["energy-cell"] };
   }
 
   // ── World 3, Level 3: Ship Turret ──
@@ -1194,24 +1185,14 @@ export function getMultiPhaseLevelData(
     );
   }
 
-  // ── World 6, Level 3: Ground Run-and-Gun ──
+  // World 6, Level 3 retains its shooter phase and completion reward.
   if (world === 6 && level === 3) {
-    return makeMultiPhase(
-      "ground-run",
-      "SURFACE ASSAULT",
-      "Phase 2: Clear the Hollow ground forces",
-      ["void-fragment"]
-    );
+    return { ...wrapAsMultiPhase(baseLevel), completionRewards: ["void-fragment"] };
   }
 
-  // ── World 7, Level 3: Ship Boarding ──
+  // World 7, Level 3 retains its shooter phase and completion reward.
   if (world === 7 && level === 3) {
-    return makeMultiPhase(
-      "boarding",
-      "HOLLOW VESSEL INTERCEPTED",
-      "Phase 2: Board and sabotage the reactor",
-      ["hollow-resonance"]
-    );
+    return { ...wrapAsMultiPhase(baseLevel), completionRewards: ["hollow-resonance"] };
   }
 
   // ── World 8, Level 3: Ship Turret (final approach) ──

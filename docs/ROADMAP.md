@@ -13,6 +13,10 @@ The 2026-04-20 colony spec's "Deep Sim future-proofing" (entity IDs everywhere,
 serializable everything) is now the point, not an insurance policy. Prefer systems that
 generate stories; authored content seeds places, people, mysteries, and consequences.
 
+## Decisions of record (2026-10-18)
+
+- 2026-10-18: ground run-and-gun and boarding removed; structure is hub → atlas → travel battles → colony.
+
 ## Decisions of record (2026-07-13)
 
 1. **Stakes — "slow decay, emergent antagonists":** colonies never pop instantly; neglect

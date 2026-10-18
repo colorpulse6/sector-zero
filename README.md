@@ -12,7 +12,7 @@
   <a href="https://colorpulse6.github.io/sector-zero/site/news/">Read the mission logs</a>
 </p>
 
-A browser-based space adventure set in 2847. Fight through hostile sectors, board enemy ships, and step into the settlements holding the frontier together. Return to the **UEC Vanguard** to prepare for whatever comes next.
+A browser-based space adventure set in 2847. Fight through hostile sectors and step into the settlements holding the frontier together. Return to the **UEC Vanguard** to prepare for whatever comes next.
 
 Choose **Begin Galaxy** to explore a persistent galaxy, or **Legacy Campaign** for 40 missions across eight sectors.
 
@@ -20,24 +20,20 @@ Choose **Begin Galaxy** to explore a persistent galaxy, or **Legacy Campaign** f
 
 <table>
   <tr>
-    <td width="33%" align="center"><strong>Space combat</strong></td>
-    <td width="33%" align="center"><strong>Ground assault</strong></td>
-    <td width="33%" align="center"><strong>The Vanguard</strong></td>
+    <td width="50%" align="center"><strong>Space combat</strong></td>
+    <td width="50%" align="center"><strong>The Vanguard</strong></td>
   </tr>
   <tr>
     <td><a href="site/public/images/modes/boss-fight.png"><img src="site/public/images/modes/boss-fight.png" alt="The player's fighter faces the Revenant boss in space" width="100%"></a></td>
-    <td><a href="site/public/images/modes/ground.png"><img src="site/public/images/modes/ground.png" alt="A pilot fires across an alien landscape beneath a purple and blue nebula" width="100%"></a></td>
     <td><a href="site/public/images/modes/cockpit.png"><img src="site/public/images/modes/cockpit.png" alt="The Vanguard bridge, with star map, crew quarters, mission board, and armory" width="100%"></a></td>
   </tr>
 </table>
 
 *In-game captures. Select an image to view it at full size. The opening screen above uses illustrative key art.*
 
-## Six ways to fight
+## Combat and exploration
 
 - **Space combat** — Weave through enemy formations and take on the bosses guarding eight sectors.
-- **Ship boarding** — Breach enemy vessels and fight through tight corridors.
-- **Ground assault** — Run, jump, and shoot across hostile terrain.
 - **First-person combat** — Explore interiors and face the threats around the next corner.
 - **Turret defense** — Track incoming fighters from the gunner's seat.
 - **Multi-phase missions** — Move between combat modes as a mission unfolds.

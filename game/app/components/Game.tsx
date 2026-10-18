@@ -81,9 +81,8 @@ import {
   type EndingChoice,
 } from "./engine/ending";
 import { restoreCheckpoint } from "./engine/phases";
-import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./engine/groundLevel";
 import { createTurretState } from "./engine/turretEngine";
-import { createBoardingState, getBoardingSpawn } from "./engine/boardingLevel";
+import { createBoardingState } from "./engine/boardingLevel";
 import { canLaunchSpecialMission, getSpecialMissionDef } from "./engine/specialMissions";
 import {
   campaignMissionDescriptor,
@@ -1556,10 +1555,6 @@ export default function Game() {
     // If we have a checkpoint (multi-phase, not phase 1), restart from checkpoint
     if (!fromBeginning && gameState?.phaseCheckpoint && gameState.currentPhase > 0) {
       const restored = restoreCheckpoint(gameState, gameState.phaseCheckpoint);
-      // For ground-run mode, re-initialize ground state and reset player spawn position
-      const isGroundRun = gameState.currentMode === "ground-run";
-      const freshGroundState = isGroundRun ? createTestGroundState() : undefined;
-      const groundSpawn = isGroundRun && freshGroundState ? getGroundSpawn(freshGroundState.tileMap) : null;
       if (ownedRetry) claimLaunchContextForGameState(ownedRetry);
       const retryOutcomeAttempt = ownedRetry && gameState.outcomeAttempt
         ? createOutcomeAttempt(
@@ -1591,10 +1586,6 @@ export default function Game() {
         levelCompleteTimer: 0,
         screenShake: 0,
         bombCooldown: 0,
-        ...(isGroundRun && freshGroundState && groundSpawn ? {
-          groundState: freshGroundState,
-          player: { ...restored.player, x: groundSpawn.x, y: groundSpawn.y },
-        } : {}),
       } as GameState);
       return;
     }
@@ -1742,29 +1733,6 @@ export default function Game() {
         return;
       }
 
-      if (action === "goto-ground-run") {
-        ensureAudio();
-        setShowStartScreen(false);
-        setShowMap(false);
-        setShowCockpit(false);
-        // Create a ground-run state directly (bypass phase system for quick testing)
-        const gs = createTestGroundState();
-        const spawn = getGroundSpawn(gs.tileMap);
-        const baseState = createGameState(1, 3, saveData.upgrades, saveData.unlockedEnhancements, saveData.pilotLevel, saveData.allocatedSkills);
-        setGameState({
-          ...baseState,
-          screen: GameScreen.PLAYING,
-          currentMode: "ground-run",
-          currentPhase: 1,
-          totalPhases: 2,
-          groundState: gs,
-          player: { ...baseState.player, x: spawn.x, y: spawn.y },
-          briefingTimer: 0,
-          devInvincible: gameState?.devInvincible ?? false,
-        });
-        return;
-      }
-
       if (action.startsWith("seed-colony:")) {
         const fxId = action.split(":")[1];
         const fx = findFixture(fxId);
@@ -1892,28 +1860,6 @@ export default function Game() {
             npcs: [],
             dialogState: null,
           },
-          briefingTimer: 0,
-          devInvincible: gameState?.devInvincible ?? false,
-        });
-        return;
-      }
-
-      if (action === "goto-boarding") {
-        ensureAudio();
-        setShowStartScreen(false);
-        setShowMap(false);
-        setShowCockpit(false);
-        const bs = createBoardingState();
-        const spawn = getBoardingSpawn(bs.map);
-        const baseState = createGameState(1, 3, saveData.upgrades, saveData.unlockedEnhancements, saveData.pilotLevel, saveData.allocatedSkills);
-        setGameState({
-          ...baseState,
-          screen: GameScreen.PLAYING,
-          currentMode: "boarding",
-          currentPhase: 1,
-          totalPhases: 2,
-          boardingState: bs,
-          player: { ...baseState.player, x: spawn.x, y: spawn.y },
           briefingTimer: 0,
           devInvincible: gameState?.devInvincible ?? false,
         });

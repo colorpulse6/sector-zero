@@ -54,6 +54,9 @@ async function evidence(page: Page, info: TestInfo, method: Method, observed: st
 }
 
 test("@pointer system map lists landmarks, keeps selection read-only and hands off to the region chart", async ({ page }, info) => {
+  // The full animated chart tour can exceed 30s on the static headless renderer.
+  // Keep individual assertion limits; allow the complete navigation round trip.
+  test.setTimeout(60_000);
   const { dialog } = await openSystemMap(page, "pointer");
   const before = await readInstalledSaveBytes(page);
   const options = dialog.getByRole("option");

@@ -121,8 +121,6 @@ export const COMBAT: GradeParams = {
 const MODE_PRESET: Record<GameMode, GradeParams> = {
   "shooter": COMBAT,
   "turret": COMBAT,
-  "ground-run": DEFAULT,
-  "boarding": TECHBASE,
   "first-person": HELL,
   "colony-exploration": TECHBASE,
   "base-defense": COMBAT,

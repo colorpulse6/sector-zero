@@ -21,8 +21,6 @@ import {
   type LaunchIdFactory,
   type LaunchContext,
 } from "../../engine/missionContext";
-import { getBoardingSpawn } from "../../engine/boardingLevel";
-import { getSpawnPosition as getGroundSpawn } from "../../engine/groundLevel";
 import { MAX_PILOT_LEVEL } from "../../engine/pilotLevel";
 import { advanceWorldCycle } from "../shared/cycleProcessor";
 import { rankFromStanding } from "../shared/factionLedger";
@@ -590,7 +588,7 @@ function snapshotActivePoiMetadata(value: unknown): ActivePoiDescriptor | null {
     : exactOwnData(active.session, ["nodeId", "engine", "state", "rewardEligible"]);
   if (active === null || session === null || typeof active.originColonyId !== "string" ||
     active.originColonyId.length === 0 || typeof session.nodeId !== "string" || session.nodeId.length === 0 ||
-    (session.engine !== "firstPerson" && session.engine !== "boarding" && session.engine !== "groundRun") ||
+    (session.engine !== "firstPerson") ||
     typeof session.rewardEligible !== "boolean") return null;
   return {
     originColonyId: active.originColonyId,
@@ -627,7 +625,9 @@ export function createPoiGameState(
   const returnTarget: ExperienceRoute = experience === "galaxy"
     ? "galaxy-region"
     : "legacy-colony-exterior";
-  const mission = poiMissionDescriptor(session.nodeId, session.engine);
+  const templateId = save.planets.flatMap((planet) => planet?.regionMap?.nodes ?? [])
+    .find((node) => node.id === session.nodeId)?.templateId ?? undefined;
+  const mission = poiMissionDescriptor(session.nodeId, session.engine, templateId);
   const launchContext = typeof launchIdFactoryOrRetry === "function" || launchIdFactoryOrRetry === undefined
     ? launchContextFromSave(
         save,
@@ -673,13 +673,7 @@ export function createPoiGameState(
   const galaxyPresentation = experience === "galaxy"
     ? { galaxyOperation: { id: `poi:${session.nodeId}`, label: nodeName ?? "ASHFALL EXPEDITION" } }
     : {};
-  if (session.engine === "firstPerson") return { ...base, ...galaxyPresentation, screen: GameScreen.PLAYING, currentMode: "first-person", currentPhase: 0, totalPhases: 1, firstPersonState: session.state, briefingTimer: 0 };
-  if (session.engine === "boarding") {
-    const spawn = getBoardingSpawn(session.state.map);
-    return { ...base, ...galaxyPresentation, screen: GameScreen.PLAYING, currentMode: "boarding", currentPhase: 0, totalPhases: 1, boardingState: session.state, player: { ...base.player, x: spawn.x, y: spawn.y }, briefingTimer: 0 };
-  }
-  const spawn = getGroundSpawn(session.state.tileMap);
-  return { ...base, ...galaxyPresentation, screen: GameScreen.PLAYING, currentMode: "ground-run", currentPhase: 0, totalPhases: 1, groundState: session.state, player: { ...base.player, x: spawn.x, y: spawn.y }, briefingTimer: 0 };
+  return { ...base, ...galaxyPresentation, screen: GameScreen.PLAYING, currentMode: "first-person", currentPhase: 0, totalPhases: 1, firstPersonState: session.state, briefingTimer: 0 };
 }
 
 export function preparePoiCompletion(
