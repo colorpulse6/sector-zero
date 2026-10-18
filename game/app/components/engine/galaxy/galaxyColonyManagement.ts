@@ -4,14 +4,19 @@ import { BUILD_SPECS } from "../../colony/shared/colonyCatalog";
 import { colonyReducer } from "../../colony/shared/colonyReducer";
 import { Events } from "../../colony/shared/colonyEvents";
 import { genBuildingId } from "../../colony/meta/buildingIdGen";
-import { hasBuildableSlot } from "../../colony/region/siteModifiers";
 import type { SaveData } from "../types";
 import { galaxyColonyAccess, samePlainData, type GalaxyColonyAccess } from "./galaxyColony";
 import { mergeProjectionIntoGalaxy, projectGalaxyRunToLegacyState } from "./galaxyProjection";
+import { settlementCommissionBlock } from "./galaxySettlement";
 import type { GalaxyRunState } from "./galaxyTypes";
 
-/** Building types a galaxy colony may commission. GC2-A supports one (spec §4.3, decision D1). */
-export const GALAXY_COMMISSION_TYPES: readonly BuildingType[] = Object.freeze(["solar_array"]);
+/**
+ * Building types a galaxy colony may commission, in settlement-path order: power, metal,
+ * housing, food, water (settlement-loop spec §1). No cantina or marketplace.
+ */
+export const GALAXY_COMMISSION_TYPES: readonly BuildingType[] = Object.freeze([
+  "solar_array", "mine", "habitat_module", "farm", "water_purifier",
+]);
 
 const RESOURCE_KEYS = ["food", "water", "metal", "credits"] as const;
 const QUOTE_KEYS = [
@@ -36,7 +41,9 @@ export type GalaxyCommissionRefusal =
   | "access_unavailable"
   | "unsupported_building"
   | "no_buildable_slot"
+  | "insufficient_power"
   | "insufficient_resources"
+  | "mine_first"
   | "malformed_command"
   | "stale_command"
   | "unauthorized_change"
@@ -74,10 +81,8 @@ function quoteFromRun(run: GalaxyRunState, colonyId: string, buildingType: Build
   if (colony === undefined) return refuse("access_unavailable", "NO COLONY HERE");
   const spec = GALAXY_COMMISSION_TYPES.includes(buildingType) ? BUILD_SPECS[buildingType] : undefined;
   if (spec === undefined) return refuse("unsupported_building", "NOT AVAILABLE IN THIS RUN YET");
-  if (!hasBuildableSlot(colony)) return refuse("no_buildable_slot", "NO BUILDABLE SLOT");
-  if (RESOURCE_KEYS.some(key => (spec.cost[key] ?? 0) > colony.resources[key])) {
-    return refuse("insufficient_resources", "NOT ENOUGH RESOURCES");
-  }
+  const block = settlementCommissionBlock(colony, buildingType);
+  if (block !== null) return refuse(block.reason, block.message);
   return {
     ok: true,
     quote: {
@@ -181,6 +186,13 @@ export function commitGalaxyColonyCommission(save: SaveData, submitted: GalaxyCo
     if (quote === null) return refuse("malformed_command", "COMMAND REJECTED");
     const read = readRun(save);
     if (!read.ok) return read;
+    // A screen drawn from an older colony is stale before any rule runs: the player chose
+    // against different numbers.
+    const current = read.run.colonies.find(entry => entry.id === quote.colonyId);
+    if (current !== undefined && (read.run.worldCycle !== quote.worldCycle ||
+      current.buildings.length !== quote.buildingCount || !samePlainData(current.resources, quote.resources))) {
+      return refuse("stale_command", "COLONY CHANGED · REVIEW AND TRY AGAIN");
+    }
     const authoritative = quoteFromRun(read.run, quote.colonyId, quote.buildingType);
     if (!authoritative.ok) return authoritative;
     if (!samePlainData(authoritative.quote, quote)) {
@@ -208,6 +220,7 @@ export function commitGalaxyColonyCommission(save: SaveData, submitted: GalaxyCo
 /** Refusals that come from a readable galaxy save; only these may reconcile the UI. */
 const RECONCILABLE: ReadonlySet<GalaxyCommissionRefusal> = new Set([
   "stale_command", "insufficient_resources", "no_buildable_slot", "access_unavailable", "unsupported_building",
+  "insufficient_power", "mine_first",
 ]);
 
 export type GalaxyCommissionStoreResult =

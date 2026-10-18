@@ -15,6 +15,8 @@ export interface ColonyCommissionMenuProps {
   options?: readonly BuildOption[];
   /** Galaxy path (GC2-A): Build calls this; no reducer event is dispatched. */
   onCommission?: (option: BuildOption) => void;
+  /** Galaxy path: a rule refusal (power, mine first, slots) shown on the button; null = no extra rule. */
+  blockedReason?: (option: BuildOption) => string | null;
 }
 
 export interface BuildOption {
@@ -84,7 +86,9 @@ export function shortfallMessage(
   return `Need ${missing.join(", ")}`;
 }
 
-export function ColonyCommissionMenu({ colony, onDispatch, options = PHASE_1_BUILD_OPTIONS, onCommission }: ColonyCommissionMenuProps) {
+export function ColonyCommissionMenu({
+  colony, onDispatch, options = PHASE_1_BUILD_OPTIONS, onCommission, blockedReason,
+}: ColonyCommissionMenuProps) {
   const handleBuild = (opt: BuildOption) => {
     if (onCommission) { onCommission(opt); return; }
     onDispatch?.(Events.buildingCommissioned({
@@ -115,7 +119,8 @@ export function ColonyCommissionMenu({ colony, onDispatch, options = PHASE_1_BUI
         gap: hudSpacing.md,
       }}>
         {options.map(opt => {
-          const affordable = canAfford(colony, opt.cost) && hasBuildableSlot(colony);
+          const blocked = blockedReason?.(opt) ?? null;
+          const affordable = blocked === null && canAfford(colony, opt.cost) && hasBuildableSlot(colony);
           return (
             <div
               key={opt.type}
@@ -162,7 +167,7 @@ export function ColonyCommissionMenu({ colony, onDispatch, options = PHASE_1_BUI
                   textTransform: "uppercase",
                 }}
               >
-                {affordable ? "Build" : shortfallMessage(colony.resources, opt.cost)}
+                {blocked ?? (affordable ? "Build" : shortfallMessage(colony.resources, opt.cost))}
               </button>
             </div>
           );

@@ -4,6 +4,9 @@ import { freshGalaxy, galaxyAtAshfall, galaxyWithLegacyProgression, pendingGalax
 import { attachBrowserReceipt } from "./helpers/receipt";
 import { SAVE_STORAGE_KEY, installSaveFixture, readInstalledSave, readInstalledSaveBytes, readLegacyDomainBytes } from "./helpers/saveFixture";
 import { commitGalaxyColonyCommission, quoteGalaxyColonyCommission } from "../../app/components/engine/galaxy/galaxyColonyManagement";
+import { advanceGalaxyWorldCycles } from "../../app/components/engine/galaxy/galaxyProjection";
+import { settlementOutlook } from "../../app/components/engine/galaxy/galaxySettlement";
+import type { BuildingType } from "../../app/components/colony/shared/colonyTypes";
 
 const COLONY = "galaxy:ashfall-primary";
 type Method = "keyboard" | "pointer";
@@ -175,7 +178,8 @@ test("@pointer a parked vessel opens management, and an unaffordable build write
 test("@pointer the stored save decides: unreadable, failed write, newer data and a stale screen", async ({ page }, info) => {
   // Canonical-reader normalized, with populated Legacy progression, like the stored save a
   // running game leaves behind.
-  const start = galaxyWithLegacyProgression(ashfallWithMetal(160));
+  // 230 = solar + mine: after another tab's solar, the only buildable choice is the mine.
+  const start = galaxyWithLegacyProgression(ashfallWithMetal(230));
   await installSaveFixture(page, start);
   await page.goto("/");
   await page.getByRole("button", { name: "CONTINUE GALAXY", exact: true }).click();
@@ -230,15 +234,16 @@ test("@pointer the stored save decides: unreadable, failed write, newer data and
   await writeStoredBytes(page, JSON.stringify(newer));
   const legacy = await readLegacyDomainBytes(page);
   await build.click();
-  await expect(status).toHaveText("SOLAR ARRAY COMMISSIONED · READY IN 1 CYCLE");
+  await expect(status).toHaveText("MINE COMMISSIONED · READY IN 2 CYCLES");
   const written = await readInstalledSave(page);
   expect(written.credits).toBe(newer.credits);
   expect(written.galaxyRun!.resources.credits).toBe(newer.galaxyRun!.resources.credits);
-  expect(ashfall(written).buildings.map(building => building.status)).toEqual(["constructing", "constructing"]);
+  expect(ashfall(written).buildings.map(building => [building.type, building.status]))
+    .toEqual([["solar_array", "constructing"], ["mine", "constructing"]]);
   expect(ashfall(written).resources.metal).toBe(0);
   expect(await readLegacyDomainBytes(page)).toBe(legacy);
   await expect(manage.getByText("constructing", { exact: true })).toHaveCount(2);
-  await evidence(page, info, "pointer", "galaxyAtAshfall + 160 metal + populated Legacy progression; storage rewritten in the page",
+  await evidence(page, info, "pointer", "galaxyAtAshfall + 230 metal + populated Legacy progression; storage rewritten in the page",
     "Atlas -> MANAGE COLONY -> Build x4 (unreadable, write failure, stale, newer data)",
     "Unreadable and failed writes changed nothing; a stale screen was refused and reconciled; the next Build kept newer stored credits and Legacy bytes.");
 });
@@ -293,4 +298,86 @@ test("@pointer a fresh galaxy reaches management honestly and launches the metal
   await evidence(page, info, "pointer", "none (fresh browser profile)",
     "BEGIN GALAXY -> select Ashfall -> COMMIT TRAVEL -> ACKNOWLEDGE ARRIVAL -> MANAGE COLONY -> BACK -> DESCEND -> COLONY MANAGEMENT -> BACK -> REGION MAP -> Survey Cinder Relay -> Travel (first-person POI)",
     "A fresh run reached Ashfall, management showed 0 metal with Build disabled from both entries and wrote nothing, and the metal POI launched. Finishing the POI needs hand play; the fixture route covers the rest.");
+});
+
+/** Commission through the same command the screen uses. */
+function commissionInNode(save: SaveData, type: BuildingType): SaveData {
+  const quote = quoteGalaxyColonyCommission(save, COLONY, type);
+  if (!quote.ok) throw new Error(quote.message);
+  const committed = commitGalaxyColonyCommission(save, quote.quote);
+  if (!committed.ok) throw new Error(committed.message);
+  return committed.save;
+}
+
+test("@pointer settlement loop: power, then the mine, then housing, food and water, with settlers explained", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  await installSaveFixture(page, galaxyWithLegacyProgression(ashfallWithMetal(230)));
+  await page.goto("/");
+  await page.getByRole("button", { name: "CONTINUE GALAXY", exact: true }).click();
+  const atlas = page.getByRole("dialog", { name: "Galaxy Atlas", exact: true });
+  const legacy = await readLegacyDomainBytes(page);
+  await atlas.getByRole("button", { name: "MANAGE COLONY", exact: true }).click();
+  const manage = page.getByRole("dialog", { name: "Colony management", exact: true });
+  const status = manage.getByRole("status");
+  const settlement = manage.getByRole("region", { name: "Settlement", exact: true });
+  const choice = (label: string) => manage.getByText(label, { exact: true }).locator("..").getByRole("button");
+
+  // Power first: every consumer names the solar array.
+  for (const label of ["⛏ Mine", "🏠 Habitat Module", "🌾 Farm", "💧 Water Purifier"]) {
+    await expect(choice(label)).toBeDisabled();
+    await expect(choice(label)).toContainText("BUILD A SOLAR ARRAY");
+  }
+  await choice("☀ Solar Array").click();
+  await expect(status).toHaveText("SOLAR ARRAY COMMISSIONED · READY IN 1 CYCLE");
+  // Then the mine: scarce metal may not go anywhere else.
+  await expect(choice("🏠 Habitat Module")).toHaveText("MINE FIRST · KEEP 150 METAL AND 1 SLOT FOR IT");
+  await expect(choice("🏠 Habitat Module")).toBeDisabled();
+  await choice("⛏ Mine").click();
+  await expect(status).toHaveText("MINE COMMISSIONED · READY IN 2 CYCLES");
+  await expect(settlement.getByText("10 / 3 · 7 SPARE (BUILT + UNDER CONSTRUCTION)", { exact: true })).toBeVisible();
+  await expect(settlement.getByText("NO NEW SETTLERS · NO HOUSING · BUILD A HABITAT MODULE", { exact: true })).toBeVisible();
+  let save = await readInstalledSave(page);
+  expect(ashfall(save).buildings.map(building => [building.type, building.status]))
+    .toEqual([["solar_array", "constructing"], ["mine", "constructing"]]);
+  expect(ashfall(save).resources.metal).toBe(0);
+  expect(await readLegacyDomainBytes(page)).toBe(legacy);
+
+  // Time passes elsewhere (surveys, expeditions, travel). Run the same cycles and commands in
+  // Node from mine output alone until three settlers live here, then reload.
+  const queue: BuildingType[] = ["habitat_module", "farm", "water_purifier"];
+  for (let cycle = 0; cycle < 80 && ashfall(save).population.total < 3; cycle += 1) {
+    while (queue.length > 0 && quoteGalaxyColonyCommission(save, COLONY, queue[0]).ok) save = commissionInNode(save, queue.shift()!);
+    const advanced = advanceGalaxyWorldCycles(save.galaxyRun!, 1);
+    if (!advanced.ok) throw new Error("cycle advance failed");
+    save = { ...save, galaxyRun: advanced.galaxyRun };
+  }
+  const colony = ashfall(save);
+  expect(queue).toEqual([]);
+  expect(colony.population.total).toBe(3);
+  const outlook = settlementOutlook(colony, save.galaxyRun!.worldCycle);
+  expect(outlook.settlerChange).toBe(1);
+  await writeStoredBytes(page, JSON.stringify(save));
+  await page.reload();
+  await page.getByRole("button", { name: "CONTINUE GALAXY", exact: true }).click();
+  await atlas.getByRole("button", { name: "MANAGE COLONY", exact: true }).click();
+  await expect(settlement.getByText("3 / 10 · 7 FREE", { exact: true })).toBeVisible();
+  await expect(settlement.getByText(`${colony.happiness} NOW · ${outlook.nextHappiness} NEXT CYCLE`, { exact: true })).toBeVisible();
+  await expect(settlement.getByText("+1 SETTLER", { exact: true })).toBeVisible();
+  await expect(settlement.getByText("10 / 10 · 0 SPARE (BUILT + UNDER CONSTRUCTION)", { exact: true })).toBeVisible();
+  await expect(manage.getByText("operational", { exact: true })).toHaveCount(5);
+  for (const label of ["⛏ Mine", "🏠 Habitat Module", "🌾 Farm", "💧 Water Purifier"]) {
+    await expect(choice(label)).toContainText("NEEDS");
+  }
+  expect(await readLegacyDomainBytes(page)).toBe(legacy);
+
+  const path = info.outputPath("galaxy-settlement-loop.png");
+  await page.screenshot({ path, fullPage: true });
+  await info.attach("galaxy-settlement-loop", { path, contentType: "image/png" });
+  await attachBrowserReceipt(info, {
+    inputMethod: "pointer",
+    saveFixture: "galaxyAtAshfall + 230 metal + populated Legacy progression; later state from Node cycles and commands",
+    route: "Atlas -> MANAGE COLONY -> Solar Array -> Mine -> (cycles in Node) -> reload -> CONTINUE GALAXY -> MANAGE COLONY",
+    expectedOutcome: "Consumers wait for power, scarce metal goes to the mine, and the panel explains housing, happiness and the next settler; legacy bytes never move.",
+    observedOutcome: `Power and mine-first reasons showed on the buttons; after reload 3/10 settlers, ${colony.happiness} happiness, +1 settler next cycle, five operational buildings and unchanged legacy bytes.`,
+  });
 });

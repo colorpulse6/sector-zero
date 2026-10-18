@@ -126,24 +126,41 @@ function step4_5_buildingProgress(c: ColonyState): ColonyState {
   return step0_capacityRecompute({ ...c, buildings: nextBuildings });
 }
 
-function step5_happinessRecompute(c: ColonyState): ColonyState {
-  let h = 50; // baseline
-  if (c.resources.food > c.population.total * 2) h += 15;
-  if (c.resources.food < c.population.total) h -= 30;
-  if (c.resources.water > c.population.total) h += 10;
-  if (c.resources.water < c.population.total * 0.5) h -= 25;
+export type HappinessFactorId =
+  | "food_stock" | "food_short" | "water_stock" | "water_short" | "power_ok" | "power_deficit"
+  | "overcrowded" | "med_bay" | "marketplace" | "barracks" | "recent_attack";
+
+export interface HappinessFactor {
+  id: HappinessFactorId;
+  delta: number;
+  met: boolean;
+}
+
+export const HAPPINESS_BASELINE = 50;
+
+/** Every term of the step-5 happiness sum, met or not. Exported so the UI can explain it. */
+export function happinessFactors(c: ColonyState): HappinessFactor[] {
+  const pop = c.population.total;
   const grid = derivePowerGrid(c);
-  if (grid.surplus >= 0 && grid.demand > 0) h += 5;
-  if (grid.surplus < 0) h -= 20;
-  if (c.population.total > c.population.capacity) h -= 20;
-  const hasMedBay = c.buildings.some(b => b.type === "med_bay" && b.status === "operational");
-  if (hasMedBay) h += 10;
-  const hasMarketplace = c.buildings.some(b => b.type === "marketplace" && b.status === "operational");
-  if (hasMarketplace) h += 10;
-  const hasBarracks = c.buildings.some(b => b.type === "barracks" && b.status === "operational");
-  if (hasBarracks) h += 5;
-  const recentAttack = c.activeThreats.some(t => t.kind === "raid_incoming" || t.kind === "siege_ongoing");
-  if (recentAttack) h -= 15;
+  const operational = (type: string) => c.buildings.some(b => b.type === type && b.status === "operational");
+  return [
+    { id: "food_stock", delta: 15, met: c.resources.food > pop * 2 },
+    { id: "food_short", delta: -30, met: c.resources.food < pop },
+    { id: "water_stock", delta: 10, met: c.resources.water > pop },
+    { id: "water_short", delta: -25, met: c.resources.water < pop * 0.5 },
+    { id: "power_ok", delta: 5, met: grid.surplus >= 0 && grid.demand > 0 },
+    { id: "power_deficit", delta: -20, met: grid.surplus < 0 },
+    { id: "overcrowded", delta: -20, met: pop > c.population.capacity },
+    { id: "med_bay", delta: 10, met: operational("med_bay") },
+    { id: "marketplace", delta: 10, met: operational("marketplace") },
+    { id: "barracks", delta: 5, met: operational("barracks") },
+    { id: "recent_attack", delta: -15,
+      met: c.activeThreats.some(t => t.kind === "raid_incoming" || t.kind === "siege_ongoing") },
+  ];
+}
+
+function step5_happinessRecompute(c: ColonyState): ColonyState {
+  const h = happinessFactors(c).reduce((sum, factor) => factor.met ? sum + factor.delta : sum, HAPPINESS_BASELINE);
   return { ...c, happiness: Math.max(0, Math.min(100, h)) };
 }
 

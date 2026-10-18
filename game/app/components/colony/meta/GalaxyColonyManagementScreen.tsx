@@ -7,6 +7,8 @@ import { ColonyResourcePanel } from "./ColonyResourcePanel";
 import { ColonyMetrics } from "./ColonyMetrics";
 import { ColonyBuildingsList } from "./ColonyBuildingsList";
 import { ColonyCommissionMenu, PHASE_1_BUILD_OPTIONS, type BuildOption } from "./ColonyCommissionMenu";
+import { GalaxySettlementPanel } from "./GalaxySettlementPanel";
+import { settlementCommissionBlock } from "../../engine/galaxy/galaxySettlement";
 
 export interface GalaxyColonyManagementScreenProps {
   colony: ColonyState;
@@ -21,7 +23,8 @@ export interface GalaxyColonyManagementScreenProps {
 
 /**
  * GC2-A: colony management in a galaxy run. Reuses the legacy panels; Build goes through the
- * galaxy command boundary in Game.tsx, never through a reducer event.
+ * galaxy command boundary in Game.tsx, never through a reducer event. Options follow
+ * `supportedTypes` order, and a button names the same settlement rule the command applies.
  */
 export function GalaxyColonyManagementScreen({
   colony, worldCycle, supportedTypes, status, onCommission, onExit, focusActive = true, onRestoreFocus,
@@ -29,7 +32,12 @@ export function GalaxyColonyManagementScreen({
   const rootRef = useRef<HTMLDivElement>(null);
   useModalFocus({ active: focusActive, rootRef, onEscape: onExit, restoreFocus: onRestoreFocus,
     initialFocus: () => rootRef.current?.querySelector<HTMLElement>("button:not([disabled])") ?? null });
-  const options = PHASE_1_BUILD_OPTIONS.filter(option => supportedTypes.includes(option.type));
+  const options = supportedTypes.flatMap(type => PHASE_1_BUILD_OPTIONS.filter(option => option.type === type));
+  const blockedReason = (option: BuildOption): string | null => {
+    const block = settlementCommissionBlock(colony, option.type);
+    // A metal shortfall keeps the menu's own "Need N more metal" label.
+    return block === null || block.reason === "insufficient_resources" ? null : block.message;
+  };
   return (
     <div ref={rootRef} role="dialog" aria-modal="true" aria-label="Colony management" tabIndex={-1}
       data-galaxy-colony-management style={{
@@ -44,8 +52,9 @@ export function GalaxyColonyManagementScreen({
       }}>{status ?? ""}</p>
       <ColonyResourcePanel colony={colony} />
       <ColonyMetrics colony={colony} />
+      <GalaxySettlementPanel colony={colony} worldCycle={worldCycle} />
       <ColonyBuildingsList colony={colony} />
-      <ColonyCommissionMenu colony={colony} options={options} onCommission={onCommission} />
+      <ColonyCommissionMenu colony={colony} options={options} onCommission={onCommission} blockedReason={blockedReason} />
     </div>
   );
 }
