@@ -89,6 +89,14 @@ separately; the existence of a test is not a passing result.
 - `feat/m3-marketplace-runtime` has six commits absent from this baseline, ending at
   `289f4eb`: design/plan, sprite registration and prop-width work. Treat this as salvage
   to inspect before restarting Marketplace, not a completed feature to merge blindly.
+- A patch-equivalence scan of all local branches also found unmatched commits in
+  `codex/c1-mission-presentation`, `feat/game-engine-conductor` and
+  `fix/sync-launch-integration`. These overlap historical integration work and may be
+  superseded. They are review candidates, not proof of missing features; do not merge
+  them wholesale, especially where they refer to now-removed modes.
+- Other scanned local branches, including the quartermaster motion pilot and graphics
+  rollout, had no unmatched commits after ancestry/patch-equivalence checks. Their
+  work is not an additional unintegrated feature backlog on this baseline.
 - Several old worktrees are marked prunable. Inventory does not authorize deleting them.
 - Pre-existing dirty work: `site/tsconfig.tsbuildinfo` and untracked `docs/research/`.
   Preserve both.

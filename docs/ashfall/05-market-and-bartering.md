@@ -26,7 +26,7 @@ PRIOR EVIDENCE, PROPOSED.
   and the projection always provides `[]`. Every galaxy purchase returns null → PURCHASE UNAVAILABLE.
 - **Blocker 2 (corrected):** a fresh run starts at 0 credits and has no repeatable income.
   Located operations on the route pay one-off credits: hostile picket 0 base and 200 with the
-  Quick Draw modifier, Kepler black box 200, Ashfall sortie 0 (SOURCE-REVIEWED, `galaxyRun.ts`).
+  Quick Draw modifier, Kepler black box 200, Ashfall sortie 0 (SOURCE-REVIEWED, `galaxyRun.ts` and `operationCatalog.ts`).
   A successful route can therefore reach 400 and afford one 300-credit kit once. The blocker is
   Blocker 1 plus the absence of repeatable income, not the price. An earlier draft said a perfect
   route could not afford a kit; that was wrong.
@@ -85,7 +85,7 @@ The camp cuts fuel and spares from salvage; the ship's supply is what travel bur
 (`supplyCost = ceil(distance / 384)`; Vanguard↔Ashfall is 2 per leg).
 
 **Status: PROPOSED partial path, not sustainable as written.** Colony metal is finite:
-expeditions pay once per node, the sortie's repeatability is Colony's call, and the same metal
+expeditions pay once per node, the sortie is one-shot on this baseline, and the same metal
 funds construction (the GC2-A Solar Array costs 80). Before B1 can be scheduled it needs, from
 Colony and GC2-B: (1) a repeatable, causally justified earning or recovery path for metal;
 (2) an explicit rule for which treasury pays and which inventory receives (colony treasury vs

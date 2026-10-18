@@ -32,6 +32,8 @@ return. No developer fixture is required for the acceptance route.
 All agents are working alongside others. Preserve unrelated changes. Do not reset,
 revert, switch the shared checkout, or edit another lane's files. No pushes, deployment,
 main merges, agent configuration changes or paid asset generation under this brief.
+Private/shared memory files and provider settings are outside every lane's write scope;
+use the owned project documents for handoff and continuity.
 
 ## First bounded deliverables
 

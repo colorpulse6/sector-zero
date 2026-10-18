@@ -1,6 +1,6 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-10-18.** Current integration baseline: `feat/galaxy-colony` at
+**Updated 2026-10-18.** Verified runtime baseline: `feat/galaxy-colony` at
 `30b0726`. This file owns direction, sequence and completion status. Detailed system
 specs own their contracts; individual agents do not maintain competing master roadmaps.
 
@@ -23,6 +23,13 @@ and meet the agreed visual standard.
 - [Verified baseline and gap inventory](handoffs/2026-10-18-consolidation-baseline.md)
 - [Parallel work ownership and acceptance brief](handoffs/2026-10-18-ashfall-parallel-brief.md)
 - [Colony agent's GC1–GC5 integration design](superpowers/specs/2026-10-18-galaxy-colony-integration-design.md)
+- [GC2-A accepted management design](superpowers/specs/2026-10-18-gc2a-galaxy-colony-management-design.md)
+  and [implementation plan](superpowers/plans/2026-10-18-gc2a-galaxy-colony-management.md)
+- [Manager's GC2-A review](handoffs/2026-10-18-gc2a-manager-review.md): design accepted after
+  canonical-store and input-ownership corrections; runtime implementation pending
+- [Ashfall production packet](ashfall/README.md), [reference board](ashfall/boards/reference-board.png)
+  and [manager review](handoffs/2026-10-18-ashfall-design-manager-review.md): integrated
+  preproduction; proposed art, fiction and trade mechanics still require runtime acceptance
 
 ## North star
 
@@ -88,8 +95,8 @@ review. Do not clean up old branches/worktrees merely because they look stale.
 
 | Lane | Owner | Current assignment | Finish condition |
 | --- | --- | --- | --- |
-| Systems (GC2-A) | Existing Colony agent | Reconcile its roadmap; specify the first galaxy management slice and capability contract | Fresh save can reach management, commission one supported improvement, advance it through existing actions, see it complete, reload and re-enter without lost/duplicated state or legacy mutations |
-| Place, art and conversations | Claude Ashfall Designer | Isolated `design/ashfall-lock` worktree; bounded production packet under `docs/ashfall/` | Concrete identity/layout, asset slots, useful NPC conversations and an in-game acceptance route; then implement reviewed assets/interactions against real state |
+| Systems (GC2-A) | Existing Colony agent | Design and plan accepted (`6bf9f7f`); next implement Solar Array management from the landing pad and Atlas | Fresh save can reach management, commission one supported improvement, advance it through existing actions, see it complete, reload and re-enter without lost/duplicated state or legacy mutations |
+| Place, art and conversations | Claude Ashfall Designer | Reviewed packet integrated under `docs/ashfall/` (`ad12882`); next prepare the small asset/conversation slice in the isolated worktree | Concrete identity/layout, asset slots, useful NPC conversations and an in-game acceptance route; then implement reviewed assets/interactions against real state |
 | Market and bartering | Designer proposes experience; Colony owns rules; Manager reconciles | Define first useful trade and its dependencies | Stock, price/exchange, refusal, cost and result are real, persistent and safe under repeated/stale input; distinguish buying/selling, exchange and negotiation |
 | Integration and lock | Codex Manager; Nic accepts the aesthetic | Review handoffs, freeze interfaces, issue bounded implementation slices and verify the complete route | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
 
@@ -101,6 +108,32 @@ consequence remain decisions for the bounded designs, not silently committed fea
 The active implementation boundary remains one useful Ashfall loop. Marketplace,
 Town Hall, a full dialogue engine, procedural city generation, all campaign chapters
 and a renderer replacement must not become hidden prerequisites.
+
+The GC2-A investigation identified finite starting credit/supply income and a metal
+recovery dependency on a unique mission outcome. A sustainable earning/trade/resupply
+path and a practical recovery path after failure are required for the full Ashfall
+lock. They are not silently solved by unlocking a shop item or wiring a build button.
+
+## Ashfall delivery order
+
+1. **GC2-A: one working improvement.** Colony implements the accepted Solar Array
+   management plan. Done when the ordinary route, stored-state failures, held-input
+   behavior and reload/re-entry are verified. No commerce is hidden in this slice.
+2. **Place slice, in parallel.** Ashfall Designer prepares the reviewed small asset kit
+   and fact-aware conversation content; Manager assigns runtime consumers so workers
+   do not collide. Done when arrival, the two NPC roles and one visible consequence
+   are readable in the actual viewport and Nic accepts the aesthetic.
+3. **GC2-B and commerce.** Colony defines a recoverable earning/resupply path with
+   Designer's trade experience. Manager reviews the failure route, resource ownership,
+   displayed quotes and repeated-intent behavior before implementation. Done when useful
+   trade works from an ordinary save and failure does not strand progression.
+4. **Lock review.** Manager verifies one complete fresh-save visit, improvement, work,
+   trade, departure and return. Nic accepts the presentation. Record the accepted place
+   contract and only then open production on the next destination.
+
+The large Marketplace interior, social negotiation, night simulation and additional
+worlds are separate later work unless a focused slice explicitly needs them. The
+first barter proposal remains a proposal until its economy prerequisites are resolved.
 
 ## What locking a world or system means
 

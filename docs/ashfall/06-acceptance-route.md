@@ -34,12 +34,11 @@ the same key with a release-then-press rule.
 | Survey Cinder Relay Ruins | 1 cycle | intel surveyed | required before the expedition pays |
 | Expedition Cinder Relay Ruins | 1 cycle | +80 metal (`POI_CARGO`) | pays once; the node becomes cleared and `createPoiOutcome` requires surveyed |
 | Expedition Oathbreaker Wreck | 1 cycle (+1 survey) | +80 metal | same template family, pays once |
-| Ashfall sortie (`op:ashfall-sortie`) | 1 cycle, 0 supply | +80 metal (60 base + 20 desert), +75 XP, zone secured | shooter mission on the planet adapter; repeatability is Colony's call |
+| Ashfall sortie (`op:ashfall-sortie`) | 1 cycle, 0 supply | +80 metal (60 base + 20 desert), +75 XP, zone secured | shooter mission on the planet adapter; one-shot on this baseline |
 | Travel Vanguard↔Ashfall | 2 supply per leg | — | `ceil(512 / 384)` |
 | Credits (one-off) | — | ship credits: hostile picket 0 base, 200 with Quick Draw; Kepler black box 200; sortie 0 | a successful route reaches 400 once; one 300 kit is affordable once A1 unlocks the shop; no repeatable income |
 
-Metal reachable from the fresh route: 240, all one-off (each node pays once; the sortie's
-repeatability is Colony's call). Spends: solar array 80 (1 cycle), habitat 100 (1 cycle), mine
+Metal reachable from the fresh route: 240, all one-off (each node and the sortie pay once). Spends: solar array 80 (1 cycle), habitat 100 (1 cycle), mine
 150 (2 cycles; +10 metal per cycle at ore 50), cantina 200 (3 cycles). The Manager resolved the
 first management slice to the Solar Array only; the habitat and the mine are later slices. A
 mine is the only repeatable metal path in the build table, which is why B1 waits for GC2-B.
@@ -75,6 +74,8 @@ daylight acceptance; the 07:00 clock stays for GC2-A.
 
 ## Lock exit criteria from the designer's side
 
-Ashfall is accepted as a place when C1, C2, C6b, C7 and one of C3/C8 pass from a fresh save, the
+The designer recommends visual acceptance when C1, C2, C6b and C7 pass from a fresh save, the
 Relay Mast shows both states in play, and the Overseer and Quartermaster carry their own faces.
-Everything else in this packet can follow without reopening the lock.
+The Manager's roadmap owns the full lock gate: C3 is a refusal capture and cannot close useful
+trade. At least one successful service/trade, a practical failure/recovery path, and Nic's
+in-game aesthetic acceptance are also required. Unimplemented proposals remain separately scoped.
