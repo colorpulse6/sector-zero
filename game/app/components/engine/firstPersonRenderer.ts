@@ -600,7 +600,7 @@ export function drawFirstPerson(
     ctx.fillStyle = "#44668844";
     ctx.font = "9px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(fp.colonyContext ? "← → TURN   W S MOVE   A D STRAFE   Z INTERACT" : "← → TURN   W S MOVE   A D STRAFE   Z FIRE   E INTERACT", CANVAS_WIDTH / 2, GAME_AREA_HEIGHT - 8);
+    ctx.fillText(fp.colonyContext ? "← → TURN   ↑ ↓ / W S MOVE   A D STRAFE   Z INTERACT" : "← → TURN   W S MOVE   A D STRAFE   Z FIRE   E INTERACT", CANVAS_WIDTH / 2, GAME_AREA_HEIGHT - 8);
   }
 
   ctx.restore();

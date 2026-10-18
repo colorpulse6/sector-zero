@@ -144,3 +144,15 @@ test("outlook: full housing says so", () => {
   });
   assert.equal(settlementOutlook(colony, 7).waiting, "HOUSING FULL");
 });
+
+test("outlook: an expiring threat still explains the next cycle's happiness penalty", () => {
+  const colony = colonyWith(0, FULL_SET(), {
+    resources: { food: 30, water: 20, metal: 0, credits: 0 },
+    activeThreats: [{ id: "last-raid-cycle", kind: "raid_incoming", cyclesUntilResolve: 1,
+      severity: "minor", targetBuildingId: null, payload: null }],
+  });
+  const outlook = settlementOutlook(colony, 7);
+  assert.equal(processCycle(colony, 8).activeThreats.length, 0);
+  assert.equal(outlook.factors.find(factor => factor.id === "recent_attack")?.met, true);
+  assert.equal(50 + outlook.factors.reduce((sum, factor) => sum + (factor.met ? factor.delta : 0), 0), outlook.nextHappiness);
+});

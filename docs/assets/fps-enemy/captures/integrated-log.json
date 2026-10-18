@@ -1,0 +1,174 @@
+{
+  "scene": "kepler",
+  "actor": "enemy:1",
+  "errors": [],
+  "captures": [
+    {
+      "label": "near-front",
+      "paused": true,
+      "distance": 1.4,
+      "action": "idle",
+      "clock": 1141.37,
+      "facing": -2.5536,
+      "player": [
+        3.3351,
+        2.7234,
+        0.588
+      ],
+      "enemy": [
+        4.5,
+        3.5
+      ]
+    },
+    {
+      "label": "near-side",
+      "paused": true,
+      "distance": 1.4,
+      "action": "idle",
+      "clock": 1141.37,
+      "facing": -2.5536,
+      "player": [
+        3.3351,
+        2.7234,
+        0.588
+      ],
+      "enemy": [
+        4.5,
+        3.5
+      ]
+    },
+    {
+      "label": "mid",
+      "paused": true,
+      "distance": 1.48,
+      "action": "walk",
+      "clock": 891.6,
+      "facing": -2.2508,
+      "player": [
+        2.9826,
+        1.7916,
+        0.588
+      ],
+      "enemy": [
+        3.9135,
+        2.9427
+      ]
+    },
+    {
+      "label": "far",
+      "paused": true,
+      "distance": 2.13,
+      "action": "walk",
+      "clock": 2016.1,
+      "facing": -2.6319,
+      "player": [
+        1.2858,
+        1.2606,
+        0.588
+      ],
+      "enemy": [
+        3.1472,
+        2.301
+      ]
+    },
+    {
+      "label": "approach-0",
+      "paused": false,
+      "distance": 1.92,
+      "action": "walk",
+      "clock": 2441.1,
+      "facing": -1.5708,
+      "player": [
+        1.2858,
+        1.2606,
+        0.588
+      ],
+      "enemy": [
+        3.0035,
+        2.1186
+      ]
+    },
+    {
+      "label": "approach-1",
+      "paused": false,
+      "distance": 1.4,
+      "action": "walk",
+      "clock": 3282.8,
+      "facing": -2.7359,
+      "player": [
+        1.2858,
+        1.2606,
+        0.588
+      ],
+      "enemy": [
+        2.5694,
+        1.8119
+      ]
+    },
+    {
+      "label": "attack-0",
+      "paused": false,
+      "distance": 0.45,
+      "action": "attack",
+      "clock": 66.6,
+      "facing": -2.7359,
+      "player": [
+        1.2858,
+        1.2606,
+        0.588
+      ],
+      "enemy": [
+        1.6993,
+        1.4382
+      ]
+    },
+    {
+      "label": "attack-1",
+      "paused": false,
+      "distance": 0.45,
+      "action": "idle",
+      "clock": 483.4,
+      "facing": -2.7359,
+      "player": [
+        1.2858,
+        1.2606,
+        0.588
+      ],
+      "enemy": [
+        1.6993,
+        1.4382
+      ]
+    },
+    {
+      "label": "death-0",
+      "paused": true,
+      "distance": 0.21,
+      "action": "death",
+      "clock": 266.8,
+      "facing": 2.8407,
+      "player": [
+        1.5,
+        1.5,
+        0.588
+      ],
+      "enemy": [
+        1.6993,
+        1.4382
+      ]
+    },
+    {
+      "label": "death-1",
+      "paused": false,
+      "distance": null,
+      "action": null,
+      "clock": null,
+      "facing": null,
+      "player": [
+        1.5,
+        1.5,
+        0.588
+      ],
+      "enemy": null
+    }
+  ]
+}

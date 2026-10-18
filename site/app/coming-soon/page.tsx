@@ -7,7 +7,7 @@ const colonyFeatures = [
   {
     name: "Improve Ashfall",
     description:
-      "Colony management starts with a Solar Array. Housing, food, water and metal production are the next step toward a populated settlement.",
+      "Build power and a Mine, then add housing, a Farm and a Water Purifier. Settlers arrive as world cycles pass when housing is free and the colony is happy.",
   },
   {
     name: "Walk the frontier",

@@ -449,9 +449,13 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       case "charger": {
         // Move toward player
         const speed = (enemy.type === "charger" ? enemy.speed * 1.5 : enemy.speed) * dtF;
+        // Hold just inside striking range so approach movement cannot walk the
+        // attack/death animation through the camera's near plane. Clamp the
+        // step as well as the destination for fast chargers and catch-up ticks.
+        const approach = Math.min(speed, Math.max(0, dist - ENEMY_CONTACT_RANGE * 0.9));
         const len = dist || 1;
-        const mvx = (dx / len) * speed;
-        const mvy = (dy / len) * speed;
+        const mvx = (dx / len) * approach;
+        const mvy = (dy / len) * approach;
         const newX = enemy.x + mvx;
         const newY = enemy.y + mvy;
         if (isWalkable(fp.map, newX, enemy.y)) enemy.x = newX;
@@ -459,6 +463,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
 
         // Contact damage
         if (dist < ENEMY_CONTACT_RANGE && gs.player.invincibleTimer <= 0) {
+          // A hostile holding melee distance may have no movement vector.
+          if (enemy.atlasAnimation) enemy.atlasAnimation.facingAngle = Math.atan2(dy, dx);
           playEnemyAction(enemy, "attack");
           gs.player.hp -= ENEMY_CONTACT_DAMAGE;
           gs.player.invincibleTimer = 60;

@@ -194,7 +194,7 @@ test("a stationary sentry faces the current hitscan target when its next shot st
   assert.equal(e.fireTimer, 119);
 });
 
-test("grunt and charger contact attacks retain facing derived from their actual approach", () => {
+test("grunt and charger contact attacks face the player while holding striking distance", () => {
   for (const type of ["grunt", "charger"] as const) {
     const e = enemy({ type, x: 4.5 }), fp = state([e]), gs = game(fp);
     initializeActorPresentation(fp);
@@ -206,6 +206,6 @@ test("grunt and charger contact attacks retain facing derived from their actual 
     assert.equal(gs.player.hp, 9);
     assert.equal(e.atlasAnimation!.facingAngle, 0);
     assert.equal(selectNpcAtlasFrame(e, fp.posX, fp.posY)!.y, 0);
-    assert.ok(Math.abs(e.x - beforeX - .015 * (type === "charger" ? 1.5 : 1)) < 1e-9);
+    assert.equal(e.x, beforeX, "a hostile already in striking range holds position");
   }
 });

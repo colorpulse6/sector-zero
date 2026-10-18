@@ -30,6 +30,23 @@ death fade with existing art, proves it with before/after captures from the actu
 hands the Manager the one engine change (hold at contact range) that attack readability for
 chargers and grunts still needs. Regenerating the art would not have fixed any of this.
 
+## Manager integration addendum — 2026-10-18
+
+All three lane commits are integrated on `feat/galaxy-colony` as `3adf04c`, `fe3a525`
+and `cb56280`. The historical diagnosis and lane handback below describe their original scope.
+The manager also clamped grunt/charger approach steps at 0.45 tiles and explicitly faces the
+player on a stationary melee attack. Contact range, damage and cadence are unchanged. Tests
+cover both enemy types at maximum catch-up time, continued damage, and pursuit after retreat.
+
+Final integrated checks: 1025 unit tests, TypeScript and static export pass. A fresh isolated
+Kepler capture has no page errors and shows the grunt's attack at 0.45 tiles, visible in the
+actual viewport: [`integrated-attack-0.png`](captures/integrated-attack-0.png), with state in
+[`integrated-log.json`](captures/integrated-log.json). The later death capture is at 0.21 tiles
+after the preview player resets position, so it does not establish death readability at the
+normal hold distance; the sentry death comparisons below remain the visual evidence for the
+opacity change. The close-up still shows the existing 256-pixel atlas resolution. Distinct
+charger/sentry art and outdoor aesthetic acceptance remain future work.
+
 ## Before and after (RUNS, VERIFIED by the sheets in `captures/`)
 
 Same scene (Kepler ruins on the `/graphics-preview` route), same harness

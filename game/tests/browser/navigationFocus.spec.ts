@@ -158,6 +158,9 @@ async function receipt(info: TestInfo, method: Method, fixture: string, route: s
 }
 
 test("@keyboard Atlas repeated arrows retain selected-contact focus and trap Tab", async ({ page }, info) => {
+  // This traverses every control while the 3D Atlas renders; keep the full
+  // keyboard assertions while allowing slower shared browser runners.
+  test.setTimeout(60_000);
   await receipt(info, "keyboard", "galaxyAtAshfall", "Continue Galaxy -> Atlas contacts -> arrows -> Tab trap -> Escape", "Selected Atlas contact receives initial focus; consecutive arrows move focus with selection; Tab stays inside; Escape restores Continue Galaxy.", async () => {
     const atlas = await openAtlas(page);
     await expect(atlas.locator('[role="option"][aria-selected="true"]')).toBeFocused();

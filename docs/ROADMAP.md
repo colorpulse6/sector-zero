@@ -1,7 +1,8 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-10-18.** Verified runtime baseline: `feat/galaxy-colony` at
-`44111cf` (GC2-A plus Overseer slice and integration correction). This file owns direction, sequence and completion status. Detailed system
+**Updated 2026-10-18.** Active integration: `feat/galaxy-colony`, PR #25. Solar Array,
+Mine, Habitat Module, Farm and Water Purifier now form the basic settlement loop.
+The delivery handoff below records the exact verification boundary. This file owns direction, sequence and completion status. Detailed system
 specs own their contracts; individual agents do not maintain competing master roadmaps.
 
 ## The current commitment: lock Ashfall
@@ -71,6 +72,11 @@ Management must translate into people, visible changes or playable opportunities
 
 ## Current state and evidence
 
+The current delivery adds five-building management, planned-power and mine-first safeguards,
+settler guidance, and explicit E/touch FPS pickup. The site and README follow the simplified
+travel/settlement direction. See [settlement/FPS delivery](handoffs/2026-10-18-settlement-fps-delivery.md)
+for integration checks and the enemy-art handback. The earlier evidence below remains historical.
+
 These are local branch statements, not deployment claims. At runtime `44111cf`, Manager
 verified **990/990 unit tests**, clean typechecking and successful static export. **Nine
 focused integrated browser checks passed**: seven management/Overseer checks plus two
@@ -89,7 +95,7 @@ This is a verified runtime increment, not the full Ashfall lock.
 | G0 galaxy foundation | Implemented: fresh run, coordinates, seeded discovery, travel commitments, located operations and recovery | Bounded local-sector proof; not a whole simulated civilization |
 | Region and Atlas presentation | Region chart plus Babylon sector/system scenes implemented | Procedural display planets are not all playable destinations |
 | GC1 galaxy colony descent | Implemented: parked Ashfall -> walk -> region/Take Off -> Atlas | Only Ashfall Primary is mapped for descent; ordinary reload returns to Atlas |
-| Colony economy/building/NPC foundation | GC2-A Solar Array management integrated from Atlas and landing pad; stored-save safeguards and live Overseer report verified | Recoverable earning/resupply, fuller services and ordinary end-to-end gameplay remain open; building geometry updates on next descent |
+| Colony economy/building/NPC foundation | Five basic buildings available from Atlas and landing pad; planned-power/mine-first safeguards, next-cycle settler guidance and strict stored-save commits | Recoverable earning/resupply, fuller services and ordinary end-to-end gameplay remain open; building geometry updates on next descent |
 | Merchant services | Quartermaster purchase path exists | Fresh galaxy consumables remain legacy-unlock-dependent |
 | M3 hubs | Cantina runtime/assets exist; first-person utility interiors exist | Fresh Ashfall outpost has no cantina; Marketplace partial branch is not integrated; Town Hall remains future |
 | Combat and outcomes | Retained modes and outcome/persistence machinery exist; ground/boarding cleanup merged locally | Broader located campaign and travel battle mapping remain GC4 |
@@ -105,10 +111,10 @@ review. Do not clean up old branches/worktrees merely because they look stale.
 
 | Lane | Owner | Current assignment | Finish condition |
 | --- | --- | --- | --- |
-| Systems | Existing Colony agent | GC2-A implemented and reviewed locally. Next: GC2-B recoverable earning, trade and resupply contract | Useful trade and recovery work from an ordinary galaxy save, preserve ownership and survive reload without duplicated rewards or costs |
-| Place, art and conversations | Claude Ashfall Designer | First Overseer billboard, portrait and factual lines integrated (`bd07594`, corrected in `44111cf`). Next: bounded Quartermaster presentation and trade guidance against accepted rules | Arrival and both roles are readable at gameplay size, statements reflect real state, one persistent consequence is visible, and Nic accepts the aesthetic |
+| Systems | Existing Colony agent | Basic settlement loop integrated. Next: GC2-B failure recovery and early-economy pacing, then useful trade/resupply | Useful trade and recovery work from an ordinary galaxy save, preserve ownership and survive reload without duplicated rewards or costs |
+| Place, art and conversations | Claude Ashfall Designer | Overseer integrated. Current delivery: FPS enemy presentation. Next: bounded Quartermaster presentation and trade guidance against accepted rules | Arrival and both roles are readable at gameplay size, statements reflect real state, one persistent consequence is visible, and Nic accepts the aesthetic |
 | Market and bartering | Designer proposes experience; Colony owns rules; Manager reconciles | Define first useful trade and its dependencies | Stock, price/exchange, refusal, cost and result are real, persistent and safe under repeated/stale input; distinguish buying/selling, exchange and negotiation |
-| Integration and lock | Codex Manager; Nic accepts the aesthetic | First runtime milestone verified; next freeze the recovery/trade contract and complete the ordinary gameplay route | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
+| Integration and lock | Codex Manager; Nic accepts the aesthetic | Integrate and verify settlement/FPS increment; next freeze recovery and pacing, then complete the ordinary gameplay route | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
 
 Design work starts alongside systems work, rather than waiting for all GC2–GC4
 infrastructure. Runtime integration still follows the dependency contract. The exact
@@ -126,7 +132,7 @@ lock. They are not silently solved by unlocking a shop item or wiring a build bu
 
 ## Ashfall delivery order
 
-1. **GC2-A: implemented locally.** Solar Array management, persistence refusals,
+1. **Basic settlement: implemented.** Five-building management, mine income, growth to ten settlers, planned power and bootstrap safeguards extend GC2-A. Solar Array management, persistence refusals,
    construction/cycle/reload and input ownership are verified. The expedition reward
    segment uses an outcome-authority fixture; Manager still owns the successful ordinary
    expedition-to-improvement playthrough. Fixed 07:00 and next-descent geometry remain.
@@ -134,7 +140,7 @@ lock. They are not silently solved by unlocking a shop item or wiring a build bu
    Designer next prepares the Quartermaster slice and remaining arrival/consequence
    treatment; Manager assigns runtime consumers. Done when arrival, the two NPC roles
    and one visible consequence are readable in the actual viewport and Nic accepts them.
-3. **GC2-B and commerce.** Colony defines a recoverable earning/resupply path with
+3. **GC2-B recovery, pacing and commerce.** First remove the failed-sortie bootstrap dead end and the roughly 45-cycle path to ten settlers. Colony defines a recoverable earning/resupply path with
    Designer's trade experience. Manager reviews the failure route, resource ownership,
    displayed quotes and repeated-intent behavior before implementation. Done when useful
    trade works from an ordinary save and failure does not strand progression.

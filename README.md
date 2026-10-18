@@ -42,13 +42,15 @@ Our direction is simple: **travel → explore → improve a colony → undertake
 
 ## A world between missions
 
-- **Ashfall colony** — Descend from the Atlas, walk the outpost, speak with the Overseer and commission a Solar Array. Construction takes world cycles; new buildings appear on the next descent.
-- **Settlement development** — Housing, food, water and repeatable metal production are the next basic building loop. Galaxy trade, resupply and failure recovery remain unfinished; existing legacy services do not imply galaxy parity.
+- **Ashfall colony** — Descend from the Atlas, walk the outpost, speak with the Overseer and build a Solar Array, Mine, Habitat Module, Farm and Water Purifier. Construction takes world cycles; finished buildings appear on the next descent.
+- **Settlement development** — Power the Mine for repeatable metal, then provide housing, food and water. Settlers arrive one per world cycle while happiness is over 60 and housing is free. Management explains power, build restrictions and the next cycle. Galaxy trade, resupply and failure recovery remain unfinished.
 - **Pilot progression** — Earn XP, develop your skills, upgrade your loadout, and build out your codex.
-- **Keyboard and touch** — Use mode-specific controls on desktop or on-screen controls on mobile.
+- **Keyboard and touch** — Use mode-specific controls on desktop or on-screen controls on mobile. In first-person missions, press **E** or tap **Interact** to collect nearby supplies and talk; **Z / Space** or **Fire** shoots. Colony walks retain **Z / Interact**.
 - **Saved progress** — Continue your journey with saves stored locally in your browser.
 
 The streamlined game retains space combat, turret defense, first-person missions and colony exploration, with multi-phase operations connecting them. Ground run-and-gun and ship boarding have been removed.
+
+To grow Ashfall, open **Manage Colony** from the Atlas or landing pad. On a fresh run, start with **Solar Array → Mine**, then build housing, food and water as metal arrives. Surveys, expeditions, travel and operations advance construction and population; waiting on the screen does not. The current early economy is slow and a failed one-time sortie can still block the initial Mine. Recovery and pacing are the next required work.
 
 See the [master roadmap](docs/ROADMAP.md) for current implementation status, owners and completion gates. The feature branch can be ahead of the public build; pushing a branch does not deploy the game.
 

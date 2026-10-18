@@ -143,7 +143,9 @@ export function settlementOutlook(colony: ColonyState, worldCycle: number): Sett
     },
     happiness: colony.happiness,
     nextHappiness: next.happiness,
-    factors: happinessFactors(next).map(factor => ({ ...factor, label: FACTOR_LABELS[factor.id] })),
+    // Happiness is computed before threat timers expire in the same cycle.
+    factors: happinessFactors({ ...next, activeThreats: colony.activeThreats })
+      .map(factor => ({ ...factor, label: FACTOR_LABELS[factor.id] })),
     settlerChange,
     waiting,
   };
