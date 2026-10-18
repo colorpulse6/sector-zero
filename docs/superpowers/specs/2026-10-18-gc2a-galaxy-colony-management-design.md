@@ -1,7 +1,7 @@
 # GC2-A — Manage Ashfall in the galaxy run
 
-Date: 2026-10-18. Status: **ACCEPTED (Codex Manager, 2026-10-18) — runtime in progress on
-`feat/galaxy-colony`.** Fixed: Solar Array only, Atlas and landing-pad entry, refresh on the next
+Date: 2026-10-18. Status: **IMPLEMENTED on `feat/galaxy-colony` (2026-10-18); awaiting the
+Codex Manager's combined review.** Accepted by the Manager with the review corrections in `6bf9f7f`. Fixed: Solar Array only, Atlas and landing-pad entry, refresh on the next
 descent, colony clock fixed at 07:00; no commerce, GC2-B or GC3 in this slice.
 Owner: Colony systems lane (Claude Colony agent). Baseline: `feat/galaxy-colony` at `30b0726`.
 Plan: `docs/superpowers/plans/2026-10-18-gc2a-galaxy-colony-management.md`.
@@ -21,7 +21,7 @@ Evidence labels: **WRITTEN** = stated in code or docs; **RUNS** = I executed it 
 | Label | Scope | Status at `30b0726` | Baseline increment |
 |---|---|---|---|
 | GC1 | Descend from the star map; walk; landing-pad region; TAKE OFF to Atlas | Done (`1be567e`, click fix `d12c088`, merged with mode cleanup at `30b0726`). VERIFIED (110 browser tests, 951 unit tests) | Part of 1 |
-| **GC2-A** | **This spec.** Reachable management, validated commission command, one supported building, progress through existing cycle-bearing actions, save/reload, visible building on re-entry | Proposed | 1 |
+| **GC2-A** | **This spec.** Reachable management, validated commission command, one supported building, progress through existing cycle-bearing actions, save/reload, visible building on re-entry | Implemented; in review | 1 |
 | GC2-B | Next slice: galaxy-native merchant unlock, honest shop display, repeatable resource path, resource-ownership rules, more building types, outpost access rule | Proposed in §8; needs the §9 decisions | 2 |
 | GC3 | Galaxy hub (cockpit) | Unchanged; not started | 4 |
 | GC4 | Campaign spine and travel battles (needs its own brainstorm with Nic) | Unchanged; not started | 5 |

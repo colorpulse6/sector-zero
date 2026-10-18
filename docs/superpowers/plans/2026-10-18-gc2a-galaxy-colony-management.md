@@ -2,8 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** ACCEPTED by the Codex Manager (2026-10-18, with the review corrections in `6bf9f7f`);
-IN PROGRESS on `feat/galaxy-colony`.
+**Status:** IMPLEMENTED on `feat/galaxy-colony` (Tasks 1–8, 2026-10-18); awaiting the Codex
+Manager's combined review. Accepted with the review corrections in `6bf9f7f`.
 
 **Dry run (2026-10-18, RUNS):** the code in Tasks 1–6 was applied verbatim to a scratch copy of
 `30b0726` outside git (not a worktree; nothing committed). `tsc --noEmit` was clean. The 14 new
@@ -15,6 +15,33 @@ Tasks 7–8 (`Game.tsx`, browser) were not dry-run.
 persistence boundary and its store tests; Task 7 commits through it and extends both walk input
 guards; Task 8 adds held-input scenarios. Task 3A was dry-run in the same scratch copy (14 tests
 pass, `tsc` clean); the Task 7 and Task 8 corrections were not.
+
+**Execution notes (2026-10-18, as built).** Tasks 1–8 are implemented. Deviations from the
+snippets below, each found by running the code:
+
+- Task 7 Step 3A: no extra `useEffect` backstop. `Game.tsx` already clears held input in a
+  `useLayoutEffect` whenever `canvasInputBlocked` changes. The explicit `clearHeldInput()` calls in
+  the open and close handlers cover pad ↔ management, where the blocked flag stays true.
+- Task 8 keyboard route: region sites are chosen with the arrow keys and `Z`, not focus + Enter on
+  an option (`chooseRegionAction`).
+- Task 8 Step 1A keyboard: the test focuses the dialog body before holding keys. Keys pressed on a
+  focused button never reach the walk (`isInteractiveKeyboardTarget`).
+- Task 8 Step 1A touch: Chromium sends no click for a second finger while one is held. Dialog
+  buttons are therefore clicked with the pointer while finger 1 stays down. The test also asserts
+  that no gameplay controls render behind the dialog.
+- Added browser tests: the stored-save boundary through the real screen (unreadable storage,
+  failed write, a stale screen, newer stored data) and a fresh-profile route up to the POI launch.
+- The canonical reader adds derived Legacy fields (codex unlocks, pilot level) before a commit,
+  like every canonical writer. Browser fixtures for byte checks must be reader-normalized
+  (`galaxyWithLegacyProgression`).
+
+**Verification (Task 9, RUNS):** `tsc --noEmit` clean; unit suites 969/969 (baseline 951 + 18);
+`NEXT_PUBLIC_DEVTOOLS=1 yarn build` succeeds; full static browser suite 116/116 (baseline 110 + 6)
+plus the fresh-profile test, which was added after that run and passes on its own. Red run: with
+the two Step 3A guard terms removed, both held-input tests failed (the keyboard test saw the
+landing-pad menu open behind management; the touch test saw gameplay controls behind the dialog).
+Boundary: finishing the first-person POI needs hand play. Its result comes from the shipped POI
+authority (`pendingGalaxyPoiReturn`, unit route test), and every step after it runs in the browser.
 
 **Goal:** In a galaxy run, a vessel parked at Ashfall can open colony management, commission a
 Solar Array through a validated command, finish it through an existing cycle-bearing action,

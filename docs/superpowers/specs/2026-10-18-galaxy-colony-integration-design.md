@@ -103,11 +103,31 @@ hub in GC3. GC2 ships in two slices:
 - **GC2-A** — reachable management, a validated commission command, one supported building
   (Solar Array), progress through existing cycle-bearing actions, save/reload, the building
   visible on the next descent. Spec `2026-10-18-gc2a-galaxy-colony-management-design.md`,
-  plan `../plans/2026-10-18-gc2a-galaxy-colony-management.md`. Status: scope accepted by the
-  manager review (2026-10-18); its two corrections are applied; runtime not started.
+  plan `../plans/2026-10-18-gc2a-galaxy-colony-management.md`. Status: implemented on
+  `feat/galaxy-colony` (2026-10-18); awaiting the Codex Manager's combined review. See
+  "GC2-A as built" below.
 - **GC2-B** — the first galaxy-native merchant unlock with honest shop display, a repeatable
   resource path, written resource ownership, more building types and the regional outpost
   access rule. Proposed in the GC2-A spec §8; needs the decisions listed there.
+
+#### GC2-A as built (2026-10-18)
+
+- `engine/galaxy/galaxyColonyManagement.ts`: `galaxyColonyManagementAccess` (descent rule, MANAGE
+  wording), `quoteGalaxyColonyCommission`, `commitGalaxyColonyCommission` (re-quote = stale check,
+  colony reducer on a projection, `isExactCommissionChange`, merge of `colonies` only) and
+  `commitGalaxyColonyCommissionToStore` (reads the stored save with `readCanonicalSaveStrict`,
+  commits against it, writes, and lets the caller adopt after the write; a refusal from a
+  readable galaxy save returns it for the screen to reconcile).
+- `BUILD_SPECS` in `colonyCatalog.ts` is the one cost and build-time table; the legacy menu
+  derives from it. GC2-A supports `solar_array` only.
+- Entry: landing-pad COLONY MANAGEMENT (galaxy walks only) and Atlas MANAGE COLONY (disabled with
+  the reason away from Ashfall). The screen reuses the legacy panels; Build calls the command,
+  never a reducer event.
+- `Game.tsx`: management joins `canvasInputBlocked` and the walk's `effectiveKeys` guard, clears
+  held input on open and close, keeps modal focus and the persistence lock, and closes on every
+  route change that closes the region surface.
+- Not changed: GC1's visit merge, walking and descending stay time-neutral, the colony clock stays
+  at 07:00, no commerce. A new building appears in the walk on the next descent.
 
 ### GC3 — The hub for the galaxy run
 
