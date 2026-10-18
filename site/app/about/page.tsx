@@ -45,9 +45,9 @@ export default function AboutPage() {
             </p>
             <p>
               Commander Voss, Lieutenant Reyes, and Doc Kael are the crew of the
-              UEC Vanguard, sent to silence it. Join them on a campaign through
-              eight hostile sectors, where the fate of the lost colonists is
-              only the beginning.
+              UEC Vanguard, sent to investigate. Their story anchors a persistent
+              frontier of journeys, settlements and dangerous work. The original
+              40-mission campaign remains available through Legacy Campaign.
             </p>
             <details className="story-spoilers">
               <summary>Reveal story spoilers</summary>
@@ -58,27 +58,27 @@ export default function AboutPage() {
                   centuries of isolation.
                 </p>
                 <p>
-                  Two endings await. Destroy the Hollow Mind and restart the
-                  cycle. Or merge with it, breaking the cycle, but losing your
-                  humanity.
+                  The original campaign offers a choice: destroy the Hollow Mind
+                  or merge with it. The evolving galaxy is intended to continue
+                  beyond its opening story, with the final transformation optional.
                 </p>
               </div>
             </details>
           </div>
-          <aside className="mission-facts" aria-label="Campaign at a glance">
-            <p className="eyebrow">Mission profile</p>
+          <aside className="mission-facts" aria-label="Game at a glance">
+            <p className="eyebrow">The current direction</p>
             <dl>
               <div>
-                <dt>Sectors</dt>
-                <dd>08</dd>
+                <dt>First reference world</dt>
+                <dd>Ashfall</dd>
               </div>
               <div>
-                <dt>Campaign missions</dt>
+                <dt>Legacy missions</dt>
                 <dd>40</dd>
               </div>
               <div>
-                <dt>Ways to fight</dt>
-                <dd>06</dd>
+                <dt>Progress</dt>
+                <dd>Saved locally</dd>
               </div>
             </dl>
             <CtaButton

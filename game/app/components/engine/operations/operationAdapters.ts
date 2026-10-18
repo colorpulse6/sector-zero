@@ -808,7 +808,7 @@ function snapshotActivePoi(value: ActivePoiDescriptor): StableActivePoiAuthority
     if (active === null || session === null || typeof active.originColonyId !== "string" ||
       active.originColonyId.length === 0 ||
       typeof session.nodeId !== "string" || session.nodeId.length === 0 ||
-      (session.engine !== "firstPerson" && session.engine !== "boarding" && session.engine !== "groundRun") ||
+      (session.engine !== "firstPerson") ||
       typeof session.rewardEligible !== "boolean") return null;
     // The live engine owns session.state and mutates it every frame. Completion
     // authority deliberately snapshots only stable launch fields and never
@@ -1097,7 +1097,7 @@ function decodePreparedFact(
       typeof decoded[2] !== "string" || decoded[2].length === 0 ||
       !Number.isSafeInteger(decoded[3]) || (decoded[3] as number) < 0 ||
       typeof decoded[4] !== "string" || decoded[4].length === 0 ||
-      (decoded[5] !== "firstPerson" && decoded[5] !== "boarding" && decoded[5] !== "groundRun") ||
+      (decoded[5] !== "firstPerson") ||
       typeof decoded[6] !== "boolean") return null;
     const outcome = decodePreparedOutcomePayload(
       decoded[7],
@@ -1257,7 +1257,7 @@ export function recoverGalaxyPoiOutcomeAuthority(save: SaveData): OutcomeAttempt
     const recovered = recoverGalaxyPoiPreparation(validated.galaxyRun);
     if (recovered === null || recovered.preparedRevision !== root.saveRevision ||
       root.appliedOutcomeIds.includes(recovered.outcomeId) || nestedJournal.includes(recovered.outcomeId)) return null;
-    const mission = poiMissionDescriptor(recovered.identity.nodeId, recovered.identity.engine);
+    const mission = poiMissionDescriptor(recovered.identity.nodeId, recovered.identity.engine, recovered.identity.templateId);
     return {
       version: 1,
       routeKind: "poi",

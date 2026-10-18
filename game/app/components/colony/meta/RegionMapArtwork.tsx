@@ -1,34 +1,43 @@
-import React from "react";
-import type { RegionNode } from "../shared/colonyTypes";
+import React, { useMemo } from "react";
+import type { PlanetBiome, RegionNode } from "../shared/colonyTypes";
+import { generateRegionTerrain } from "./regionMapTerrain";
 
 // Atmospheric cartography only. Traversal and discovered landmarks come from the
-// saved region graph, drawn separately by RegionMapScreen.
-export function RegionMapTerrain() {
+// saved region graph, drawn separately by RegionMapScreen. The contour field is a
+// pure function of the region seed and biome, so the same planet always charts the
+// same way; it carries no traversal or discovery authority.
+export function RegionMapTerrain({ seed, biome }: { seed: number; biome: PlanetBiome }) {
+  const terrain = useMemo(() => generateRegionTerrain(seed, biome), [seed, biome]);
   return (
-    <svg className="sz-region-terrain" viewBox="0 0 1000 800" preserveAspectRatio="none" aria-hidden="true">
-      <g fill="none" stroke="currentColor" strokeWidth="1">
-        {Array.from({ length: 18 }, (_, index) => {
-          const offset = index * 22;
-          return <path key={index} d={`M ${-210 + offset} -30 C ${30 + offset} 140, ${-80 + offset} 270, ${160 + offset} 330 S ${160 + offset} 610, ${420 + offset} 850`} />;
-        })}
-        {Array.from({ length: 12 }, (_, index) => {
-          const offset = index * 18;
-          return <path key={index} d={`M ${1050 - offset} 30 C ${680 - offset} 60, ${1080 - offset} 300, ${900 - offset} 430 S ${700 - offset} 580, ${1100 - offset} 780`} />;
-        })}
+    <svg className="sz-region-terrain" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <g className="sz-region-contours" fill="none" stroke="currentColor" strokeLinejoin="round">
+        {terrain.contours.map((ring, index) => (
+          <polygon key={index} points={ring.points} strokeOpacity={ring.alpha} vectorEffect="non-scaling-stroke" />
+        ))}
       </g>
-      <g className="sz-region-survey-grid" fill="none" stroke="currentColor" strokeWidth="1">
-        {[100, 300, 500, 700, 900].flatMap(x => [100, 300, 500, 700].map(y => (
-          <path key={`${x}:${y}`} d={`M ${x - 4} ${y} h 8 M ${x} ${y - 4} v 8`} />
+      <g className="sz-region-ridges" fill="none" stroke="currentColor" strokeLinecap="round">
+        {terrain.ridges.map((ridge, index) => (
+          <polyline key={index} points={ridge.points} strokeOpacity={ridge.alpha} vectorEffect="non-scaling-stroke" />
+        ))}
+      </g>
+      <g className="sz-region-specks" fill="currentColor">
+        {terrain.specks.map((speck, index) => (
+          <circle key={index} cx={speck.x} cy={speck.y} r={speck.r} fillOpacity={speck.alpha} />
+        ))}
+      </g>
+      <g className="sz-region-survey-grid" fill="none" stroke="currentColor">
+        {[10, 30, 50, 70, 90].flatMap(x => [10, 30, 50, 70, 90].map(y => (
+          <path key={`${x}:${y}`} d={`M ${x - 0.8} ${y} h 1.6 M ${x} ${y - 0.8} v 1.6`} vectorEffect="non-scaling-stroke" />
         )))}
       </g>
     </svg>
   );
 }
 
-export function RegionLandmark({ node }: { node: RegionNode }) {
+export function RegionLandmark({ node, decorative = false }: { node: Pick<RegionNode, "intel" | "type">; decorative?: boolean }) {
   const kind = node.intel === "unknown" ? "unknown" : node.type;
   return (
-    <svg viewBox="0 0 32 32" aria-hidden="true" data-landmark={kind} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
+    <svg viewBox="0 0 32 32" aria-hidden="true" data-landmark={decorative ? undefined : kind} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
       {kind === "unknown" ? (
         <><circle cx="16" cy="16" r="3" /><path d="M 9 9 a 10 10 0 0 0 0 14 M 23 9 a 10 10 0 0 1 0 14" /></>
       ) : kind === "colony_site" || kind === "neutral_village" || kind === "abandoned_colony" ? (

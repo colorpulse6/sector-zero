@@ -43,7 +43,7 @@ test("node options contain no direct actions and one selected action renders out
   assert.doesNotMatch(listbox, /SURVEY ·|TRAVEL ·|FOUND OUTPOST/);
   assert.equal((html.match(/data-region-action="true"/g) ?? []).length, 1);
   assert.match(html, /Oathbreaker Wreck/);
-  assert.match(html, /BOARDING/);
+  assert.match(html, /FIRST-PERSON/);
   assert.match(html, /TRAVEL COST[\s\S]*?1 CYCLE/);
   assert.match(html, /Travel to Oathbreaker Wreck/);
 });
@@ -104,7 +104,7 @@ test("selected POIs disclose the correct encounter label only after intel permit
     save: glassknife.save, originColonyId: founded.colonyId, source: "landing-pad", actionsEnabled: true,
     initialSelectedNodeId: "ashfall-glassknife-canyon", onClose() {}, onTravel() {},
   }));
-  assert.match(glassknifeHtml, /GROUND-RUN/);
+  assert.match(glassknifeHtml, /FIRST-PERSON/);
 });
 
 test("selected surveyed colony site exposes one founding action and its stats", () => {
@@ -129,7 +129,7 @@ test("unknown selection reveals no real name, engine, template, stats, or action
   }));
   assert.match(html, /UNKNOWN SIGNAL/);
   assert.match(html, /Explore connected sites to learn more about this signal\./);
-  assert.doesNotMatch(html, /Glassknife Canyon|ground-canyon-glassknife|GROUND-RUN|ORE DENSITY|WATER TABLE|BUILDABLE SLOTS/);
+  assert.doesNotMatch(html, /Glassknife Canyon|ground-canyon-glassknife|ORE DENSITY|WATER TABLE|BUILDABLE SLOTS/);
   assert.equal((html.match(/data-region-action="true"/g) ?? []).length, 0);
 });
 
@@ -184,7 +184,7 @@ test("unknown landmarks and routes reveal no hidden identity or destination type
     save: state, originColonyId: "home", source: "landing-pad", actionsEnabled: true,
     initialSelectedNodeId: "ashfall-glassknife-canyon", onClose() {},
   }));
-  assert.doesNotMatch(html, /Hidden Fortress|hidden-node|glassknife|ironreach|GROUND-RUN/);
+  assert.doesNotMatch(html, /Hidden Fortress|hidden-node|glassknife|ironreach/);
   assert.equal((html.match(/data-landmark="unknown"/g) ?? []).length, 2);
   assert.doesNotMatch(html, /data-route-state="selected"/);
   assert.match(html, /data-route-state="unknown"/);

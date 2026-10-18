@@ -13,6 +13,9 @@ const browserTestPort = process.env.PLAYWRIGHT_TEST_PORT
   ? Number.parseInt(process.env.PLAYWRIGHT_TEST_PORT, 10)
   : 32_000 + (worktreeHash % 10_000);
 const baseURL = `http://127.0.0.1:${browserTestPort}`;
+// CI validates the exported game players receive. The development server's
+// compilation and large source responses distort timing and retained traces.
+const staticExport = process.env.PLAYWRIGHT_STATIC_EXPORT === "1";
 
 export default defineConfig({
   testDir: "./tests/browser",
@@ -27,7 +30,9 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "yarn dev --hostname 127.0.0.1",
+    command: staticExport
+      ? `python3 -m http.server ${browserTestPort} --bind 127.0.0.1 --directory out`
+      : "yarn dev --hostname 127.0.0.1",
     url: baseURL,
     reuseExistingServer: false,
     env: {

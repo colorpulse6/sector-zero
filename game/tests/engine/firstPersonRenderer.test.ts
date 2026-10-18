@@ -180,8 +180,8 @@ test("loaded eligible portrait draws at 88px and moves speaker and wrapped body 
     value: "qrstuvwxyzabcdef", x: 128, y: 614, align: "left",
   });
   assert.deepEqual(recording.roundRects[0], [16, 564, 448, 140, 8]);
-  assert.deepEqual(textCall(recording, "[Z] Close"), {
-    value: "[Z] Close", x: 452, y: 690, align: "right",
+  assert.deepEqual(textCall(recording, "[E] Close"), {
+    value: "[E] Close", x: 452, y: 690, align: "right",
   });
   assert.deepEqual(textCall(recording, "1 / 1"), {
     value: "1 / 1", x: 28, y: 690, align: "left",
@@ -252,8 +252,8 @@ test("open shop bypasses portrait handling and retains the 300px shop panel", ()
   assert.deepEqual(textCall(recording, "BARTENDER — INVENTORY"), {
     value: "BARTENDER — INVENTORY", x: 28, y: 416, align: "left",
   });
-  assert.deepEqual(textCall(recording, "[Z] Close Shop"), {
-    value: "[Z] Close Shop", x: 354, y: 416, align: "left",
+  assert.deepEqual(textCall(recording, "[E] Close Shop"), {
+    value: "[E] Close Shop", x: 354, y: 416, align: "left",
   });
   assert.deepEqual(textCall(recording, "TEST ITEM"), {
     value: "TEST ITEM", x: 32, y: 446, align: "left",

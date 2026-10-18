@@ -29,8 +29,7 @@ export const SHEETS: ReadonlyArray<{
   // (verified 2026-07-12; the classify width-division gate caught it).
   { path: "ships/player.png", frames: 3, consumer: "renderer.ts drawPlayer (~:222) + drawSideGunners (~:347) + turretRenderer.ts (~:91)" },
   { path: "powerups/powerups.png", frames: 6, consumer: "renderer.ts (~:424) + dashboard.ts (~:213)" },
-  { path: "boarding/tiles.png", frames: 3, consumer: "boardingRenderer.ts (~:38) + fpRender/textures.ts (~:106)" },
-  { path: "ground/tiles.png", frames: 3, consumer: "groundRenderer.ts (~:67)" },
+  { path: "boarding/tiles.png", frames: 3, consumer: "fpRender/textures.ts (~:106)" },
   { path: "boarding/gun-sheet.png", frames: 2, consumer: "firstPersonRenderer.ts FP gun (~:254)" },
   { path: "bullets/player-bullets.png", frames: 4, consumer: "weapons.ts (~:141)" },
   { path: "bullets/enemy-bullet.png", frames: 4, consumer: "weapons.ts (~:233)" },
@@ -46,7 +45,6 @@ export const SHEETS: ReadonlyArray<{
  *   - turret/crosshair.png — thin lines, matting destroys them
  *   - turret/bg-space.png, turret/cockpit-frame.png — full-screen overlays
  *     with intentional semi-transparent regions
- *   - ground/bg-*.png — parallax layers with intentional alpha gradients
  *   - walls/, environment/, explore floors/walls/sky — opaque tiles
  *   - portraits/ — no alpha channel at all (RGB PNGs)
  *   - backgrounds/, map/, cockpit/, ending/ — opaque or UI art
@@ -85,12 +83,6 @@ export const MAT_ALLOWLIST: ReadonlyArray<string> = [
   "boarding/enemy-fp-death.png",
   "boarding/enemy-fp-flinch.png",
   "boarding/enemy-fp-front.png",
-  "boarding/enemy-grunt-attack.png",
-  "boarding/enemy-grunt-idle.png",
-  "boarding/player-down.png",
-  "boarding/player-left.png",
-  "boarding/player-right.png",
-  "boarding/player-up.png",
   // Turret-mode enemies
   "turret/enemy-bomber.png",
   "turret/enemy-drone.png",
@@ -116,19 +108,6 @@ export const MAT_ALLOWLIST: ReadonlyArray<string> = [
   // 8% semi-transparent wash
   "ships/escort-ship.png",
   // Ground run-and-gun (single-frame player poses + enemies)
-  "ground/enemy-flyer.png",
-  "ground/enemy-jumper.png",
-  "ground/enemy-patrol.png",
-  "ground/enemy-turret.png",
-  "ground/player-hurt.png",
-  "ground/player-idle.png",
-  "ground/player-infantry.png",
-  "ground/player-jump.png",
-  "ground/player-run-1.png",
-  "ground/player-run-2.png",
-  "ground/player-run-3.png",
-  "ground/player-run-4.png",
-  "ground/player-shoot.png",
 ];
 
 export type SpriteClass = "sheet" | "allowlisted-billboard" | "other";

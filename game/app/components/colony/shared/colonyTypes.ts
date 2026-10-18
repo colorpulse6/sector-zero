@@ -68,8 +68,6 @@ export type PlanetBiome =
   | "toxic";
 export type EngineKind =
   | "firstPerson"
-  | "boarding"
-  | "groundRun"
   | "turret"
   | "shooter";
 

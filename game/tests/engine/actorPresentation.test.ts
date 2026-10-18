@@ -7,6 +7,7 @@ import { selectNpcAtlasFrame } from "../../app/components/engine/fpRender/npcAtl
 import { SceneBuilder } from "../../app/components/engine/fpRender/sceneInput";
 import { TextureRegistry } from "../../app/components/engine/fpRender/textures";
 import { SPRITES } from "../../app/components/engine/sprites";
+import { APPROVED_HOSTILES } from "../../app/components/engine/approvedHostiles";
 import { createAshfallForwardCampState } from "../../app/components/engine/ashfallForwardCamp";
 import { createKeplerBlackBoxFirstPersonState } from "../../app/components/engine/keplerBlackBoxMission";
 import { createFirstPersonRuinTemplate } from "../../app/components/colony/region/poiTemplates";
@@ -109,11 +110,11 @@ test("legacy enemy fallback uses flinch only during a transient hurt event", () 
   assert.equal(builder.build(fp, registry).billboards[0].texId, registry.idFor(SPRITES.FP_ENEMY_FLINCH, "billboard"));
 });
 
-test("scene frames are protected before atlas use and preserve NPC/hostile aspect and anchors", async () => {
+test("scene keeps approved hostile proportions and protects NPC atlas frames", async () => {
   // Match SceneBuilder's static import: tsx on Node 20 can instantiate a
   // separate actor cache when this stateful module is dynamically imported.
   const previous = globalThis.Image;
-  globalThis.Image = class { onload?: () => void; set src(_path: string) { queueMicrotask(() => this.onload?.()); } } as unknown as typeof Image;
+  globalThis.Image = class { width = 1024; onload?: () => void; set src(_path: string) { queueMicrotask(() => this.onload?.()); } } as unknown as typeof Image;
   try {
     const fp = state([enemy()]);
     fp.npcs = [{ id: 2, x: 3.5, y: 4.5, name: "Doc Kael", type: "lore", dialog: [], color: "#fff", interacted: false }];
@@ -124,9 +125,10 @@ test("scene frames are protected before atlas use and preserve NPC/hostile aspec
       override beginFrame() { order.push("begin"); super.beginFrame(); }
       override idForFrame() { order.push("frame"); return 42; }
     }
-    const scene = new SceneBuilder().build(fp, new Registry());
-    assert.deepEqual(order, ["begin", "frame", "frame"]);
-    assert.deepEqual(scene.billboards.map(b => [b.texId, b.widthFactor, b.vAnchor]), [[42, 1, "center"], [42, .5, "npc"]]);
+    const registry = new Registry();
+    const scene = new SceneBuilder().build(fp, registry);
+    assert.deepEqual(order, ["begin", "frame"]);
+    assert.deepEqual(scene.billboards.map(b => [b.texId, b.widthFactor, b.vAnchor]), [[registry.idFor(APPROVED_HOSTILES.grunt.path, "billboard"), 2 / 3, "ground"], [42, .5, "npc"]]);
   } finally { releaseActorAssets(); globalThis.Image = previous; }
 });
 
@@ -194,7 +196,7 @@ test("a stationary sentry faces the current hitscan target when its next shot st
   assert.equal(e.fireTimer, 119);
 });
 
-test("grunt and charger contact attacks retain facing derived from their actual approach", () => {
+test("grunt and charger contact attacks face the player while holding striking distance", () => {
   for (const type of ["grunt", "charger"] as const) {
     const e = enemy({ type, x: 4.5 }), fp = state([e]), gs = game(fp);
     initializeActorPresentation(fp);
@@ -206,6 +208,6 @@ test("grunt and charger contact attacks retain facing derived from their actual 
     assert.equal(gs.player.hp, 9);
     assert.equal(e.atlasAnimation!.facingAngle, 0);
     assert.equal(selectNpcAtlasFrame(e, fp.posX, fp.posY)!.y, 0);
-    assert.ok(Math.abs(e.x - beforeX - .015 * (type === "charger" ? 1.5 : 1)) < 1e-9);
+    assert.equal(e.x, beforeX, "a hostile already in striking range holds position");
   }
 });

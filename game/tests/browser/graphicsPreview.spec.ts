@@ -104,32 +104,49 @@ test("@keyboard missing rollout images keep legacy actors and recover after a sc
   await expect.poll(async () => { const s = (await snapshot(page)).sources; return s.paths > 0 && s.loaded === s.paths; }, { timeout: 30000 }).toBe(true);
 });
 
-test("@keyboard hostile combat displays real attack hurt and death cells", async ({ page }, info) => {
+test("@keyboard approved hostile designs render and combat keeps attack hurt and death feedback", async ({ page }, info) => {
   test.setTimeout(60000);
   await page.addInitScript(() => {
-    const clips = new Set<string>(); Object.assign(window, { graphicsCombatClips: clips });
+    const decoded = new Set<string>(); Object.assign(window, { approvedHostilesDecoded: decoded });
     const original = CanvasRenderingContext2D.prototype.drawImage;
     CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, source: CanvasImageSource, ...args: number[]) {
       Reflect.apply(original, this, [source, ...args]);
       if (source instanceof HTMLImageElement) {
-        const match = source.src.match(/\/actors\/hostile\/(attack|hurt|death)\.png/);
-        if (match) clips.add(match[1]);
+        const match = source.src.match(/\/actors\/approved\/(grunt|charger|sentry)\.png/);
+        if (match) {
+          const pixels = this.getImageData(0, 0, this.canvas.width, this.canvas.height).data;
+          if (pixels.some((value, index) => index % 4 === 3 && value > 200)) decoded.add(match[1]);
+        }
       }
     } as typeof original;
   });
   await page.goto(`${base}/graphics-preview/`);
   await scene(page, "station");
-  await expect.poll(async () => (await snapshot(page)).sources.loaded).toBe(5);
+  await expect.poll(async () => (await snapshot(page)).sources.loaded).toBe(3);
   await page.getByRole("button", { name: "Pause simulation", exact: true }).click();
+  for (const type of ["grunt", "charger", "sentry"]) {
+    const actor = (await snapshot(page)).actors.find(a => a.name.endsWith(`· ${type}`))!;
+    await page.getByLabel("Actor", { exact: true }).selectOption(actor.id);
+    for (const view of ["Front", "Right side", "Back", "Left side"]) {
+      await page.getByRole("button", { name: view, exact: true }).click();
+      if (!await page.getByText("That side is blocked by the scene geometry.", { exact: true }).isVisible()) break;
+    }
+    await expect(page.getByText("That side is blocked by the scene geometry.", { exact: true })).not.toBeVisible();
+    await expect.poll(() => page.evaluate(() => [...(window as unknown as { approvedHostilesDecoded: Set<string> }).approvedHostilesDecoded])).toContain(type);
+    await info.attach(`${type}-in-map`, { body: await page.getByTestId("graphics-canvas").screenshot(), contentType: "image/png" });
+  }
+  const actor = (await snapshot(page)).actors.find(a => a.name.endsWith("· grunt"))!;
+  await page.getByLabel("Actor", { exact: true }).selectOption(actor.id);
   await page.getByRole("button", { name: "Front", exact: true }).click();
   await page.getByRole("button", { name: "Resume simulation", exact: true }).click();
   await page.getByTestId("graphics-canvas").focus();
-  const decoded = () => page.evaluate(() => [...(window as unknown as { graphicsCombatClips: Set<string> }).graphicsCombatClips]);
-  await expect.poll(decoded, { timeout: 15000 }).toContain("attack");
+  const action = async () => (await snapshot(page)).actors.find(a => a.id === actor.id)?.action;
+  await expect.poll(action, { timeout: 15000, intervals: [50] }).toBe("attack");
+  await info.attach("attack-in-map", { body: await page.getByTestId("graphics-canvas").screenshot(), contentType: "image/png" });
   await page.keyboard.down("z");
-  await expect.poll(decoded, { timeout: 10000 }).toContain("hurt");
-  await expect.poll(decoded, { timeout: 15000 }).toContain("death");
+  await expect.poll(action, { timeout: 10000, intervals: [50] }).toBe("hurt");
+  await expect.poll(action, { timeout: 15000, intervals: [50] }).toBe("death");
   await page.keyboard.up("z");
-  await expect.poll(async () => (await snapshot(page)).actors.length).toBeLessThan(16);
-  await info.attach("combat-clips", { body: JSON.stringify(await decoded()), contentType: "application/json" });
+  await info.attach("death-in-map", { body: await page.getByTestId("graphics-canvas").screenshot(), contentType: "image/png" });
+  await expect.poll(async () => (await snapshot(page)).actors.some(a => a.id === actor.id)).toBe(false);
 });

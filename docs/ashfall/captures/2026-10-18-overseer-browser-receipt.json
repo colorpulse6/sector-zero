@@ -1,0 +1,10 @@
+{
+  "commit": "working-tree",
+  "project": "desktop-keyboard",
+  "viewport": "1280x900",
+  "inputMethod": "keyboard",
+  "saveFixture": "galaxyAtAshfall (shipped route fixture, unchanged)",
+  "route": "CONTINUE GALAXY -> DESCEND TO COLONY -> walk north to the plaza -> talk to the Overseer -> three lines",
+  "expectedOutcome": "The Overseer renders from the reviewed hub-governor billboard (no Voss atlas), speaks as 'Overseer' with the hub-governor portrait, and reports no buildings and an empty yard; the save and Legacy bytes are unchanged.",
+  "observedOutcome": "Static hub-governor billboard decoded, Overseer portrait drawn, greeting and yard lines rendered, save bytes unchanged, no page errors."
+}

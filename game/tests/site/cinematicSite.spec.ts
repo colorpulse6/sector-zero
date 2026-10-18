@@ -100,7 +100,7 @@ test.describe("touch navigation", () => {
   }
 });
 
-test("all six gameplay previews link to preserved mode articles", async ({
+test("retained gameplay previews link to preserved articles without removed modes", async ({
   page,
 }) => {
   await page.goto("./");
@@ -108,13 +108,16 @@ test("all six gameplay previews link to preserved mode articles", async ({
     "Answer the signal.",
   );
   const modes = page.getByRole("region", {
-    name: "One universe. Six ways to fight.",
+    name: "Explore. Build. Defend.",
   });
-  for (const slug of slugs.slice(0, 6)) {
+  for (const slug of ["vertical-shooter", "first-person-raycaster", "ship-turret", "multi-phase-levels"]) {
     const link = modes.locator(`a[href='${basePath}/news/${slug}/']`);
     await expect(link).toHaveCount(1);
     await expect(link.locator("img")).toHaveAttribute("alt", /gameplay/i);
   }
+  await expect(modes.locator(".mode-card")).toHaveCount(4);
+  await expect(modes.getByText("Boarding actions")).toHaveCount(0);
+  await expect(modes.getByText("Ground assault")).toHaveCount(0);
   await expectImagesLoaded(page);
 });
 
@@ -147,7 +150,7 @@ test("story endings are optional and accessible by keyboard", async ({
   page,
 }) => {
   await page.goto("./about/");
-  const spoiler = page.getByText("Destroy the Hollow Mind", { exact: false });
+  const spoiler = page.getByText("destroy the Hollow Mind", { exact: false });
   await expect(spoiler).toBeHidden();
   const disclosure = page.getByText("Reveal story spoilers", { exact: true });
   await disclosure.focus();

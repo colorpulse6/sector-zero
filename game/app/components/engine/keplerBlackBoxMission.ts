@@ -90,8 +90,8 @@ const KEPLER_MAP_DATA = parseMissionMap([
   "#....#.....#.#.#.#",
   "#.##.#####.#.#.#.#",
   "#.##.....#...#...#",
-  "#.######.#######.#",
-  "#..............B.#",
+  "#.######.###D###.#", // Link the central corridor to the lower objective loop.
+  "#..............G.#", // Remains an exit on replays after the black box is recovered.
   "##################",
 ]);
 
@@ -101,7 +101,7 @@ const KEPLER_ENEMIES: FPEnemy[] = [
   enemy(3, 6, 7, "grunt", 2, "swarm"),
   enemy(4, 12, 9, "sentry", 4, "heavy-mech", 90, 8),
   enemy(5, 4, 12, "charger", 3, "bio-organic"),
-  enemy(6, 14, 14, "grunt", 3, "armored"),
+  enemy(6, 14, 15, "grunt", 3, "armored"),
 ];
 
 export function createKeplerBlackBoxFirstPersonState(

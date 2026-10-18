@@ -1,9 +1,27 @@
 import { loadSprite, releaseSprite, SPRITES } from "./sprites";
-import type { FirstPersonState } from "./types";
+import type { FirstPersonState, FPEnemy } from "./types";
+import { APPROVED_HOSTILES } from "./approvedHostiles";
 
 export type ActorAction = "idle" | "walk" | "work" | "attack" | "hurt" | "death";
 export interface ActorClip { path: string; columns: number; rows: number; frameMs: number; loop?: boolean }
-export interface ActorSet { width: number; height: number; clips: Partial<Record<ActorAction, ActorClip>> }
+/** How the renderer frames an actor's cell as a billboard.
+ *  `scale` multiplies the classic billboard height (0.6 wall heights per unit).
+ *  `groundLine` is the fraction of the cell, from its top, where the feet stand;
+ *  a ground-anchored billboard puts that line on the projected floor. */
+export interface ActorPresentation { scale: number; groundLine: number }
+export interface ActorSet { width: number; height: number; clips: Partial<Record<ActorAction, ActorClip>>; presentation?: ActorPresentation }
+/** Shared hostile framing. The standing foot line is measured on the shipped
+ *  atlas (idle, attack and hurt cells end at row 237 of 256; walk 242; death 243),
+ *  so crouch and slump poses sink a few rows into the floor instead of hovering.
+ *  Scale 1.6 makes the 256 cell span 0.96 wall heights: the creature itself
+ *  (211 of 256 rows) stands 0.79 wall heights tall, about 1.4× a colonist. */
+export const HOSTILE_PRESENTATION: ActorPresentation = { scale: 1.6, groundLine: 237 / 256 };
+/** Visual identity per hostile type while all three share one atlas: the
+ *  charger is lean and fast, the sentry is the bulk that holds a room. */
+export const HOSTILE_TYPE_SCALE: Record<FPEnemy["type"], number> = { grunt: 1, charger: 0.9, sentry: 1.15 };
+export function enemyBillboardPresentation(enemy: Pick<FPEnemy, "type">): ActorPresentation {
+  return { scale: HOSTILE_PRESENTATION.scale * (HOSTILE_TYPE_SCALE[enemy.type] ?? 1), groundLine: HOSTILE_PRESENTATION.groundLine };
+}
 export const QUARTERMASTER_ATLASES = {
   idle: "/sprites/pilot/quartermaster/idle.png",
   walk: "/sprites/pilot/quartermaster/walk.png",
@@ -15,7 +33,16 @@ function humanoid(set: string): ActorSet {
     walk: { path: `/sprites/actors/${set}/walk.png`, columns: 8, rows: 8, frameMs: 100 },
   } };
 }
+function approvedHostile(type: FPEnemy["type"]): ActorSet {
+  const source = APPROVED_HOSTILES[type];
+  return { width: source.width, height: source.height, clips: {
+    idle: { path: source.path, columns: 1, rows: 1, frameMs: 1000 },
+  } };
+}
 export const ACTOR_CATALOG = {
+  "hostile-grunt": approvedHostile("grunt"),
+  "hostile-charger": approvedHostile("charger"),
+  "hostile-sentry": approvedHostile("sentry"),
   quartermaster: { width: 128, height: 256, clips: {
     idle: { path: QUARTERMASTER_ATLASES.idle, columns: 4, rows: 8, frameMs: 300 },
     walk: { path: QUARTERMASTER_ATLASES.walk, columns: 8, rows: 8, frameMs: 100 },
@@ -31,7 +58,7 @@ export const ACTOR_CATALOG = {
     attack: { path: "/sprites/actors/hostile/attack.png", columns: 4, rows: 8, frameMs: 100, loop: false },
     hurt: { path: "/sprites/actors/hostile/hurt.png", columns: 1, rows: 8, frameMs: 180, loop: false },
     death: { path: "/sprites/actors/hostile/death.png", columns: 6, rows: 1, frameMs: 80, loop: false },
-  } } as ActorSet,
+  }, presentation: HOSTILE_PRESENTATION } as ActorSet,
 };
 export type ActorSetId = keyof typeof ACTOR_CATALOG;
 const NPC_NAMES: Record<string, ActorSetId> = {
@@ -91,12 +118,12 @@ export class ActorAssetResidency {
     this.retainedSets.clear(); this.retainedPaths.clear(); this.retainedBytes = 0;
     this.scene = null; this.key = "";
   }
-  private priority(set: ActorSetId): number { return set === "quartermaster" ? 0 : set === "hostile" ? 1 : 2; }
+  private priority(set: ActorSetId): number { return set === "quartermaster" ? 0 : set.startsWith("hostile") ? 1 : 2; }
 }
 const activeAssets = new ActorAssetResidency({ load: loadSprite, release: releaseSprite });
 export function syncActorAssets(fp: FirstPersonState): void {
   if (typeof Image === "undefined") return;
-  const sets: ActorSetId[] = fp.enemies.length ? ["hostile"] : [];
+  const sets: ActorSetId[] = fp.enemies.map(enemy => `hostile-${enemy.type}` as ActorSetId);
   for (const npc of fp.npcs ?? []) {
     const set = npc.atlasAnimation?.set ?? resolveNpcActorSet(npc);
     if (set) sets.push(set);

@@ -23,7 +23,7 @@ test("every live actor clip matches the runtime cell contract and stays within t
       total += image.bytes.length; clips++;
     }
   }
-  assert.equal(clips, 24);
+  assert.equal(clips, 27); // 24 animation sheets plus three approved hostile cutouts.
   assert.equal(unique.size, clips, "identities/actions cannot be duplicate sheets");
   assert.ok(total < 32 * 1024 * 1024, `actor transfer bytes ${total}`);
 });

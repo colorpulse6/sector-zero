@@ -1,0 +1,72 @@
+{
+  "stage": "isolation",
+  "errors": [],
+  "images": [
+    "backgrounds/aurelia-far.png",
+    "backgrounds/aurelia-mid.png",
+    "backgrounds/aurelia-near.png",
+    "explore/scrapyard-outpost-sky.png",
+    "explore/scrapyard-outpost-wall-exterior.png",
+    "environment/landing-pad.png",
+    "explore/scrapyard-outpost-ground.png",
+    "boarding/npc-hub-governor.png",
+    "boarding/npc-quartermaster.png",
+    "boarding/gun-sheet.png",
+    "pilot/quartermaster/workstation.png",
+    "pilot/quartermaster/work.png",
+    "pilot/quartermaster/idle.png",
+    "pilot/quartermaster/walk.png",
+    "portraits/hub-governor.png"
+  ],
+  "dialogTexts": [
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster",
+    "[Z] Talk to Quartermaster"
+  ],
+  "lastFrames": [
+    {
+      "seq": 163,
+      "player": {
+        "x": 11.5,
+        "y": 13.141871625674781
+      }
+    },
+    {
+      "seq": 164,
+      "player": {
+        "x": 11.5,
+        "y": 13.141871625674781
+      }
+    },
+    {
+      "seq": 165,
+      "player": {
+        "x": 11.5,
+        "y": 13.141871625674781
+      }
+    },
+    {
+      "seq": 166,
+      "player": {
+        "x": 11.5,
+        "y": 13.141871625674781
+      }
+    },
+    {
+      "seq": 167,
+      "player": {
+        "x": 11.5,
+        "y": 13.141871625674781
+      }
+    }
+  ]
+}

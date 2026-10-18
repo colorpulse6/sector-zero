@@ -2,22 +2,20 @@
 
 ## Overview
 
-Sector Zero is a multi-genre space shooter built as a static Next.js web application. What started as a vertical-scrolling shooter has evolved into a multi-mode campaign with 6 distinct gameplay modes, RPG progression, and narrative depth.
+Sector Zero is a multi-genre space shooter built as a static Next.js web application. What started as a vertical-scrolling shooter has evolved into a multi-mode campaign with three combat modes plus first-person colony exploration and multi-phase chaining, RPG progression, and narrative depth.
 
 ## Tech Stack
 
 - **Framework:** Next.js 15, React 19, TypeScript
 - **Rendering:** HTML5 Canvas 2D (480×854, 60fps)
 - **Export:** Static HTML for GitHub Pages (`output: 'export'`)
-- **No test framework** — verification via `yarn build` + manual playtest + `console.assert` self-tests
+- **Tests:** Node test runner via tsx, Playwright browser specs, and `yarn build` static export
 
 ## Game Modes
 
 | Mode | File | Description |
 |------|------|-------------|
 | Vertical Shooter | `gameEngine.ts` + `renderer.ts` | Original mode — 8 worlds, 40 levels, bosses |
-| Ground Run-and-Gun | `groundEngine.ts` + `groundRenderer.ts` | Side-scrolling platformer (Contra-style) |
-| Ship Boarding | `boardingEngine.ts` + `boardingRenderer.ts` | Top-down dungeon crawler |
 | First-Person | `firstPersonEngine.ts` + `firstPersonRenderer.ts` | Raycaster (Wolfenstein/Doom-style) with NPCs |
 | Ship Turret | `turretEngine.ts` + `turretRenderer.ts` | Star Wars gunner — crosshair aiming |
 | Multi-Phase | `phases.ts` + `phaseTransition.ts` | Chains modes via transitions |
@@ -27,9 +25,7 @@ Sector Zero is a multi-genre space shooter built as a static Next.js web applica
 All engine code lives in `app/components/engine/`. The game loop dispatches by `currentMode` field on `GameState`:
 
 ```
-updateGame() → if "ground-run" → updateGroundEngine()
-             → if "boarding" → updateBoardingEngine()
-             → if "first-person" → updateFirstPerson()
+updateGame() → if "first-person" → updateFirstPerson()
              → if "turret" → updateTurretEngine()
              → else → standard shooter update
 ```
@@ -61,7 +57,7 @@ interface Keys {
   left, right, up, down, strafeLeft, strafeRight: boolean;
   shoot: boolean;  // Space (shooter) / Z,Shift (other modes)
   bomb: boolean;   // B key
-  jump: boolean;   // Space (ground-run)
+  jump: boolean;   // Reserved legacy field, no active binding
 }
 ```
 
@@ -82,7 +78,7 @@ yarn dev          # Dev server on localhost:3000
 yarn build        # TypeScript compile + static export
 ```
 
-Dev panel (`DevPanel.tsx`) has shortcuts for all modes: GROUND RUN, BOARDING, FIRST PERSON, TURRET, EXPLORE.
+Dev panel (`DevPanel.tsx`) has shortcuts for all modes: FIRST PERSON, TURRET, EXPLORE.
 
 ## Design Docs
 

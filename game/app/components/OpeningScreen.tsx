@@ -41,7 +41,7 @@ function OpeningHelp({ panel, onClose }: { panel: HelpPanel; onClose: () => void
               <dl className="sz-opening-controls">
                 <div><dt>Choose your course</dt><dd>Click or tap a button. On a keyboard, use <kbd>Tab</kbd> to focus and <kbd>Enter</kbd> or <kbd>Space</kbd> to select.</dd></div>
                 <div><dt>Move &amp; aim</dt><dd>Use the arrow keys or <kbd>WASD</kbd>. In first-person, left/right arrows turn and <kbd>A</kbd> / <kbd>D</kbd> strafe. Touch controls adapt to your current mode.</dd></div>
-                <div><dt>Fight &amp; explore</dt><dd><kbd>Z</kbd> or <kbd>Shift</kbd> fires in combat. <kbd>Space</kbd> fires in space, jumps on the ground and dashes while boarding. In colonies, use the on-screen interaction prompts.</dd></div>
+                <div><dt>Fight &amp; explore</dt><dd><kbd>Z</kbd> or <kbd>Shift</kbd> fires in combat. <kbd>Space</kbd> fires in space. In first-person missions, <kbd>E</kbd> picks up supplies and interacts. In colonies, use the on-screen interaction prompts.</dd></div>
                 <div><dt>Take a moment</dt><dd><kbd>P</kbd> pauses during play. <kbd>M</kbd> toggles sound. <kbd>Escape</kbd> closes panels or returns to the previous screen.</dd></div>
               </dl>
             </>

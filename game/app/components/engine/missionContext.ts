@@ -21,8 +21,6 @@ import { dispatchPoi } from "../colony/region/poiDispatcher";
 export type MissionKind = "campaign" | "planet" | "special" | "operation" | "colony";
 export type ControlsProfileId =
   | "shooter"
-  | "ground-run"
-  | "boarding"
   | "first-person"
   | "turret"
   | "colony-exploration";
@@ -80,7 +78,7 @@ export interface LaunchContext {
 
 export type LaunchIdFactory = () => string;
 export type ColonyExplorationMode = "exterior" | "interior";
-export type PoiEngineAdapter = "firstPerson" | "boarding" | "groundRun";
+export type PoiEngineAdapter = "firstPerson";
 export type EngineLaunchRoute =
   | { kind: "campaign"; world: number; level: number }
   | { kind: "planet"; planetId: PlanetId }
@@ -158,11 +156,8 @@ function decodeIdentityComponent(
   return { value: identity.slice(valueOffset, nextOffset), nextOffset };
 }
 
-const POI_TEMPLATES: Record<PoiEngineAdapter, string> = {
-  firstPerson: "fp-ruin-cinder-relay",
-  boarding: "boarding-wreck-oathbreaker",
-  groundRun: "ground-canyon-glassknife",
-};
+const POI_TEMPLATES = ["fp-ruin-cinder-relay", "boarding-wreck-oathbreaker", "ground-canyon-glassknife"];
+
 
 export function campaignMissionDescriptor(world: number, level: number): MissionDescriptor {
   const authored = ALL_LEVELS.find((entry) => entry.world === world && entry.level === level);
@@ -260,19 +255,18 @@ export function colonyMissionDescriptor(
 export function poiMissionDescriptor(
   nodeId: string,
   adapter: PoiEngineAdapter,
+  templateId: string = "fp-ruin-cinder-relay",
 ): MissionDescriptor {
   const ownedNodeId = requireIdentity(nodeId, "POI node ID");
   const profiles: Record<PoiEngineAdapter, ControlsProfileId> = {
     firstPerson: "first-person",
-    boarding: "boarding",
-    groundRun: "ground-run",
   };
   const controlsProfile = profiles[adapter];
-  if (controlsProfile === undefined) {
+  if (controlsProfile === undefined || !POI_TEMPLATES.includes(templateId)) {
     throw new Error(`Unknown POI engine adapter ${String(adapter)}.`);
   }
   return {
-    id: `poi:${encodeIdentityComponent(POI_TEMPLATES[adapter])}:${encodeIdentityComponent(ownedNodeId)}`,
+    id: `poi:${encodeIdentityComponent(templateId)}:${encodeIdentityComponent(ownedNodeId)}`,
     kind: "colony",
     title: "Region Expedition",
     locationLabel: ownedNodeId,
@@ -378,10 +372,7 @@ function canonicalPoiDescriptorFromId(id: string): MissionDescriptor | null {
   if (template === null || id[template.nextOffset] !== ":") return null;
   const node = decodeIdentityComponent(id, template.nextOffset + 1);
   if (node === null || node.nextOffset !== id.length) return null;
-  const adapter = (Object.keys(POI_TEMPLATES) as PoiEngineAdapter[]).find(
-    (candidate) => POI_TEMPLATES[candidate] === template.value,
-  );
-  return adapter === undefined ? null : poiMissionDescriptor(node.value, adapter);
+  return POI_TEMPLATES.includes(template.value) ? poiMissionDescriptor(node.value, "firstPerson", template.value) : null;
 }
 
 interface DecodedPoiIdentity {
@@ -401,10 +392,7 @@ function decodePoiIdentity(id: string): DecodedPoiIdentity | null {
   if (template === null || id[template.nextOffset] !== ":") return null;
   const node = decodeIdentityComponent(id, template.nextOffset + 1);
   if (node === null || node.nextOffset !== id.length) return null;
-  const engine = (Object.keys(POI_TEMPLATES) as PoiEngineAdapter[]).find(
-    (candidate) => POI_TEMPLATES[candidate] === template.value,
-  );
-  return engine === undefined ? null : { nodeId: node.value, templateId: template.value, engine };
+  return POI_TEMPLATES.includes(template.value) ? { nodeId: node.value, templateId: template.value, engine: "firstPerson" } : null;
 }
 
 const POI_OUTCOME_MISSION_PREFIX = "outcome-poi:";
@@ -518,7 +506,7 @@ export function snapshotOutcomeRouteIdentity(
     if (snapshot === null || snapshot.kind !== routeKind || typeof snapshot.originColonyId !== "string" ||
       snapshot.originColonyId.length === 0 || typeof snapshot.nodeId !== "string" || snapshot.nodeId.length === 0 ||
       typeof snapshot.templateId !== "string" || snapshot.templateId.length === 0 ||
-      (snapshot.engine !== "firstPerson" && snapshot.engine !== "boarding" && snapshot.engine !== "groundRun") ||
+      (snapshot.engine !== "firstPerson") ||
       typeof snapshot.rewardEligible !== "boolean") return null;
   }
   if (snapshot === null) return null;
@@ -673,8 +661,7 @@ export function dynamicOutcomeRouteIdentityIsCanonical(
     ]) === null || typeof canonicalIdentity.originColonyId !== "string" || canonicalIdentity.originColonyId.length === 0 ||
       typeof canonicalIdentity.nodeId !== "string" || canonicalIdentity.nodeId.length === 0 ||
       typeof canonicalIdentity.templateId !== "string" || canonicalIdentity.templateId.length === 0 ||
-      (canonicalIdentity.engine !== "firstPerson" && canonicalIdentity.engine !== "boarding" &&
-        canonicalIdentity.engine !== "groundRun") || typeof canonicalIdentity.rewardEligible !== "boolean") return false;
+      (canonicalIdentity.engine !== "firstPerson") || typeof canonicalIdentity.rewardEligible !== "boolean") return false;
     const dispatched = dispatchPoi(surface as SaveData, canonicalIdentity.originColonyId, canonicalIdentity.nodeId);
     if (!dispatched.ok || dispatched.session.engine !== canonicalIdentity.engine) return false;
     const colony = surface.colonies.find((entry) => entry.id === canonicalIdentity.originColonyId);
@@ -811,7 +798,9 @@ function assertCompatibilityShell(context: LaunchContext, world: number, level: 
     assertPolicy(
       context,
       authority,
-      ["cockpit", "landing-pad", "retry", "continue"],
+      authority === "legacy"
+        ? ["cockpit", "landing-pad", "retry", "continue"]
+        : ["atlas", "cockpit", "landing-pad", "retry", "continue"],
       authority === "legacy"
         ? ["legacy-cockpit", "legacy-colony-exterior", "legacy-landing-pad"]
         : ["galaxy-atlas", "galaxy-colony-exterior", "galaxy-landing-pad"],

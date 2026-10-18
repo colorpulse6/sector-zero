@@ -17,7 +17,7 @@ test("dispatcher maps the authored POI ids to native engines", () => {
   const ruin = dispatchPoi(ready("ashfall-cinder-relay"), "ashfall_primary", "ashfall-cinder-relay");
   const wreck = dispatchPoi(ready("ashfall-oathbreaker-wreck"), "ashfall_primary", "ashfall-oathbreaker-wreck");
   assert.equal(ruin.ok && ruin.session.engine, "firstPerson");
-  assert.equal(wreck.ok && wreck.session.engine, "boarding");
+  assert.equal(wreck.ok && wreck.session.engine, "firstPerson");
 });
 
 test("travel costs one cycle and duplicate/rejected requests do not mutate", () => {

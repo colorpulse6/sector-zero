@@ -1,0 +1,75 @@
+{
+  "scene": "kepler",
+  "actor": "enemy:4",
+  "errors": [],
+  "captures": [
+    {
+      "label": "near-front",
+      "paused": true,
+      "distance": 0.7,
+      "action": "idle",
+      "clock": 1272.27,
+      "facing": -2.5128,
+      "player": [
+        11.9339,
+        9.0883,
+        0.6288
+      ],
+      "enemy": [
+        12.5,
+        9.5
+      ]
+    },
+    {
+      "label": "near-side",
+      "paused": true,
+      "distance": 0.7,
+      "action": "idle",
+      "clock": 1272.27,
+      "facing": -2.5128,
+      "player": [
+        11.9339,
+        9.0883,
+        0.6288
+      ],
+      "enemy": [
+        12.5,
+        9.5
+      ]
+    },
+    {
+      "label": "mid",
+      "paused": true,
+      "distance": 1.99,
+      "action": "idle",
+      "clock": 2130.17,
+      "facing": -2.5128,
+      "player": [
+        10.5503,
+        9.0883,
+        0.6288
+      ],
+      "enemy": [
+        12.5,
+        9.5
+      ]
+    },
+    {
+      "label": "far",
+      "paused": true,
+      "distance": 4.07,
+      "action": "idle",
+      "clock": 49.7,
+      "facing": -3.0071,
+      "player": [
+        8.5122,
+        8.6998,
+        0.6288
+      ],
+      "enemy": [
+        12.5,
+        9.5
+      ]
+    }
+  ]
+}

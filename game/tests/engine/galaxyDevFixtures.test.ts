@@ -18,6 +18,7 @@ const FIXTURE_IDS = [
   "blind-discovery",
   "insufficient-supply",
   "in-transit-reload",
+  "dense-sector",
 ] as const;
 
 function legacySnapshot(save: SaveData): Record<string, unknown> {
@@ -46,7 +47,7 @@ function seeded(id: (typeof FIXTURE_IDS)[number]): SaveData {
   return applyGalaxyFixture(legacy, requireFixture(id));
 }
 
-test("fixture roster exposes the six fixed G0 playtest states", () => {
+test("fixture roster exposes the seven fixed G0 playtest states", () => {
   assert.deepEqual(GALAXY_FIXTURES.map((fixture) => fixture.id), FIXTURE_IDS);
   assert.equal(new Set(GALAXY_FIXTURES.map((fixture) => fixture.id)).size, FIXTURE_IDS.length);
 });

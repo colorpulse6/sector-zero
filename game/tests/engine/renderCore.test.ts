@@ -428,8 +428,9 @@ test("SceneBuilder flattens billboards with the ported classic rules", () => {
   fp.enemies = [
     { ...enemyBase, id: 1 },                          // full hp → front frame
     { ...enemyBase, id: 2, hp: 5, atlasAnimation: { set: "hostile", facingAngle: 0, action: "hurt", clockMs: 0, walkDistance: 0 } }, // active hurt event → flinch
-    { ...enemyBase, id: 3, deathTimer: 15 },          // dying → death frame, fading
+    { ...enemyBase, id: 3, deathTimer: 5 },           // dying, last third → death frame, fading
     { ...enemyBase, id: 4, deathTimer: -1 },          // dead → excluded
+    { ...enemyBase, id: 5, type: "sentry", deathTimer: 20 }, // dying, still collapsing → opaque
   ];
   fp.npcs = [
     { id: 1, x: 1.5, y: 2.5, name: "Commander Voss", type: "quest", dialog: [], color: "#fff", interacted: false },
@@ -437,10 +438,10 @@ test("SceneBuilder flattens billboards with the ported classic rules", () => {
   ];
 
   const s = builder.build(fp, reg);
-  assert.equal(s.billboards.length, 6, "1 prop + 3 live enemies + 2 npcs");
+  assert.equal(s.billboards.length, 7, "1 prop + 4 live enemies + 2 npcs");
   assert.equal(s.noDepthBillboards.length, 0, "nothing populates the no-depth list yet");
 
-  const [prop, front, flinch, dying, voss, stranger] = s.billboards;
+  const [prop, front, flinch, dying, collapsing, voss, stranger] = s.billboards;
   assert.equal(prop.texId, reg.idFor("/sprites/test-prop.png", "billboard"));
   assert.deepEqual(
     { scale: prop.scale, vAnchor: prop.vAnchor, widthFactor: prop.widthFactor, minSizeFrac: prop.minSizeFrac },
@@ -451,8 +452,14 @@ test("SceneBuilder flattens billboards with the ported classic rules", () => {
   assert.equal(flinch.texId, reg.idFor(SPRITES.FP_ENEMY_FLINCH, "billboard"));
   assert.equal(flinch.alpha256, 256);
   assert.equal(dying.texId, reg.idFor(SPRITES.FP_ENEMY_DEATH, "billboard"));
-  assert.equal(dying.alpha256, 128, "deathTimer 15/30 → alpha 128");
-  assert.equal(front.vAnchor, "center");
+  assert.equal(dying.alpha256, 128, "deathTimer 5 of the 10-frame fade → alpha 128");
+  assert.equal(collapsing.alpha256, 256, "deathTimer 20: still collapsing, fully opaque");
+  // Hostiles stand on the projected floor with the shared atlas framing; the
+  // sentry reads bulkier than the grunt while all three types share one atlas.
+  assert.deepEqual({ vAnchor: front.vAnchor, groundLine: front.groundLine, scale: front.scale, widthFactor: front.widthFactor },
+    { vAnchor: "ground", groundLine: 237 / 256, scale: 1.6, widthFactor: 1 });
+  assert.equal(dying.vAnchor, "ground", "the static death fallback shares the atlas framing");
+  assert.ok(collapsing.scale > front.scale, "sentry framing is larger than the grunt's");
 
   assert.equal(voss.texId, reg.idFor(NPC_SPRITE_MAP["Commander Voss"], "billboard"));
   assert.equal(stranger.texId, reg.idFor(SPRITES.NPC_SURVIVOR, "billboard"), "unknown NPC falls back to survivor");
@@ -526,4 +533,30 @@ test("SceneBuilder clamps out-of-range lightMap values when flattening baseLight
   assert.equal(s.baseLight![1 * 4 + 1], 255, "256 clamps to 255 (raw Uint8Array write would wrap it to 0 = full dark)");
   assert.equal(s.baseLight![1 * 4 + 2], 0, "negative clamps to 0");
   assert.equal(s.baseLight![2 * 4 + 1], 140, "in-range value passes through untouched");
+});
+
+test("ground anchor: the foot line meets the prop floor plane; rows below it sink under the floor", () => {
+  const reg = registry();
+  reg.registerRaw("bb-opaque", quadTexture(RED, GREEN, BLUE, GREY), 4, 4);  // id 3
+  const base = new Framebuffer(W, H);
+  renderScene(base, tinyScene(), reg);
+  const rowsTouched = (fb: Framebuffer) => {
+    const rows: number[] = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (fb.px[y * W + x] !== base.px[y * W + x]) { rows.push(y); break; }
+    return rows;
+  };
+  const at = (vAnchor: "prop" | "ground", groundLine?: number) => {
+    const fb = new Framebuffer(W, H);
+    renderScene(fb, tinyScene({ billboards: [{ x: 4.5, y: 4.5, texId: 3, scale: 1, alpha256: 256, widthFactor: 1, vAnchor, groundLine }] }), reg);
+    return fb;
+  };
+  // Depth 2 straight ahead of the default camera: size = (H/2 × 0.6)|0, floor row = floor(H/2 + H/4).
+  const size = ((H / 2) * 0.6) | 0, floorRow = Math.floor(H * 0.5 + H / 4);
+  const prop = at("prop"), whole = at("ground", 1), half = at("ground", 0.5);
+  assert.equal(hashFrame(whole.px), hashFrame(prop.px), "groundLine 1 is exactly the prop floor contact");
+  const propRows = rowsTouched(prop);
+  assert.deepEqual([propRows[0], propRows[propRows.length - 1]], [floorRow - size, floorRow - 1]);
+  const halfRows = rowsTouched(half), sink = size - ((size * 0.5) | 0);
+  assert.deepEqual([halfRows[0], halfRows[halfRows.length - 1]], [floorRow - size + sink, floorRow - 1 + sink], "half the cell sinks below the floor plane");
+  assert.equal(halfRows.length, propRows.length, "the billboard keeps its height");
 });

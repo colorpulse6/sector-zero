@@ -42,3 +42,19 @@ export const RESOURCE_UPKEEP: Partial<Record<BuildingType, Partial<ColonyResourc
   refinery: { metal: 5 },
   barracks: { food: 3 },
 };
+
+/**
+ * Commission cost and build time per building type. The legacy commission menu and the
+ * galaxy command boundary (GC2-A) both read this table, so the UI never decides a cost.
+ */
+export const BUILD_SPECS: Readonly<Partial<Record<BuildingType, {
+  readonly cost: Readonly<Partial<ColonyResources>>;
+  readonly cyclesToBuild: number;
+}>>> = Object.freeze({
+  solar_array: Object.freeze({ cost: Object.freeze({ metal: 80 }), cyclesToBuild: 1 }),
+  farm: Object.freeze({ cost: Object.freeze({ metal: 100 }), cyclesToBuild: 2 }),
+  water_purifier: Object.freeze({ cost: Object.freeze({ metal: 120 }), cyclesToBuild: 2 }),
+  habitat_module: Object.freeze({ cost: Object.freeze({ metal: 100 }), cyclesToBuild: 1 }),
+  mine: Object.freeze({ cost: Object.freeze({ metal: 150 }), cyclesToBuild: 2 }),
+  cantina: Object.freeze({ cost: Object.freeze({ metal: 200 }), cyclesToBuild: 3 }),
+});

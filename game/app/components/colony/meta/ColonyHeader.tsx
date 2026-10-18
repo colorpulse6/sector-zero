@@ -6,10 +6,11 @@ export interface ColonyHeaderProps {
   colony: ColonyState;
   missionsSinceStart: number;
   onBack: () => void;
+  backLabel?: string;
   onDescend?: () => void;
 }
 
-export function ColonyHeader({ colony, missionsSinceStart, onBack, onDescend }: ColonyHeaderProps) {
+export function ColonyHeader({ colony, missionsSinceStart, onBack, onDescend, backLabel = "← RETURN TO COCKPIT" }: ColonyHeaderProps) {
   return (
     <div style={{
       display: "flex",
@@ -30,7 +31,7 @@ export function ColonyHeader({ colony, missionsSinceStart, onBack, onDescend }: 
           marginRight: hudSpacing.lg,
         }}
       >
-        ← RETURN TO COCKPIT
+        {backLabel}
       </button>
       {onDescend && (
         <button

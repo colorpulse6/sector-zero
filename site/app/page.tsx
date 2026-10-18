@@ -23,14 +23,13 @@ export default function Home() {
         />
         <div className="hero-shade" />
         <div className="page-grid hero-content">
-          <p className="eyebrow">A multi-mode space adventure</p>
+          <p className="eyebrow">A persistent frontier, built one place at a time</p>
           <h1 id="hero-title">
             Answer <br />
             the signal.
           </h1>
           <p className="hero-premise">
-            Fight across eight sectors. Explore distant settlements. Face the
-            Hollow.
+            Chart a course. Walk the frontier. Build a foothold and face the Hollow.
           </p>
           <CtaButton href="https://colorpulse6.github.io/sector-zero/" external>
             Play in browser
@@ -45,13 +44,13 @@ export default function Home() {
       <HudSection
         id="gameplay"
         label="The experience"
-        title="One universe. Six ways to fight."
+        title="Explore. Build. Defend."
         className="modes-section"
       >
         <div className="section-intro">
           <p>
-            From the pilot’s seat to the corridors of a Hollow ship, every
-            mission changes the fight.
+            Travel connects the places you explore. Space combat, turret defense and
+            first-person missions put you inside the encounters along the way.
           </p>
           <span className="capture-note">Captured in game</span>
         </div>
@@ -75,14 +74,13 @@ export default function Home() {
               between the battles.
             </h2>
             <p>
-              Return to the Vanguard. Step into settlements, meet the people
-              holding the frontier together, and trade for the supplies that get
-              you home.
+              Choose a destination in the Galaxy Atlas, commit to the journey, and
+              step into the settlements at the edge of known space.
             </p>
             <p>
-              Found and build colonies, explore their streets and interiors, and
-              talk to the crew. Your next destination is more than a point on a
-              map.
+              Ashfall is our first reference world: a place to explore, improve and
+              return to. Colony development, useful trade and lasting consequences
+              are being connected in small, playable steps.
             </p>
             <CtaButton href="/coming-soon/" secondary>
               Explore the colonies

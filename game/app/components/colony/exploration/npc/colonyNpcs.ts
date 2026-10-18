@@ -26,9 +26,22 @@ import { OUTPOST_TEMPLATE, type Slot } from "../outpostTemplate";
 import { BUILDING_FOOTPRINTS } from "../buildingTiles";
 import { assignSlots } from "../colonyLayout";
 import { merchantRefusesTrade, primaryFactionForPlanet, rankFor } from "../../shared/factionLedger";
-import { buildGovernorDialog, buildQuartermasterDialog, buildQuartermasterShop, buildColonistBark } from "./npcDialog";
+import { buildGovernorDialog, buildQuartermasterDialog, buildQuartermasterShop, buildColonistBark, type BuildSpecTable } from "./npcDialog";
 import { scheduleTargetTile } from "./npcSchedule";
 import type { ColonyNpc, Tile, GeneratedNpcs, NpcKind } from "./types";
+
+/** The one galaxy colony mapped for descent (`COLONY_CONTACTS` in galaxyColony.ts).
+ *  A literal here keeps this module free of galaxy imports; a test pins the two together. */
+export const ASHFALL_PRIMARY_COLONY_ID = "galaxy:ashfall-primary";
+export function isAshfallPrimary(colony: Pick<ColonyState, "id">): boolean {
+  return colony.id === ASHFALL_PRIMARY_COLONY_ID;
+}
+
+/** Optional inputs the orchestrator may thread through; absent → prior behaviour. */
+export interface ColonyNpcOptions {
+  /** Shared build catalogue (`BUILD_SPECS`) for the Overseer's cost line at Ashfall. */
+  buildSpecs?: BuildSpecTable;
+}
 
 const COLONIST_K = 4;           // one colonist per K population
 const COLONIST_CAP = 10;        // hard cap on colonists
@@ -97,8 +110,13 @@ export function generateColonyNpcs(
   gameClock: GameClock,
   map: BoardingMap,
   factionStandings: readonly FactionStanding[] = [],
+  options: ColonyNpcOptions = {},
 ): GeneratedNpcs {
   const rng = mulberry32(colony.layoutSeed);
+  // Ashfall Primary presents its own Overseer: the reviewed hub-governor billboard
+  // (static — it has no actor atlas, so the Voss atlas is never requested) and the
+  // Overseer dialog. Every other colony keeps the Voss billboard and Governor lines.
+  const ashfall = isAshfallPrimary(colony);
   const { plaza, landingPad, spawn } = OUTPOST_TEMPLATE;
 
   // Faction context (Phase 5a): the colony answers to its planet's primary
@@ -225,12 +243,16 @@ export function generateColonyNpcs(
     id: id++,
     kind: "governor",
     name: `Overseer ${colony.name}`,
-    sprite: SPRITES.NPC_VOSS,
+    sprite: ashfall ? SPRITES.NPC_ASHFALL_OVERSEER : SPRITES.NPC_VOSS,
     color: GOVERNOR_COLOR,
     homeTile: namedHomeFor(0),
     workTile: plazaCenter,
     postTile: plazaCenter,
-    dialog: buildGovernorDialog(colony, factionRank),
+    dialog: buildGovernorDialog(
+      colony,
+      factionRank,
+      ashfall ? { place: "ashfall-primary", buildSpecs: options.buildSpecs } : undefined,
+    ),
     fpType: "lore",
   });
 

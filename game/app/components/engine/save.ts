@@ -1,3 +1,4 @@
+import { stableHash } from "./galaxy/coordinates";
 import {
   DEFAULT_UPGRADES,
   type ConsumableId,
@@ -631,8 +632,98 @@ export function createHydrationSafeSave(): SaveData {
   return createDefaultSave();
 }
 
-/** Migrate old saves that lack new fields */
+/** Only canonical old POI identities are remapped; arbitrary invalid authority still fails closed. */
+function remapRemovedPoiIdentity(value: unknown): unknown {
+  const identity = exactOwnData(value, ["kind", "originColonyId", "nodeId", "engine", "templateId", "rewardEligible"]);
+  if (identity === null || identity.kind !== "poi" || !removedPoiTemplateMatches(identity.engine, identity.templateId)) return value;
+  return { ...identity, engine: "firstPerson" };
+}
+
+function removedPoiTemplateMatches(engine: unknown, template: unknown): boolean {
+  return (engine === "boarding" && template === "boarding-wreck-oathbreaker") ||
+    (engine === "groundRun" && template === "ground-canyon-glassknife");
+}
+
+/** Preserve outcome ids, resource balances and receipts while changing only retired engine tags. */
+function migrateRemovedModeAuthority(raw: Record<string, unknown>): Record<string, unknown> {
+  // Copy descriptors only on change: malformed/getter-bearing input remains visible to the strict validators.
+  let result = raw;
+  const replace = (key: string, value: unknown) => {
+    result = Object.defineProperties({}, {
+      ...Object.getOwnPropertyDescriptors(result),
+      [key]: { value, writable: true, enumerable: true, configurable: true },
+    });
+  };
+  const recoveryField = snapshotOwnField(raw, "outcomeRecoveryRecords");
+  const records = recoveryField.kind === "data" ? snapshotDenseArray(recoveryField.value) : null;
+  if (records !== null) {
+    let changed = false;
+    const migrated = records.map(entry => {
+      const source = ownDataRecord(entry);
+      if (source === null) return entry;
+      if (source.kind === "applied_return") {
+        const identity = remapRemovedPoiIdentity(source.routeIdentity);
+        if (identity === source.routeIdentity) return entry;
+        changed = true;
+        return { ...source, routeIdentity: identity };
+      }
+      if (source.kind === "legacy_poi_prepared") {
+        const envelope = ownDataRecord(source.envelope);
+        if (envelope === null) return entry;
+        const identity = remapRemovedPoiIdentity(envelope.routeIdentity);
+        if (identity === envelope.routeIdentity) return entry;
+        changed = true;
+        return { ...source, envelope: { ...envelope, routeIdentity: identity } };
+      }
+      return entry;
+    });
+    if (changed) replace("outcomeRecoveryRecords", migrated);
+  }
+  const runField = snapshotOwnField(raw, "galaxyRun");
+  const run = runField.kind === "data" ? ownDataRecord(runField.value) : null;
+  const facts = run === null ? null : snapshotDenseArray(run.historyFacts);
+  if (run !== null && facts !== null) {
+    const replacements = new Map<string, string>();
+    const migrated = facts.map(value => {
+      const fact = exactOwnData(value, ["id", "kind", "subjectId", "cycle", "causeFactIds"]);
+      if (fact === null || fact.kind !== "poi_completion_prepared" || typeof fact.id !== "string") return value;
+      const match = /^history:(poi-prepared(?:-v2)?):([0-9a-f]{8}):(.*)$/.exec(fact.id);
+      if (match === null) return value;
+      try {
+        const decoded = JSON.parse(decodeURIComponent(match[3]));
+        if (!Array.isArray(decoded)) return value;
+        const v2 = match[1] === "poi-prepared-v2";
+        const engineIndex = v2 ? 7 : 5;
+        const templateIndex = v2 ? 6 : 4;
+        if (decoded.length !== (v2 ? 9 : 8) || decoded[0] !== (v2 ? 2 : 1) ||
+          !removedPoiTemplateMatches(decoded[engineIndex], decoded[templateIndex])) return value;
+        const original = JSON.stringify(decoded);
+        const hash = stableHash(`${match[1]}:${original}`).toString(16).padStart(8, "0");
+        if (match[2] !== hash || match[3] !== encodeURIComponent(original)) return value;
+        decoded[engineIndex] = "firstPerson";
+        const canonical = JSON.stringify(decoded);
+        const migratedHash = stableHash(`${match[1]}:${canonical}`).toString(16).padStart(8, "0");
+        const id = `history:${match[1]}:${migratedHash}:${encodeURIComponent(canonical)}`;
+        replacements.set(fact.id, id);
+        return { ...fact, id };
+      } catch { return value; }
+    });
+    if (replacements.size > 0) {
+      replace("galaxyRun", { ...run, historyFacts: migrated.map(value => {
+        const fact = ownDataRecord(value);
+        const causes = fact === null ? null : snapshotDenseArray(fact.causeFactIds);
+        return fact !== null && causes !== null
+          ? { ...fact, causeFactIds: causes.map(id => typeof id === "string" ? replacements.get(id) ?? id : id) }
+          : value;
+      }) });
+    }
+  }
+  return result;
+}
+
+/** Migrate old saves field by field, without mutating the supplied snapshot. */
 export function migrateSave(raw: Record<string, unknown>): SaveData {
+  raw = migrateRemovedModeAuthority(raw);
   const colonies = migrateColonies(raw.colonies);
   const planets = migratePlanets(raw.planets, colonies);
   const rawGalaxyRunField = snapshotOwnField(raw, "galaxyRun");

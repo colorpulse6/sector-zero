@@ -233,29 +233,7 @@ export const SPRITES = {
   DEFEND_STRUCTURE: "/sprites/effects/defend-structure.png",
   COLLECTIBLE_ORB: "/sprites/effects/collectible-orb.png",
 
-  // Ground Run-and-Gun — Player (individual frames)
-  GROUND_PLAYER_IDLE: "/sprites/ground/player-idle.png",
-  GROUND_PLAYER_RUN_1: "/sprites/ground/player-run-1.png",
-  GROUND_PLAYER_RUN_2: "/sprites/ground/player-run-2.png",
-  GROUND_PLAYER_RUN_3: "/sprites/ground/player-run-3.png",
-  GROUND_PLAYER_RUN_4: "/sprites/ground/player-run-4.png",
-  GROUND_PLAYER_JUMP: "/sprites/ground/player-jump.png",
-  GROUND_PLAYER_SHOOT: "/sprites/ground/player-shoot.png",
-  GROUND_PLAYER_HURT: "/sprites/ground/player-hurt.png",
-  GROUND_ENEMY_TURRET: "/sprites/ground/enemy-turret.png",
-  GROUND_ENEMY_PATROL: "/sprites/ground/enemy-patrol.png",
-  GROUND_ENEMY_JUMPER: "/sprites/ground/enemy-jumper.png",
-  GROUND_ENEMY_FLYER: "/sprites/ground/enemy-flyer.png",
-  GROUND_TILES: "/sprites/ground/tiles.png",
-  GROUND_BG_FAR: "/sprites/ground/bg-surface-far.png",
-
-  // Ship Boarding
-  BOARDING_PLAYER_UP: "/sprites/boarding/player-up.png",
-  BOARDING_PLAYER_DOWN: "/sprites/boarding/player-down.png",
-  BOARDING_PLAYER_LEFT: "/sprites/boarding/player-left.png",
-  BOARDING_PLAYER_RIGHT: "/sprites/boarding/player-right.png",
-  BOARDING_ENEMY_GRUNT_IDLE: "/sprites/boarding/enemy-grunt-idle.png",
-  BOARDING_ENEMY_GRUNT_ATTACK: "/sprites/boarding/enemy-grunt-attack.png",
+  // Shared first-person interior assets (legacy paths)
   BOARDING_TILES: "/sprites/boarding/tiles.png",
   FP_GUN_SHEET: "/sprites/boarding/gun-sheet.png",
   EXPLORE_OUTPOST_SKY: "/sprites/explore/scrapyard-outpost-sky.png",
@@ -282,6 +260,10 @@ export const SPRITES = {
   NPC_QUARTERMASTER: "/sprites/boarding/npc-quartermaster.png",
   NPC_QUARTERMASTER_WALK_1: "/sprites/boarding/npc-quartermaster-walk-1.png",
   NPC_QUARTERMASTER_WALK_2: "/sprites/boarding/npc-quartermaster-walk-2.png",
+  // Ashfall Primary's Overseer (design/ashfall-lock): the production-reviewed hub-governor
+  // billboard and portrait from the M3 town-hall bundle, reused as-is under Ashfall role keys.
+  // Static billboard on purpose — no actor atlas exists for it (see actorAssets NPC_PATHS).
+  NPC_ASHFALL_OVERSEER: "/sprites/boarding/npc-hub-governor.png",
 
   TURRET_CROSSHAIR: "/sprites/turret/crosshair.png",
   TURRET_ENEMY_FIGHTER: "/sprites/turret/enemy-fighter.png",
@@ -289,10 +271,14 @@ export const SPRITES = {
   TURRET_ENEMY_DRONE: "/sprites/turret/enemy-drone.png",
   TURRET_COCKPIT_FRAME: "/sprites/turret/cockpit-frame.png",
   TURRET_BG: "/sprites/turret/bg-space.png",
-  FP_ENEMY_FRONT: "/sprites/boarding/enemy-fp-front.png",
-  FP_ENEMY_FLINCH: "/sprites/boarding/enemy-fp-flinch.png",
-  FP_ENEMY_DEATH: "/sprites/boarding/enemy-fp-death.png",
-  GROUND_BG_MID: "/sprites/ground/bg-surface-mid.png",
+  // Static fallbacks for first-person hostiles while the hostile atlas is not
+  // resident (first frames of a level, or budget eviction). Each is the exact
+  // 256×256 cell of the shipped atlas (idle row 0 col 0, hurt row 0, death col 5)
+  // so the fallback is the same creature at the same framing, never the retired
+  // 1536×1024 boarding billboard squashed into a square.
+  FP_ENEMY_FRONT: "/sprites/actors/hostile/fallback-front.png",
+  FP_ENEMY_FLINCH: "/sprites/actors/hostile/fallback-hurt.png",
+  FP_ENEMY_DEATH: "/sprites/actors/hostile/fallback-death.png",
 
   // Colony Phase 2 — building wall textures
   COLONY_WALL_SOLAR: "/sprites/walls/solar.png",
@@ -351,6 +337,7 @@ export const SPRITES = {
   PORTRAIT_HUB_BARTENDER: "/sprites/portraits/hub-bartender.png",
   PORTRAIT_HUB_REGULAR: "/sprites/portraits/hub-regular.png",
   PORTRAIT_HUB_SIGNAL_CHASER: "/sprites/portraits/hub-signal-chaser.png",
+  PORTRAIT_ASHFALL_OVERSEER: "/sprites/portraits/hub-governor.png",
 };
 
 export async function preloadAll(): Promise<void> {

@@ -2,6 +2,7 @@
 
 import React, {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -9,6 +10,7 @@ import React, {
 } from "react";
 import { useModalFocus, restoreModalFocus } from "../ui/ModalFocus";
 import { getGalaxyRunAvailability } from "../engine/galaxy/galaxyRun";
+import { projectGalaxyRunToLegacyState } from "../engine/galaxy/galaxyProjection";
 import type {
   AtlasCellFact,
   AtlasKnowledgeRecord,
@@ -35,17 +37,22 @@ import {
   targetFromCoordinateForm,
   targetFromDomContact,
   targetFromKeyboardContact,
-  targetFromPointer,
-  targetFromTouch,
-  worldToScreen,
   zoomAction,
   zoomActionFromPinch,
   type AtlasCoordinateFormInput,
   type AtlasViewportAction,
   type AtlasViewportContact,
-  type ScreenPoint,
   type ViewportSize,
 } from "./atlasViewport";
+import { buildSectorModel, type SectorModel, type SectorStar } from "./sector/sectorModel";
+import { fromScene, SECTOR_SCENE_SIZE, toScene } from "./sector/sectorSpace";
+import { createSectorScene, type SectorSceneHandle } from "./sector/SectorScene";
+import { fallbackContactLabel, systemCatalogueForRun } from "./system/contactSystems";
+import { SystemAtlasScreen } from "./system/SystemAtlasScreen";
+import { atlasRegionAccess, REGION_CONTACT_ID } from "./regionAccess";
+import { resolveFieldClick, type FieldClickCandidate } from "./fieldClick";
+import { galaxyColonyAccess, galaxyColonyAtContact } from "../engine/galaxy/galaxyColony";
+import { galaxyColonyManagementAccess } from "../engine/galaxy/galaxyColonyManagement";
 
 export interface GalaxyAtlasScreenProps {
   run: GalaxyRunState | null;
@@ -62,6 +69,10 @@ export interface GalaxyAtlasScreenProps {
   onResumeTravel?: () => void;
   onFinalizeTravel?: () => void;
   onOpenAshfallRegion?: () => void;
+  /** GC1: walk a galaxy colony in first person. The caller re-derives access before launching. */
+  onDescendToColony?: (colonyId: string) => void;
+  /** GC2-A: open colony management. The caller re-derives access before opening. */
+  onManageColony?: (colonyId: string) => void;
 }
 
 interface AtlasContactView extends AtlasViewportContact {
@@ -73,15 +84,7 @@ interface AtlasContactView extends AtlasViewportContact {
   kind: AtlasCellFact["kind"];
 }
 
-type PointerGesture = {
-  pointerId: number;
-  last: ScreenPoint;
-  moved: boolean;
-};
-
-type TouchGesture =
-  | { kind: "tap"; last: ScreenPoint; moved: boolean }
-  | { kind: "pinch"; initialDistance: number; initialZoom: number };
+type LivePoint = { x: number; y: number; visible: boolean };
 
 const CANVAS_SIZE: ViewportSize = Object.freeze({ width: 960, height: 520 });
 const THREAT_DIMENSIONS: readonly ThreatDimension[] = Object.freeze([
@@ -91,19 +94,18 @@ const THREAT_DIMENSIONS: readonly ThreatDimension[] = Object.freeze([
   "logistical",
   "anomalous",
 ]);
-const CYAN = "#00f0ff";
-const PANEL = "rgba(5, 15, 24, .96)";
-const BORDER = "#245164";
-
-const CONTROL_STYLE: React.CSSProperties = {
-  minHeight: 40,
-  border: `1px solid ${CYAN}`,
-  background: "rgba(0, 70, 86, .28)",
-  color: "#e7fcff",
-  font: "inherit",
-  padding: "8px 12px",
-  cursor: "pointer",
-};
+const LABEL_BOX = Object.freeze({ width: 150, height: 34 });
+/** Most labels the sector field shows at once; the CONTACTS list carries the rest. */
+const LABEL_LIMIT = 12;
+/** Label anchor offset from the marker centre: below stars, above the vessel. */
+const LABEL_OFFSET_Y = 28;
+const BAND_RANK: Readonly<Record<ThreatBand, number>> = Object.freeze({
+  unknown: 0,
+  low: 1,
+  moderate: 2,
+  high: 3,
+  severe: 4,
+});
 
 function safeValues<T>(record: Record<string, T>): T[] {
   return Object.keys(record)
@@ -123,12 +125,9 @@ function latestKnowledgeFor(
     )[0] ?? null;
 }
 
+/** Same designation the sector field uses, so list, heading and landmark agree. */
 function fallbackLabel(subjectId: string): string {
-  return subjectId
-    .replace(/^(contact|signal):/, "")
-    .replace(/[-_:]+/g, " ")
-    .trim()
-    .toUpperCase();
+  return fallbackContactLabel(subjectId);
 }
 
 function contactViews(run: GalaxyRunState | null): AtlasContactView[] {
@@ -235,16 +234,8 @@ function bandColor(band: ThreatBand): string {
   }
 }
 
-function canvasPoint(
-  canvas: HTMLCanvasElement,
-  clientX: number,
-  clientY: number,
-): ScreenPoint {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: ((clientX - rect.left) / Math.max(1, rect.width)) * CANVAS_SIZE.width,
-    y: ((clientY - rect.top) / Math.max(1, rect.height)) * CANVAS_SIZE.height,
-  };
+function dominantBand(bands: readonly ThreatBand[]): ThreatBand {
+  return bands.reduce<ThreatBand>((best, band) => (BAND_RANK[band] > BAND_RANK[best] ? band : best), "unknown");
 }
 
 export function atlasCanvasHitRadius(cssWidth: number): number {
@@ -263,10 +254,6 @@ export function restoreAtlasFocus(
   fallback: Pick<HTMLElement, "focus" | "isConnected"> | null,
 ): void {
   restoreModalFocus(onRestoreFocus, fallback);
-}
-
-function touchDistance(left: React.Touch, right: React.Touch): number {
-  return Math.hypot(left.clientX - right.clientX, left.clientY - right.clientY);
 }
 
 function sameTarget(left: AtlasTarget | null, right: AtlasTarget): boolean {
@@ -296,23 +283,191 @@ function unavailableGenerationCopy(
   return `${identityName} IS UNAVAILABLE — THIS SAVE IS RECOVERABLE. KEEP THIS SAVE; AN EXPLICIT MIGRATION IS REQUIRED.`;
 }
 
+function planPercent(coordinate: GalaxyCoordinate): { x: number; y: number } {
+  const point = toScene(coordinate);
+  return {
+    x: (point.x / SECTOR_SCENE_SIZE + 0.5) * 100,
+    y: (point.z / SECTOR_SCENE_SIZE + 0.5) * 100,
+  };
+}
+
+function starSubtitle(star: SectorStar): string {
+  if (star.knowledge === "signal") return "SIGNAL";
+  if (star.colonies > 0) return `${star.colonies} ${star.colonies === 1 ? "COLONY" : "COLONIES"}`;
+  if (star.knowledge === "visited") return "VISITED";
+  return "CHARTED";
+}
+
+function textBox(node: Element): DOMRect {
+  const range = node.ownerDocument.createRange();
+  range.selectNodeContents(node);
+  return range.getBoundingClientRect();
+}
+
+/** The landmark a click on open field space belongs to, measured where it sits on screen now. */
+function landmarkAtFieldPoint(field: HTMLElement, clientX: number, clientY: number): HTMLElement | null {
+  const elements = new Map<string, HTMLElement>();
+  const candidates: FieldClickCandidate[] = [];
+  for (const element of field.querySelectorAll<HTMLElement>("[data-sector-landmark], [data-sector-marker]")) {
+    if (element.dataset.visible === "false") continue;
+    const key = element.dataset.sectorLandmark ?? `marker:${element.dataset.sectorMarker ?? ""}`;
+    const box = element.getBoundingClientRect();
+    const labelBoxes = element.dataset.labelled === "true"
+      ? [...element.querySelectorAll(".sz-atlas-label > *")]
+        .map(textBox)
+        .filter(rect => rect.width > 0 && rect.height > 0)
+      : [];
+    elements.set(key, element);
+    candidates.push({
+      key,
+      center: { x: box.left + box.width / 2, y: box.top + box.height / 2 },
+      labelBoxes,
+      selected: element.dataset.selected === "true",
+    });
+  }
+  const key = resolveFieldClick(clientX, clientY, candidates);
+  return key === null ? null : elements.get(key) ?? null;
+}
+
+function placeLandmark(element: HTMLElement, point: LivePoint) {
+  const left = `${Math.round(point.x)}px`;
+  const top = `${Math.round(point.y)}px`;
+  if (element.style.left !== left) element.style.left = left;
+  if (element.style.top !== top) element.style.top = top;
+  const visible = point.visible ? "true" : "false";
+  if (element.dataset.visible !== visible) element.dataset.visible = visible;
+}
+
+function readLandmarkPoint(element: HTMLElement, width: number, height: number): { x: number; y: number } {
+  const left = element.style.left;
+  const top = element.style.top;
+  return {
+    x: left.endsWith("%") ? (Number.parseFloat(left) / 100) * width : Number.parseFloat(left),
+    y: top.endsWith("%") ? (Number.parseFloat(top) / 100) * height : Number.parseFloat(top),
+  };
+}
+
+interface LabelBox { x: number; y: number; width: number }
+
+/** Rough rendered width of a landmark label: 13px name over an 8px mono subtitle. Computed at render. */
+function labelWidth(name: string, subtitle: string): number {
+  return Math.min(LABEL_BOX.width, Math.max(name.length * 8, subtitle.length * 6) + 12);
+}
+
+function estimateLabelWidth(element: HTMLElement): number {
+  const width = Number(element.dataset.labelWidth);
+  return Number.isFinite(width) && width > 0 ? width : LABEL_BOX.width;
+}
+
+function overlapsLabel(candidate: LabelBox, boxes: readonly LabelBox[]): boolean {
+  return boxes.some((box) =>
+    Math.abs(box.x - candidate.x) < (box.width + candidate.width) / 2 + 8
+    && Math.abs(box.y - candidate.y) < LABEL_BOX.height
+  );
+}
+
+/**
+ * Greedy label budget. In sector view the selected, visited, colony and vessel marks always
+ * keep a label; others are labelled nearest-centre first while they fit without overlap,
+ * up to LABEL_LIMIT. Galaxy view keeps only visited and colony stars.
+ */
+function applyLabelBudget(field: HTMLElement, level: string) {
+  const width = field.clientWidth;
+  const height = field.clientHeight;
+  if (width <= 0 || height <= 0) return;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const entries = [...field.querySelectorAll<HTMLElement>("[data-sector-landmark], [data-sector-marker]")]
+    .map((element) => {
+      const point = readLandmarkPoint(element, width, height);
+      const galaxyKeep = element.dataset.sectorMarker === undefined
+        && (element.dataset.knowledge === "visited" || element.dataset.colony === "true");
+      const always = level !== "galaxy" && (
+        element.dataset.selected === "true"
+        || element.dataset.knowledge === "visited"
+        || element.dataset.colony === "true"
+        || element.dataset.vessel === "true"
+      );
+      const labelY = point.y + (element.dataset.sectorMarker === "vessel" ? -LABEL_OFFSET_Y : LABEL_OFFSET_Y);
+      return {
+        element,
+        x: point.x,
+        y: labelY,
+        width: estimateLabelWidth(element),
+        distance: Math.hypot(point.x - centerX, point.y - centerY),
+        always,
+        galaxyKeep,
+        visible: element.dataset.visible !== "false",
+      };
+    })
+    .sort((left, right) => left.distance - right.distance || (left.element.dataset.sectorLandmark ?? left.element.dataset.sectorMarker ?? "").localeCompare(right.element.dataset.sectorLandmark ?? right.element.dataset.sectorMarker ?? ""));
+  const boxes: LabelBox[] = [];
+  const setLabelled = (element: HTMLElement, value: "true" | "false") => {
+    if (element.dataset.labelled !== value) element.dataset.labelled = value;
+  };
+  for (const entry of entries) {
+    const keep = level === "galaxy" ? entry.galaxyKeep : entry.always;
+    if (!keep) continue;
+    setLabelled(entry.element, "true");
+    if (Number.isFinite(entry.x) && Number.isFinite(entry.y)) boxes.push({ x: entry.x, y: entry.y, width: entry.width });
+  }
+  for (const entry of entries) {
+    const keep = level === "galaxy" ? entry.galaxyKeep : entry.always;
+    if (keep) continue;
+    const fits = level !== "galaxy"
+      && boxes.length < LABEL_LIMIT
+      && entry.visible
+      && Number.isFinite(entry.x)
+      && Number.isFinite(entry.y)
+      // Optional labels never run off the field edge.
+      && entry.x - entry.width / 2 >= 0
+      && entry.x + entry.width / 2 <= width
+      && !overlapsLabel(entry, boxes);
+    setLabelled(entry.element, fits ? "true" : "false");
+    if (fits) boxes.push({ x: entry.x, y: entry.y, width: entry.width });
+  }
+}
+
+/** Server and first paint: only the always-labelled marks; the live budget fills in the rest. */
+function renderedLabelled(level: string, always: boolean, galaxyKeep: boolean): "true" | "false" {
+  if (level === "galaxy") return galaxyKeep ? "true" : "false";
+  return always ? "true" : "false";
+}
+
 function Button({
   children,
-  style,
+  className,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button
-      type="button"
-      {...props}
-      style={{
-        ...CONTROL_STYLE,
-        ...(props.disabled ? { opacity: 0.46, cursor: "not-allowed" } : null),
-        ...style,
-      }}
-    >
+    <button type="button" {...props} className={className ? `sz-atlas-button ${className}` : "sz-atlas-button"}>
       {children}
     </button>
+  );
+}
+
+function Journal({
+  transactionId,
+  legs,
+}: {
+  transactionId: string | null;
+  legs: readonly { from: GalaxyCoordinate; to: GalaxyCoordinate }[];
+}) {
+  if (transactionId === null && legs.length === 0) return null;
+  return (
+    <details className="sz-atlas-journal">
+      <summary tabIndex={0}>JOURNAL</summary>
+      {transactionId !== null && <p>TRANSACTION {transactionId}</p>}
+      {legs.length > 0 && (
+        <ol>
+          {legs.map((leg, index) => (
+            <li key={`${coordinateLabel(leg.from)}:${coordinateLabel(leg.to)}:${index}`}>
+              {coordinateLabel(leg.from)} → {coordinateLabel(leg.to)}
+            </li>
+          ))}
+        </ol>
+      )}
+    </details>
   );
 }
 
@@ -330,6 +485,8 @@ export function GalaxyAtlasScreen({
   onResumeTravel,
   onFinalizeTravel,
   onOpenAshfallRegion,
+  onDescendToColony,
+  onManageColony,
   focusActive = true,
 }: GalaxyAtlasScreenProps) {
   const contacts = useMemo(() => contactViews(run), [run]);
@@ -354,14 +511,27 @@ export function GalaxyAtlasScreen({
     return { ...coordinate };
   });
   const [formError, setFormError] = useState<string | null>(null);
+  const [sceneReady, setSceneReady] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const headerRef = useRef<HTMLElement>(null);
+  const hudRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fieldRef = useRef<HTMLDivElement>(null);
   const detailsHeadingRef = useRef<HTMLHeadingElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const pendingControlFocusRef = useRef<HTMLElement | null>(null);
-  const pointerGestureRef = useRef<PointerGesture | null>(null);
-  const touchGestureRef = useRef<TouchGesture | null>(null);
+  const sceneRef = useRef<SectorSceneHandle | null>(null);
+  const landmarkRefs = useRef(new Map<string, HTMLElement>());
+  const livePoints = useRef(new Map<string, LivePoint>());
+  const pointerRef = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
+  const selectRef = useRef<(clientX: number, clientY: number) => void>(() => {});
+  const levelRef = useRef(viewport.viewLevel);
+  const zoomRef = useRef(viewport.zoom);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  levelRef.current = viewport.viewLevel;
+  zoomRef.current = viewport.zoom;
 
   const availability = useMemo(() => getGalaxyRunAvailability(run), [run]);
   const generationCopy = unavailableGenerationCopy(availability);
@@ -376,6 +546,19 @@ export function GalaxyAtlasScreen({
     }
     return planRoute(run, selectedTarget);
   }, [availability.status, run, selectedTarget]);
+  const routePlan = routeResult?.ok ? routeResult.plan : null;
+  const model = useMemo(
+    () => (run === null ? null : buildSectorModel(run, selectedTarget, routePlan)),
+    [run, selectedTarget, routePlan],
+  );
+  const systemCatalogue = useMemo(
+    () => (run !== null && viewport.viewLevel === "system" ? systemCatalogueForRun(run) : null),
+    [run, viewport.viewLevel],
+  );
+  const legacySave = useMemo(
+    () => (run !== null && viewport.viewLevel === "system" ? projectGalaxyRunToLegacyState(run) : null),
+    [run, viewport.viewLevel],
+  );
   const operationCatalog = useMemo(
     () => run === null ? null : listG0Operations(run),
     [run],
@@ -384,25 +567,36 @@ export function GalaxyAtlasScreen({
   const targetContactId = selectedContactId(selectedTarget);
   const selectedOperation = operationForTarget(operations, targetContactId);
   const activeInterruptionId = interruptedOperationId(run);
-  const ashfallVisited = run !== null && safeValues(run.atlas.knowledge).some(
-    (record) => record.subjectId === "contact:ashfall" && record.state === "visited",
-  );
-  const ashfallRegionAvailable =
-    run?.vessel.status === "stationary" &&
-    run.vessel.contactId === "contact:ashfall" &&
-    targetContactId === "contact:ashfall" &&
-    ashfallVisited;
+  const regionAccess = atlasRegionAccess(run, targetContactId);
+  const regionOpenable = regionAccess.status !== "unavailable" && onOpenAshfallRegion !== undefined;
+  const regionLevelNote = regionAccess.status === "unavailable"
+    ? regionAccess.reason
+    : regionAccess.status === "view" ? "VIEW ONLY" : null;
+  const regionPanelNote = regionAccess.status === "unavailable"
+    ? regionAccess.reason
+    : regionAccess.status === "view" ? "VIEW ONLY · PARK THE VESSEL AT ASHFALL TO SURVEY OR TRAVEL" : null;
+  const descendColonyId = galaxyColonyAtContact(run, targetContactId);
+  const descendAccess = galaxyColonyAccess(run, descendColonyId);
+  const descendable = descendAccess.status === "full" && onDescendToColony !== undefined;
+  const manageAccess = galaxyColonyManagementAccess(run, descendColonyId);
+  const manageable = manageAccess.status === "full" && onManageColony !== undefined;
   const currentSelectedId = selectedTarget === null
     ? null
     : selectedTargetIdFor(selectedTarget);
-  // A plotted coordinate can be outside this list. Keep a keyboard entry
-  // without changing the route target just because a contact receives focus.
   const contactTabStopId = contacts.some((contact) => contact.targetId === currentSelectedId)
     ? currentSelectedId
     : contacts[0]?.targetId;
+  const showField = run !== null && generationCopy === null;
+  const sceneMounted = showField && viewport.viewLevel !== "system";
 
   useModalFocus({ active: focusActive, rootRef, onEscape: onClose, restoreFocus: onRestoreFocus,
-    initialFocus: () => rootRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ?? null });
+    initialFocus: () => {
+      const root = rootRef.current;
+      const option = root?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ?? null;
+      // A collapsed panel hides the contacts; its toggle keeps focus inside the atlas.
+      if (option && option.getClientRects().length > 0) return option;
+      return root?.querySelector<HTMLElement>(".sz-atlas-toggle") ?? null;
+    } });
 
   useEffect(() => {
     const control = pendingControlFocusRef.current;
@@ -411,75 +605,196 @@ export function GalaxyAtlasScreen({
   }, [viewport.center.localX, viewport.center.localY, viewport.zoom]);
 
   useEffect(() => {
+    if (!sceneMounted) return;
     const canvas = canvasRef.current;
-    if (canvas === null) return;
-    const context = canvas.getContext("2d");
-    if (context === null) return;
+    const field = fieldRef.current;
+    if (!canvas || !field) return;
+    let cancelled = false;
+    let handle: SectorSceneHandle | null = null;
+    let observer: ResizeObserver | null = null;
+    let unsubscribe = () => {};
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const applyMotion = () => handle?.setReducedMotion(motion.matches);
+    motion.addEventListener("change", applyMotion);
 
-    context.clearRect(0, 0, CANVAS_SIZE.width, CANVAS_SIZE.height);
-    context.fillStyle = "#040b13";
-    context.fillRect(0, 0, CANVAS_SIZE.width, CANVAS_SIZE.height);
-    context.strokeStyle = "rgba(54, 103, 123, .28)";
-    context.lineWidth = 1;
-    for (let x = 0; x <= CANVAS_SIZE.width; x += 64) {
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, CANVAS_SIZE.height);
-      context.stroke();
-    }
-    for (let y = 0; y <= CANVAS_SIZE.height; y += 64) {
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(CANVAS_SIZE.width, y);
-      context.stroke();
-    }
-
-    if (routeResult?.ok) {
-      const destination = worldToScreen(routeResult.plan.destination, viewport, CANVAS_SIZE);
-      const rank: Record<ThreatBand, number> = {
-        low: 1,
-        moderate: 2,
-        high: 3,
-        severe: 4,
-        unknown: 2,
-      };
-      const highestBand = THREAT_DIMENSIONS
-        .map((dimension) => routeResult.plan.threat.dimensions[dimension].band)
-        .sort((left, right) => rank[right] - rank[left])[0] ?? "unknown";
-      context.beginPath();
-      context.arc(destination.x, destination.y, 28 + rank[highestBand] * 9, 0, Math.PI * 2);
-      context.fillStyle = `${bandColor(highestBand)}22`;
-      context.fill();
-      context.strokeStyle = `${bandColor(highestBand)}88`;
-      context.stroke();
-
-      const origin = worldToScreen(routeResult.plan.origin, viewport, CANVAS_SIZE);
-      context.beginPath();
-      context.moveTo(origin.x, origin.y);
-      context.lineTo(destination.x, destination.y);
-      context.setLineDash([8, 7]);
-      context.strokeStyle = "#8eeff5";
-      context.lineWidth = 2;
-      context.stroke();
-      context.setLineDash([]);
-    }
-
-    for (const contact of contacts) {
-      const point = worldToScreen(contact.coordinate, viewport, CANVAS_SIZE);
-      const selected = currentSelectedId === contact.targetId;
-      context.beginPath();
-      context.arc(point.x, point.y, selected ? 9 : 6, 0, Math.PI * 2);
-      context.fillStyle = selected ? "#ffffff" : contact.kind === "signal" ? "#d6a4ff" : CYAN;
-      context.fill();
-      if (selected) {
-        context.beginPath();
-        context.arc(point.x, point.y, 16, 0, Math.PI * 2);
-        context.strokeStyle = CYAN;
-        context.lineWidth = 2;
-        context.stroke();
+    (async () => {
+      try {
+        handle = await createSectorScene(canvas);
+      } catch {
+        return;
       }
-    }
-  }, [contacts, currentSelectedId, routeResult, viewport]);
+      if (cancelled) {
+        handle.dispose();
+        return;
+      }
+      sceneRef.current = handle;
+      applyMotion();
+      unsubscribe = handle.onFrame((projected) => {
+        const next = new Map<string, LivePoint>();
+        for (const point of projected) {
+          next.set(point.id, point);
+          const element = landmarkRefs.current.get(point.id);
+          if (element) placeLandmark(element, point);
+        }
+        livePoints.current = next;
+        const host = fieldRef.current;
+        if (host) applyLabelBudget(host, levelRef.current);
+      });
+      observer = new ResizeObserver(() => handle?.resize());
+      observer.observe(field);
+      handle.resize();
+      if (!cancelled) setSceneReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+      motion.removeEventListener("change", applyMotion);
+      unsubscribe();
+      observer?.disconnect();
+      sceneRef.current = null;
+      handle?.dispose();
+      setSceneReady(false);
+    };
+  }, [sceneMounted]);
+
+  // The top bar and HUD float over the stage; publish their heights so the stage, the overlay
+  // panel and the embedded system view can keep clear of them.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const header = headerRef.current;
+    const hud = hudRef.current;
+    if (!root || !header || !hud) return;
+    const publish = () => {
+      root.style.setProperty("--atlas-top", `${Math.ceil(header.getBoundingClientRect().height)}px`);
+      root.style.setProperty("--atlas-bottom", `${Math.ceil(hud.getBoundingClientRect().height) + 16}px`);
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(header);
+    observer.observe(hud);
+    return () => observer.disconnect();
+  }, [showField]);
+
+  // While the overlay panel covers the field, the 3D view centres in the space left of it.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const field = fieldRef.current;
+    if (!scene || !field) return;
+    const measure = () => {
+      const panel = asideRef.current;
+      const fieldBox = field.getBoundingClientRect();
+      const panelBox = panel?.getBoundingClientRect();
+      const overlaps = panelBox !== undefined && panelBox.width > 0 && panelBox.height > 0
+        && panelBox.left < fieldBox.right && panelBox.right > fieldBox.left
+        && panelBox.top < fieldBox.bottom && panelBox.bottom > fieldBox.top;
+      scene.setViewInset(overlaps ? fieldBox.right - panelBox.left : 0);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(field);
+    if (asideRef.current) observer.observe(asideRef.current);
+    return () => observer.disconnect();
+  }, [sceneReady, panelOpen, viewport.viewLevel]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene || !model || viewport.viewLevel === "system") return;
+    scene.setReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    scene.setModel(model);
+    scene.focusTarget(currentSelectedId);
+  }, [model, currentSelectedId, sceneReady, viewport.viewLevel]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    // Only the sector level follows the reducer's centre and zoom; setLevel owns the galaxy framing.
+    if (!scene || viewport.viewLevel !== "sector") return;
+    scene.setViewport(viewport.center, viewport.zoom);
+  }, [viewport.center, viewport.zoom, viewport.viewLevel, sceneReady]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene || viewport.viewLevel === "system") return;
+    void scene.setLevel(viewport.viewLevel === "galaxy" ? "galaxy" : "sector");
+  }, [viewport.viewLevel, sceneReady]);
+
+  useEffect(() => {
+    const field = fieldRef.current;
+    if (!field || !showField) return;
+    const onWheel = (event: WheelEvent) => {
+      if (levelRef.current !== "sector") return;
+      event.preventDefault();
+      const zoom = zoomRef.current;
+      dispatchViewport(zoomAction(event.deltaY > 0 ? zoom / 1.12 : zoom * 1.12));
+    };
+    let pinch: { initialDistance: number; initialZoom: number } | null = null;
+    let tap: { x: number; y: number; moved: boolean } | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      if (levelRef.current !== "sector") return;
+      if (event.touches.length >= 2) {
+        pinch = {
+          initialDistance: Math.hypot(
+            event.touches[0].clientX - event.touches[1].clientX,
+            event.touches[0].clientY - event.touches[1].clientY,
+          ),
+          initialZoom: zoomRef.current,
+        };
+        tap = null;
+        return;
+      }
+      const touch = event.touches[0];
+      if (!touch) return;
+      pinch = null;
+      tap = { x: touch.clientX, y: touch.clientY, moved: false };
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (pinch && event.touches.length >= 2) {
+        event.preventDefault();
+        const distance = Math.hypot(
+          event.touches[0].clientX - event.touches[1].clientX,
+          event.touches[0].clientY - event.touches[1].clientY,
+        );
+        dispatchViewport(zoomActionFromPinch(pinch.initialDistance, distance, pinch.initialZoom));
+        return;
+      }
+      if (!tap || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      if (Math.hypot(touch.clientX - tap.x, touch.clientY - tap.y) > 4) tap.moved = true;
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length > 0) return;
+      const ended = tap;
+      tap = null;
+      pinch = null;
+      if (!ended || ended.moved || levelRef.current !== "sector") return;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      if (event.target instanceof Element && event.target.closest("[data-sector-landmark], [data-sector-marker]")) return;
+      selectRef.current(touch.clientX, touch.clientY);
+    };
+    const onTouchCancel = () => { tap = null; pinch = null; };
+    field.addEventListener("wheel", onWheel, { passive: false });
+    field.addEventListener("touchstart", onTouchStart, { passive: true });
+    field.addEventListener("touchmove", onTouchMove, { passive: false });
+    field.addEventListener("touchend", onTouchEnd);
+    field.addEventListener("touchcancel", onTouchCancel);
+    return () => {
+      field.removeEventListener("wheel", onWheel);
+      field.removeEventListener("touchstart", onTouchStart);
+      field.removeEventListener("touchmove", onTouchMove);
+      field.removeEventListener("touchend", onTouchEnd);
+      field.removeEventListener("touchcancel", onTouchCancel);
+    };
+  }, [showField]);
+
+  useLayoutEffect(() => {
+    if (viewport.viewLevel === "system") return;
+    livePoints.current.forEach((point, id) => {
+      const element = landmarkRefs.current.get(id);
+      if (element) placeLandmark(element, point);
+    });
+    const field = fieldRef.current;
+    if (field) applyLabelBudget(field, levelRef.current);
+  });
 
   const selectTarget = (target: AtlasTarget) => {
     if (run?.activeTravel !== null && run?.activeTravel !== undefined) return;
@@ -497,6 +812,26 @@ export function GalaxyAtlasScreen({
     onSelectTarget?.(normalizedTarget);
   };
 
+  const selectFromPointer = (clientX: number, clientY: number) => {
+    if (viewport.viewLevel !== "sector" || model === null) return;
+    const field = fieldRef.current;
+    // A click on a star's name or on the glow just outside its hit box still means that star.
+    const landmark = field ? landmarkAtFieldPoint(field, clientX, clientY) : null;
+    if (landmark) {
+      landmark.click();
+      return;
+    }
+    const scene = sceneRef.current;
+    const picked = scene
+      ? scene.pick(clientX, clientY)
+      : field
+        ? planPick(field, clientX, clientY)
+        : null;
+    if (!picked) return;
+    selectTarget({ kind: "coordinate", coordinate: fromScene(picked.x, picked.z) });
+  };
+  selectRef.current = selectFromPointer;
+
   const dispatchFromControl = (
     action: AtlasViewportAction,
     control: HTMLElement,
@@ -508,127 +843,6 @@ export function GalaxyAtlasScreen({
     }
     pendingControlFocusRef.current = control;
     dispatchViewport(action);
-  };
-
-  const targetAtPoint = (
-    point: ScreenPoint,
-    touch: boolean,
-    hitRadius: number,
-  ) =>
-    normalizeContactViewTarget(touch
-      ? targetFromTouch(point, viewport, CANVAS_SIZE, contacts, hitRadius)
-      : targetFromPointer(point, viewport, CANVAS_SIZE, contacts, hitRadius),
-    contacts);
-
-  const canvasPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!shouldHandleAtlasPointer(event.pointerType) || viewport.viewLevel !== "sector") return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    pointerGestureRef.current = {
-      pointerId: event.pointerId,
-      last: canvasPoint(event.currentTarget, event.clientX, event.clientY),
-      moved: false,
-    };
-  };
-
-  const canvasPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!shouldHandleAtlasPointer(event.pointerType)) return;
-    const gesture = pointerGestureRef.current;
-    if (gesture === null || gesture.pointerId !== event.pointerId) return;
-    const next = canvasPoint(event.currentTarget, event.clientX, event.clientY);
-    const deltaX = next.x - gesture.last.x;
-    const deltaY = next.y - gesture.last.y;
-    if (Math.hypot(deltaX, deltaY) >= 2) gesture.moved = true;
-    if (gesture.moved) {
-      dispatchViewport({
-        type: "pan",
-        deltaX: -deltaX / viewport.zoom,
-        deltaY: -deltaY / viewport.zoom,
-      });
-      gesture.last = next;
-    }
-  };
-
-  const canvasPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!shouldHandleAtlasPointer(event.pointerType)) return;
-    const gesture = pointerGestureRef.current;
-    if (gesture === null || gesture.pointerId !== event.pointerId) return;
-    pointerGestureRef.current = null;
-    if (gesture.moved) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    selectTarget(targetAtPoint(
-      canvasPoint(event.currentTarget, event.clientX, event.clientY),
-      false,
-      atlasCanvasHitRadius(rect.width),
-    ));
-  };
-
-  const canvasPointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!shouldHandleAtlasPointer(event.pointerType)) return;
-    if (pointerGestureRef.current?.pointerId === event.pointerId) {
-      pointerGestureRef.current = null;
-    }
-  };
-
-  const canvasTouchStart = (event: React.TouchEvent<HTMLCanvasElement>) => {
-    if (viewport.viewLevel !== "sector") return;
-    if (event.touches.length >= 2) {
-      touchGestureRef.current = {
-        kind: "pinch",
-        initialDistance: touchDistance(event.touches[0], event.touches[1]),
-        initialZoom: viewport.zoom,
-      };
-      return;
-    }
-    const touch = event.touches[0];
-    if (touch === undefined) return;
-    touchGestureRef.current = {
-      kind: "tap",
-      last: canvasPoint(event.currentTarget, touch.clientX, touch.clientY),
-      moved: false,
-    };
-  };
-
-  const canvasTouchMove = (event: React.TouchEvent<HTMLCanvasElement>) => {
-    const gesture = touchGestureRef.current;
-    if (gesture === null) return;
-    event.preventDefault();
-    if (gesture.kind === "pinch" && event.touches.length >= 2) {
-      dispatchViewport(zoomActionFromPinch(
-        gesture.initialDistance,
-        touchDistance(event.touches[0], event.touches[1]),
-        gesture.initialZoom,
-      ));
-      return;
-    }
-    if (gesture.kind !== "tap" || event.touches.length !== 1) return;
-    const touch = event.touches[0];
-    const next = canvasPoint(event.currentTarget, touch.clientX, touch.clientY);
-    const deltaX = next.x - gesture.last.x;
-    const deltaY = next.y - gesture.last.y;
-    if (Math.hypot(deltaX, deltaY) >= 2) gesture.moved = true;
-    if (gesture.moved) {
-      dispatchViewport({
-        type: "pan",
-        deltaX: -deltaX / viewport.zoom,
-        deltaY: -deltaY / viewport.zoom,
-      });
-      gesture.last = next;
-    }
-  };
-
-  const canvasTouchEnd = (event: React.TouchEvent<HTMLCanvasElement>) => {
-    const gesture = touchGestureRef.current;
-    if (event.touches.length > 0) return;
-    touchGestureRef.current = null;
-    if (gesture?.kind !== "tap" || gesture.moved) return;
-    const touch = event.changedTouches[0];
-    if (touch === undefined) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    selectTarget(targetAtPoint(
-      canvasPoint(event.currentTarget, touch.clientX, touch.clientY),
-      true,
-      atlasCanvasHitRadius(rect.width),
-    ));
   };
 
   const submitCoordinate = (event: React.FormEvent<HTMLFormElement>) => {
@@ -649,11 +863,13 @@ export function GalaxyAtlasScreen({
         role="dialog"
         aria-modal="true"
         aria-label="Galaxy Atlas"
-        style={{ padding: 24, background: "#060d15", color: "#d9eef2", fontFamily: "ui-monospace, Menlo, monospace" }}
+        className="sz-atlas"
       >
-        <h1 style={{ color: CYAN }}>NO GALAXY RUN IS ACTIVE</h1>
-        <p>Begin a galaxy expedition from the experience selector. Legacy progress remains preserved.</p>
-        <Button onClick={onCloseRef.current}>RETURN TO EXPERIENCE SELECTOR</Button>
+        <div className="sz-atlas-shell">
+          <h1>NO GALAXY RUN IS ACTIVE</h1>
+          <p>Begin a galaxy expedition from the experience selector. Legacy progress remains preserved.</p>
+          <Button onClick={onCloseRef.current}>RETURN TO EXPERIENCE SELECTOR</Button>
+        </div>
       </div>
     );
   }
@@ -669,23 +885,39 @@ export function GalaxyAtlasScreen({
         role="dialog"
         aria-modal="true"
         aria-label="Galaxy Atlas unavailable"
-        style={{ padding: 24, background: "#060d15", color: "#d9eef2", fontFamily: "ui-monospace, Menlo, monospace" }}
+        className="sz-atlas"
       >
-        <h1 style={{ color: "#ffbd66" }}>
-          {availability.status === "unavailable" && availability.reason === "unsupported_generation_version"
-            ? `GENERATION VERSION ${version} IS UNAVAILABLE`
-            : `AUTHORED REGISTRY VERSION ${version} IS UNAVAILABLE`}
-        </h1>
-        <p>{generationCopy}</p>
-        <Button onClick={onCloseRef.current}>RETURN SAFELY</Button>
+        <div className="sz-atlas-shell">
+          <h1>
+            {availability.status === "unavailable" && availability.reason === "unsupported_generation_version"
+              ? `GENERATION VERSION ${version} IS UNAVAILABLE`
+              : `AUTHORED REGISTRY VERSION ${version} IS UNAVAILABLE`}
+          </h1>
+          <p>{generationCopy}</p>
+          <Button onClick={onCloseRef.current}>RETURN SAFELY</Button>
+        </div>
       </div>
     );
   }
 
-  const routePlan = routeResult?.ok ? routeResult.plan : null;
   const routeReasons = routeResult !== null && !routeResult.ok ? routeResult.reasons : [];
   const blindTarget = selectedTarget?.kind === "coordinate";
   const travel = run.activeTravel;
+  const sectorModel: SectorModel = model ?? buildSectorModel(run, selectedTarget, routePlan);
+  const selectedContact = contacts.find((contact) => contact.targetId === currentSelectedId) ?? null;
+  const systemLevelAvailable = selectedContact?.target.kind === "contact"
+    && selectedContact.kind === "stellar_contact"
+    && (selectedContact.knowledgeState === "charted" || selectedContact.knowledgeState === "visited");
+  const systemInitialId = selectedContact?.target.kind === "contact" ? selectedContact.target.contactId : undefined;
+  const knownCount = contacts.filter((contact) => contact.knowledgeState === "charted" || contact.knowledgeState === "visited").length;
+  const colonyTotal = run.colonies.length;
+  const routeMarker = sectorModel.travel
+    ? { band: dominantBand(sectorModel.travel.legs.map((leg) => leg.band)), state: "travel" as const }
+    : sectorModel.route
+      ? { band: sectorModel.route.band, state: "planned" as const }
+      : null;
+  const vesselStar = sectorModel.stars.find((star) => star.vessel) ?? null;
+  const selectedLabel = targetLabel(selectedTarget, contacts);
 
   return (
     <div
@@ -694,314 +926,574 @@ export function GalaxyAtlasScreen({
       role="dialog"
       aria-modal="true"
       aria-label="Galaxy Atlas"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1150,
-        overflow: "auto",
-        padding: 16,
-        background: "#040a12",
-        color: "#d9eef2",
-        fontFamily: "ui-monospace, Menlo, monospace",
-      }}
+      className="sz-atlas"
+      data-atlas-view={viewport.viewLevel}
+      data-panel={panelOpen ? "open" : "closed"}
     >
-      <header style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${BORDER}`, paddingBottom: 12 }}>
-        <Button onClick={onCloseRef.current}>← CLOSE ATLAS</Button>
-        <div>
-          <p style={{ margin: 0, color: "#6aa8b8", letterSpacing: ".12em" }}>VANGUARD NAVIGATION</p>
-          <h1 style={{ margin: "4px 0", color: CYAN }}>GALAXY ATLAS · G0 SECTOR</h1>
-          <small>CYCLE {run.worldCycle} · SUPPLY {run.resources.supply}</small>
-        </div>
-      </header>
-
-      <nav aria-label="Atlas levels" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, margin: "14px 0" }}>
-        <span aria-disabled="true" title="Galaxy framing preview is not interactive in G0" style={{ padding: 8, color: "#7797a4" }}>GALAXY</span>
-        <span aria-hidden="true">/</span>
-        <Button
-          aria-pressed={viewport.viewLevel === "sector"}
-          onClick={() => dispatchViewport({ type: "set-view", viewLevel: "sector" })}
+      <div className="sz-atlas-shell">
+        <header
+          ref={headerRef}
+          style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}
+          className="sz-atlas-header"
         >
-          SECTOR
-        </Button>
-        <span aria-hidden="true">/</span>
-        <Button
-          aria-pressed={viewport.viewLevel === "system"}
-          disabled={selectedTarget === null}
-          onClick={() => dispatchViewport({ type: "set-view", viewLevel: "system" })}
-        >
-          SYSTEM
-        </Button>
-        <span aria-hidden="true">/</span>
-        <Button disabled={!ashfallRegionAvailable || !onOpenAshfallRegion} onClick={onOpenAshfallRegion}>
-          REGION
-        </Button>
-      </nav>
-
-      <div
-        data-atlas-layout="responsive"
-        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 16, alignItems: "start" }}
-      >
-        <main style={{ minWidth: 0 }}>
-          <section aria-label="Atlas field" style={{ border: `1px solid ${BORDER}`, background: PANEL, padding: 12 }}>
-            <div
-              tabIndex={0}
-              aria-label="Atlas field keyboard navigation"
-              onKeyDown={(event) => {
-                const action = panActionFromArrowKey(event.key);
-                if (action === null) return;
-                event.preventDefault();
-                dispatchFromControl(action, event.currentTarget);
-              }}
-            >
-              <canvas
-                ref={canvasRef}
-                width={CANVAS_SIZE.width}
-                height={CANVAS_SIZE.height}
-                aria-hidden="true"
-                onPointerDown={canvasPointerDown}
-                onPointerMove={canvasPointerMove}
-                onPointerUp={canvasPointerUp}
-                onPointerCancel={canvasPointerCancel}
-                onTouchStart={canvasTouchStart}
-                onTouchMove={canvasTouchMove}
-                onTouchEnd={canvasTouchEnd}
-                onTouchCancel={() => { touchGestureRef.current = null; }}
-                style={{ display: "block", width: "100%", height: "auto", maxHeight: "56vh", border: "1px solid #173747", touchAction: "none", cursor: viewport.viewLevel === "sector" ? "crosshair" : "default" }}
-              />
+          <Button onClick={onCloseRef.current}>← CLOSE ATLAS</Button>
+          <div className="sz-atlas-brand">
+            <p className="sz-atlas-eyebrow">VANGUARD NAVIGATION</p>
+            <h1>GALAXY ATLAS</h1>
+            <div className="sz-atlas-chips" aria-label="Atlas status">
+              <span className="sz-atlas-chip">CYCLE <b>{run.worldCycle}</b></span>
+              <span className="sz-atlas-chip">SUPPLY <b>{run.resources.supply}</b></span>
+              <span className="sz-atlas-chip">{knownCount} KNOWN · {colonyTotal} COLONIES</span>
             </div>
-
-            <div aria-label="Atlas pan and zoom controls" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-              {(["left", "right", "up", "down"] as const).map((direction) => (
-                <Button
-                  key={direction}
-                  aria-label={`PAN ${direction.toUpperCase()}`}
-                  disabled={viewport.viewLevel !== "sector"}
-                  onClick={(event) => dispatchFromControl(
-                    panActionFromTouchControl(direction),
-                    event.currentTarget,
-                  )}
-                >
-                  {direction === "left" ? "←" : direction === "right" ? "→" : direction === "up" ? "↑" : "↓"}
-                </Button>
-              ))}
-              <Button
-                aria-label="ZOOM OUT"
-                disabled={viewport.viewLevel !== "sector"}
-                onClick={(event) => dispatchFromControl(zoomAction(viewport.zoom / 1.4), event.currentTarget)}
-              >
-                −
-              </Button>
-              <Button
-                aria-label="ZOOM IN"
-                disabled={viewport.viewLevel !== "sector"}
-                onClick={(event) => dispatchFromControl(zoomAction(viewport.zoom * 1.4), event.currentTarget)}
-              >
-                +
-              </Button>
-              <output style={{ alignSelf: "center", color: "#86aeb9" }}>
-                CENTER {viewport.center.localX},{viewport.center.localY} · ZOOM {viewport.zoom.toFixed(2)}×
-              </output>
-            </div>
-          </section>
-
-          <section style={{ marginTop: 16, border: `1px solid ${BORDER}`, background: PANEL, padding: 12 }}>
-            <h2 style={{ marginTop: 0, color: CYAN }}>PLOT COORDINATE</h2>
-            <form
-              data-coordinate-layout="wrapping"
-              onSubmit={submitCoordinate}
-              style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 110px), 1fr))", gap: 8, alignItems: "end" }}
-            >
-              {(["sectorX", "sectorY", "localX", "localY"] as const).map((field) => (
-                <label key={field} style={{ display: "grid", gap: 4, minWidth: 0 }}>
-                  <span>{field.replace(/([A-Z])/g, " $1").toUpperCase()}</span>
-                  <input
-                    name={field}
-                    type="number"
-                    step="1"
-                    value={coordinateInput[field]}
-                    onChange={(event) => setCoordinateInput((current) => ({ ...current, [field]: event.target.value }))}
-                    style={{ width: "100%", minWidth: 0, minHeight: 40, border: `1px solid ${BORDER}`, background: "#07131d", color: "#ffffff", font: "inherit", padding: "6px 8px" }}
-                  />
-                </label>
-              ))}
-              <Button type="submit">PLOT</Button>
-            </form>
-            {formError !== null && <p role="alert" style={{ color: "#ffbd66" }}>{formError}</p>}
-          </section>
-        </main>
-
-        <aside style={{ display: "grid", gap: 16 }}>
-          <section style={{ border: `1px solid ${BORDER}`, background: PANEL, padding: 12 }}>
-            <h2 style={{ marginTop: 0, color: CYAN }}>CONTACTS</h2>
-            <div role="listbox" aria-label="Atlas contacts" style={{ display: "grid", gap: 8 }}>
-              {contacts.map((contact) => {
-                const selected = currentSelectedId === contact.targetId;
-                return (
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    tabIndex={contact.targetId === contactTabStopId ? 0 : -1}
-                    data-atlas-contact={contact.targetId}
-                    data-target-kind={contact.target.kind}
-                    data-selected-target={selected ? currentSelectedId ?? undefined : undefined}
-                    key={contact.targetId}
-                    onClick={() => {
-                      const target = targetFromDomContact(contact.targetId, contacts);
-                      if (target !== null) selectTarget(target);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-                      event.preventDefault();
-                      const target = targetFromKeyboardContact(
-                        contact.targetId,
-                        event.key === "ArrowDown" ? "next" : "previous",
-                        contacts,
-                      );
-                      if (target !== null && !run.activeTravel) {
-                        selectTarget(target);
-                        const id = selectedTargetIdFor(target);
-                        const option = [...(rootRef.current?.querySelectorAll<HTMLElement>("[data-atlas-contact]") ?? [])]
-                          .find(element => element.dataset.atlasContact === id);
-                        option?.focus();
-                        option?.scrollIntoView({ block: "nearest" });
-                      }
-                    }}
-                    style={{
-                      minHeight: 50,
-                      padding: 10,
-                      textAlign: "left",
-                      border: selected ? `2px solid ${CYAN}` : `1px solid ${BORDER}`,
-                      background: selected ? "rgba(0, 92, 110, .35)" : "#07131d",
-                      color: "#e8fbff",
-                      font: "inherit",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <strong>{contact.label}</strong><br />
-                    <small>{contact.knowledgeState.toUpperCase()} · CONFIDENCE {contact.confidence.toUpperCase()} · {coordinateLabel(contact.coordinate)}</small>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section
-            aria-labelledby="atlas-target-heading"
-            data-selected-target={currentSelectedId ?? undefined}
-            style={{ border: `1px solid ${CYAN}`, background: PANEL, padding: 14 }}
-          >
-            <p style={{ margin: 0, color: "#75a6b2" }}>SELECTED TARGET</p>
-            <h2
-              id="atlas-target-heading"
-              ref={detailsHeadingRef}
-              tabIndex={-1}
-              style={{ margin: "6px 0 14px", color: CYAN, outline: "none" }}
-            >
-              {targetLabel(selectedTarget, contacts)}
-            </h2>
-            {blindTarget && <p style={{ color: "#c8a7e7" }}>BLIND COORDINATE · UNKNOWN CONTRIBUTORS POSSIBLE</p>}
-
-            {travel?.state === "interrupted" && activeInterruptionId !== null ? (
-              <div data-selected-target={currentSelectedId ?? undefined}>
-                <h3 style={{ color: "#ffbd66" }}>TRAVEL INTERRUPTED</h3>
-                <p>A saved military cause blocks this route. Launch it or retreat to the journaled origin.</p>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <Button disabled={!onLaunchOperation} onClick={() => onLaunchOperation?.(activeInterruptionId)}>
-                    LAUNCH INTERCEPTION
-                  </Button>
-                  <Button disabled={!onRetreat} onClick={onRetreat}>RETREAT TO ORIGIN</Button>
-                </div>
-              </div>
-            ) : travel?.state === "diverted" && run.vessel.status === "stranded" ? (
-              <div>
-                <h3 style={{ color: "#ff7e8d" }}>VESSEL STRANDED</h3>
-                <Button disabled={!onEmergencyRetreat} onClick={onEmergencyRetreat}>EMERGENCY RETREAT</Button>
-              </div>
-            ) : travel !== null ? (
-              <div>
-                <h3>TRAVEL {travel.state.toUpperCase()}</h3>
-                <p>TRANSACTION {travel.transactionId}</p>
-                {travel.state === "arrived" || travel.state === "resolved" ? (
-                  <Button disabled={!onFinalizeTravel} onClick={onFinalizeTravel}>ACKNOWLEDGE ARRIVAL</Button>
-                ) : (
-                  <Button disabled={!onResumeTravel} onClick={onResumeTravel}>RESUME TRAVEL</Button>
-                )}
-              </div>
-            ) : routePlan !== null ? (
-              <div data-selected-target={currentSelectedId ?? undefined}>
-                <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "7px 12px", margin: 0 }}>
-                  <dt>DISTANCE</dt><dd style={{ margin: 0 }}>{routePlan.distanceUnits} UNITS</dd>
-                  <dt>CYCLES</dt><dd style={{ margin: 0 }}>{routePlan.elapsedCycles}</dd>
-                  <dt>SUPPLY</dt><dd style={{ margin: 0 }}>{routePlan.supplyCost} · RESERVE {routePlan.projectedReserve}</dd>
-                  <dt>CONFIDENCE</dt><dd style={{ margin: 0 }}>{routePlan.threat.overall.confidence.toUpperCase()}</dd>
-                </dl>
-                <p style={{ color: bandColor(routePlan.threat.overall.band) }}>{routePlan.threat.overall.presentation}</p>
-                <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "7px 12px" }}>
-                  {THREAT_DIMENSIONS.map((dimension) => (
-                    <React.Fragment key={dimension}>
-                      <dt>{dimension.toUpperCase()}</dt>
-                      <dd style={{ margin: 0, color: bandColor(routePlan.threat.dimensions[dimension].band) }}>
-                        {routePlan.threat.dimensions[dimension].band.toUpperCase()} · {routePlan.threat.dimensions[dimension].confidence.toUpperCase()}
-                        {routePlan.threat.dimensions[dimension].unknownContributors.length > 0 ? " · UNKNOWN CONTRIBUTORS" : ""}
-                      </dd>
-                    </React.Fragment>
-                  ))}
-                </dl>
-                <Button
-                  data-selected-target={currentSelectedId ?? undefined}
-                  disabled={!onCommitTravel}
-                  onClick={() => onCommitTravel?.(routePlan)}
-                  style={{ width: "100%", marginTop: 12 }}
-                >
-                  COMMIT TRAVEL
-                </Button>
-              </div>
-            ) : (
-              <div>
-                {routeReasons.length > 0 ? (
-                  <div role="alert">
-                    <h3 style={{ color: "#ffbd66" }}>ROUTE BLOCKED</h3>
-                    <ul>{routeReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
-                  </div>
-                ) : <p>SELECT A KNOWN CONTACT OR PLOT A COORDINATE.</p>}
-                <Button disabled>COMMIT TRAVEL</Button>
-              </div>
-            )}
-
-            {selectedOperation !== null && travel?.state !== "interrupted" && (
-              <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 14, paddingTop: 14 }}>
-                <h3 style={{ marginTop: 0 }}>LOCATED OPERATION</h3>
-                <p>{selectedOperation.objective.label.toUpperCase()}</p>
-                <Button
-                  disabled={selectedOperation.availability.status !== "available" || !onLaunchOperation}
-                  onClick={() => onLaunchOperation?.(selectedOperation.id)}
-                >
-                  LAUNCH OPERATION
-                </Button>
-                {selectedOperation.availability.status === "unavailable" && (
-                  <p style={{ color: "#9bb4bd" }}>
-                    UNAVAILABLE · {selectedOperation.availability.reasons.join(", ").replaceAll("_", " ").toUpperCase()}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {targetContactId === "contact:ashfall" && (
-              <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 14, paddingTop: 14 }}>
-                <Button disabled={!ashfallRegionAvailable || !onOpenAshfallRegion} onClick={onOpenAshfallRegion}>
-                  OPEN ASHFALL REGION
-                </Button>
-                {!ashfallRegionAvailable && <p style={{ color: "#9bb4bd" }}>REGION LINK REQUIRES A VISITED ASHFALL ARRIVAL.</p>}
-              </div>
-            )}
-          </section>
-
-          <div role="status" aria-live="polite" style={{ minHeight: 24, color: "#9bd9e2" }}>
-            {statusMessage ?? (routeResult?.ok ? `ROUTE READY · ${targetLabel(selectedTarget, contacts)}` : routeReasons[0] ?? `ATLAS READY · ${targetLabel(selectedTarget, contacts)}`)}
           </div>
-        </aside>
+
+          <nav aria-label="Atlas levels" className="sz-atlas-levels">
+            <Button
+              aria-pressed={viewport.viewLevel === "galaxy"}
+              onClick={() => dispatchViewport({ type: "set-view", viewLevel: "galaxy" })}
+            >
+              GALAXY
+            </Button>
+            <span className="sz-atlas-slash" aria-hidden="true">/</span>
+            <Button
+              aria-pressed={viewport.viewLevel === "sector"}
+              onClick={() => dispatchViewport({ type: "set-view", viewLevel: "sector" })}
+            >
+              SECTOR
+            </Button>
+            <span className="sz-atlas-slash" aria-hidden="true">/</span>
+            <Button
+              aria-pressed={viewport.viewLevel === "system"}
+              disabled={!systemLevelAvailable}
+              onClick={() => dispatchViewport({ type: "set-view", viewLevel: "system" })}
+            >
+              SYSTEM
+            </Button>
+            <span className="sz-atlas-slash" aria-hidden="true">/</span>
+            <Button
+              disabled={!regionOpenable}
+              aria-describedby={regionLevelNote ? "atlas-region-note" : undefined}
+              onClick={onOpenAshfallRegion}
+            >
+              REGION
+            </Button>
+            {regionLevelNote && <span id="atlas-region-note" className="sz-atlas-level-note">{regionLevelNote}</span>}
+          </nav>
+
+          {viewport.viewLevel !== "system" && (
+            <button
+              type="button"
+              className="sz-atlas-toggle"
+              aria-expanded={panelOpen}
+              aria-controls="atlas-side"
+              onClick={() => setPanelOpen((open) => !open)}
+            >
+              {panelOpen ? (
+                <>HIDE PANEL<span aria-hidden="true"> ▸</span></>
+              ) : (
+                <><span className="sz-atlas-sr">SHOW PANEL · </span><span aria-hidden="true">◂ </span>{selectedLabel}</>
+              )}
+            </button>
+          )}
+        </header>
+
+        <div data-atlas-layout="hud" className="sz-atlas-layout">
+          <main className="sz-atlas-main">
+            <section aria-label="Atlas field" className="sz-atlas-stage">
+              <div
+                ref={fieldRef}
+                data-sector-field="true"
+                data-scene={sceneReady ? "3d" : "plan"}
+                data-atlas-level={viewport.viewLevel}
+                data-route-band={routeMarker?.band}
+                data-route-state={routeMarker?.state}
+                className="sz-atlas-field"
+                tabIndex={viewport.viewLevel === "system" ? -1 : 0}
+                aria-label="Atlas field keyboard navigation"
+                onKeyDown={(event) => {
+                  if (viewport.viewLevel !== "sector" || event.target !== event.currentTarget) return;
+                  const action = panActionFromArrowKey(event.key);
+                  if (action === null) return;
+                  event.preventDefault();
+                  dispatchFromControl(action, event.currentTarget);
+                }}
+                onPointerEnter={() => sceneRef.current?.setSpinPaused(true)}
+                onPointerLeave={() => sceneRef.current?.setSpinPaused(false)}
+                onPointerDown={(event) => {
+                  if (!shouldHandleAtlasPointer(event.pointerType) || viewport.viewLevel !== "sector") return;
+                  if (event.target instanceof Element && event.target.closest("button, [data-sector-landmark], [data-sector-marker]")) return;
+                  pointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+                }}
+                onPointerMove={(event) => {
+                  const host = event.currentTarget;
+                  const onOpenField = !(event.target instanceof Element &&
+                    event.target.closest("button, [data-sector-landmark], [data-sector-marker]"));
+                  const overLandmark = viewport.viewLevel === "sector" && onOpenField
+                    && landmarkAtFieldPoint(host, event.clientX, event.clientY) !== null;
+                  const hit = overLandmark ? "landmark" : "none";
+                  if (host.dataset.fieldHit !== hit) host.dataset.fieldHit = hit;
+                  const gesture = pointerRef.current;
+                  if (!gesture || gesture.id !== event.pointerId) return;
+                  if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 4) gesture.moved = true;
+                }}
+                onPointerUp={(event) => {
+                  if (!shouldHandleAtlasPointer(event.pointerType)) return;
+                  const gesture = pointerRef.current;
+                  if (!gesture || gesture.id !== event.pointerId) return;
+                  pointerRef.current = null;
+                  if (gesture.moved || Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 4) return;
+                  if (event.target instanceof Element && event.target.closest("[data-sector-landmark], [data-sector-marker], button")) return;
+                  selectFromPointer(event.clientX, event.clientY);
+                }}
+                onPointerCancel={() => { pointerRef.current = null; }}
+              >
+                {viewport.viewLevel === "system" && systemCatalogue && legacySave ? (
+                  <div data-system-embedded="true" className="sz-atlas-embedded">
+                    <button
+                      type="button"
+                      className="sz-atlas-back"
+                      onClick={() => dispatchViewport({ type: "set-view", viewLevel: "sector" })}
+                    >
+                      ← BACK TO SECTOR
+                    </button>
+                    <SystemAtlasScreen
+                      embedded
+                      catalogue={systemCatalogue}
+                      save={legacySave}
+                      initialSystemId={systemInitialId}
+                      onClose={() => dispatchViewport({ type: "set-view", viewLevel: "sector" })}
+                      onOpenRegion={onOpenAshfallRegion ? () => onOpenAshfallRegion() : undefined}
+                      regionAccess={(systemId) => atlasRegionAccess(run, systemId)}
+                      onDescend={onDescendToColony}
+                      descendAccess={(colonyId) => galaxyColonyAccess(run, colonyId)}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <canvas ref={canvasRef} className="sz-atlas-canvas" tabIndex={-1} aria-hidden="true" />
+                    {!sceneReady && (
+                      <svg className="sz-atlas-plan" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        {sectorModel.stars.map((star) => {
+                          const point = planPercent(star.coordinate);
+                          return (
+                            <circle
+                              key={star.targetId}
+                              data-plan-star={star.targetId}
+                              data-knowledge={star.knowledge}
+                              cx={point.x}
+                              cy={point.y}
+                              r={star.knowledge === "signal" ? 0.7 : 1.15}
+                            />
+                          );
+                        })}
+                      </svg>
+                    )}
+                    <span className="sz-atlas-corner" data-corner="tl" aria-hidden="true" />
+                    <span className="sz-atlas-corner" data-corner="tr" aria-hidden="true" />
+                    <span className="sz-atlas-corner" data-corner="bl" aria-hidden="true" />
+                    <span className="sz-atlas-corner" data-corner="br" aria-hidden="true" />
+                    {viewport.viewLevel === "galaxy" && <p className="sz-atlas-caption">SECTOR 0,0 · G0 FRONTIER</p>}
+                    <div className="sz-atlas-landmarks" aria-hidden="true">
+                      {sectorModel.stars.map((star) => {
+                        const point = planPercent(star.coordinate);
+                        const selected = currentSelectedId === star.targetId;
+                        const always = selected || star.knowledge === "visited" || star.colonies > 0 || star.vessel;
+                        const galaxyKeep = star.knowledge === "visited" || star.colonies > 0;
+                        return (
+                          <div
+                            key={star.targetId}
+                            ref={(element) => {
+                              if (element) landmarkRefs.current.set(star.targetId, element);
+                              else landmarkRefs.current.delete(star.targetId);
+                            }}
+                            data-sector-landmark={star.targetId}
+                            data-knowledge={star.knowledge}
+                            data-threat={star.threat}
+                            data-colony={star.colonies > 0 ? "true" : "false"}
+                            data-vessel={star.vessel ? "true" : "false"}
+                            data-selected={selected ? "true" : "false"}
+                            data-labelled={renderedLabelled(viewport.viewLevel, always, galaxyKeep)}
+                            data-label-width={labelWidth(star.label, starSubtitle(star))}
+                            className="sz-atlas-landmark"
+                            style={{ left: `${point.x}%`, top: `${point.y}%` }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const contact = contacts.find((entry) => entry.targetId === star.targetId);
+                              if (contact) selectTarget(contact.target);
+                            }}
+                          >
+                            <span className="sz-atlas-bracket" aria-hidden="true" />
+                            <span className="sz-atlas-marker" aria-hidden="true" />
+                            <span className="sz-atlas-label">
+                              <strong>{star.label}</strong>
+                              <span>{starSubtitle(star)}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {!sectorModel.stars.some((star) => star.vessel) && (
+                      <div
+                        ref={(element) => {
+                          if (element) landmarkRefs.current.set("vessel", element);
+                          else landmarkRefs.current.delete("vessel");
+                        }}
+                        data-sector-marker="vessel"
+                        data-knowledge={vesselStar?.knowledge ?? "unknown"}
+                        data-threat={vesselStar?.threat ?? "unknown"}
+                        data-colony={vesselStar && vesselStar.colonies > 0 ? "true" : "false"}
+                        data-vessel="true"
+                        data-selected="false"
+                        data-labelled={renderedLabelled(viewport.viewLevel, true, false)}
+                        data-label-width={labelWidth("VESSEL", sectorModel.vessel.status.replaceAll("_", " "))}
+                        className="sz-atlas-landmark"
+                        style={{ left: `${planPercent(sectorModel.vessel.coordinate).x}%`, top: `${planPercent(sectorModel.vessel.coordinate).y}%` }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (sectorModel.vessel.contactId) {
+                            const contact = contacts.find((entry) => entry.target.kind === "contact" && entry.target.contactId === sectorModel.vessel.contactId);
+                            if (contact) selectTarget(contact.target);
+                            return;
+                          }
+                          selectTarget({ kind: "coordinate", coordinate: sectorModel.vessel.coordinate });
+                        }}
+                      >
+                        <span className="sz-atlas-bracket" aria-hidden="true" />
+                        <span className="sz-atlas-marker" aria-hidden="true" />
+                        <span className="sz-atlas-label">
+                          <strong>VESSEL</strong>
+                          <span>{sectorModel.vessel.status.replaceAll("_", " ").toUpperCase()}</span>
+                        </span>
+                      </div>
+                      )}
+                      {sectorModel.blindTarget && (
+                        <div
+                          ref={(element) => {
+                            if (element) landmarkRefs.current.set("blind", element);
+                            else landmarkRefs.current.delete("blind");
+                          }}
+                          data-sector-marker="blind"
+                          data-knowledge="unknown"
+                          data-threat="unknown"
+                          data-colony="false"
+                          data-vessel="false"
+                          data-selected="true"
+                          data-labelled={renderedLabelled(viewport.viewLevel, true, false)}
+                          data-label-width={labelWidth("BLIND COORDINATE", coordinateLabel(sectorModel.blindTarget))}
+                          className="sz-atlas-landmark"
+                          style={{ left: `${planPercent(sectorModel.blindTarget).x}%`, top: `${planPercent(sectorModel.blindTarget).y}%` }}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (sectorModel.blindTarget) selectTarget({ kind: "coordinate", coordinate: sectorModel.blindTarget });
+                          }}
+                        >
+                          <span className="sz-atlas-bracket" aria-hidden="true" />
+                          <span className="sz-atlas-marker" aria-hidden="true" />
+                          <span className="sz-atlas-label">
+                            <strong>BLIND COORDINATE</strong>
+                            <span>{coordinateLabel(sectorModel.blindTarget)}</span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </section>
+
+            <div ref={hudRef} className="sz-atlas-hud">
+              <div className="sz-atlas-hud-tools" hidden={viewport.viewLevel === "system"}>
+                <div aria-label="Atlas pan and zoom controls" className="sz-atlas-controls">
+                  {(["left", "right", "up", "down"] as const).map((direction) => (
+                    <Button
+                      key={direction}
+                      aria-label={`PAN ${direction.toUpperCase()}`}
+                      disabled={viewport.viewLevel !== "sector"}
+                      onClick={(event) => dispatchFromControl(
+                        panActionFromTouchControl(direction),
+                        event.currentTarget,
+                      )}
+                    >
+                      {direction === "left" ? "←" : direction === "right" ? "→" : direction === "up" ? "↑" : "↓"}
+                    </Button>
+                  ))}
+                  <Button
+                    aria-label="ZOOM OUT"
+                    disabled={viewport.viewLevel !== "sector"}
+                    onClick={(event) => dispatchFromControl(zoomAction(viewport.zoom / 1.4), event.currentTarget)}
+                  >
+                    −
+                  </Button>
+                  <Button
+                    aria-label="ZOOM IN"
+                    disabled={viewport.viewLevel !== "sector"}
+                    onClick={(event) => dispatchFromControl(zoomAction(viewport.zoom * 1.4), event.currentTarget)}
+                  >
+                    +
+                  </Button>
+                  <output className="sz-atlas-readout">
+                    CENTER {viewport.center.localX},{viewport.center.localY} · ZOOM {viewport.zoom.toFixed(2)}×
+                  </output>
+                </div>
+                <div className="sz-atlas-legend" aria-label="Map legend">
+                  <span><i className="sz-atlas-key-star" />Star</span>
+                  <span><i className="sz-atlas-key-visited" />Visited</span>
+                  <span><i className="sz-atlas-key-colony" />Colony</span>
+                  <span><i className="sz-atlas-key-signal" />Signal</span>
+                  <span><i className="sz-atlas-key-vessel" />Vessel</span>
+                  <span><i className="sz-atlas-key-route" />Route</span>
+                </div>
+                <p className="sz-atlas-keys" aria-hidden="true">
+                  <span><kbd>Drag</kbd> orbit</span>
+                  <span><kbd>Wheel</kbd> zoom</span>
+                  <span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> pan</span>
+                  <span><kbd>Esc</kbd> close</span>
+                </p>
+                <details className="sz-atlas-plot">
+                  <summary>PLOT COORDINATE</summary>
+                  <form
+                    data-coordinate-layout="wrapping"
+                    className="sz-atlas-form"
+                    onSubmit={submitCoordinate}
+                    style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 110px), 1fr))", gap: 8, alignItems: "end" }}
+                  >
+                    {(["sectorX", "sectorY", "localX", "localY"] as const).map((field) => (
+                      <label key={field}>
+                        <span>{field.replace(/([A-Z])/g, " $1").toUpperCase()}</span>
+                        <input
+                          name={field}
+                          type="number"
+                          step="1"
+                          value={coordinateInput[field]}
+                          onChange={(event) => setCoordinateInput((current) => ({ ...current, [field]: event.target.value }))}
+                        />
+                      </label>
+                    ))}
+                    <Button type="submit">PLOT</Button>
+                  </form>
+                  {formError !== null && <p role="alert" className="sz-atlas-alert">{formError}</p>}
+                </details>
+              </div>
+              <div role="status" aria-live="polite" className="sz-atlas-status">
+                {statusMessage ?? (routeResult?.ok ? `ROUTE READY · ${selectedLabel}` : routeReasons[0] ?? `ATLAS READY · ${selectedLabel}`)}
+              </div>
+            </div>
+          </main>
+
+          <aside id="atlas-side" ref={asideRef} aria-label="Atlas panel" className="sz-atlas-side">
+            <section className="sz-atlas-panel">
+              <h2>CONTACTS <span className="sz-atlas-count">{contacts.length}</span></h2>
+              <div role="listbox" aria-label="Atlas contacts" className="sz-atlas-contacts">
+                {contacts.map((contact) => {
+                  const selected = currentSelectedId === contact.targetId;
+                  return (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      tabIndex={contact.targetId === contactTabStopId ? 0 : -1}
+                      data-atlas-contact={contact.targetId}
+                      data-target-kind={contact.target.kind}
+                      data-selected-target={selected ? currentSelectedId ?? undefined : undefined}
+                      key={contact.targetId}
+                      className="sz-atlas-contact"
+                      onClick={() => {
+                        const target = targetFromDomContact(contact.targetId, contacts);
+                        if (target !== null) selectTarget(target);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+                        event.preventDefault();
+                        const target = targetFromKeyboardContact(
+                          contact.targetId,
+                          event.key === "ArrowDown" ? "next" : "previous",
+                          contacts,
+                        );
+                        if (target !== null && !run.activeTravel) {
+                          selectTarget(target);
+                          const id = selectedTargetIdFor(target);
+                          const option = [...(rootRef.current?.querySelectorAll<HTMLElement>("[data-atlas-contact]") ?? [])]
+                            .find(element => element.dataset.atlasContact === id);
+                          option?.focus();
+                          option?.scrollIntoView({ block: "nearest" });
+                        }
+                      }}
+                    >
+                      <strong>{contact.label}</strong>
+                      <small data-knowledge={contact.knowledgeState}>{contact.knowledgeState.toUpperCase()}</small>
+                      <span className="sz-atlas-sr"> · CONFIDENCE {contact.confidence.toUpperCase()} · {coordinateLabel(contact.coordinate)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section
+              aria-labelledby="atlas-target-heading"
+              data-selected-target={currentSelectedId ?? undefined}
+              className="sz-atlas-panel sz-atlas-detail"
+            >
+              <p className="sz-atlas-kicker">SELECTED TARGET</p>
+              <h2
+                id="atlas-target-heading"
+                ref={detailsHeadingRef}
+                tabIndex={-1}
+              >
+                {selectedLabel}
+              </h2>
+              {selectedContact && (
+                <p className="sz-atlas-meta">
+                  {selectedContact.knowledgeState.toUpperCase()} · CONFIDENCE {selectedContact.confidence.toUpperCase()} · {coordinateLabel(selectedContact.coordinate)}
+                </p>
+              )}
+              {blindTarget && <p className="sz-atlas-blind">BLIND COORDINATE · UNKNOWN CONTRIBUTORS POSSIBLE</p>}
+
+              {travel?.state === "interrupted" && activeInterruptionId !== null ? (
+                <div data-selected-target={currentSelectedId ?? undefined}>
+                  <h3 className="sz-atlas-alert">TRAVEL INTERRUPTED</h3>
+                  <p>A saved military cause blocks this route. Launch it or retreat to the journaled origin.</p>
+                  <div className="sz-atlas-contacts">
+                    <Button disabled={!onLaunchOperation} onClick={() => onLaunchOperation?.(activeInterruptionId)}>
+                      LAUNCH INTERCEPTION
+                    </Button>
+                    <Button disabled={!onRetreat} onClick={onRetreat}>RETREAT TO ORIGIN</Button>
+                  </div>
+                  <Journal transactionId={travel.transactionId} legs={travel.legs} />
+                </div>
+              ) : travel?.state === "diverted" && run.vessel.status === "stranded" ? (
+                <div>
+                  <h3 className="sz-atlas-alert">VESSEL STRANDED</h3>
+                  <Button disabled={!onEmergencyRetreat} onClick={onEmergencyRetreat}>EMERGENCY RETREAT</Button>
+                  <Journal transactionId={travel.transactionId} legs={travel.legs} />
+                </div>
+              ) : travel !== null ? (
+                <div>
+                  <h3>TRAVEL {travel.state.toUpperCase()}</h3>
+                  {travel.state === "arrived" || travel.state === "resolved" ? (
+                    <Button disabled={!onFinalizeTravel} onClick={onFinalizeTravel}>ACKNOWLEDGE ARRIVAL</Button>
+                  ) : (
+                    <Button disabled={!onResumeTravel} onClick={onResumeTravel}>RESUME TRAVEL</Button>
+                  )}
+                  <Journal transactionId={travel.transactionId} legs={travel.legs} />
+                </div>
+              ) : routePlan !== null ? (
+                <div data-selected-target={currentSelectedId ?? undefined}>
+                  <dl className="sz-atlas-facts sz-atlas-facts--grid">
+                    <div><dt>DISTANCE</dt><dd>{routePlan.distanceUnits} UNITS</dd></div>
+                    <div><dt>CYCLES</dt><dd>{routePlan.elapsedCycles}</dd></div>
+                    <div><dt>SUPPLY</dt><dd>{routePlan.supplyCost} · RESERVE {routePlan.projectedReserve}</dd></div>
+                    <div><dt>CONFIDENCE</dt><dd>{routePlan.threat.overall.confidence.toUpperCase()}</dd></div>
+                  </dl>
+                  <p className="sz-atlas-threat" style={{ color: bandColor(routePlan.threat.overall.band) }}>{routePlan.threat.overall.presentation}</p>
+                  <details className="sz-atlas-breakdown">
+                    <summary>THREAT BREAKDOWN</summary>
+                    <dl className="sz-atlas-facts">
+                      {THREAT_DIMENSIONS.map((dimension) => (
+                        <React.Fragment key={dimension}>
+                          <dt>{dimension.toUpperCase()}</dt>
+                          <dd style={{ color: bandColor(routePlan.threat.dimensions[dimension].band) }}>
+                            {routePlan.threat.dimensions[dimension].band.toUpperCase()} · {routePlan.threat.dimensions[dimension].confidence.toUpperCase()}
+                            {routePlan.threat.dimensions[dimension].unknownContributors.length > 0 ? " · UNKNOWN CONTRIBUTORS" : ""}
+                          </dd>
+                        </React.Fragment>
+                      ))}
+                    </dl>
+                  </details>
+                  <Button
+                    data-selected-target={currentSelectedId ?? undefined}
+                    disabled={!onCommitTravel}
+                    onClick={() => onCommitTravel?.(routePlan)}
+                    className="sz-atlas-button-wide"
+                  >
+                    COMMIT TRAVEL
+                  </Button>
+                  <Journal transactionId={null} legs={routePlan.legs} />
+                </div>
+              ) : (
+                <div>
+                  {routeReasons.length > 0 ? (
+                    <div role="alert">
+                      <h3 className="sz-atlas-alert">ROUTE BLOCKED</h3>
+                      <ul>{routeReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+                    </div>
+                  ) : <p>SELECT A KNOWN CONTACT OR PLOT A COORDINATE.</p>}
+                  <Button disabled>COMMIT TRAVEL</Button>
+                </div>
+              )}
+
+              {selectedOperation !== null && travel?.state !== "interrupted" && (
+                <div>
+                  <h3>LOCATED OPERATION</h3>
+                  <p>{selectedOperation.objective.label.toUpperCase()}</p>
+                  <Button
+                    disabled={selectedOperation.availability.status !== "available" || !onLaunchOperation}
+                    onClick={() => onLaunchOperation?.(selectedOperation.id)}
+                  >
+                    LAUNCH OPERATION
+                  </Button>
+                  {selectedOperation.availability.status === "unavailable" && (
+                    <p className="sz-atlas-note">
+                      UNAVAILABLE · {selectedOperation.availability.reasons.join(", ").replaceAll("_", " ").toUpperCase()}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {descendColonyId !== null && (
+                <div className="sz-atlas-region">
+                  <Button
+                    disabled={!descendable}
+                    aria-describedby={descendAccess.status === "unavailable" ? "atlas-descend-note" : undefined}
+                    onClick={() => onDescendToColony?.(descendColonyId)}
+                  >
+                    DESCEND TO COLONY
+                  </Button>
+                  {descendAccess.status === "unavailable" && (
+                    <p id="atlas-descend-note" className="sz-atlas-note">{descendAccess.reason}</p>
+                  )}
+                  <Button
+                    disabled={!manageable}
+                    aria-describedby={manageAccess.status === "unavailable" ? "atlas-manage-note" : undefined}
+                    onClick={() => onManageColony?.(descendColonyId)}
+                  >
+                    MANAGE COLONY
+                  </Button>
+                  {manageAccess.status === "unavailable" && (
+                    <p id="atlas-manage-note" className="sz-atlas-note">{manageAccess.reason}</p>
+                  )}
+                </div>
+              )}
+
+              {targetContactId === REGION_CONTACT_ID && (
+                <div className="sz-atlas-region">
+                  <Button
+                    disabled={!regionOpenable}
+                    aria-describedby={regionPanelNote ? "atlas-region-panel-note" : undefined}
+                    onClick={onOpenAshfallRegion}
+                  >
+                    {regionAccess.status === "view" ? "VIEW ASHFALL REGION" : "OPEN ASHFALL REGION"}
+                  </Button>
+                  {regionPanelNote && <p id="atlas-region-panel-note" className="sz-atlas-note">{regionPanelNote}</p>}
+                </div>
+              )}
+            </section>
+          </aside>
+        </div>
       </div>
     </div>
   );
+}
+
+function planPick(field: HTMLElement, clientX: number, clientY: number): { x: number; z: number } | null {
+  const rect = field.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const nx = (clientX - rect.left) / rect.width;
+  const nz = (clientY - rect.top) / rect.height;
+  if (nx < 0 || nz < 0 || nx > 1 || nz > 1) return null;
+  return {
+    x: (nx - 0.5) * SECTOR_SCENE_SIZE,
+    z: (nz - 0.5) * SECTOR_SCENE_SIZE,
+  };
 }

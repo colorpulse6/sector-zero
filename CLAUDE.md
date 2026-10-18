@@ -35,8 +35,6 @@ cd site && yarn install && yarn dev
 | Mode | Engine Files |
 |---|---|
 | Vertical Shooter | `gameEngine.ts` + `renderer.ts` |
-| Ground Run & Gun | `groundEngine.ts` + `groundRenderer.ts` |
-| Ship Boarding | `boardingEngine.ts` + `boardingRenderer.ts` |
 | First-Person Raycaster | `firstPersonEngine.ts` + `firstPersonRenderer.ts` |
 | Ship Turret | `turretEngine.ts` + `turretRenderer.ts` |
 | Multi-Phase | `phases.ts` + `phaseTransition.ts` |
@@ -53,7 +51,7 @@ Static sprite assets are in `game/public/sprites/`, organized by type: `enemies/
 
 ### Verification
 
-No test framework. Verify changes with `yarn build` (static export must succeed) + manual playtest in the browser.
+Verify with TypeScript, Node unit suites (`colony:test`, `engine:test`, `sprites:test`), `yarn build`, and Playwright browser specs.
 
 ## Site Architecture
 

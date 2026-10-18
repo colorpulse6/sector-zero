@@ -206,18 +206,6 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
         <div className="text-purple-500 border-b border-purple-900 pb-1">GAME MODES</div>
         <div className="grid grid-cols-2 gap-1">
           <button
-            onClick={() => onAction("goto-ground-run")}
-            className="px-1 py-1.5 border border-purple-900 hover:border-purple-500 text-purple-400 hover:text-purple-300 transition-colors text-center"
-          >
-            GROUND RUN
-          </button>
-          <button
-            onClick={() => onAction("goto-boarding")}
-            className="px-1 py-1.5 border border-purple-900 hover:border-purple-500 text-purple-400 hover:text-purple-300 transition-colors text-center"
-          >
-            BOARDING
-          </button>
-          <button
             onClick={() => onAction("goto-first-person")}
             className="px-1 py-1.5 border border-purple-900 hover:border-purple-500 text-purple-400 hover:text-purple-300 transition-colors text-center"
           >
@@ -234,6 +222,20 @@ export default function DevPanel({ gameState, onAction }: DevPanelProps) {
             className="px-1 py-1.5 border border-purple-900 hover:border-purple-500 text-purple-400 hover:text-purple-300 transition-colors text-center"
           >
             ASHFALL CAMP
+          </button>
+        </div>
+      </div>
+
+      {/* System Atlas — 3D star-system map (Babylon.js), opens over the current screen */}
+      <div className="space-y-1">
+        <div className="text-cyan-500 border-b border-cyan-900 pb-1">ATLAS</div>
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            onClick={() => onAction("goto-system-map")}
+            className="px-1 py-1.5 border border-cyan-900 hover:border-cyan-500 text-cyan-400 hover:text-cyan-300 transition-colors text-center"
+            title="Open the 3D system map"
+          >
+            SYSTEM MAP
           </button>
         </div>
       </div>

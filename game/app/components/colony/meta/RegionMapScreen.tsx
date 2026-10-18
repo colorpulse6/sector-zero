@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { SaveData } from "../../engine/types";
 import { useModalFocus } from "../../ui/ModalFocus";
 import { RegionLandmark, RegionMapTerrain } from "./RegionMapArtwork";
-import type { RegionNode } from "../shared/colonyTypes";
+import type { RegionIntelState, RegionNode } from "../shared/colonyTypes";
 import { poiEncounterLabel } from "../region/poiCatalog";
+import { REGION_INTEL_ORDER } from "../region/regionMap";
 import {
   checkRegionAction,
   OUTPOST_FOUNDING_COST,
@@ -13,9 +14,12 @@ import {
 import {
   initialRegionSelection,
   moveRegionSelection,
+  moveRegionSelectionSpatial,
   reconcileRegionSelection,
   type RegionSelectionDirection,
+  type RegionSpatialDirection,
 } from "./regionMapSelection";
+import { BIOME_PALETTES } from "./regionMapTerrain";
 
 export interface RegionMapScreenProps {
   save: SaveData;
@@ -35,6 +39,32 @@ type SelectedAction = {
   label: string;
   onActivate: (() => void) | undefined;
 };
+
+const INTEL_TONES: Record<RegionIntelState, string> = {
+  unknown: "#9ca6a7",
+  rumored: "#dcbf85",
+  surveyed: "#9ad5da",
+  cleared: "#a7dcb1",
+  claimed: "#eee9df",
+};
+
+const LEGEND_GLYPHS: ReadonlyArray<{ type: RegionNode["type"]; label: string }> = [
+  { type: "colony_site", label: "Colony site" },
+  { type: "ruins", label: "Ruins" },
+  { type: "wreck", label: "Wreck" },
+  { type: "cave", label: "Cave" },
+];
+
+const LEGEND_INTEL: ReadonlyArray<RegionIntelState> = ["rumored", "surveyed", "cleared", "claimed"];
+
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function StatBar({ value, tone }: { value: number; tone: string }) {
+  const width = Math.max(0, Math.min(100, value));
+  return <span className="sz-region-bar" aria-hidden="true"><i style={{ width: `${width}%`, background: tone }} /></span>;
+}
 
 function visibleRegionNodes(nodes: readonly RegionNode[], edges: readonly [string, string][]): RegionNode[] {
   return nodes.filter(node => node.intel !== "unknown" || edges.some(([a, b]) => {
@@ -79,7 +109,9 @@ function unavailableCopy(
 ): string {
   if (!actionsEnabled) return source === "cockpit"
     ? "Descend to the landing pad to survey or travel."
-    : "Survey and travel are unavailable from this view.";
+    : source === "atlas"
+      ? "Park the vessel at Ashfall to survey or travel."
+      : "Survey and travel are unavailable from this view.";
   if (node.intel === "unknown") return "Explore connected sites to learn more about this signal.";
   if (node.id === originNodeId) return "Choose a destination to plan your next expedition.";
   const checks = (["survey", "travel", "found"] as const).map(action => checkRegionAction(save, originColonyId, node.id, action));
@@ -154,14 +186,31 @@ export function RegionMapScreen({
     ? selectedAction(save, colony.id, selectedNode, actionsEnabled, { onSurvey, onTravel, onFound })
     : null;
   const visibleIds = new Set(visibleNodeIds);
+  const palette = BIOME_PALETTES[planet.biome];
+  const nodeById = new Map(nodes.map(node => [node.id, node] as const));
+  const visibleEdges = edges.filter(([a, b]) => visibleIds.has(a) && visibleIds.has(b));
+  const directFromOrigin = new Set(visibleEdges.flatMap(([a, b]) => (a === originNodeId ? [b] : b === originNodeId ? [a] : [])));
+  const intelTally = REGION_INTEL_ORDER
+    .map(intel => ({ intel, count: visibleNodes.filter(node => node.intel === intel).length }))
+    .filter(entry => entry.count > 0);
+  const points = visibleNodes.map(node => ({ id: node.id, x: node.coords.x, y: node.coords.y }));
 
-  const moveSelection = (direction: RegionSelectionDirection) => {
-    const next = moveRegionSelection(selectedNodeId, visibleNodeIds, direction);
+  const focusOption = (next: string | null) => {
     if (!next) return;
     setSelectedNodeId(next);
     const option = optionRefs.current.get(next);
     option?.focus();
     option?.scrollIntoView({ block: "nearest" });
+  };
+
+  const moveSelection = (direction: RegionSelectionDirection) => {
+    focusOption(moveRegionSelection(selectedNodeId, visibleNodeIds, direction));
+  };
+
+  // Left/Right jump across the chart to the nearest landmark in that direction;
+  // Up/Down keep the ordered roving selection the approved spec relies on.
+  const moveAcross = (direction: RegionSpatialDirection) => {
+    focusOption(moveRegionSelectionSpatial(selectedNodeId, points, direction));
   };
 
   const focusAction = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -178,6 +227,11 @@ export function RegionMapScreen({
   const selectedIsOrigin = selectedNode?.id === originNodeId;
   const siteStats = selectedNode?.intel !== "unknown" && selectedNode?.intel !== "rumored"
     ? selectedNode?.siteStats : null;
+  const selectedTone = selectedNode ? INTEL_TONES[selectedNode.intel] : INTEL_TONES.surveyed;
+  const selectedIntelIndex = selectedNode ? REGION_INTEL_ORDER.indexOf(selectedNode.intel) : -1;
+  const colonyAtSelected = selectedNode && selectedNode.intel === "claimed"
+    ? save.colonies.find(entry => entry.regionNodeId === selectedNode.id) ?? null : null;
+  const planetName = planet.id.toUpperCase();
 
   return (
     <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Region map" className="sz-region">
@@ -185,35 +239,65 @@ export function RegionMapScreen({
         <header className="sz-region-header">
           <div>
             <p className="sz-region-eyebrow">SURFACE EXPEDITIONS</p>
-            <h1>ASHFALL REGION</h1>
+            <h1>{planetName} REGION</h1>
             <p className="sz-region-provenance">
               {source === "atlas" ? "ATLAS LINK" : source === "landing-pad" ? "PAD LINK" : "COCKPIT VIEW"}
               <span aria-hidden="true"> / </span>{colony.name}
               {!actionsEnabled && <span className="sz-region-view-only">View only</span>}
             </p>
           </div>
-          <button className="sz-region-back" onClick={onClose}>← {source === "atlas" ? "RETURN TO ATLAS" : source === "landing-pad" ? "RETURN TO LANDING PAD" : "RETURN TO COLONIES"}</button>
+          <div className="sz-region-header-side">
+            <button className="sz-region-back" onClick={onClose}>← {source === "atlas" ? "RETURN TO ATLAS" : source === "landing-pad" ? "RETURN TO LANDING PAD" : "RETURN TO COLONIES"}</button>
+            <div className="sz-region-chips" aria-label="Region status">
+              <span className="sz-region-chip">ORIGIN <b>{colony.name.toUpperCase()}</b></span>
+              <span className="sz-region-chip">CYCLE <b>{save.missionsSinceStart}</b></span>
+              <span className="sz-region-chip">{intelTally.map(entry => `${entry.count} ${entry.intel.toUpperCase()}`).join(" · ")}</span>
+            </div>
+          </div>
         </header>
 
         <div className="sz-region-layout">
           <div className="sz-region-chart">
             <div className="sz-region-map-caption" aria-hidden="true">
-              <span>LOCAL TERRITORY</span><span>ASHFALL / SURFACE</span>
+              <span>LOCAL TERRITORY · {palette.label.toUpperCase()}</span><span>{planetName} / SURFACE · {visibleNodes.length} CONTACTS · SEED {planet.regionMap.seed}</span>
             </div>
-            <div className="sz-region-field" data-region-map-field="true">
-              <RegionMapTerrain />
+            <div
+              className="sz-region-field"
+              data-region-map-field="true"
+              style={{
+                ["--region-base" as string]: palette.base,
+                ["--region-mid" as string]: palette.mid,
+                ["--region-deep" as string]: palette.deep,
+                ["--region-haze" as string]: palette.haze,
+                ["--region-contour" as string]: palette.contour,
+              } as React.CSSProperties}
+            >
+              <RegionMapTerrain seed={planet.regionMap.seed} biome={planet.biome} />
+              <span className="sz-region-corner" data-corner="tl" aria-hidden="true" /><span className="sz-region-corner" data-corner="tr" aria-hidden="true" />
+              <span className="sz-region-corner" data-corner="bl" aria-hidden="true" /><span className="sz-region-corner" data-corner="br" aria-hidden="true" />
               <div className="sz-region-compass" aria-hidden="true"><span>N</span>↑</div>
+              <div className="sz-region-scale" aria-hidden="true"><i /><span>1 CYCLE PER ROUTE</span></div>
+              {selectedNode && <div className="sz-region-spot" aria-hidden="true" style={{ left: `${selectedNode.coords.x}%`, top: `${selectedNode.coords.y}%` }} />}
               <svg className="sz-region-routes" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none">
-                {edges.filter(([a, b]) => visibleIds.has(a) && visibleIds.has(b)).map(([a, b]) => {
-                  const from = nodes.find(node => node.id === a)!;
-                  const to = nodes.find(node => node.id === b)!;
+                {visibleEdges.map(([a, b]) => {
+                  const from = nodeById.get(a)!;
+                  const to = nodeById.get(b)!;
                   const unknown = from.intel === "unknown" || to.intel === "unknown";
                   const selected = !unknown && ((a === originNodeId && b === selectedNode?.id)
                     || (b === originNodeId && a === selectedNode?.id));
+                  const origin = !unknown && !selected && (a === originNodeId || b === originNodeId);
                   return <line key={`${a}:${b}`} x1={from.coords.x} y1={from.coords.y} x2={to.coords.x} y2={to.coords.y}
-                    data-route-state={selected ? "selected" : unknown ? "unknown" : "known"} vectorEffect="non-scaling-stroke" />;
+                    data-route-state={selected ? "selected" : unknown ? "unknown" : origin ? "origin" : "known"} vectorEffect="non-scaling-stroke" />;
                 })}
               </svg>
+              {visibleEdges
+                .filter(([a, b]) => (a === originNodeId || b === originNodeId) && nodeById.get(a)!.intel !== "unknown" && nodeById.get(b)!.intel !== "unknown")
+                .map(([a, b]) => {
+                  const from = nodeById.get(a)!;
+                  const to = nodeById.get(b)!;
+                  return <span key={`cost:${a}:${b}`} className="sz-region-route-cost" aria-hidden="true"
+                    style={{ left: `${(from.coords.x + to.coords.x) / 2}%`, top: `${(from.coords.y + to.coords.y) / 2}%` }}>1 CYCLE</span>;
+                })}
 
               <div role="listbox" aria-label="Region destinations" data-region-node-list="true" className="sz-region-landmarks">
                 {visibleNodes.map(node => {
@@ -234,9 +318,13 @@ export function RegionMapScreen({
                         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                           event.preventDefault();
                           moveSelection(event.key === "ArrowDown" ? "next" : "previous");
+                        } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                          event.preventDefault();
+                          moveAcross(event.key === "ArrowLeft" ? "left" : "right");
                         } else focusAction(event);
                       }}
                     >
+                      <span className="sz-region-landmark-bracket" aria-hidden="true" />
                       <span className="sz-region-marker"><RegionLandmark node={node} /></span>
                       <span className="sz-region-landmark-label">
                         <strong>{nodeLabel(node)}</strong>
@@ -252,23 +340,48 @@ export function RegionMapScreen({
                 <span><i className="sz-region-key-origin" />Origin camp</span>
                 <span><i className="sz-region-key-route" />Known route</span>
                 <span><i className="sz-region-key-unknown" />Unknown signal</span>
+                <span className="sz-region-legend-sep" aria-hidden="true" />
+                {LEGEND_GLYPHS.map(entry => (
+                  <span key={entry.type}><i className="sz-region-legend-glyph"><RegionLandmark node={{ intel: "surveyed", type: entry.type }} decorative /></i>{entry.label}</span>
+                ))}
+                <span className="sz-region-legend-sep" aria-hidden="true" />
+                {LEGEND_INTEL.map(intel => (
+                  <span key={intel} style={{ color: INTEL_TONES[intel] }}><i className="sz-region-key-intel" />{titleCase(intel)}</span>
+                ))}
               </div>
-              <p>Select a landmark to plan an expedition.</p>
+              <p className="sz-region-keys" aria-hidden="true">
+                <span><kbd>↑</kbd> <kbd>↓</kbd> next destination</span>
+                <span><kbd>←</kbd> <kbd>→</kbd> jump across the chart</span>
+                <span><kbd>Enter</kbd> / <kbd>Z</kbd> go to action</span>
+                <span><kbd>Esc</kbd> back</span>
+              </p>
             </div>
           </div>
 
-          <section data-region-detail-panel="true" aria-live="polite" aria-atomic="true" className="sz-region-detail">
+          <section data-region-detail-panel="true" aria-live="polite" aria-atomic="true" className="sz-region-detail"
+            style={{ ["--region-intel" as string]: selectedTone } as React.CSSProperties}>
             {selectedNode ? (
               <>
                 <div className="sz-region-detail-heading">
                   <p className="sz-region-eyebrow">{selectedIsOrigin ? "EXPEDITION ORIGIN" : "SELECTED DESTINATION"}</p>
                   <h2>{nodeLabel(selectedNode)}</h2>
                   <p className="sz-region-context">{destinationContext(selectedNode, originNodeId)}</p>
+                  <div className="sz-region-ladder" aria-hidden="true">
+                    {REGION_INTEL_ORDER.map((intel, index) => (
+                      <i key={intel} data-on={selectedNode.intel !== "unknown" && index <= selectedIntelIndex ? "true" : undefined} />
+                    ))}
+                  </div>
                 </div>
                 <dl className="sz-region-facts">
-                  <div><dt>INTEL</dt><dd>{selectedNode.intel.toUpperCase()}</dd></div>
+                  <div><dt>INTEL</dt><dd data-intel-value="true">{selectedNode.intel.toUpperCase()}</dd></div>
                   {!selectedIsOrigin && <div><dt>ENCOUNTER</dt><dd>{selectedNode.intel === "unknown" ? "UNKNOWN" : (poiEncounterLabel(selectedNode) ?? (selectedNode.type === "colony_site" ? "COLONY SITE" : "UNAVAILABLE"))}</dd></div>}
+                  {!selectedIsOrigin && selectedNode.intel !== "unknown" && (
+                    <div><dt>ROUTE</dt><dd>{directFromOrigin.has(selectedNode.id) ? `DIRECT FROM ${colony.name.toUpperCase()}` : "NO DIRECT ROUTE FROM ORIGIN"}</dd></div>
+                  )}
                   {action && action.kind !== "found" && <div><dt>{action.kind === "survey" ? "SURVEY COST" : "TRAVEL COST"}</dt><dd>1 CYCLE</dd></div>}
+                  {colonyAtSelected && (
+                    <div><dt>COLONY</dt><dd>TIER {colonyAtSelected.tier} · {colonyAtSelected.foundingType.toUpperCase()}</dd></div>
+                  )}
                 </dl>
 
                 <div className="sz-region-action-area">
@@ -287,10 +400,10 @@ export function RegionMapScreen({
                 <details className="sz-region-intel" key={selectedNode.id}>
                   <summary tabIndex={0}>SITE INTEL</summary>
                   {siteStats && <dl className="sz-region-site-stats">
-                    <div><dt>ORE DENSITY</dt><dd>{siteStats.oreDensity}</dd></div>
-                    <div><dt>WATER TABLE</dt><dd>{siteStats.waterTable}</dd></div>
-                    <div><dt>BUILDABLE SLOTS</dt><dd>{siteStats.buildableSlots}</dd></div>
-                    <div><dt>THREAT</dt><dd>{siteStats.threat}</dd></div>
+                    <div><dt>ORE DENSITY</dt><dd><span>{siteStats.oreDensity}</span><StatBar value={siteStats.oreDensity} tone="#dcbf85" /></dd></div>
+                    <div><dt>WATER TABLE</dt><dd><span>{siteStats.waterTable}</span><StatBar value={siteStats.waterTable} tone="#7fc3e0" /></dd></div>
+                    <div><dt>BUILDABLE SLOTS</dt><dd><span>{siteStats.buildableSlots}</span><span className="sz-region-slots" aria-hidden="true">{Array.from({ length: siteStats.buildableSlots }, (_, index) => <i key={index} />)}</span></dd></div>
+                    <div><dt>THREAT</dt><dd><span>{siteStats.threat}</span><StatBar value={siteStats.threat} tone="#e08a8a" /></dd></div>
                   </dl>}
                   <h3>CONNECTED SITES</h3>
                   <ul>{connections.map(node => <li key={node.id}>{nodeLabel(node)}</li>)}</ul>
