@@ -51,12 +51,12 @@ Nic decided (2026-10-18) to remove both. Everything else stays.
   campaign position, outcome envelope, galaxy run checkpoints) must load into a safe state:
   remap to `firstPerson` where a session can continue, otherwise cancel it without losing
   resources. Add migration tests with old-shape fixtures.
-- [ ] **R6 Assets.** Remove sprite registrations used only by the removed modes, and their
+- [x] **R6 Assets.** Remove sprite registrations used only by the removed modes, and their
   files under `game/public/sprites/`, only after a repo-wide search shows no other use.
   Do not touch `site/`.
 - [ ] **R7 Tests.** Delete tests that only cover removed modes. Update tests that used them
   as fixtures to use first-person or shooter. Browser specs: update or remove with a reason.
-- [ ] **R8 Docs.** Update the mode tables in `CLAUDE.md` and `game/CLAUDE.md`. Add one line to
+- [x] **R8 Docs.** Update the mode tables in `CLAUDE.md` and `game/CLAUDE.md`. Add one line to
   `docs/ROADMAP.md` "Decisions of record" (2026-10-18: ground run-and-gun and boarding
   removed; structure is hub → atlas → travel battles → colony).
 - [ ] **R9 Verify.** All must pass, from `game/`:
@@ -282,7 +282,7 @@ Additional relative-path asset registry references found during sprite validatio
 ## Progress checkpoints
 
 - R2–R5: removed playable mode dispatch, kept shared first-person map helpers, collapsed four affected levels to their existing shooter phase with rewards, remapped wreck/canyon POIs, and added old-save migration fixtures. TypeScript and static build passed; all engine/colony tests passed (sprite registry fixes verified separately).
-- R6–R8: asset registry and browser/doc updates written; final browser run and report pending.
+- R6/R8: 23 unused sprites removed, both sprite registries updated, all 11 sprite checks passed; current developer guides, README and roadmap updated. Browser updates and final report pending.
 - External router review was rejected by automatic approval: recorded source-disclosure scope covers Cerebro/KB harness, not Sector Zero. Local review continues; no external reviewer result claimed.
 
 ## Report

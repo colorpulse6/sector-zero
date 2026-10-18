@@ -233,29 +233,7 @@ export const SPRITES = {
   DEFEND_STRUCTURE: "/sprites/effects/defend-structure.png",
   COLLECTIBLE_ORB: "/sprites/effects/collectible-orb.png",
 
-  // Ground Run-and-Gun — Player (individual frames)
-  GROUND_PLAYER_IDLE: "/sprites/ground/player-idle.png",
-  GROUND_PLAYER_RUN_1: "/sprites/ground/player-run-1.png",
-  GROUND_PLAYER_RUN_2: "/sprites/ground/player-run-2.png",
-  GROUND_PLAYER_RUN_3: "/sprites/ground/player-run-3.png",
-  GROUND_PLAYER_RUN_4: "/sprites/ground/player-run-4.png",
-  GROUND_PLAYER_JUMP: "/sprites/ground/player-jump.png",
-  GROUND_PLAYER_SHOOT: "/sprites/ground/player-shoot.png",
-  GROUND_PLAYER_HURT: "/sprites/ground/player-hurt.png",
-  GROUND_ENEMY_TURRET: "/sprites/ground/enemy-turret.png",
-  GROUND_ENEMY_PATROL: "/sprites/ground/enemy-patrol.png",
-  GROUND_ENEMY_JUMPER: "/sprites/ground/enemy-jumper.png",
-  GROUND_ENEMY_FLYER: "/sprites/ground/enemy-flyer.png",
-  GROUND_TILES: "/sprites/ground/tiles.png",
-  GROUND_BG_FAR: "/sprites/ground/bg-surface-far.png",
-
-  // Ship Boarding
-  BOARDING_PLAYER_UP: "/sprites/boarding/player-up.png",
-  BOARDING_PLAYER_DOWN: "/sprites/boarding/player-down.png",
-  BOARDING_PLAYER_LEFT: "/sprites/boarding/player-left.png",
-  BOARDING_PLAYER_RIGHT: "/sprites/boarding/player-right.png",
-  BOARDING_ENEMY_GRUNT_IDLE: "/sprites/boarding/enemy-grunt-idle.png",
-  BOARDING_ENEMY_GRUNT_ATTACK: "/sprites/boarding/enemy-grunt-attack.png",
+  // Shared first-person interior assets (legacy paths)
   BOARDING_TILES: "/sprites/boarding/tiles.png",
   FP_GUN_SHEET: "/sprites/boarding/gun-sheet.png",
   EXPLORE_OUTPOST_SKY: "/sprites/explore/scrapyard-outpost-sky.png",
@@ -292,7 +270,6 @@ export const SPRITES = {
   FP_ENEMY_FRONT: "/sprites/boarding/enemy-fp-front.png",
   FP_ENEMY_FLINCH: "/sprites/boarding/enemy-fp-flinch.png",
   FP_ENEMY_DEATH: "/sprites/boarding/enemy-fp-death.png",
-  GROUND_BG_MID: "/sprites/ground/bg-surface-mid.png",
 
   // Colony Phase 2 — building wall textures
   COLONY_WALL_SOLAR: "/sprites/walls/solar.png",
