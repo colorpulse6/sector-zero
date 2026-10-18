@@ -29,8 +29,6 @@ type KeyOwner = Owner & { key: string };
 const control = (label: string, text: string, ...intents: InputIntent[]): Control => ({ label, text, intents });
 const FIRE = control("Fire", "FIRE", "primary");
 const BOMB = control("Bomb", "BOMB", "secondary");
-const JUMP = control("Jump", "JUMP", "jump");
-const DASH = control("Dash", "DASH", "dash");
 const LOOK_LEFT = control("Look left", "LOOK ◀", "turn-left");
 const LOOK_RIGHT = control("Look right", "LOOK ▶", "turn-right");
 const FIRST_PERSON_ACTION = control("Fire / interact", "FIRE / INTERACT", "primary");
@@ -52,11 +50,6 @@ const MOVEMENT_PAD: (Control | null)[] = [
   control("Move down", "↓", "move-down"),
   control("Move down right", "↘", "move-down", "move-right"),
 ];
-const GROUND_PAD: (Control | null)[] = [
-  null, control("Aim up", "AIM ↑", "move-up"), null,
-  control("Move left", "←", "move-left"), null, control("Move right", "→", "move-right"),
-  null, control("Aim down", "AIM ↓", "move-down"), null,
-];
 const FIRST_PERSON_PAD: (Control | null)[] = [
   null, control("Move forward", "↑", "move-up"), null,
   control("Strafe left", "←", "strafe-left"), null, control("Strafe right", "→", "strafe-right"),
@@ -65,7 +58,7 @@ const FIRST_PERSON_PAD: (Control | null)[] = [
 
 const PROFILE_NAMES: Record<GameMode, string> = {
   shooter: "Shooter", "base-defense": "Shooter", "mech-duel": "Shooter",
-  "ground-run": "Ground", boarding: "Boarding", "first-person": "First-person",
+  "first-person": "First-person",
   "colony-exploration": "Colony", turret: "Turret",
 };
 
@@ -92,7 +85,7 @@ export default function TouchControls({ mode, onPress, onRelease, onAim }: Touch
   const suppressClicksUntil = useRef(new Map<string, number>());
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const firstPerson = mode === "first-person" || mode === "colony-exploration";
-  const cells = mode === "ground-run" ? GROUND_PAD : firstPerson ? FIRST_PERSON_PAD : MOVEMENT_PAD;
+  const cells = firstPerson ? FIRST_PERSON_PAD : MOVEMENT_PAD;
 
   const updatePressed = useCallback(() => {
     const labels = new Set<string>();
@@ -340,7 +333,7 @@ export default function TouchControls({ mode, onPress, onRelease, onAim }: Touch
         </div>
       ) : (
         <div style={{ position: "absolute", left: "max(12px, env(safe-area-inset-left))", bottom: "max(12px, env(safe-area-inset-bottom))" }}>
-          <div style={LABEL_STYLE}>{firstPerson ? "MOVE / STRAFE" : mode === "ground-run" ? "MOVE / AIM" : "MOVE"}</div>
+          <div style={LABEL_STYLE}>{firstPerson ? "MOVE / STRAFE" : "MOVE"}</div>
           <div
             data-movement-pad
             style={{ display: "grid", gridTemplateColumns: "repeat(3, 44px)", gridTemplateRows: "repeat(3, 44px)", gap: 4, pointerEvents: "auto", touchAction: "none" }}
@@ -375,7 +368,7 @@ export default function TouchControls({ mode, onPress, onRelease, onAim }: Touch
           </div>
         )}
         {renderButton(firstPerson ? mode === "colony-exploration" ? COLONY_ACTION : FIRST_PERSON_ACTION : FIRE, { minHeight: 52 })}
-        {!firstPerson && mode !== "turret" && renderButton(mode === "ground-run" ? JUMP : mode === "boarding" ? DASH : BOMB)}
+        {!firstPerson && mode !== "turret" && renderButton(BOMB)}
       </div>
     </div>
   );

@@ -51,7 +51,7 @@ export {
 export { checkRegionAction, surveyRegionNode } from "./region/siteEconomy";
 export { dispatchPoi, startRegionExpedition } from "./region/poiDispatcher";
 export { createPoiOutcome, confirmPoiOutcome, POI_CARGO } from "./region/poiOutcomes";
-export { createFirstPersonRuinTemplate, createBoardingWreckTemplate, createGroundRunCanyonTemplate } from "./region/poiTemplates";
+export { createFirstPersonRuinTemplate, createFirstPersonWreckTemplate, createFirstPersonCanyonTemplate } from "./region/poiTemplates";
 export type {
   RegionAction,
   RegionActionBlockReason,

@@ -111,7 +111,7 @@ function snapshotPoiIdentity(value: unknown): PoiIdentity | null {
     typeof identity.originColonyId !== "string" || identity.originColonyId.length === 0 ||
     typeof identity.nodeId !== "string" || identity.nodeId.length === 0 ||
     typeof identity.templateId !== "string" || identity.templateId.length === 0 ||
-    (identity.engine !== "firstPerson" && identity.engine !== "boarding" && identity.engine !== "groundRun") ||
+    (identity.engine !== "firstPerson") ||
     typeof identity.rewardEligible !== "boolean") return null;
   try { structuredClone(value); }
   catch { return null; }
@@ -218,7 +218,7 @@ function decodePreparedFact(fact: HistoricalFact): RecoveredGalaxyPoiPreparation
     typeof decoded[4] !== "string" || decoded[4].length === 0 ||
     typeof decoded[5] !== "string" || decoded[5].length === 0 ||
     typeof decoded[6] !== "string" || decoded[6].length === 0 ||
-    (decoded[7] !== "firstPerson" && decoded[7] !== "boarding" && decoded[7] !== "groundRun") ||
+    (decoded[7] !== "firstPerson") ||
     typeof decoded[8] !== "boolean" || snapshot.subjectId !== decoded[5]) return null;
   const identity: PoiIdentity = {
     kind: "poi",

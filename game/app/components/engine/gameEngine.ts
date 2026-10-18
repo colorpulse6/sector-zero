@@ -59,10 +59,7 @@ import { clamp } from "./physics";
 
 const spatialHash = new SpatialHash();
 import { createBossForWorld, updateBossForWorld, isBossDefeated } from "./bosses";
-import { updateGroundEngine } from "./groundEngine";
-import { createTestGroundState, getSpawnPosition as getGroundSpawn } from "./groundLevel";
-import { updateBoardingEngine } from "./boardingEngine";
-import { createBoardingState, getBoardingSpawn } from "./boardingLevel";
+import { createBoardingState } from "./boardingLevel";
 import { updateFirstPerson } from "./firstPersonEngine";
 import { updateTurretEngine, createTurretState } from "./turretEngine";
 import { createDialogState, updateDialog, checkDialogTriggers, getDialogTriggers } from "./dialog";
@@ -513,7 +510,7 @@ export function createSpecialMissionGameState(
  *
  *  EVERY mode's engine sets `levelCompleteTimer = 360` when its phase goal is
  *  met and then freezes itself while the timer is > 0 (`if (timer > 0) return`
- *  guards in ground/boarding/first-person/turret) — so every mode dispatch in
+ *  guards in first-person/turret) — so every mode dispatch in
  *  updateGame must tick this, or that mode soft-locks forever on its COMPLETE
  *  banner. Alt-mode phases are always the terminal phase in makeMultiPhase
  *  levels, which is exactly the case that used to freeze: only the shooter and
@@ -560,20 +557,7 @@ function tickLevelComplete(s: GameState): void {
       s.boss = null;
     }
     // Initialize mode-specific state
-    if (nextPhaseData?.config.mode === "ground-run") {
-      const groundState = createTestGroundState();
-      const spawn = getGroundSpawn(groundState.tileMap);
-      s.groundState = groundState;
-      s.boardingState = undefined;
-      s.player = { ...s.player, x: spawn.x, y: spawn.y };
-    } else if (nextPhaseData?.config.mode === "boarding") {
-      const boardingState = createBoardingState();
-      const spawn = getBoardingSpawn(boardingState.map);
-      s.boardingState = boardingState;
-      s.groundState = undefined;
-      s.firstPersonState = undefined;
-      s.player = { ...s.player, x: spawn.x, y: spawn.y };
-    } else if (nextPhaseData?.config.mode === "first-person") {
+    if (nextPhaseData?.config.mode === "first-person") {
       const boardingState = createBoardingState();
       s.firstPersonState = {
         map: boardingState.map,
@@ -600,16 +584,10 @@ function tickLevelComplete(s: GameState): void {
         npcs: [],
         dialogState: null,
       };
-      s.groundState = undefined;
-      s.boardingState = undefined;
     } else if (nextPhaseData?.config.mode === "turret") {
       s.turretState = createTurretState();
-      s.groundState = undefined;
-      s.boardingState = undefined;
       s.firstPersonState = undefined;
     } else {
-      s.groundState = undefined;
-      s.boardingState = undefined;
       s.firstPersonState = undefined;
       s.turretState = undefined;
     }
@@ -667,31 +645,6 @@ export function updateGame(
   }
 
   if (state.screen !== GameScreen.PLAYING) return state;
-
-  // ── Ground-run mode dispatch ──
-  if (state.currentMode === "ground-run") {
-    const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
-    updateGroundEngine(s, keys, dtMs);
-    s.particles = updateParticles(s.particles);
-    s.explosions = updateSpriteExplosions(s.explosions);
-    s.floatingLabels = updateFloatingLabels(s.floatingLabels);
-    s.background = updateBackground(s.background);
-    if (s.screenShake > 0) s.screenShake *= 0.9;
-    tickLevelComplete(s);
-    return s;
-  }
-
-  // ── Ship boarding mode dispatch ──
-  if (state.currentMode === "boarding") {
-    const s = { ...state, audioEvents: [] as AudioEvent[], frameCount: state.frameCount + 1 };
-    updateBoardingEngine(s, keys, dtMs);
-    s.particles = updateParticles(s.particles);
-    s.explosions = updateSpriteExplosions(s.explosions);
-    s.floatingLabels = updateFloatingLabels(s.floatingLabels);
-    if (s.screenShake > 0) s.screenShake *= 0.9;
-    tickLevelComplete(s);
-    return s;
-  }
 
   // ── First-person raycaster mode dispatch ──
   if (state.currentMode === "first-person") {

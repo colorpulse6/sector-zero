@@ -50,7 +50,7 @@ function makeRuntime(scene: SceneId): Runtime {
   } else if (scene === "kepler") fp = createKeplerBlackBoxFirstPersonState(false);
   else if (scene === "cinder") fp = createFirstPersonRuinTemplate(42);
   else if (scene === "station") {
-    // Use the actual campaign phase transition, including its boarding-to-FP
+    // Use the actual campaign phase transition, including its shared interior-to-FP
     // conversion and environment art, instead of maintaining a parallel map.
     state = createGameState(5, 3); state.screen = GameScreen.PLAYING; state.levelCompleteTimer = 1;
     state = updateGame(state, NO_KEYS, null, null);

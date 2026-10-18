@@ -35,18 +35,18 @@ Nic decided (2026-10-18) to remove both. Everything else stays.
   `boardingRenderer`, `EngineKind` `"groundRun"` / `"boarding"`, ground/boarding sprites,
   DevPanel shortcuts, touch-control mappings, input intents, levels/phases, tests and docs.
   Record the list in this file under "Inventory" before deleting anything.
-- [ ] **R2 Engines and types.** Delete the four engine/renderer files. Remove the two
+- [x] **R2 Engines and types.** Delete the four engine/renderer files. Remove the two
   `GameMode` members, the two `GameState` fields, and every dispatch branch (game loop,
   renderer, dashboard, input intents, touch controls, Game.tsx, GraphicsPreview, DevPanel).
-- [ ] **R3 Levels and phases.** Campaign levels or phases that use either mode: drop those
+- [x] **R3 Levels and phases.** Campaign levels or phases that use either mode: drop those
   phases and keep the rest of the level. If a level would become empty, convert it to a
   single shooter phase (keep its id, name and rewards). List every changed level here.
-- [ ] **R4 Region sites.** `EngineKind` loses `"groundRun"` and `"boarding"`. The region
+- [x] **R4 Region sites.** `EngineKind` loses `"groundRun"` and `"boarding"`. The region
   POI templates that used them (2 + 2 today) move to `firstPerson` using the existing
   first-person templates in `colony/region/poiTemplates.ts`. Keep POI ids, names, rewards
   and outcome ids stable. Check `galaxyPoiOutcomeAuthority.ts`, `poiRuntime.ts` and the
   operation adapters.
-- [ ] **R5 Save safety.** `save.ts` migrates field by field. Any persisted value that can
+- [x] **R5 Save safety.** `save.ts` migrates field by field. Any persisted value that can
   name a removed mode or engine (pending POI session, active operation phase, scene stack,
   campaign position, outcome envelope, galaxy run checkpoints) must load into a safe state:
   remap to `firstPerson` where a session can continue, otherwise cancel it without losing
@@ -214,6 +214,8 @@ Captured before any deletion on `codex/remove-ground-boarding` at `2ef7779`. Ref
 - `game/tests/engine/weaponMotion.test.ts`: 7, 115
 - `game/tests/site/cinematicSite.spec.ts`: 7, 8
 
+Additional relative-path asset registry references found during sprite validation: `game/scripts/sprites/sheets.ts` and generated `game/scripts/sprites/_manifest.json`. Their removed-mode entries are deleted along with the assets.
+
 ### Sprite files (usage audit required before deletion)
 
 - `game/public/sprites/ground/tiles.png`
@@ -273,7 +275,15 @@ Captured before any deletion on `codex/remove-ground-boarding` at `2ef7779`. Ref
 
 ## Blockers
 
+- Pre-existing kept-content issue: the Kepler/Cinder map objective is disconnected from the spawn in a walkability flood-fill. Kepler and Cinder remain unchanged per scope. New wreck/canyon first-person variants use reachable tile (12,13); tests verify their objective reachability.
+
 - Shared-helper boundary: first-person missions and colony exploration depend on boarding-named map types, `boardingLevel.ts`, and shared sprites. Retain these dependencies; removing the playable boarding mode does not require deleting them.
+
+## Progress checkpoints
+
+- R2–R5: removed playable mode dispatch, kept shared first-person map helpers, collapsed four affected levels to their existing shooter phase with rewards, remapped wreck/canyon POIs, and added old-save migration fixtures. TypeScript and static build passed; all engine/colony tests passed (sprite registry fixes verified separately).
+- R6–R8: asset registry and browser/doc updates written; final browser run and report pending.
+- External router review was rejected by automatic approval: recorded source-disclosure scope covers Cerebro/KB harness, not Sector Zero. Local review continues; no external reviewer result claimed.
 
 ## Report
 

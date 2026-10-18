@@ -1,15 +1,13 @@
 import type { SaveData } from "../../engine/types";
-import type { BoardingState, FirstPersonState, GroundState } from "../../engine/types";
+import type { FirstPersonState } from "../../engine/types";
 import type { ColonyId, RegionNodeId } from "../shared/colonyTypes";
 import { checkRegionAction, surveyRegionNode, type RegionActionBlockReason } from "./siteEconomy";
 import { advanceWorldCycle } from "../shared/cycleProcessor";
-import { createBoardingWreckTemplate, createFirstPersonRuinTemplate, createGroundRunCanyonTemplate } from "./poiTemplates";
+import { createFirstPersonWreckTemplate, createFirstPersonRuinTemplate, createFirstPersonCanyonTemplate } from "./poiTemplates";
 import { isSupportedPoiNode } from "./poiCatalog";
 
 export type PoiSession =
-  | { nodeId: RegionNodeId; engine: "firstPerson"; state: FirstPersonState; rewardEligible: boolean }
-  | { nodeId: RegionNodeId; engine: "boarding"; state: BoardingState; rewardEligible: boolean }
-  | { nodeId: RegionNodeId; engine: "groundRun"; state: GroundState; rewardEligible: boolean };
+  | { nodeId: RegionNodeId; engine: "firstPerson"; state: FirstPersonState; rewardEligible: boolean };
 
 export type PoiDispatchResult =
   | { ok: true; session: PoiSession }
@@ -24,8 +22,8 @@ export function dispatchPoi(save: SaveData, originColonyId: ColonyId, targetNode
   if (!isSupportedPoiNode(node)) return { ok: false, reason: "unsupported_poi_type" };
   const rewardEligible = node.intel === "surveyed";
   if (node.templateId === "fp-ruin-cinder-relay") return { ok: true, session: { nodeId: node.id, engine: "firstPerson", state: createFirstPersonRuinTemplate(node.seed), rewardEligible } };
-  if (node.templateId === "boarding-wreck-oathbreaker") return { ok: true, session: { nodeId: node.id, engine: "boarding", state: createBoardingWreckTemplate(node.seed), rewardEligible } };
-  return { ok: true, session: { nodeId: node.id, engine: "groundRun", state: createGroundRunCanyonTemplate(node.seed), rewardEligible } };
+  if (node.templateId === "boarding-wreck-oathbreaker") return { ok: true, session: { nodeId: node.id, engine: "firstPerson", state: createFirstPersonWreckTemplate(node.seed), rewardEligible } };
+  return { ok: true, session: { nodeId: node.id, engine: "firstPerson", state: createFirstPersonCanyonTemplate(node.seed), rewardEligible } };
 }
 
 export type RegionExpeditionRequest = { kind: "survey" | "poi"; originColonyId: ColonyId; targetNodeId: RegionNodeId };

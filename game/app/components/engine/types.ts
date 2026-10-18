@@ -446,7 +446,7 @@ export interface Keys {
   strafeRight: boolean;
   shoot: boolean;
   bomb: boolean;
-  jump: boolean;  // Ground-run: Space=jump, Z/Shift=shoot
+  jump: boolean;  // Reserved legacy key field; no active binding
 }
 
 // ─── Audio Events ────────────────────────────────────────────────────
@@ -551,10 +551,6 @@ export interface GameState {
   phaseTransitionTimer: number;
   phaseTransitionCard: string;
   phaseTransitionSubtext: string;
-  /** Ground run-and-gun mode state (only populated when currentMode === "ground-run") */
-  groundState?: GroundState;
-  /** Ship boarding mode state (only populated when currentMode === "boarding") */
-  boardingState?: BoardingState;
   /** First-person raycaster state (only populated when currentMode === "first-person") */
   firstPersonState?: FirstPersonState;
   /** Ship turret mode state (only populated when currentMode === "turret") */
@@ -714,7 +710,7 @@ export type SpecialMissionId = "kepler-black-box";
 export type StoryItemId = "kepler-black-box";
 
 // ─── Multi-Phase Levels ─────────────────────────────────────────────
-export type GameMode = "shooter" | "ground-run" | "boarding" | "first-person" | "turret" | "base-defense" | "mech-duel" | "colony-exploration";
+export type GameMode = "shooter" | "first-person" | "turret" | "base-defense" | "mech-duel" | "colony-exploration";
 
 export interface PhaseConfig {
   mode: GameMode;
@@ -759,45 +755,6 @@ export interface CheckpointState {
   deaths: number;
   maxCombo: number;
   activePowerUps: ActivePowerUp[];
-}
-
-// ─── Ground Run-and-Gun ─────────────────────────────────────────────
-
-export type TileType = "empty" | "solid" | "platform" | "spawn" | "goal";
-
-export interface TileMap {
-  width: number;
-  height: number;
-  tileSize: number;
-  tiles: TileType[][];
-}
-
-export interface GroundEntity {
-  id: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  vx: number;
-  vy: number;
-  hp: number;
-  maxHp: number;
-  type: "patrol" | "turret" | "jumper" | "flyer";
-  onGround: boolean;
-  facingRight: boolean;
-  fireTimer: number;
-  classId: EnemyClass;
-}
-
-export interface GroundState {
-  tileMap: TileMap;
-  cameraX: number;
-  groundEnemies: GroundEntity[];
-  groundBullets: Bullet[];
-  playerOnGround: boolean;
-  playerVY: number;
-  playerFacingRight: boolean;
-  goalReached: boolean;
 }
 
 // ─── Ship Boarding (Top-Down) ───────────────────────────────────────
@@ -1123,7 +1080,7 @@ export type OutcomeRouteIdentity =
       kind: "poi";
       originColonyId: string;
       nodeId: string;
-      engine: "firstPerson" | "boarding" | "groundRun";
+      engine: "firstPerson";
       templateId: string;
       rewardEligible: boolean;
     };
