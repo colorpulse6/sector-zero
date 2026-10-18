@@ -3,7 +3,7 @@ import type { ColonyState, BuildingType, ColonyResources } from "../shared/colon
 import type { ColonyEvent } from "../shared/colonyEvents";
 import { Events } from "../shared/colonyEvents";
 import { genBuildingId } from "./buildingIdGen";
-import { HABITAT_CAPACITY_PER_MODULE } from "../shared/colonyCatalog";
+import { BUILD_SPECS, HABITAT_CAPACITY_PER_MODULE } from "../shared/colonyCatalog";
 import { hudColors, hudFonts, hudSpacing } from "./hudTokens";
 import { hasBuildableSlot } from "../region/siteModifiers";
 
@@ -21,14 +21,20 @@ export interface BuildOption {
   shortDesc: string;
 }
 
+function buildOption(type: BuildingType, label: string, icon: string, shortDesc: string): BuildOption {
+  const spec = BUILD_SPECS[type];
+  if (!spec) throw new Error(`[ColonyCommissionMenu] no BUILD_SPECS entry for ${type}`);
+  return { type, label, icon, cost: { ...spec.cost }, cyclesToBuild: spec.cyclesToBuild, shortDesc };
+}
+
 /** Exported for testing (OW-0): affordability + option-table sanity tests. */
 export const PHASE_1_BUILD_OPTIONS: BuildOption[] = [
-  { type: "solar_array", label: "Solar Array", icon: "☀", cost: { metal: 80 }, cyclesToBuild: 1, shortDesc: "+10 power" },
-  { type: "farm", label: "Farm", icon: "🌾", cost: { metal: 100 }, cyclesToBuild: 2, shortDesc: "+15 food, −5 water" },
-  { type: "water_purifier", label: "Water Purifier", icon: "💧", cost: { metal: 120 }, cyclesToBuild: 2, shortDesc: "+12 water" },
-  { type: "habitat_module", label: "Habitat Module", icon: "🏠", cost: { metal: 100 }, cyclesToBuild: 1, shortDesc: `Houses ${HABITAT_CAPACITY_PER_MODULE}` },
-  { type: "mine", label: "Mine", icon: "⛏", cost: { metal: 150 }, cyclesToBuild: 2, shortDesc: "+10 metal/cycle" },
-  { type: "cantina", label: "Cantina", icon: "🍺", cost: { metal: 200 }, cyclesToBuild: 3, shortDesc: "Social hub for drinks and rumors" },
+  buildOption("solar_array", "Solar Array", "☀", "+10 power"),
+  buildOption("farm", "Farm", "🌾", "+15 food, −5 water"),
+  buildOption("water_purifier", "Water Purifier", "💧", "+12 water"),
+  buildOption("habitat_module", "Habitat Module", "🏠", `Houses ${HABITAT_CAPACITY_PER_MODULE}`),
+  buildOption("mine", "Mine", "⛏", "+10 metal/cycle"),
+  buildOption("cantina", "Cantina", "🍺", "Social hub for drinks and rumors"),
 ];
 
 /** Exported for testing (OW-0). */

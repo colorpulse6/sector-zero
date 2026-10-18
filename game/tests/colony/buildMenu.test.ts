@@ -8,7 +8,7 @@ import {
   canAfford,
   shortfallMessage,
 } from "../../app/components/colony/meta/ColonyCommissionMenu";
-import { HABITAT_CAPACITY_PER_MODULE } from "../../app/components/colony/shared/colonyCatalog";
+import { BUILD_SPECS, HABITAT_CAPACITY_PER_MODULE } from "../../app/components/colony/shared/colonyCatalog";
 import { BUILDING_FOOTPRINTS, INTERIOR_TEMPLATES } from "../../app/components/colony/exploration/buildingTiles";
 import { generateExteriorState, generateInteriorState, assignSlots } from "../../app/components/colony/exploration/colonyLayout";
 import { OUTPOST_TEMPLATE } from "../../app/components/colony/exploration/outpostTemplate";
@@ -121,4 +121,13 @@ test("slot assignment: a 5-building colony (5th type = mine) gets 5 distinct slo
   const slotMap = assignSlots(colony);
   assert.equal(slotMap.size, 5);
   assert.equal(new Set(slotMap.values()).size, 5, "each building gets its own slot");
+});
+
+test("build menu: every option's cost and build time come from BUILD_SPECS", () => {
+  for (const option of PHASE_1_BUILD_OPTIONS) {
+    const spec = BUILD_SPECS[option.type];
+    assert.ok(spec, `${option.type} needs a BUILD_SPECS entry`);
+    assert.deepEqual(option.cost, spec.cost);
+    assert.equal(option.cyclesToBuild, spec.cyclesToBuild);
+  }
 });

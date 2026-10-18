@@ -2,8 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** PROPOSED. Do not start until the Codex Manager approves the spec and the §9 decisions
-(D1–D3 at minimum).
+**Status:** ACCEPTED by the Codex Manager (2026-10-18, with the review corrections in `6bf9f7f`);
+IN PROGRESS on `feat/galaxy-colony`.
 
 **Dry run (2026-10-18, RUNS):** the code in Tasks 1–6 was applied verbatim to a scratch copy of
 `30b0726` outside git (not a worktree; nothing committed). `tsc --noEmit` was clean. The 14 new
