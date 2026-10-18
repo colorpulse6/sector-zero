@@ -46,7 +46,7 @@ function visited(run: GalaxyRunState, contactId: string): boolean {
   });
 }
 
-function samePlainData(left: unknown, right: unknown): boolean {
+export function samePlainData(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) return false;
   if (Array.isArray(left) !== Array.isArray(right)) return false;
