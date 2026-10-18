@@ -9,7 +9,12 @@ import { hasBuildableSlot } from "../region/siteModifiers";
 
 export interface ColonyCommissionMenuProps {
   colony: ColonyState;
-  onDispatch: (event: ColonyEvent) => void;
+  /** Legacy path: Build dispatches a reducer event. */
+  onDispatch?: (event: ColonyEvent) => void;
+  /** Options to offer. Defaults to every Phase-1 option (legacy). */
+  options?: readonly BuildOption[];
+  /** Galaxy path (GC2-A): Build calls this; no reducer event is dispatched. */
+  onCommission?: (option: BuildOption) => void;
 }
 
 export interface BuildOption {
@@ -79,9 +84,10 @@ export function shortfallMessage(
   return `Need ${missing.join(", ")}`;
 }
 
-export function ColonyCommissionMenu({ colony, onDispatch }: ColonyCommissionMenuProps) {
+export function ColonyCommissionMenu({ colony, onDispatch, options = PHASE_1_BUILD_OPTIONS, onCommission }: ColonyCommissionMenuProps) {
   const handleBuild = (opt: BuildOption) => {
-    onDispatch(Events.buildingCommissioned({
+    if (onCommission) { onCommission(opt); return; }
+    onDispatch?.(Events.buildingCommissioned({
       colonyId: colony.id,
       buildingId: genBuildingId(colony, opt.type),
       buildingType: opt.type,
@@ -108,7 +114,7 @@ export function ColonyCommissionMenu({ colony, onDispatch }: ColonyCommissionMen
         gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
         gap: hudSpacing.md,
       }}>
-        {PHASE_1_BUILD_OPTIONS.map(opt => {
+        {options.map(opt => {
           const affordable = canAfford(colony, opt.cost) && hasBuildableSlot(colony);
           return (
             <div
