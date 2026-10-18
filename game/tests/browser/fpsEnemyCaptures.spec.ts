@@ -97,7 +97,10 @@ test(`@visual fps enemy captures (${SCENE} #${ACTOR})`, async ({ page }, info) =
     await shot(label);
   }
 
-  // Approach and attack: let the hostile come to the player.
+  // Approach and attack: re-place at the near radius so the hostile has line of
+  // sight (a sentry only fires with LOS; a grunt charges from here), then run.
+  await page.getByRole("button", { name: "Front", exact: true }).click();
+  await page.waitForTimeout(250);
   await pause(false);
   await canvas.focus();
   const t0 = Date.now();
@@ -114,17 +117,26 @@ test(`@visual fps enemy captures (${SCENE} #${ACTOR})`, async ({ page }, info) =
     await shot("attack-1");
   }
 
-  // Hurt and death: fire at the hostile in front of the camera.
+  // Hurt and death: fire at the hostile in front of the camera. The simulation
+  // is frozen right after every shot so the hurt recoil and the death collapse
+  // are captured at a known clip clock (the preview reports state every 200 ms,
+  // so an unfrozen capture would land late in the 180 ms hurt or 500 ms death).
   await canvas.focus();
   let hurt = false, dead = false;
   for (let i = 0; i < 16 && !dead; i++) {
-    await hold(page, "z", 90);
+    await hold(page, "z", 40);   // the hitscan lands on the key-down frame; freeze inside the 180 ms hurt
+    await pause(true);
     const a = (await snapshot(page)).actors.find(x => x.id === actorId);
     if (!hurt && a?.action === "hurt") { hurt = true; await shot("hurt"); }
-    if (a?.action === "death") { dead = true; await shot("death-0"); await page.waitForTimeout(200); await shot("death-1"); }
-    await page.waitForTimeout(160);
+    if (a?.action === "death") {
+      dead = true; await shot("death-0");
+      await pause(false); await page.waitForTimeout(120); await shot("death-1");
+      break;
+    }
+    await pause(false);
+    await canvas.focus();
+    await page.waitForTimeout(200);
   }
-  if (!dead && await waitAction("death", 1500)) { await shot("death-0"); await page.waitForTimeout(200); await shot("death-1"); }
 
   fs.writeFileSync(info.outputPath(`${TAG}-log.json`), JSON.stringify({ scene: SCENE, actor: actorId, errors, captures: log }, null, 2));
   await info.attach(`${TAG}-log`, { body: JSON.stringify(log, null, 2), contentType: "application/json" });
