@@ -204,7 +204,7 @@ async function freshFireCycle(page: Page, kind: Motion): Promise<Frame[]> {
   return page.evaluate(({ seq, kind }) => window.touchEvidence.frames.filter((frame) => frame.seq > seq && frame[kind]), { seq, kind });
 }
 
-async function receipt(page: Page, testInfo: TestInfo, route: string, fixture: string, outcome: string, inputMethod: "touch" | "pointer" = "touch") {
+async function receipt(page: Page, testInfo: TestInfo, route: string, fixture: string, outcome: string, inputMethod: "touch" | "pointer" | "keyboard" = "touch") {
   const screenshotPath = testInfo.outputPath("gameplay-controls.png");
   await page.screenshot({ path: screenshotPath });
   await testInfo.attach("gameplay-controls", { path: screenshotPath, contentType: "image/png" });
@@ -687,4 +687,94 @@ test("@pointer focused turret arrows continue from keyboard aim and release on b
   still(await frames(page, "turret", 8), "turret");
   await page.keyboard.up("ArrowLeft");
   await receipt(page, testInfo, "turret keyboard aim -> focused aim arrows -> focus away", "freshLegacy", "Focused arrows continue from the existing crosshair, move while held without firing, and release when focus leaves the aim control.", "pointer");
+});
+
+// GC2-A: colony management owns input. Nothing held before, during or after it may move the
+// walker, fire, open another menu or carry into the walk until a fresh input.
+async function descendAtAshfall(page: Page, method: "keyboard" | "touch") {
+  await installObservation(page);
+  await installSaveFixture(page, galaxyAtAshfall);
+  await page.goto("/");
+  for (const label of ["CONTINUE GALAXY", "DESCEND TO COLONY"]) {
+    if (method === "touch") await action(page, label).tap();
+    else { await action(page, label).focus(); await page.keyboard.press("Enter"); }
+  }
+  const controls = page.getByRole("group", { name: "Colony controls", exact: true });
+  await expect(controls).toBeVisible();
+  return {
+    controls,
+    menu: page.getByRole("dialog", { name: "Landing pad exit menu", exact: true }),
+    manage: page.getByRole("dialog", { name: "Colony management", exact: true }),
+  };
+}
+
+async function walkIsInert(page: Page, menu: Locator) {
+  const observed = await frames(page, "fp", 30);
+  still(observed, "fp");
+  expect(observed.some((frame) => frame.gun), "no fire").toBe(false);
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
+test("@keyboard held movement and interact do not cross colony management", async ({ page }, testInfo) => {
+  const { controls, menu, manage } = await descendAtAshfall(page, "keyboard");
+  await controls.getByRole("button", { name: "Interact", exact: true }).focus();
+  await page.keyboard.down("Enter");
+  await page.waitForTimeout(100); // A native hold spans the canvas input sampling frame.
+  await page.keyboard.up("Enter");
+  await expect(menu).toBeVisible();
+  await menu.getByRole("button", { name: "COLONY MANAGEMENT", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(manage).toBeVisible();
+  // Focus the dialog body, as a click on the panel background does. Keys pressed on a focused
+  // button never reach the walk, so this is the case the input guards must cover.
+  await manage.focus();
+  await page.keyboard.down("w"); // move, held through the dialog
+  await page.keyboard.down("z"); // primary (interact), held through the dialog
+  const behind = await frames(page, "fp", 30);
+  still(behind, "fp");
+  expect(behind.some((frame) => frame.gun), "no fire behind the dialog").toBe(false);
+  await expect(menu).toBeHidden();
+  await page.keyboard.press("Escape"); // management -> landing pad menu
+  await expect(manage).toBeHidden();
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape"); // menu -> walk
+  await walkIsInert(page, menu);
+  await page.keyboard.up("z");
+  await page.keyboard.up("w");
+  await page.keyboard.down("w"); // a fresh press moves
+  const fresh = await frames(page, "fp", 30);
+  await page.keyboard.up("w");
+  const moved = displacement(fresh, "fp");
+  expect(Math.hypot(moved.x, moved.y)).toBeGreaterThan(0.05);
+  await receipt(page, testInfo, "Atlas -> DESCEND -> Interact -> COLONY MANAGEMENT -> hold W+Z on the dialog -> Escape x2 -> fresh W",
+    "galaxyAtAshfall", "Keys held across management neither moved, fired nor opened a menu; a fresh W moved the walker.", "keyboard");
+});
+
+test("@touch a held colony gesture does not cross colony management", async ({ page }, testInfo) => {
+  const { controls, menu, manage } = await descendAtAshfall(page, "touch");
+  const interact = controls.getByRole("button", { name: "Interact", exact: true });
+  const forward = await center(controls.getByRole("button", { name: "Move forward", exact: true }));
+  await withFingers(page, async (fingers) => {
+    await fingers.down(1, interact); // held from before the menu until the walk resumes
+    await expect(menu).toBeVisible();
+    // Chromium sends no compatibility click for a second finger while one is held, so the
+    // dialog buttons are activated with the pointer; finger 1 stays down throughout.
+    await menu.getByRole("button", { name: "COLONY MANAGEMENT", exact: true }).click();
+    await expect(manage).toBeVisible();
+    await expect(controls).toBeHidden(); // no gameplay controls behind the dialog
+    still(await frames(page, "fp", 30), "fp");
+    await manage.getByRole("button", { name: "← BACK", exact: true }).click();
+    await expect(menu).toBeVisible();
+    await menu.getByRole("button", { name: "Resume", exact: true }).click();
+    await expect(controls).toBeVisible();
+    await fingers.move(1, forward); // the old finger slides onto movement
+    await walkIsInert(page, menu);
+    await fingers.up(1);
+    await fingers.down(1, interact); // a fresh press still works
+    await expect(menu).toBeVisible();
+    await fingers.up(1);
+  });
+  await receipt(page, testInfo, "Atlas -> DESCEND -> hold Interact -> COLONY MANAGEMENT -> BACK -> Resume -> slide to Move forward -> fresh Interact",
+    "galaxyAtAshfall", "A finger held across management neither moved, fired nor reopened the menu; controls were hidden behind the dialog; a fresh press opened the menu.");
 });
