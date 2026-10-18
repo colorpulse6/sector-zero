@@ -5,7 +5,10 @@ import { OUTPOST_TEMPLATE } from "./outpostTemplate";
 import { BUILDING_FOOTPRINTS } from "./buildingTiles";
 import { type SceneStack, type SceneLayer, pushInterior, popToExterior, isInInterior } from "./sceneStack";
 import type { ColonyContext, DoorInteractResult, LandingPadResult } from "./colonyContext";
-import { generateColonyNpcs } from "./npc/colonyNpcs";
+import { generateColonyNpcs, isAshfallPrimary } from "./npc/colonyNpcs";
+import { buildGovernorDialog } from "./npc/npcDialog";
+import { BUILD_SPECS } from "../shared/colonyCatalog";
+import { primaryFactionForPlanet, rankFor } from "../shared/factionLedger";
 import { stepColonyNpcs } from "./npc/npcStep";
 import { QUARTERMASTER_WORKSTATION } from "../../engine/fpRender/npcAtlas";
 
@@ -25,7 +28,7 @@ export function enterColonyExploration(save: SaveData, colonyId: ColonyId): Ente
   // Phase 5a: populate the exterior with NPCs. generateExteriorState is unchanged;
   // NPC generation happens here and the movement sidecar rides on the exterior layer.
   // Standings drive greeting tone + quartermaster prices/refusal.
-  const { fpNpcs, sidecar } = generateColonyNpcs(colony, save.gameClock, firstPersonState.map, save.factionStandings);
+  const { fpNpcs, sidecar } = generateColonyNpcs(colony, save.gameClock, firstPersonState.map, save.factionStandings, { buildSpecs: BUILD_SPECS });
   firstPersonState.npcs = fpNpcs;
   const station = sidecar.find(npc => npc.kind === "quartermaster")?.postTile;
   if (station) {
@@ -71,6 +74,19 @@ export function stepColonyExploration(
   // layer, so on interior frames (current.kind === "interior") this no-ops. The
   // sidecar survives interior push/pop (preserved as `parent`) and resumes on pop.
   if (stack.current.kind === "exterior" && stack.current.npcSidecar) {
+    // Management updates canonical colony data without rebuilding this walk. Keep
+    // Ashfall's next conversation factual while retaining positions, schedules and
+    // geometry. An already-open conversation retains its own line snapshot.
+    const colony = save.colonies.find(entry => entry.id === stack.colonyId);
+    if (colony && isAshfallPrimary(colony)) {
+      const governorId = stack.current.npcSidecar.find(npc => npc.kind === "governor")?.id;
+      const governor = stack.current.state.npcs.find(npc => npc.id === governorId);
+      if (governor) {
+        governor.dialog = buildGovernorDialog(colony,
+          rankFor(save.factionStandings, primaryFactionForPlanet(colony.planetId)),
+          { place: "ashfall-primary", buildSpecs: BUILD_SPECS });
+      }
+    }
     stepColonyNpcs(
       stack.current.npcSidecar,
       stack.current.state.npcs,

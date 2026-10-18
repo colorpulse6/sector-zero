@@ -129,3 +129,16 @@ Owned paths touched: the six files above plus this document and the README index
 Nothing in `Game.tsx`, `galaxyColony.ts`, projection/run, management UI, shared fixtures or
 specs, `docs/ROADMAP.md` or handoffs. Local commit only; nothing pushed or merged. No memory
 or settings writes.
+
+## Manager integration correction
+
+The integrated entry now supplies the shared `BUILD_SPECS`, so the cost line and build
+menu use the same rules. A focused test reproduced stale dialogue after commissioning:
+the old visit still claimed no buildings and 80 metal. The exploration step now refreshes
+Ashfall's next Overseer conversation from current colony data while preserving actor
+positions, sidecars and geometry. An already-open conversation retains its line snapshot;
+other colonies retain their existing behavior. Geometry still refreshes on next descent.
+
+Manager validation: the two new cost/commission checks failed before the correction;
+58 focused dialogue/NPC/scene tests and the typecheck passed after it. Integrated browser
+validation is recorded in the runtime milestone handoff, separately from this source proof.
