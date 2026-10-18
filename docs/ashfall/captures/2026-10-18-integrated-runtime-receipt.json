@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-18",
+  "runtimeCommit": "44111cf",
+  "test": "Ashfall Overseer describes a pad commission without another descent",
+  "source": "game/tests/browser/ashfallOverseer.spec.ts",
+  "fixture": "galaxyAtAshfall + 80 metal",
+  "route": "DESCEND -> pad management -> Build -> Back -> Resume -> walk to Overseer -> talk",
+  "assertions": [
+    "constructing Solar Array line rendered",
+    "empty-yard line rendered",
+    "one saved constructing building",
+    "zero metal",
+    "legacy bytes unchanged"
+  ],
+  "capture": "2026-10-18-integrated-overseer-after-build.png",
+  "captureShows": "empty-yard dialogue after commission, page 4 of 5; construction line asserted on preceding page",
+  "results": {
+    "managementAndOverseer": "7 passed (54.3s)",
+    "heldInput": "2 passed (16.9s)",
+    "unitTests": "990 passed"
+  },
+  "boundary": "Fixture-assisted regression, not proof of earned rewards or a successful ordinary expedition. Human aesthetic acceptance pending."
+}

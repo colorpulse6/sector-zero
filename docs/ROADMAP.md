@@ -1,7 +1,7 @@
 # Sector Zero — Master Roadmap
 
 **Updated 2026-10-18.** Verified runtime baseline: `feat/galaxy-colony` at
-`30b0726`. This file owns direction, sequence and completion status. Detailed system
+`44111cf` (GC2-A plus Overseer slice and integration correction). This file owns direction, sequence and completion status. Detailed system
 specs own their contracts; individual agents do not maintain competing master roadmaps.
 
 ## The current commitment: lock Ashfall
@@ -26,7 +26,9 @@ and meet the agreed visual standard.
 - [GC2-A accepted management design](superpowers/specs/2026-10-18-gc2a-galaxy-colony-management-design.md)
   and [implementation plan](superpowers/plans/2026-10-18-gc2a-galaxy-colony-management.md)
 - [Manager's GC2-A review](handoffs/2026-10-18-gc2a-manager-review.md): design accepted after
-  canonical-store and input-ownership corrections; runtime implementation pending
+  canonical-store and input-ownership corrections; implementation reviewed and integrated locally
+- [Runtime milestone and verification](handoffs/2026-10-18-ashfall-runtime-milestone.md):
+  GC2-A and the first Overseer slice complete locally; full Ashfall acceptance remains open
 - [Ashfall production packet](ashfall/README.md), [reference board](ashfall/boards/reference-board.png)
   and [manager review](handoffs/2026-10-18-ashfall-design-manager-review.md): integrated
   preproduction; proposed art, fiction and trade mechanics still require runtime acceptance
@@ -69,17 +71,25 @@ Management must translate into people, visible changes or playable opportunities
 
 ## Current state and evidence
 
-These are local branch statements, not deployment claims. The Colony agent reported a
-clean typecheck, **951 unit tests passing**, and a successful static export at `30b0726`.
-The manager independently inspected the completed browser log: **110 passed (7.6m),
-exit 0**. This validates the existing integration baseline, not the future Ashfall lock.
+These are local branch statements, not deployment claims. At runtime `44111cf`, Manager
+verified **990/990 unit tests**, clean typechecking and successful static export. **Nine
+focused integrated browser checks passed**: seven management/Overseer checks plus two
+held-input regressions. Before the NPC integration, Colony's full browser run passed
+**116/116**, followed by one fresh-profile route test. The full suite was not repeated
+after the presentation integration; the affected routes were checked instead.
+
+An ordinary save was played through travel, descent, survey, expedition entry/early
+return, management refusal and Overseer conversation. Successful construction,
+completion and reload have automated coverage using the shipped POI outcome authority;
+the successful first-person expedition itself still needs ordinary playthrough proof.
+This is a verified runtime increment, not the full Ashfall lock.
 
 | Area | Current status | Remaining boundary |
 | --- | --- | --- |
 | G0 galaxy foundation | Implemented: fresh run, coordinates, seeded discovery, travel commitments, located operations and recovery | Bounded local-sector proof; not a whole simulated civilization |
 | Region and Atlas presentation | Region chart plus Babylon sector/system scenes implemented | Procedural display planets are not all playable destinations |
 | GC1 galaxy colony descent | Implemented: parked Ashfall -> walk -> region/Take Off -> Atlas | Only Ashfall Primary is mapped for descent; ordinary reload returns to Atlas |
-| Colony economy/building/NPC foundation | Existing reducers, population, production, construction, schedules, dialogue and faction pricing | GC2 must connect management safely to the galaxy run |
+| Colony economy/building/NPC foundation | GC2-A Solar Array management integrated from Atlas and landing pad; stored-save safeguards and live Overseer report verified | Recoverable earning/resupply, fuller services and ordinary end-to-end gameplay remain open; building geometry updates on next descent |
 | Merchant services | Quartermaster purchase path exists | Fresh galaxy consumables remain legacy-unlock-dependent |
 | M3 hubs | Cantina runtime/assets exist; first-person utility interiors exist | Fresh Ashfall outpost has no cantina; Marketplace partial branch is not integrated; Town Hall remains future |
 | Combat and outcomes | Retained modes and outcome/persistence machinery exist; ground/boarding cleanup merged locally | Broader located campaign and travel battle mapping remain GC4 |
@@ -95,10 +105,10 @@ review. Do not clean up old branches/worktrees merely because they look stale.
 
 | Lane | Owner | Current assignment | Finish condition |
 | --- | --- | --- | --- |
-| Systems (GC2-A) | Existing Colony agent | Design and plan accepted (`6bf9f7f`); next implement Solar Array management from the landing pad and Atlas | Fresh save can reach management, commission one supported improvement, advance it through existing actions, see it complete, reload and re-enter without lost/duplicated state or legacy mutations |
-| Place, art and conversations | Claude Ashfall Designer | Reviewed packet integrated under `docs/ashfall/` (`ad12882`); next prepare the small asset/conversation slice in the isolated worktree | Concrete identity/layout, asset slots, useful NPC conversations and an in-game acceptance route; then implement reviewed assets/interactions against real state |
+| Systems | Existing Colony agent | GC2-A implemented and reviewed locally. Next: GC2-B recoverable earning, trade and resupply contract | Useful trade and recovery work from an ordinary galaxy save, preserve ownership and survive reload without duplicated rewards or costs |
+| Place, art and conversations | Claude Ashfall Designer | First Overseer billboard, portrait and factual lines integrated (`bd07594`, corrected in `44111cf`). Next: bounded Quartermaster presentation and trade guidance against accepted rules | Arrival and both roles are readable at gameplay size, statements reflect real state, one persistent consequence is visible, and Nic accepts the aesthetic |
 | Market and bartering | Designer proposes experience; Colony owns rules; Manager reconciles | Define first useful trade and its dependencies | Stock, price/exchange, refusal, cost and result are real, persistent and safe under repeated/stale input; distinguish buying/selling, exchange and negotiation |
-| Integration and lock | Codex Manager; Nic accepts the aesthetic | Review handoffs, freeze interfaces, issue bounded implementation slices and verify the complete route | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
+| Integration and lock | Codex Manager; Nic accepts the aesthetic | First runtime milestone verified; next freeze the recovery/trade contract and complete the ordinary gameplay route | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
 
 Design work starts alongside systems work, rather than waiting for all GC2–GC4
 infrastructure. Runtime integration still follows the dependency contract. The exact
@@ -116,13 +126,14 @@ lock. They are not silently solved by unlocking a shop item or wiring a build bu
 
 ## Ashfall delivery order
 
-1. **GC2-A: one working improvement.** Colony implements the accepted Solar Array
-   management plan. Done when the ordinary route, stored-state failures, held-input
-   behavior and reload/re-entry are verified. No commerce is hidden in this slice.
-2. **Place slice, in parallel.** Ashfall Designer prepares the reviewed small asset kit
-   and fact-aware conversation content; Manager assigns runtime consumers so workers
-   do not collide. Done when arrival, the two NPC roles and one visible consequence
-   are readable in the actual viewport and Nic accepts the aesthetic.
+1. **GC2-A: implemented locally.** Solar Array management, persistence refusals,
+   construction/cycle/reload and input ownership are verified. The expedition reward
+   segment uses an outcome-authority fixture; Manager still owns the successful ordinary
+   expedition-to-improvement playthrough. Fixed 07:00 and next-descent geometry remain.
+2. **Place slice, in parallel.** The Overseer slice is integrated and browser-verified.
+   Designer next prepares the Quartermaster slice and remaining arrival/consequence
+   treatment; Manager assigns runtime consumers. Done when arrival, the two NPC roles
+   and one visible consequence are readable in the actual viewport and Nic accepts them.
 3. **GC2-B and commerce.** Colony defines a recoverable earning/resupply path with
    Designer's trade experience. Manager reviews the failure route, resource ownership,
    displayed quotes and repeated-intent behavior before implementation. Done when useful

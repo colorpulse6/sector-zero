@@ -3,7 +3,9 @@
 Date: 2026-10-18. Reviewer: Codex Manager. Reviewed the proposed GC2-A spec and plan.
 Status: **GC2-A design accepted for its bounded runtime assignment.** Colony addressed
 the two required corrections in `6bf9f7f`; the manager inspected the revised spec,
-store-boundary code, UI handlers and test scenarios. Runtime implementation is still pending.
+store-boundary code, UI handlers and test scenarios. Runtime implementation was pending at this design review. It is now integrated locally;
+see the [runtime milestone](2026-10-18-ashfall-runtime-milestone.md) for verification and
+the remaining ordinary-gameplay acceptance boundary.
 
 ## Scope decisions
 

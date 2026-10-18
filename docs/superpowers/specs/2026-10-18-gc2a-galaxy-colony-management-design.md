@@ -1,7 +1,7 @@
 # GC2-A — Manage Ashfall in the galaxy run
 
-Date: 2026-10-18. Status: **IMPLEMENTED on `feat/galaxy-colony` (2026-10-18); awaiting the
-Codex Manager's combined review.** Accepted by the Manager with the review corrections in `6bf9f7f`. Fixed: Solar Array only, Atlas and landing-pad entry, refresh on the next
+Date: 2026-10-18. Status: **IMPLEMENTED and reviewed locally on `feat/galaxy-colony`.**
+Integrated runtime `44111cf`; [manager evidence and remaining gameplay gate](../../handoffs/2026-10-18-ashfall-runtime-milestone.md). Accepted by the Manager with the review corrections in `6bf9f7f`. Fixed: Solar Array only, Atlas and landing-pad entry, refresh on the next
 descent, colony clock fixed at 07:00; no commerce, GC2-B or GC3 in this slice.
 Owner: Colony systems lane (Claude Colony agent). Baseline: `feat/galaxy-colony` at `30b0726`.
 Plan: `docs/superpowers/plans/2026-10-18-gc2a-galaxy-colony-management.md`.

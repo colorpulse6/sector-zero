@@ -2,8 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** IMPLEMENTED on `feat/galaxy-colony` (Tasks 1–8, 2026-10-18); awaiting the Codex
-Manager's combined review. Accepted with the review corrections in `6bf9f7f`.
+**Status:** IMPLEMENTED and reviewed locally on `feat/galaxy-colony` (2026-10-18).
+Integrated runtime `44111cf`; [manager evidence and remaining gameplay gate](../../handoffs/2026-10-18-ashfall-runtime-milestone.md).
+The original task snippets below are historical instructions; the as-built notes govern.
+Design accepted with the review corrections in `6bf9f7f`.
 
 **Dry run (2026-10-18, RUNS):** the code in Tasks 1–6 was applied verbatim to a scratch copy of
 `30b0726` outside git (not a worktree; nothing committed). `tsc --noEmit` was clean. The 14 new

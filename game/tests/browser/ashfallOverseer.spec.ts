@@ -4,7 +4,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { galaxyAtAshfall } from "./fixtures/routeFixtures";
 import { attachBrowserReceipt } from "./helpers/receipt";
-import { installSaveFixture, readInstalledSaveBytes, readLegacyDomainBytes } from "./helpers/saveFixture";
+import { installSaveFixture, readInstalledSave, readInstalledSaveBytes, readLegacyDomainBytes } from "./helpers/saveFixture";
 
 type Point = { x: number; y: number };
 type Frame = { seq: number; player: Point };
@@ -146,4 +146,45 @@ test("@keyboard Ashfall Primary's Overseer stands at the plaza as the reviewed s
       observedOutcome: passed ? "Static hub-governor billboard decoded, Overseer portrait drawn, greeting and yard lines rendered, save bytes unchanged, no page errors." : `Failed during ${stage}; see observations and screenshots.`,
     });
   }
+});
+
+
+test("@keyboard Ashfall Overseer describes a pad commission without another descent", async ({ page }, info) => {
+  const funded = structuredClone(galaxyAtAshfall);
+  funded.galaxyRun!.colonies.find(colony => colony.id === "galaxy:ashfall-primary")!.resources.metal = 80;
+  await observe(page);
+  await installSaveFixture(page, funded);
+  await page.goto("/");
+  await page.getByRole("button", { name: "CONTINUE GALAXY", exact: true }).click();
+  const legacyBefore = await readLegacyDomainBytes(page);
+  await page.getByRole("button", { name: "DESCEND TO COLONY", exact: true }).click();
+  await freshFrames(page, 3);
+  await interact(page);
+  const pad = page.getByRole("dialog", { name: "Landing pad exit menu", exact: true });
+  await pad.getByRole("button", { name: "COLONY MANAGEMENT", exact: true }).click();
+  const management = page.getByRole("dialog", { name: "Colony management", exact: true });
+  await management.getByRole("button", { name: "Build", exact: true }).click();
+  await expect(management.getByRole("status")).toHaveText("SOLAR ARRAY COMMISSIONED · READY IN 1 CYCLE");
+  await management.getByRole("button", { name: "← BACK", exact: true }).click();
+  await pad.getByRole("button", { name: "Resume", exact: true }).click();
+  await moveUntil(page, "w", "y", 13.2);
+  await interact(page); // greeting
+  await interact(page); // population
+  await interact(page); // current construction
+  await expect.poll(() => renderedText(page)).toContain("The solar array's going up.");
+  await interact(page); // current yard
+  await expect.poll(() => renderedText(page)).toContain("The yard's empty.");
+  expect(await readLegacyDomainBytes(page)).toBe(legacyBefore);
+  const colony = (await readInstalledSave(page)).galaxyRun!.colonies.find(entry => entry.id === "galaxy:ashfall-primary")!;
+  expect(colony.resources.metal).toBe(0);
+  expect(colony.buildings.map(building => building.status)).toEqual(["constructing"]);
+  const capture = info.outputPath("ashfall-overseer-after-build.png");
+  await page.screenshot({ path: capture });
+  await info.attach("ashfall-overseer-after-build", { path: capture, contentType: "image/png" });
+  await attachBrowserReceipt(info, {
+    inputMethod: "keyboard", saveFixture: "galaxyAtAshfall + 80 metal",
+    route: "DESCEND -> pad management -> Build -> Back -> Resume -> walk to Overseer -> talk",
+    expectedOutcome: "The existing walk's Overseer describes the just-commissioned Solar Array and spent metal without another descent; legacy bytes stay unchanged.",
+    observedOutcome: "Constructing and empty-yard lines rendered after a real pad commission; one saved building, zero metal and unchanged legacy bytes.",
+  });
 });
