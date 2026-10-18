@@ -1,179 +1,171 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-07-18** (G0 Atlas merged; final manual closure playtest pending; M3 asset lane specified).
-This is the single entry point. Every other doc is either DONE, absorbed here, or linked
-below with its authority noted.
+**Updated 2026-10-18.** Current integration baseline: `feat/galaxy-colony` at
+`30b0726`. This file owns direction, sequence and completion status. Detailed system
+specs own their contracts; individual agents do not maintain competing master roadmaps.
 
-## North star (DECIDED 2026-07-13)
+## The current commitment: lock Ashfall
 
-**Systemic sandbox — Dwarf-Fortress-ward.** Depth over breadth. The simulation creates
-campaigns; playable campaigns reshape the simulation. Colony, region, travel, combat,
-exploration, politics, and history are reciprocal layers rather than separate games.
-The 2026-04-20 colony spec's "Deep Sim future-proofing" (entity IDs everywhere,
-serializable everything) is now the point, not an insurance policy. Prefer systems that
-generate stories; authored content seeds places, people, mysteries, and consequences.
+Nic selected **Ashfall as the first complete reference world**, with Colony systems
+and Claude place design progressing in parallel. Aesthetic, assets, conversations,
+market and bartering are part of that ambition. Each must have an explicit playable
+scope and acceptance result.
 
-## Decisions of record (2026-10-18)
+The first finished experience is:
 
-- 2026-10-18: ground run-and-gun and boarding removed; structure is hub → atlas → travel battles → colony.
+**Travel to Ashfall -> descend -> meet useful people -> improve the colony -> undertake
+local work -> trade/use its rewards -> see a durable consequence -> leave and return.**
 
-## Decisions of record (2026-07-13)
+The manager owns integration and completion. A place is not finished because its art,
+code or branch exists. The ordinary fresh-save route must work, preserve consequences
+and meet the agreed visual standard.
 
-1. **Stakes — "slow decay, emergent antagonists":** colonies never pop instantly; neglect
-   starts a long decay arc (crime → starvation → mutation → monster infestation), and
-   decayed colonies can birth **crime syndicates that become world actors** — forming
-   raiding hordes that attack the player's fleet/missions and steal resources. Loss is
-   real but telegraphed over many cycles, and every stage is counterable. (Absorbs and
-   reshapes spec Phase 5b crime + Phase 8 threats — see M4.)
-2. **Progression — one track, new XP sources:** keep pilot levels + skill tree; surveying,
-   founding, trading, and quests grant XP; build the already-typed Engineering + Piloting
-   trees (types.ts SkillTreeId has them; only COMBAT_TREE exists) around non-combat play.
-3. **Slice order after PR #7:** OW-1 region map → DOOM asset regen (parallel track) →
-   Phase 3 hub interiors. Crime lands inside M4's decay arc, not as a standalone 5b.
-4. Cargo v1 abstract (physical holds later); travel costs a cycle; first colony gets
-   warnings/protection while learning (from the stakes discussion + OW draft Q1/Q2).
+- [Verified baseline and gap inventory](handoffs/2026-10-18-consolidation-baseline.md)
+- [Parallel work ownership and acceptance brief](handoffs/2026-10-18-ashfall-parallel-brief.md)
+- [Colony agent's GC1–GC5 integration design](superpowers/specs/2026-10-18-galaxy-colony-integration-design.md)
 
-## Decisions of record (2026-07-16 — continuous galaxy)
+## North star
 
-1. **Numbered worlds are retired from the new progression model.** Current W1–W8
-   missions, bosses, side quests, planet sorties, and special missions remain valuable
-   authored content, but migrate into named operations attached to physical locations.
-2. **The galaxy is continuous projected space, not a node ladder.** The Atlas supports
-   galaxy, sector, system, and planetary-region zoom. Players may follow known signals
-   or plot blind expeditions to arbitrary coordinates.
-3. **Generate detail through contact.** Seeded spatial cells make coordinates stable;
-   distant space remains coarse until observation, travel, ownership, or causality
-   requires deeper simulation.
-4. **Progression comes from unified operations.** Story pressure, contracts, battles,
-   colony needs, exploration, and reliable work use one located operation contract and
-   can yield material, knowledge, access, power, or historical consequences.
-5. **G0 Atlas moves ahead of M3–M5.** The minimal coordinate, signal, operation, route,
-   and travel substrate lands before hubs and decay build more dependencies on numeric
-   world IDs. M2 art continues in parallel.
-6. **The canonical galaxy starts fresh.** Development-era numbered-progression saves do
-   not fabricate galactic history. A later importer may preserve harmless Codex,
-   Bestiary, or cosmetic accomplishments.
+**A frontier captain in a persistent systemic sandbox. The simulation creates
+campaigns; campaigns reshape the simulation.** Command from the bridge, travel to
+real places, walk among the people affected by decisions and personally resolve
+important commitments. Depth over breadth. Authored content gives places, people,
+mysteries and consequences their identity; systems connect them.
 
-## What is DONE (verified in code, 2026-07-16)
+A typical session follows the Captain's Circuit: understand a situation, inspect a
+place/person, choose a commitment, act, absorb the result and see the world respond.
+Management must translate into people, visible changes or playable opportunities.
 
-| Area | State |
-|---|---|
-| 6 game modes, campaign W1-W8, bosses, multi-phase levels | Live |
-| Pilot leveling 1-30, COMBAT skill tree, reward economy stage 1, bestiary | Live |
-| Colony phases 0/1/2: found/build/descend, FP colony exteriors+interiors | Live |
-| Phase 5a NPCs: schedules, A*, dialog, real quartermaster shop | Live |
-| Faction standing: ledger, prices, refusal, greetings, mission standing | Live |
-| **OW-0 economy**: real habitat capacity+growth, buildable mine, planet-mission resource deliveries, GROWN/STRAINED dev seeds | PR #7 (CI green) |
-| DOOM overhaul Phase 0: WebGL grade+bloom+presets+auto-disable; 65 sprites de-haloed | Live (deployed) |
-| Animated NPC billboards + quartermaster (own sprite + 2-frame walk) | Live (deployed) |
-| Asset pipeline: Codex image_gen + BiRefNet + style guide — proven on character, poses, wall texture | Operational, $0 |
-| Ashfall explore zone + Kepler black-box sidequest | Live — these are the POI/quest-reward pattern precursors for M1 |
-| **M1 The Region**: Ashfall seeded graph, DOM map, intel, travel, POIs, cargo, survey/found, site economy | Live (PR #9) |
-| **M2 first shooter tranche**: Swarm, Bomber, Gunner, Drone regeneration + matched review evidence | Live (PR #12) |
+## Decisions of record
 
-## The course
+- **2026-10-18:** lock Ashfall first; Colony continues its GC roadmap alongside a
+  scoped Claude designer, coordinated by Codex Manager. Art/content work can run in
+  parallel with system integration. New mechanics still need explicit contracts.
+- **2026-10-18:** the structure is cockpit -> Atlas -> consequential travel/battles ->
+  colony and region. Ground run-and-gun and ship boarding are removed. Shooter,
+  turret, first-person missions, first-person colony exploration and multi-phase remain.
+- **2026-07-16:** continuous coordinates replace numbered-world progression. Existing
+  W1–W8 content becomes named operations at physical locations. Arrival and accepting
+  an operation are separate choices.
+- **2026-07-16:** seed, generation version and authored-anchor registry version form
+  one saved identity. Observed facts and reserved places never silently reroll.
+- **2026-07-16:** travel commits time and abstract supply, previews threats/confidence,
+  and resolves bounded interruptions with actual causes. Canonical galaxy starts fresh;
+  old campaign state is not silently imported.
+- **2026-07-13:** colonies decline through legible, counterable stages; eventual
+  syndicates become world actors. Keep one pilot progression track, extending it with
+  non-combat XP and Engineering/Piloting when those actions exist.
+- **Long-horizon decisions preserved:** layered captain/galactic time, autonomous
+  settlements, generational culture, political authority and a durable chronicle.
+  Living civilization and the Long Search must be substantial play before the optional
+  Fold Threshold. Completing the opening campaign does not end the save or force joining.
 
-### M1 — OW-1/2: The Region (leave the base) — DONE
-Ashfall proves the small-scale pattern the Atlas will extend: a seeded deterministic
-graph, progressive intel, React/DOM selection, cycle-cost travel, multi-mode POIs,
-cargo routing, surveying, resource-cost founding, and site-modulated economy.
+## Current state and evidence
 
-### M2 — The Look (parallel track, asset-lane)
-DOOM Phase 1-2 regen at scale via the proven pipeline, in visibility order: 13 shooter
-enemies → 8 bosses → FP/boarding billboards (8-yaw via TRELLIS.2→headless Blender + the
-engine yaw-selector enabler, spec 2026-07-05 §5.4) → hub interior tilesets/props (feeds
-M3) → backgrounds. Style LoRA once ~30 accepted. Runs alongside systemic work —
-different lane, no file conflicts. Each systemic slice declares its asset slots, exact
-runtime paths/dimensions, fallback, and visual acceptance evidence before generation;
-art is produced in parallel, reviewed at intended renderer size, and registered only when a
-real consumer exists.
-There is no runtime AI asset generation. **Spec status: operational** (pipeline doc,
-master style guide, and `assets/prompts/m3-hubs/`).
+These are local branch statements, not deployment claims. The Colony agent reported a
+clean typecheck, **951 unit tests passing**, and a successful static export at `30b0726`.
+The manager independently inspected the completed browser log: **110 passed (7.6m),
+exit 0**. This validates the existing integration baseline, not the future Ashfall lock.
 
-### G0 — The Atlas (continuous-galaxy substrate) — IMPLEMENTED, FINAL LIVE CLOSURES PENDING
-Fresh canonical galaxy run + persistent vessel coordinate + continuous local-sector map
-with galaxy/sector/system/region zoom model + seeded spatial cells + known signals and
-blind-coordinate plotting + atlas knowledge/confidence + pure route preview + abstract
-supply/time commitment + bounded caused interruption + unified located operations.
-Prove the loop with Ashfall, Kepler, one shooter interception, one unresolved signal,
-and one deterministic blind discovery. Hybrid UI: Canvas 2D spatial field with
-focusable React/DOM controls and route panels. Implementation gates are green at 284
-colony tests, 282 engine tests, 4 sprite checks, TypeScript, and both static exports.
-Fresh/mobile/desktop entry, legacy isolation, safe/blind/hostile/reload travel, Region
-launch, and all three operation presentations were exercised in the production export.
-The remaining acceptance work is the hands-on touch pass plus manually finishing the
-hostile success/failure/emergency closures, Kepler, Ashfall sortie, and a Region POI;
-their exact outcomes and idempotency are already covered by deterministic tests. See
-`playtests/2026-07-16-g0-atlas.md`. **Spec status: merged via PR #16; do not mark DONE
-until those final live closure paths are recorded.**
+| Area | Current status | Remaining boundary |
+| --- | --- | --- |
+| G0 galaxy foundation | Implemented: fresh run, coordinates, seeded discovery, travel commitments, located operations and recovery | Bounded local-sector proof; not a whole simulated civilization |
+| Region and Atlas presentation | Region chart plus Babylon sector/system scenes implemented | Procedural display planets are not all playable destinations |
+| GC1 galaxy colony descent | Implemented: parked Ashfall -> walk -> region/Take Off -> Atlas | Only Ashfall Primary is mapped for descent; ordinary reload returns to Atlas |
+| Colony economy/building/NPC foundation | Existing reducers, population, production, construction, schedules, dialogue and faction pricing | GC2 must connect management safely to the galaxy run |
+| Merchant services | Quartermaster purchase path exists | Fresh galaxy consumables remain legacy-unlock-dependent |
+| M3 hubs | Cantina runtime/assets exist; first-person utility interiors exist | Fresh Ashfall outpost has no cantina; Marketplace partial branch is not integrated; Town Hall remains future |
+| Combat and outcomes | Retained modes and outcome/persistence machinery exist; ground/boarding cleanup merged locally | Broader located campaign and travel battle mapping remain GC4 |
+| M2 visuals | Shooter/NPC/hub asset work and the existing first-person presentation are reusable | Asset acceptance is per runtime consumer; no blanket colony 3D migration is approved |
+| Civilization layer | Strategic cycle and history foundations exist | Full decay, syndicates, generations, Houses, governance and long-interval catch-up remain future |
 
-### M3 — Phase 3: Hubs (places worth entering, now located)
-Cantina, Marketplace, Town Hall hand-authored interiors + interior NPCs w/ schedules +
-faction dialog depth + **bulletin board v1**: operations from the spec's §F Quest
-types (typed, unused, waiting in colonyTypes.ts 469-482; cycleProcessor step8 stub
-exists). Marketplace generalizes `marketContext`. **Spec status: ready** (colony spec
-Phase 3 + §F). Asset production is part of this milestone, not a polish pass: three
-reusable hub environment kits (wall/floor/ceiling plus facade/props) and eight paired NPC
-portrait/billboard identities ship alongside the code. The first art vertical slice is
-the Cantina, then Marketplace, then Town Hall; see
-`superpowers/plans/2026-07-18-m3-hub-asset-production.md`. General tier promotion and
-district growth remain outside this asset plan and must not be invented while producing art.
+Local `origin/main` is `9bf52a2` (PR #24 merge), not refreshed remote evidence. Nothing
+in this consolidation publishes or merges the integration branch to main. Preserve the
+partial Marketplace branch (`feat/m3-marketplace-runtime`, `289f4eb`) for a scoped reuse
+review. Do not clean up old branches/worktrees merely because they look stale.
 
-### M4 — The Decay Arc & Emergent Antagonists
-The user's stakes decision, formalized. Colony health drives a staged arc over many cycles:
-1. **Crime** (absorbs old 5b: witnesses, bounties, guards, silencing) —
-   reducer stubs exist (`npcKilled`/`witnessed`, step9_bountyDecay).
-2. **Starvation/unrest** (consumption sim already runs as of OW-0).
-3. **Mutation/infestation** — monsters seed in decayed districts; FP fights inside your
-   own colony; biome-flavored.
-4. **Syndicate genesis** — a collapsed/criminal colony births a syndicate ENTITY that
-   acts on the world: claims POIs, raids other colonies, **intercepts your mission
-   rewards/fleet (turret/escort engine reuse from spec Phase 7b), steals stockpiles**.
-   Counterplay at every stage (guards/barracks, defense missions, raid their POI base).
-Absorbs spec Phases 5b + 8 and the interception half of 7b. Syndicates and crises create
-located Atlas operations rather than abstract mission-menu entries. **Spec status:
-approved in `2026-07-13-decay-arc-emergent-antagonists-design.md`; plan after G0/M3
-foundations are ready.**
+## Active parallel milestone: Ashfall
 
-### M5 — RPG legs
-Non-combat XP sources wired (survey/found/trade/quest); Engineering + Piloting skill
-trees built (specced in 2026-04-05 plans, unbuilt); reward-economy Stage 2 (ships/Hangar)
-when it earns its place; levels 31-50 later. **Spec status: ready** (2026-04-05 docs).
+| Lane | Owner | Current assignment | Finish condition |
+| --- | --- | --- | --- |
+| Systems (GC2-A) | Existing Colony agent | Reconcile its roadmap; specify the first galaxy management slice and capability contract | Fresh save can reach management, commission one supported improvement, advance it through existing actions, see it complete, reload and re-enter without lost/duplicated state or legacy mutations |
+| Place, art and conversations | Claude Ashfall Designer | Isolated `design/ashfall-lock` worktree; bounded production packet under `docs/ashfall/` | Concrete identity/layout, asset slots, useful NPC conversations and an in-game acceptance route; then implement reviewed assets/interactions against real state |
+| Market and bartering | Designer proposes experience; Colony owns rules; Manager reconciles | Define first useful trade and its dependencies | Stock, price/exchange, refusal, cost and result are real, persistent and safe under repeated/stale input; distinguish buying/selling, exchange and negotiation |
+| Integration and lock | Codex Manager; Nic accepts the aesthetic | Review handoffs, freeze interfaces, issue bounded implementation slices and verify the complete route | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
 
-### M6 — The Living Galaxy expands — horizon
-Multi-colony comparison + coarse distant simulation + strategic actors + campaign
-records + broader frontier reach + Colony Planner/governance dashboard. The Atlas and
-persistent current location already exist from G0; M6 deepens their scale instead of
-introducing the first galaxy map. **Spec status: skeleton approved; focused specs later.**
+Design work starts alongside systems work, rather than waiting for all GC2–GC4
+infrastructure. Runtime integration still follows the dependency contract. The exact
+first barter mechanic, merchant unlock, sustainable supply path and visible colony
+consequence remain decisions for the bounded designs, not silently committed features.
 
-## Doc authority map
+The active implementation boundary remains one useful Ashfall loop. Marketplace,
+Town Hall, a full dialogue engine, procedural city generation, all campaign chapters
+and a renderer replacement must not become hidden prerequisites.
 
-- **This file** — course + decisions. Start here.
-- `superpowers/specs/2026-04-20-colony-system-design.md` — authoritative colony systems
-  reference (data model, §F quests, §I UX, phase details). Its phase *ordering* is
-  superseded by this roadmap; `docs/game/colony-system-design.md` is an older draft it
-  supersedes.
-- `superpowers/specs/2026-07-13-open-world-colony-design-draft.md` — OW loop design; its
-  5 open questions are ANSWERED (see Decisions above).
-- `assets/2026-07-12-asset-pipeline-free-options.md` + `assets/prompts/doom/` — asset
-  manufacturing. Supersedes the paid legs of the 2026-07-05 overhaul spec §5.4.
-- `specs/2026-04-05-sector-zero-expansion-design.md` + 2026-04-05 plans — progression/
-  economy reference; unbuilt remainders absorbed into M5.
-- `audits/2026-07-12-full-game-audit.md` — deferred PERF/POLISH backlog (pull from it
-  during any nearby work).
-- `superpowers/specs/2026-07-14-living-galaxy-vision-design.md` — approved long-horizon
-  direction for generations, Great Houses, galactic time, Fold eras, and world
-  continuity.
-- `superpowers/specs/2026-07-15-civilization-frontier-design.md` — approved skeleton for
-  political authority, autonomous colonies, recontact/exile, bounded governor
-  decisions, and the continuing logistics frontier.
-- `superpowers/specs/2026-07-16-continuous-galaxy-atlas-design.md` — authoritative
-  replacement for numbered world progression: continuous coordinates, hierarchical
-  Atlas, unified operations, travel commitment, simulation fidelity, and G0 scope.
+## What locking a world or system means
 
-## Execution model
+A lock has two parts:
 
-Specs are written and independently reviewed before implementation. Implementation runs
-subagent-driven per slice with independent gate verification (`tsc` +
-colony/engine/sprites tests + build + prod-build browser smoke) —
-the pattern that shipped everything above.
+1. **Accepted development baseline:** stable identity, geography, visual language,
+   entry/exit rules, useful interactions, evidence and regression fixtures. Later
+   improvements must deliberately preserve or revise that contract.
+2. **Saved-world continuity:** coordinates, entity identity, known facts and causal
+   history persist. Buildings, inhabitants, ownership and culture can still evolve.
+
+Place states are **proposed -> brief accepted -> integrated -> verified -> accepted**.
+“Accepted” requires ordinary player access, persistent consequences and aesthetic
+approval. Release is tracked separately. Keep one new place in active production;
+expand after it proves the pattern.
+
+## After Ashfall
+
+1. **GC3: galaxy cockpit.** Connect the proven loop to its ordinary home: Atlas,
+   colonies, located work and only functioning galaxy-owned services. Preserve clear
+   returns and current location.
+2. **First GC4 destination.** Use one existing authored location/operation, preferably
+   the already-adapted Kepler lead, to prove a reusable destination contract and
+   consequential travel. Do not adapt all W1–W8 content at once.
+3. **Living-world pressure.** Ship one causal need/crisis with warning, action,
+   consequence and recovery. Grow it into M4's slow decay and emergent syndicates.
+4. **Broaden the civilization loop.** Add remaining hub functions, non-combat RPG
+   progression (M5), multi-colony logistics, and one absence/return story before M6's
+   large-scale actors, layered time and chronicle.
+5. **GC5: retire legacy at parity.** Remove the experience wrapper only when the agreed
+   galaxy capabilities and explicit old-save policy are satisfied.
+6. **Long horizon.** Generations, households, Great Houses, governance, long transit,
+   cultural memory and eventually optional Fold systems remain preserved ambitions.
+   Each gets a focused spec when the preceding playable foundations justify it.
+
+## Design authority and historical references
+
+- This roadmap owns sequence and status; the October parallel brief owns lane boundaries.
+- [Galaxy-colony integration](superpowers/specs/2026-10-18-galaxy-colony-integration-design.md):
+  GC1–GC5 components and precise as-built limitations.
+- [Continuous Galaxy Atlas](superpowers/specs/2026-07-16-continuous-galaxy-atlas-design.md):
+  canonical spatial identity, located operations, travel and save isolation.
+- [Colony systems](superpowers/specs/2026-04-20-colony-system-design.md): data model,
+  colony systems and UX reference. Its phase order is superseded here;
+  `docs/game/colony-system-design.md` is an older superseded draft.
+- [Open-world colony](superpowers/specs/2026-07-13-open-world-colony-design-draft.md):
+  region/exploration foundations. Its old open questions do not reopen accepted decisions.
+- [Living Galaxy](superpowers/specs/2026-07-14-living-galaxy-vision-design.md) and
+  [Civilization Frontier](superpowers/specs/2026-07-15-civilization-frontier-design.md):
+  approved long-horizon fiction, time, government and continuity. October's mode removal
+  supersedes their boarding/ground-run examples.
+- [Decay arc](superpowers/specs/2026-07-13-decay-arc-emergent-antagonists-design.md):
+  M4 direction, requiring later focused implementation slices.
+- Existing M2 art, M3 hub-production and Cantina plans, plus playtest/handoff records,
+  remain reusable evidence and production references. Do not regenerate accepted assets
+  without checking their intended consumer and current runtime quality.
+
+## Completion discipline
+
+Each slice has one accountable owner, owned files, a player-visible outcome, explicit
+exclusions and a fresh-save acceptance route. Specs and plans precede implementation;
+review combines correctness, requirements and maintainability at meaningful boundaries.
+Verify appropriate tests, static export, actual browser behavior and gameplay-size art.
+
+Distinguish **written**, **executed**, **verified**, **human accepted** and **released**.
+Track blockers with an owner and a concrete closure condition. Codex Manager reconciles
+this file after each accepted milestone; no agent declares the whole roadmap finished
+from its own lane's success.
