@@ -11,6 +11,11 @@ unit tests passed. Of all 965 unit tests, 960 passed; the 5 failures were sprite
 `../docs/assets/...`, a path missing from the scratch copy, and they pass in the repository.
 Tasks 7–8 (`Game.tsx`, browser) were not dry-run.
 
+**Manager review corrections (2026-10-18, confirmed in chat):** Task 3A adds the stored-save
+persistence boundary and its store tests; Task 7 commits through it and extends both walk input
+guards; Task 8 adds held-input scenarios. Task 3A was dry-run in the same scratch copy (14 tests
+pass, `tsc` clean); the Task 7 and Task 8 corrections were not.
+
 **Goal:** In a galaxy run, a vessel parked at Ashfall can open colony management, commission a
 Solar Array through a validated command, finish it through an existing cycle-bearing action,
 reload, and find the building in the colony walk. Legacy progression stays unchanged.
@@ -40,7 +45,7 @@ edit `docs/ROADMAP.md`, `docs/handoffs/`, `docs/ashfall/` or the designer worktr
 | `game/app/components/colony/meta/ColonyCommissionMenu.tsx` | Modify | Read `BUILD_SPECS`; optional `options` and `onCommission`; `onDispatch` optional |
 | `game/app/components/colony/meta/ColonyHeader.tsx` | Modify | Optional `backLabel` (default unchanged) |
 | `game/app/components/engine/galaxy/galaxyColony.ts` | Modify | Export the existing `samePlainData` helper (no behaviour change) |
-| `game/app/components/engine/galaxy/galaxyColonyManagement.ts` | Create | Access wording, quote, commit, exact-change check |
+| `game/app/components/engine/galaxy/galaxyColonyManagement.ts` | Create | Access wording, quote, commit, exact-change check, stored-save boundary |
 | `game/app/components/colony/meta/GalaxyColonyManagementScreen.tsx` | Create | Galaxy management dialog over the existing panels |
 | `game/app/components/colony/meta/index.ts` | Modify | Export the new screen |
 | `game/app/components/colony/exploration/exitMenu.tsx` | Modify | Optional `onManageColony` → `COLONY MANAGEMENT` button |
@@ -598,6 +603,141 @@ git commit -m "feat(galaxy): validated colony commission command with stale and 
 
 ---
 
+### Task 3A: Stored-save persistence boundary (manager review correction 1)
+
+**Files:**
+- Modify: `game/app/components/engine/galaxy/galaxyColonyManagement.ts`
+- Test: `game/tests/colony/galaxyColonyManagement.test.ts`
+
+- [ ] **Step 1: Write the failing tests** (append; import `commitGalaxyColonyCommissionToStore`)
+
+```ts
+function memoryStore(initial: SaveData, fail: { read?: boolean; write?: boolean } = {}) {
+  let stored = structuredClone(initial);
+  const writes: SaveData[] = [];
+  return {
+    writes,
+    stored: () => stored,
+    store: {
+      read: () => { if (fail.read) throw new SyntaxError("Unexpected token"); return structuredClone(stored); },
+      write: (next: SaveData) => { if (fail.write) throw new Error("QuotaExceededError"); writes.push(next); stored = structuredClone(next); },
+    },
+  };
+}
+
+function screenQuote(metal: number) {
+  const screen = parentFor(withMetal(atAshfall(), metal));
+  return { screen, quote: ok(quoteGalaxyColonyCommission(screen, COLONY, "solar_array")).quote };
+}
+
+test("store commit uses the newer stored save and keeps its unrelated fields", () => {
+  const { screen, quote } = screenQuote(80);
+  const newer: SaveData = { ...screen, credits: 1234,
+    galaxyRun: { ...screen.galaxyRun!, resources: { ...screen.galaxyRun!.resources, credits: 50 } } };
+  const memory = memoryStore(newer);
+  assert.equal(commitGalaxyColonyCommissionToStore(memory.store, quote).ok, true);
+  assert.equal(memory.writes.length, 1);
+  assert.equal(memory.stored().credits, 1234);
+  assert.equal(memory.stored().galaxyRun!.resources.credits, 50);
+  assert.equal(memory.stored().galaxyRun!.colonies.find(c => c.id === COLONY)!.buildings.length, 1);
+});
+
+test("store commit refuses a stale quote, writes nothing and returns the stored save", () => {
+  const { screen, quote } = screenQuote(160);
+  const elsewhere = ok(commitGalaxyColonyCommission(screen, quote)).save; // another tab built first
+  const memory = memoryStore(elsewhere);
+  const result = commitGalaxyColonyCommissionToStore(memory.store, quote);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.reason, "stale_command");
+  assert.deepEqual(result.reconcile, elsewhere);
+  assert.equal(memory.writes.length, 0);
+});
+
+test("store commit blocks unreadable storage and a save without a galaxy run", () => {
+  const { screen, quote } = screenQuote(80);
+  const unreadable = memoryStore(screen, { read: true });
+  assert.deepEqual(commitGalaxyColonyCommissionToStore(unreadable.store, quote),
+    { ok: false, reason: "storage_unreadable", message: "SAVE COULD NOT BE READ · NOTHING CHANGED", reconcile: null });
+  const defaulted = memoryStore(migrateSave({})); // what a missing save key reads as
+  const refused = commitGalaxyColonyCommissionToStore(defaulted.store, quote);
+  assert.equal(refused.ok, false);
+  if (!refused.ok) { assert.equal(refused.reason, "no_galaxy_run"); assert.equal(refused.reconcile, null); }
+  assert.equal(unreadable.writes.length + defaulted.writes.length, 0);
+});
+
+test("a failed write changes nothing and offers nothing to adopt", () => {
+  const { screen, quote } = screenQuote(80);
+  const failing = memoryStore(screen, { write: true });
+  assert.deepEqual(commitGalaxyColonyCommissionToStore(failing.store, quote),
+    { ok: false, reason: "write_failed", message: "MANAGEMENT SAVE FAILED · NOTHING CHANGED", reconcile: null });
+  assert.deepEqual(failing.stored(), screen);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `npx tsx --test tests/colony/galaxyColonyManagement.test.ts`
+Expected: FAIL — `commitGalaxyColonyCommissionToStore` not exported.
+
+- [ ] **Step 3: Add the boundary** (append to `galaxyColonyManagement.ts`; add
+  `import type { CanonicalSaveStore } from "../missionOutcome";`)
+
+```ts
+/** Refusals that come from a readable galaxy save; only these may reconcile the UI. */
+const RECONCILABLE: ReadonlySet<GalaxyCommissionRefusal> = new Set([
+  "stale_command", "insufficient_resources", "no_buildable_slot", "access_unavailable", "unsupported_building",
+]);
+
+export type GalaxyCommissionStoreResult =
+  | { ok: true; save: SaveData; buildingId: string }
+  | {
+      ok: false;
+      reason: GalaxyCommissionRefusal | "storage_unreadable" | "write_failed";
+      message: string;
+      /** A readable stored galaxy save to adopt so the screen shows current state; null = adopt nothing. */
+      reconcile: SaveData | null;
+    };
+
+/**
+ * GC2-A persistence boundary. The stored save, not the session copy, is the authority: read it,
+ * commit against that fresh parent, write, and let the caller adopt only after the write.
+ * Read and write run in one synchronous call like the other canonical writers; no cross-tab
+ * atomicity is claimed.
+ */
+export function commitGalaxyColonyCommissionToStore(
+  store: CanonicalSaveStore,
+  quote: GalaxyCommissionQuote,
+): GalaxyCommissionStoreResult {
+  let stored: SaveData;
+  try { stored = store.read(); }
+  catch {
+    return { ok: false, reason: "storage_unreadable", message: "SAVE COULD NOT BE READ · NOTHING CHANGED", reconcile: null };
+  }
+  const result = commitGalaxyColonyCommission(stored, quote);
+  if (!result.ok) return { ...result, reconcile: RECONCILABLE.has(result.reason) ? stored : null };
+  try { store.write(result.save); }
+  catch {
+    return { ok: false, reason: "write_failed", message: "MANAGEMENT SAVE FAILED · NOTHING CHANGED", reconcile: null };
+  }
+  return result;
+}
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `npx tsx --test tests/colony/galaxyColonyManagement.test.ts`
+Expected: PASS (14 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add game/app/components/engine/galaxy/galaxyColonyManagement.ts game/tests/colony/galaxyColonyManagement.test.ts
+git commit -m "feat(galaxy): commit colony commissions against the stored save (GC2-A)"
+```
+
+---
+
 ### Task 4: Fresh-save route test through shipped authorities
 
 **Files:**
@@ -929,7 +1069,7 @@ import { GalaxyColonyManagementScreen } from "./colony/meta/GalaxyColonyManageme
 import type { BuildOption } from "./colony/meta/ColonyCommissionMenu";
 import {
   GALAXY_COMMISSION_TYPES,
-  commitGalaxyColonyCommission,
+  commitGalaxyColonyCommissionToStore,
   galaxyColonyManagementAccess,
   quoteGalaxyColonyCommission,
   type GalaxyCommissionQuote,
@@ -955,36 +1095,61 @@ const handleOpenGalaxyManagement = useCallback((colonyId: string, source: "atlas
     return;
   }
   galaxyManagementInvokerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  clearHeldInput(); // management owns input from this frame; nothing held carries in or out
   if (source === "landing-pad") setExitMenuOpen(false);
   setGalaxyManagement({ colonyId, source, status: null });
-}, []);
+}, [clearHeldInput]);
 
 const handleCloseGalaxyManagement = useCallback(() => {
   const surface = galaxyManagement;
+  clearHeldInput();
   setGalaxyManagement(null);
   if (surface?.source === "landing-pad") setExitMenuOpen(true);
-}, [galaxyManagement]);
+}, [clearHeldInput, galaxyManagement]);
+
+// The stored save is the authority, not the session ref (manager review, correction 1). Same
+// store shape as `outcomeStore`, but the write does not adopt; the handler adopts after it.
+const managementStore = useMemo<CanonicalSaveStore>(() => ({ read: readCanonicalSaveStrict, write: saveSave }), []);
 
 const handleGalaxyCommission = useCallback((quote: GalaxyCommissionQuote) => {
   if (persistenceNavigationLocked) return;
-  const result = commitGalaxyColonyCommission(saveDataRef.current, quote);
+  const result = commitGalaxyColonyCommissionToStore(managementStore, quote);
   if (!result.ok) {
+    // Show the stored state and the reason. The click is never re-priced and retried.
+    if (result.reconcile) adoptCanonicalSave(result.reconcile);
     setGalaxyManagement(current => current && { ...current, status: result.message });
     return;
   }
-  try { persistCanonicalSave(result.save); }
-  catch {
-    setGalaxyManagement(current => current && { ...current, status: "MANAGEMENT SAVE FAILED · NOTHING CHANGED" });
-    return;
-  }
+  adoptCanonicalSave(result.save); // already written
   const label = quote.buildingType.replaceAll("_", " ").toUpperCase();
   const cycles = `${quote.cyclesToBuild} CYCLE${quote.cyclesToBuild === 1 ? "" : "S"}`;
   setGalaxyManagement(current => current && { ...current, status: `${label} COMMISSIONED · READY IN ${cycles}` });
-}, [persistCanonicalSave, persistenceNavigationLocked]);
+}, [adoptCanonicalSave, managementStore, persistenceNavigationLocked]);
 ```
+
+`readCanonicalSaveStrict`, `saveSave` and `CanonicalSaveStore` are already imported in `Game.tsx`.
 
 If `persistenceNavigationLocked` is declared below this point, move these handlers below its
 declaration (it is a plain derived value; follow the placement of other handlers that read it).
+
+- [ ] **Step 3A: Input ownership (manager review, correction 2)** — opening management closes
+  `exitMenuOpen`, so both walk guards must name `galaxyManagement`:
+  - `canvasInputBlocked`: change the last line to `!!pendingPoiResolution || exitMenuOpen || !!galaxyManagement;`
+    so the input context is `blocked` while the dialog is open.
+  - The colony loop: `(exitMenuOpen || regionMapSurface || galaxyManagement)` in the
+    `effectiveKeys` condition.
+  - Add `galaxyManagement` to both effect dependency lists that already hold
+    `exitMenuOpen, regionMapSurface` (the keyboard effect and the frame-loop effect), so neither
+    keeps a stale closure.
+  - Backstop for every other open or close route (Step 7 clears, POI mounts):
+
+```ts
+const galaxyManagementOpen = galaxyManagement !== null;
+useEffect(() => { clearHeldInput(); }, [galaxyManagementOpen, clearHeldInput]);
+```
+
+  The persistence lock and focus rules stay as they are: Step 6 keeps `focusActive` and `onExit`
+  behind `persistenceNavigationLocked`.
 
 - [ ] **Step 4: Quotes in render** — near `colonyEngineSave`:
 
@@ -1044,7 +1209,8 @@ const handleGalaxyManagementBuild = useCallback((option: BuildOption) => {
 
 - [ ] **Step 7: Clear on route change** — wherever `setRegionMapSurface(null)` runs because the
   player leaves the colony or Atlas (descend, take off, POI launch, outcome mounts), also call
-  `setGalaxyManagement(null)`. Search: `setRegionMapSurface(null)`.
+  `setGalaxyManagement(null)`. Search: `setRegionMapSurface(null)`. The Step 3A effect clears
+  held input on each of these closes.
 
 - [ ] **Step 8: Type-check and run units**
 
@@ -1064,6 +1230,7 @@ git commit -m "feat(galaxy): open Ashfall management from the landing pad and At
 
 **Files:**
 - Create: `game/tests/browser/galaxyColonyManagement.spec.ts`
+- Modify: `game/tests/browser/touchGameplay.spec.ts` (held-input scenarios, Step 1A)
 
 - [ ] **Step 1: Write the spec**
 
@@ -1216,17 +1383,100 @@ test("@pointer a parked vessel opens management, and an unaffordable build write
 });
 ```
 
+- [ ] **Step 1A: Held-input scenarios (manager review, correction 2)** — append to
+  `touchGameplay.spec.ts`, which already owns the frame observation (`installObservation`,
+  `frames`, `still`, `center`, `Fingers`, `withFingers`, `action`, `receipt`), so no helper moves.
+
+```ts
+// GC2-A: the management dialog owns input. Nothing held before, during or after it may move the
+// walker, fire, open another menu or carry into the walk until a fresh input.
+async function descendAtAshfall(page: Page, method: "keyboard" | "touch") {
+  await installObservation(page);
+  await installSaveFixture(page, galaxyAtAshfall);
+  await page.goto("/");
+  for (const label of ["CONTINUE GALAXY", "DESCEND TO COLONY"]) {
+    if (method === "touch") await action(page, label).tap();
+    else { await action(page, label).focus(); await page.keyboard.press("Enter"); }
+  }
+  return {
+    controls: page.getByRole("group", { name: "Colony controls", exact: true }),
+    menu: page.getByRole("dialog", { name: "Landing pad exit menu", exact: true }),
+    manage: page.getByRole("dialog", { name: "Colony management", exact: true }),
+  };
+}
+
+async function walkIsInert(page: Page, menu: Locator) {
+  const observed = await frames(page, "fp", 30);
+  still(observed, "fp");
+  expect(observed.some(frame => frame.gun), "no fire").toBe(false);
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
+test("@keyboard held movement and interact do not cross colony management", async ({ page }, testInfo) => {
+  const { controls, menu, manage } = await descendAtAshfall(page, "keyboard");
+  await controls.getByRole("button", { name: "Interact", exact: true }).focus();
+  await page.keyboard.down("Enter"); await page.waitForTimeout(100); await page.keyboard.up("Enter");
+  await menu.getByRole("button", { name: "COLONY MANAGEMENT", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(manage).toBeVisible();
+  await page.keyboard.down("w"); // move-up, held through the dialog
+  await page.keyboard.down("z"); // primary (interact), held through the dialog
+  still(await frames(page, "fp", 30), "fp");
+  await page.keyboard.press("Escape"); // management -> landing pad menu
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape"); // menu -> walk
+  await walkIsInert(page, menu);
+  await page.keyboard.up("z"); await page.keyboard.up("w");
+  await page.keyboard.down("w"); // a fresh press moves
+  const fresh = await frames(page, "fp", 30);
+  await page.keyboard.up("w");
+  expect(Math.hypot(fresh.at(-1)!.fp!.x - fresh[0].fp!.x, fresh.at(-1)!.fp!.y - fresh[0].fp!.y)).toBeGreaterThan(0.05);
+  await receipt(page, testInfo, "Atlas -> DESCEND -> Interact -> COLONY MANAGEMENT -> hold W+Z -> Escape x2", "galaxyAtAshfall",
+    "Keys held across management neither move, fire nor reopen a menu; a fresh W moves.", "keyboard");
+});
+
+test("@touch a held colony gesture does not cross colony management", async ({ page }, testInfo) => {
+  const { controls, menu, manage } = await descendAtAshfall(page, "touch");
+  const interact = controls.getByRole("button", { name: "Interact", exact: true });
+  const forward = await center(controls.getByRole("button", { name: "Move forward", exact: true }));
+  await withFingers(page, async (fingers) => {
+    await fingers.down(1, interact); // held from before the menu to after the walk resumes
+    await expect(menu).toBeVisible();
+    await fingers.tap(2, menu.getByRole("button", { name: "COLONY MANAGEMENT", exact: true }));
+    await expect(manage).toBeVisible();
+    still(await frames(page, "fp", 30), "fp");
+    await fingers.tap(2, manage.getByRole("button", { name: "← BACK", exact: true }));
+    await expect(menu).toBeVisible();
+    await fingers.tap(2, menu.getByRole("button", { name: "Resume", exact: true }));
+    await fingers.move(1, forward); // the old finger slides onto movement
+    await walkIsInert(page, menu);
+    await fingers.up(1);
+    await fingers.tap(1, interact); // a fresh tap still works
+    await expect(menu).toBeVisible();
+  });
+  await receipt(page, testInfo, "Atlas -> DESCEND -> hold Interact -> COLONY MANAGEMENT -> BACK -> Resume -> slide to Move forward",
+    "galaxyAtAshfall", "A finger held across management neither moves, fires nor reopens the menu; a fresh tap opens it.");
+});
+```
+
+  `receipt` takes `"touch" | "pointer"` today; widen it to include `"keyboard"`.
+
 - [ ] **Step 2: Build and run the galaxy specs**
 
-Run: `NEXT_PUBLIC_DEVTOOLS=1 yarn build`, then the browser command from the top of this plan.
-Expected: the 3 new tests and the 6 GC1 tests pass in their projects. Where a locator does not
+Run: `NEXT_PUBLIC_DEVTOOLS=1 yarn build`, then the browser command from the top of this plan,
+plus `touchGameplay.spec.ts`.
+Expected: the 3 new tests, the 2 held-input tests and the 6 GC1 tests pass in their projects.
+Prove the held-input tests can fail: locally remove the two Step 3A guard terms, see both tests
+fail (the walk moves or acts behind the dialog), restore them, and record the red run in the
+handback. Do not commit the removal. Where a locator does not
 match the real markup (for example the Escape that closes the region), fix the test to the real
 UI and record the change in the handback; do not change gameplay to fit a test.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add game/tests/browser/galaxyColonyManagement.spec.ts
+git add game/tests/browser/galaxyColonyManagement.spec.ts game/tests/browser/touchGameplay.spec.ts
 git commit -m "test(browser): galaxy colony management route, gating and refusal (GC2-A)"
 ```
 

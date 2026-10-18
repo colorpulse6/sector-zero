@@ -134,12 +134,24 @@ The command writes only `save.galaxyRun.colonies`. Legacy fields, `activeExperie
 metadata and other galaxy fields stay byte-identical. Tests compare legacy domain bytes
 before and after (unit and browser).
 
-### 4.6 Persistence and reload
+### 4.6 Persistence and reload (corrected after manager review, 2026-10-18)
 
-A successful commit is written with `persistCanonicalSave`. If the write throws, the in-memory
-save is not adopted and the screen says `MANAGEMENT SAVE FAILED · NOTHING CHANGED`. Reload
-keeps the GC1 contract: the experience gate, then CONTINUE GALAXY opens the Atlas. The
-building's state is in the save, so a new descent shows it.
+The persistence authority is the **stored** save, not the session copy (`saveDataRef`).
+`commitGalaxyColonyCommissionToStore(store, quote)` with `store = { read: readCanonicalSaveStrict, write: saveSave }`:
+
+1. Reads the stored save. A read that throws → `storage_unreadable`; nothing is written or adopted.
+2. Commits against that fresh parent, so newer unrelated fields (legacy or galaxy) survive.
+   A stored save without a galaxy run (what a missing key reads as) → `no_galaxy_run`;
+   nothing is written or adopted. No default save is ever adopted.
+3. On a refusal from a readable galaxy save (stale, unaffordable, no slot, access), returns
+   that stored save as `reconcile`. The UI adopts it and shows the refusal. It never re-prices
+   and retries a different intent.
+4. Writes the result, then the caller adopts it. A write that throws → `write_failed`
+   (`MANAGEMENT SAVE FAILED · NOTHING CHANGED`); nothing is adopted.
+
+Read and write happen in one synchronous handler, as in the other canonical writers. No
+cross-tab atomicity is claimed. Reload keeps the GC1 contract: the experience gate, then
+CONTINUE GALAXY opens the Atlas. A new descent shows the building.
 
 ### 4.7 Visibility
 
@@ -153,6 +165,14 @@ gives Ashfall Primary 80 metal at cycle 2; the reducer commission on a projectio
 (`solar_array` constructing, metal 0); a galaxy region survey of the Oathbreaker wreck moves
 the run to cycle 3 and the Solar Array to operational; `generateExteriorState` for that colony
 contains the solar wall texture and a door tile.
+
+### 4.8 Input ownership (added after manager review, 2026-10-18)
+
+While management is open it owns input. Opening it from the pad closes `exitMenuOpen`, so
+both walk guards in `Game.tsx` add `galaxyManagement`: `canvasInputBlocked` (input context
+`blocked`) and the colony `effectiveKeys` zeroing. `clearHeldInput()` runs on open, on close
+and on every navigation that clears the surface, so no held key or touch reaches the walk
+until a fresh input. The persistence lock and modal focus behave as before.
 
 ## 5. Entry points and screen
 
@@ -205,8 +225,13 @@ Pass when steps 4–7 hold and legacy progression is unchanged.
   MANAGEMENT → Build → REGION MAP → SURVEY (real UI cycle) → operational → Take Off → reload →
   CONTINUE GALAXY → descend → the management screen still shows the operational building;
   legacy bytes unchanged; screenshot attached.
+- Unit (store boundary): newer unrelated stored fields survive; a stale quote writes nothing
+  and returns the stored save to reconcile; unreadable storage and a save without a galaxy run
+  are blocked; a failed write adopts nothing.
 - Browser (`@pointer`): Atlas MANAGE COLONY disabled with the reason away from Ashfall;
-  enabled when parked; Build with too little metal is impossible; a stale quote is refused.
+  enabled when parked; Build with too little metal is impossible.
+- Browser (`@keyboard`, `@touch`): movement and Interact held across opening and closing
+  management do not move the player, fire, open another menu or carry into the walk.
 - `tsc`, the three unit suites, `yarn build`, and the galaxy browser specs. The full browser
   suite runs once before handback.
 
@@ -270,19 +295,29 @@ barter rule changes. Candidate facts (decision D4):
 5. **Outpost access.** Founding costs 300 metal, 50 food, 50 water. Food and water need a
    farm and a purifier, so outposts are not reachable early. Their access rule can wait. (D7)
 
+**GC2-B requirement (manager review).** A sustainable earning, trade and resupply loop is
+required. A failed unique operation must not remove every practical recovery route, and
+cleared one-shot POI/history rewards must not reroll. The designer's metal-for-supply direct
+exchange is a proposal; its rates and cap are **unapproved**. Colony and the designer
+reconcile one small reliable-work/trade proposal before commerce is built.
+
 ## 9. Decisions for the manager
+
+Manager review (`docs/handoffs/2026-10-18-gc2a-manager-review.md`, confirmed in chat): D1–D3
+accepted; D7/D8 deferred; D9 not bundled — shop display and transaction share one galaxy rule
+in the commerce slice. D4–D6 and D10 stay open for GC2-B.
 
 | ID | Decision | Recommendation |
 |---|---|---|
-| D1 | GC2-A building set | `solar_array` only. GC2-B adds `mine` for the repeatable metal path; cantina stays out until the hub and designer lanes agree |
-| D2 | GC2-A entry points | Landing-pad `COLONY MANAGEMENT` (primary) and Atlas `MANAGE COLONY` (same access) |
-| D3 | A change made during a walk | Shows on the next descent (no map refresh in GC2-A) |
+| D1 | GC2-A building set | **Accepted:** `solar_array` only. GC2-B adds `mine` for the repeatable metal path; cantina stays out until the hub and designer lanes agree |
+| D2 | GC2-A entry points | **Accepted:** landing-pad `COLONY MANAGEMENT` (primary) and Atlas `MANAGE COLONY` (same access) |
+| D3 | A change made during a walk | **Accepted:** shows on the next descent (no map refresh in GC2-A) |
 | D4 | First galaxy merchant unlock (GC2-B) | Hull Repair Kit, opened by the first operational building at Ashfall Primary |
 | D5 | Repeatable credit source (GC2-B) | Needs Nic or manager; options include colony treasury to wallet, selling to the quartermaster, contracts. Not invented here |
 | D6 | Ship resupply (GC2-B or GC3) | Needs a rule; not invented here |
 | D7 | Regional outpost access | Defer; GC2-A says `NO COLONY HERE` |
 | D8 | Galaxy colony time of day | Keep the fixed 07:00 clock until the designer's day/night proposal |
-| D9 | Hide locked galaxy shop rows in GC2-A | Yes, a one-line display fix that stops showing refused items, if the manager wants it before GC2-B |
+| D9 | Hide locked galaxy shop rows in GC2-A | **Not bundled.** Display and transaction move to one galaxy rule in the commerce slice |
 | D10 | Metal after a failed Ashfall sortie (GC2-B) | Needs a decision before GC2-B promises a repeatable path: for example a retryable local operation, or a repeatable POI yield. Not invented here |
 
 ## 10. Risks

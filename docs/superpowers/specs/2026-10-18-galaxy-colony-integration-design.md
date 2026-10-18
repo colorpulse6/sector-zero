@@ -103,8 +103,8 @@ hub in GC3. GC2 ships in two slices:
 - **GC2-A** — reachable management, a validated commission command, one supported building
   (Solar Array), progress through existing cycle-bearing actions, save/reload, the building
   visible on the next descent. Spec `2026-10-18-gc2a-galaxy-colony-management-design.md`,
-  plan `../plans/2026-10-18-gc2a-galaxy-colony-management.md`. Status: proposed, awaiting
-  manager review.
+  plan `../plans/2026-10-18-gc2a-galaxy-colony-management.md`. Status: scope accepted by the
+  manager review (2026-10-18); its two corrections are applied; runtime not started.
 - **GC2-B** — the first galaxy-native merchant unlock with honest shop display, a repeatable
   resource path, written resource ownership, more building types and the regional outpost
   access rule. Proposed in the GC2-A spec §8; needs the decisions listed there.
