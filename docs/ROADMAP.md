@@ -48,6 +48,11 @@ Management must translate into people, visible changes or playable opportunities
 
 ## Decisions of record
 
+- **2026-10-18:** Nic approved all three enemy concepts in the HTML review. Ship their
+  front-facing runtime integration with map completion fixes after verification. Directional
+  animation production remains a separate art milestone; approval of a concept is not approval
+  of unseen animation. Merge and deploy both game and companion site are authorized.
+
 - **2026-10-18:** lock Ashfall first; Colony continues its GC roadmap alongside a
   scoped Claude designer, coordinated by Codex Manager. Art/content work can run in
   parallel with system integration. New mechanics still need explicit contracts.
@@ -71,6 +76,12 @@ Management must translate into people, visible changes or playable opportunities
   Fold Threshold. Completing the opening campaign does not end the save or force joining.
 
 ## Current state and evidence
+
+The approved enemy family and map-completion release is recorded in
+[the release handoff](handoffs/2026-10-18-approved-hostiles-release.md). The three
+concepts are accepted; the initial front-facing runtime integration and reachable
+mission routes are verified locally. Main/deployment remain a separate release gate.
+
 
 The current delivery adds five-building management, planned-power and mine-first safeguards,
 settler guidance, and explicit E/touch FPS pickup. The site and README follow the simplified

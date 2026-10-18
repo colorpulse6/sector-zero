@@ -36,7 +36,7 @@ Our direction is simple: **travel → explore → improve a colony → undertake
 ## Combat and exploration
 
 - **Space combat** — Weave through enemy formations and take on the bosses guarding eight sectors.
-- **First-person combat** — Explore interiors and face the threats around the next corner.
+- **First-person combat** — Explore interiors and face distinct grunt, charger and sentry designs. The first art integration uses front-facing billboards with movement, attack, hit and death feedback; directional animation sheets remain next.
 - **Turret defense** — Track incoming fighters from the gunner's seat.
 - **Multi-phase missions** — Move between combat modes as a mission unfolds.
 

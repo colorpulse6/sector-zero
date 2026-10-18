@@ -1,5 +1,6 @@
 import { loadSprite, releaseSprite, SPRITES } from "./sprites";
 import type { FirstPersonState, FPEnemy } from "./types";
+import { APPROVED_HOSTILES } from "./approvedHostiles";
 
 export type ActorAction = "idle" | "walk" | "work" | "attack" | "hurt" | "death";
 export interface ActorClip { path: string; columns: number; rows: number; frameMs: number; loop?: boolean }
@@ -32,7 +33,16 @@ function humanoid(set: string): ActorSet {
     walk: { path: `/sprites/actors/${set}/walk.png`, columns: 8, rows: 8, frameMs: 100 },
   } };
 }
+function approvedHostile(type: FPEnemy["type"]): ActorSet {
+  const source = APPROVED_HOSTILES[type];
+  return { width: source.width, height: source.height, clips: {
+    idle: { path: source.path, columns: 1, rows: 1, frameMs: 1000 },
+  } };
+}
 export const ACTOR_CATALOG = {
+  "hostile-grunt": approvedHostile("grunt"),
+  "hostile-charger": approvedHostile("charger"),
+  "hostile-sentry": approvedHostile("sentry"),
   quartermaster: { width: 128, height: 256, clips: {
     idle: { path: QUARTERMASTER_ATLASES.idle, columns: 4, rows: 8, frameMs: 300 },
     walk: { path: QUARTERMASTER_ATLASES.walk, columns: 8, rows: 8, frameMs: 100 },
@@ -108,12 +118,12 @@ export class ActorAssetResidency {
     this.retainedSets.clear(); this.retainedPaths.clear(); this.retainedBytes = 0;
     this.scene = null; this.key = "";
   }
-  private priority(set: ActorSetId): number { return set === "quartermaster" ? 0 : set === "hostile" ? 1 : 2; }
+  private priority(set: ActorSetId): number { return set === "quartermaster" ? 0 : set.startsWith("hostile") ? 1 : 2; }
 }
 const activeAssets = new ActorAssetResidency({ load: loadSprite, release: releaseSprite });
 export function syncActorAssets(fp: FirstPersonState): void {
   if (typeof Image === "undefined") return;
-  const sets: ActorSetId[] = fp.enemies.length ? ["hostile"] : [];
+  const sets: ActorSetId[] = fp.enemies.map(enemy => `hostile-${enemy.type}` as ActorSetId);
   for (const npc of fp.npcs ?? []) {
     const set = npc.atlasAnimation?.set ?? resolveNpcActorSet(npc);
     if (set) sets.push(set);

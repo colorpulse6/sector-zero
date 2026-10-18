@@ -1,5 +1,23 @@
 # First-person hostiles: first family refresh
 
+## Approved family integration, 2026-10-18
+
+Nic approved the grunt, charger and sentry in `dashboards/enemy-design/page/`. The
+original transparent PNGs now live in `game/public/sprites/actors/approved/`.
+`approvedHostiles.ts` records source dimensions, alpha-measured ground lines and
+per-role proportions. The renderer preserves their aspect ratios, anchors their
+lowest contact pixels to the floor and uses existing depth/light handling.
+Movement, attack, recoil and death use deterministic billboard deformation. These
+are front-facing cutouts, **not directional animation sheets**.
+
+The active scene retains only the required type images (about 18 MiB decoded for
+all three), under the existing source budget. Legacy fallback sprites remain for
+loading failures; old hostile atlas metadata is retained for compatibility.
+Next art owner: designer. Completion condition: consistent directional poses and
+animation frames approved against these references, followed by Codex map QA.
+
+The earlier lane report below describes the previous shared atlas.
+
 Date: 2026-10-18. Lane: Claude (FPS enemy art). Branch `design/fps-enemy-refresh`, base `183cbda`.
 Request (Nic, via Manager): "the monsters in fps view, they are shit. make them better."
 

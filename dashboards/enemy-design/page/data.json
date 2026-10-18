@@ -1,0 +1,44 @@
+{
+  "title": "Enemy design review",
+  "version": 1,
+  "created": "2026-10-18",
+  "refresh": "manual",
+  "status": "designs_approved_runtime_verification_pending",
+  "decision_owner": "Nic",
+  "integration_owner": "Codex",
+  "baseline": {
+    "name": "Current hostile",
+    "path": "assets/current.png",
+    "source": "game/public/sprites/actors/hostile/fallback-front.png"
+  },
+  "concepts": [
+    {
+      "id": "grunt",
+      "name": "Grunt",
+      "role": "Close-range pressure",
+      "path": "assets/grunt.png",
+      "approved": true,
+      "animated": false,
+      "source_id": "exec-f78e5d5c-92c9-47a8-8b91-5284b8143ff2"
+    },
+    {
+      "id": "charger",
+      "name": "Charger",
+      "role": "Fast approach",
+      "path": "assets/charger.png",
+      "approved": true,
+      "animated": false,
+      "source_id": "exec-9d7d4181-9da6-4b79-8565-f3056e7e74f0"
+    },
+    {
+      "id": "sentry",
+      "name": "Sentry",
+      "role": "Ranged area denial",
+      "path": "assets/sentry.png",
+      "approved": true,
+      "animated": false,
+      "source_id": "exec-21b4c11e-f30f-49c8-b3b9-e53596470d40"
+    }
+  ],
+  "approved_on": "2026-10-18"
+}

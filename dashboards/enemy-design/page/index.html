@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Sector Zero · Enemy design review</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="review.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead"><a href="#top" class="brand"><span class="brand-mark" aria-hidden="true">SZ</span>SECTOR ZERO <span class="divider">/</span> FIELD STUDIES</a><span class="edition">DESIGN REVIEW 001 · 18 OCT 2026</span></header>
+    <main id="top">
+      <section class="intro" aria-labelledby="title">
+        <div><p class="eyebrow"><span class="dot"></span> HOSTILE LIFE / FIRST-PERSON VIEW</p><h1 id="title">Know the threat.<br><span>Before it moves.</span></h1><p class="lede">One visual family. Three unmistakable threats.<br>Explore the shapes, materials, and read at a distance before we commit to animation.</p></div>
+        <aside class="review-status"><span class="status-pill">DESIGNS APPROVED</span><h2>Design first. Then build.</h2><p>Nic approved all three designs. Runtime integration is in progress; these remain the static design references.</p><p>Background and size controls are viewing studies, not in-game lighting or scale.</p><a href="#review-notes">What we need to lock <span aria-hidden="true">↘</span></a></aside>
+      </section>
+      <section aria-labelledby="lineup-title">
+        <div class="section-heading"><div><p class="eyebrow">01 / THE PROPOSED FAMILY</p><h2 id="lineup-title">Different shapes. Shared DNA.</h2></div><p>Scarred metal · dark sinew · ember light</p></div>
+        <div class="toolbar" aria-label="Preview controls">
+          <fieldset><legend>Backdrop</legend><div class="segmented"><button type="button" data-backdrop="dark" aria-pressed="true">Dark</button><button type="button" data-backdrop="ash" aria-pressed="false">Ash</button><button type="button" data-backdrop="light" aria-pressed="false">Light</button></div></fieldset>
+          <label class="range-label" for="size">Image height <output id="size-value" for="size">320 px</output><input id="size" type="range" min="48" max="400" step="16" value="320"></label>
+          <label class="check-label"><input id="silhouette" type="checkbox"> Silhouette only</label>
+          <button type="button" id="reset" class="reset">Reset view ↺</button>
+        </div>
+        <div class="lineup" id="lineup" data-backdrop="dark">
+          <article class="creature-card"><header><span class="specimen">01</span><span class="role">CLOSE-RANGE PRESSURE</span></header><div class="stage"><img class="creature" src="assets/grunt.png" alt="Grunt concept: upright armored creature with angular shoulders, clawed hands and a small ember chest core."><span class="stage-mark" aria-hidden="true">+</span></div><div class="card-copy"><div class="name-row"><h3>Grunt</h3><span>THE BRAWLER</span></div><p>The baseline threat: upright, balanced, and heavy. Broken armor frames a compact ember core.</p><div class="review-point"><span>LOOK FOR</span>A clean outline without losing the brutal, worn surface.</div></div></article>
+          <article class="creature-card"><header><span class="specimen">02</span><span class="role">FAST APPROACH</span></header><div class="stage"><img class="creature" src="assets/charger.png" alt="Charger concept: low forward-leaning predator with long forearms, swept horns and hooked claws."><span class="stage-mark" aria-hidden="true">+</span></div><div class="card-copy"><div class="name-row"><h3>Charger</h3><span>THE PURSUER</span></div><p>A low, forward silhouette. Long forearms and swept armor make the intent to lunge immediate.</p><div class="review-point"><span>LOOK FOR</span>Enough separation from the grunt; claws that stay readable in motion.</div></div></article>
+          <article class="creature-card"><header><span class="specimen">03</span><span class="role">RANGED AREA DENIAL</span></header><div class="stage"><img class="creature" src="assets/sentry.png" alt="Sentry concept: broad, heavily armored creature with planted feet and a large circular glowing chest weapon."><span class="stage-mark" aria-hidden="true">+</span></div><div class="card-copy"><div class="name-row"><h3>Sentry</h3><span>THE ANCHOR</span></div><p>A walking barricade. Broad shoulders and a recessed chest weapon communicate weight and range.</p><div class="review-point"><span>LOOK FOR</span>A chest weapon that reads clearly, with room for a visible firing tell.</div></div></article>
+        </div>
+        <p class="caption">Static AI-generated concepts · equal image-box height for comparison · smaller screens may constrain width · no gameplay changes</p>
+      </section>
+      <section class="distance-section" aria-labelledby="distance-title"><div><p class="eyebrow">02 / THE DISTANCE TEST</p><h2 id="distance-title">Do the shapes survive?</h2><p>Each image fits inside a 72 × 48 px box, in white silhouette. This checks outline recognition, not animation or combat readability.</p></div><div class="distance-lineup"><figure><div><img src="assets/current.png" alt="Current enemy silhouette"></div><figcaption>Current</figcaption></figure><figure><div><img src="assets/grunt.png" alt="Proposed grunt silhouette"></div><figcaption>Grunt</figcaption></figure><figure><div><img src="assets/charger.png" alt="Proposed charger silhouette"></div><figcaption>Charger</figcaption></figure><figure><div><img src="assets/sentry.png" alt="Proposed sentry silhouette"></div><figcaption>Sentry</figcaption></figure></div></section>
+      <section class="baseline-section" aria-labelledby="baseline-title"><div class="baseline-art"><img src="assets/current.png" alt="Current 256-pixel front-facing hostile sprite used by the game"><span>PREVIOUS SHARED ASSET · 256 × 256</span></div><div><p class="eyebrow">03 / THE STARTING POINT</p><h2 id="baseline-title">The previous shared enemy.</h2><p>The previous hostile art was shared by the grunt, charger, and sentry. Their scale varied, but their visual identity was the same.</p><p>The proposed direction keeps the dark industrial materials and hot cores, while giving each role a distinct body shape.</p><p class="baseline-note">The source sprite is shown enlarged here. New concept detail is not a promise of the final runtime resolution.</p></div></section>
+      <section id="review-notes" class="review-notes" aria-labelledby="lock-title"><div class="section-heading"><div><p class="eyebrow">04 / THE LOCK-IN CHECKPOINT</p><h2 id="lock-title">Choose the identity. Then prove it in play.</h2></div><span class="status-pill">APPROVED · INTEGRATION IN PROGRESS</span></div><div class="next-grid"><article><span class="step">NOW / NIC</span><h3>Direction approved</h3><p>All three designs were approved on 18 October 2026. Preserve these silhouettes, materials, and role identities through production.</p></article><article><span class="step">NEXT / ART DESIGNER</span><h3>Make the production set</h3><p>After approval, create consistent views and idle, movement, attack, hurt, and death frames. Clean edges and foot alignment need a separate pass.</p></article><article><span class="step">THEN / CODEX</span><h3>Verify in the game</h3><p>Integrate one approved enemy first. Check scale, movement, attack cues, visibility, and performance in an actual encounter before expanding the family.</p></article></div></section>
+    </main>
+    <footer><span>SECTOR ZERO / ART DIRECTION LAB</span><span>Local review · Manual snapshot · v01</span></footer>
+  </div>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import type { FirstPersonState, BoardingMap, FPEnvironmentArt } from "../types";
-import { SPRITES } from "../sprites";
+import { getSprite, SPRITES } from "../sprites";
+import { APPROVED_HOSTILES, approvedHostilePresentation } from "../approvedHostiles";
 import { TextureRegistry } from "./textures";
 import { selectNpcAtlasFrame } from "./npcAtlas";
 import { enemyBillboardPresentation, retainedActorSpritePaths } from "../actorAssets";
@@ -163,12 +164,18 @@ export class SceneBuilder {
     }
     for (const e of fp.enemies) {
       if (e.deathTimer === -1) continue;
+      const approved = APPROVED_HOSTILES[e.type] ?? APPROVED_HOSTILES.grunt;
+      const alpha = e.deathTimer > 0 ? Math.min(256, Math.round((e.deathTimer / DEATH_FADE_FRAMES) * 256)) : 256;
+      if (getSprite(approved.path)?.width) {
+        const look = approvedHostilePresentation(e);
+        s.billboards.push({ x: e.x, y: e.y, texId: reg.idFor(approved.path, "billboard"), ...look, alpha256: alpha, vAnchor: "ground" });
+        continue;
+      }
       const frame = selectNpcAtlasFrame(e, fp.posX, fp.posY);
       const atlasId = frame && actorPaths.has(frame.path) ? reg.idForFrame(frame) : -1;
       const sprite = e.deathTimer > 0 ? SPRITES.FP_ENEMY_DEATH
         : e.atlasAnimation?.action === "hurt" ? SPRITES.FP_ENEMY_FLINCH
         : SPRITES.FP_ENEMY_FRONT;
-      const alpha = e.deathTimer > 0 ? Math.min(256, Math.round((e.deathTimer / DEATH_FADE_FRAMES) * 256)) : 256;
       // The atlas cell and its static fallback share one framing, so the foot
       // line stands on the floor whichever one is resident this frame.
       const look = enemyBillboardPresentation(e);
