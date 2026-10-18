@@ -9,6 +9,7 @@ import { drawDashboard } from "./dashboard";
 import { getSprite, SPRITES } from "./sprites";
 import { planFPDialogLayout } from "./fpDialogLayout";
 import { weaponOffsets } from "./weaponMotion";
+import { enemyHealthBarBounds } from "./approvedHostiles";
 import {
   drawFirstPersonPixel,
   currentFrame,
@@ -178,12 +179,13 @@ function drawEnemyHpBars(ctx: CanvasRenderingContext2D, fp: FirstPersonState): v
     if (!enemy.isAggro || enemy.hp >= enemy.maxHp) continue;
     const p = projectBillboard(scene, enemy.x, enemy.y, CANVAS_WIDTH, GAME_AREA_HEIGHT);
     if (!p || isOccluded(p.screenX, p.dist)) continue;
-    const spriteHeight = p.size;                     // classic spriteWidth === spriteHeight
-    const drawStartY = Math.floor(GAME_AREA_HEIGHT / 2 - spriteHeight / 2);
-    const barW = spriteHeight * 0.6;
+    const billboard = scene.billboards.find(entry => entry.enemyId === enemy.id);
+    if (!billboard) continue;
+    const bar = enemyHealthBarBounds(p, billboard, GAME_AREA_HEIGHT);
+    const barW = bar.width;
     const barH = 3;
-    const barX = p.screenX - barW / 2;
-    const barY = drawStartY - 8;
+    const barX = bar.x;
+    const barY = bar.y;
     ctx.fillStyle = "#330000";
     ctx.fillRect(barX, barY, barW, barH);
     ctx.fillStyle = enemy.hp / enemy.maxHp > 0.5 ? "#44ff44" : "#ff4444";

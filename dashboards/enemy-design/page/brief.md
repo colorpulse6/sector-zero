@@ -8,6 +8,6 @@ Three AI-generated static proposals interpret the existing industrial / organic 
 
 The background, size and silhouette controls only affect this page. Character light is baked into each image; background changes do not relight it. Equal image-box heights are for comparison and do not establish in-game proportions. The distance row fits each source inside a 72 x 48 CSS-pixel box (64 x 48 on narrow screens), so transparent margins affect occupied height. The page works directly from disk; data.json is a metadata manifest, not a fetched runtime dependency.
 
-Nic approved all three designs on 2026-10-18. No approval state can be changed by this page. Runtime verification is in progress. The art designer then produces clean directional views and animation frames; Codex integrates one enemy and verifies it in actual gameplay before expanding to the rest. Alpha edges, consistent anatomy, foot alignment, firing tells, atlas budget and combat readability remain production checks.
+Nic approved all three designs on 2026-10-18. No approval state can be changed by this page. Initial front-facing runtime integration is verified locally in maps; directional animation remains future work. The art designer then produces clean directional views and animation frames; Codex integrates one enemy and verifies it in actual gameplay before expanding to the rest. Alpha edges, consistent anatomy, foot alignment, firing tells, atlas budget and combat readability remain production checks.
 
 No game code, save data or runtime assets are changed by this bundle.

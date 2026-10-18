@@ -3,7 +3,7 @@
   "version": 1,
   "created": "2026-10-18",
   "refresh": "manual",
-  "status": "designs_approved_runtime_verification_pending",
+  "status": "designs_approved_initial_runtime_verified",
   "decision_owner": "Nic",
   "integration_owner": "Codex",
   "baseline": {

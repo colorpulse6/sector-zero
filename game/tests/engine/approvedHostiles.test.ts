@@ -27,3 +27,15 @@ test('walk, attack, hurt and death have deterministic visible feedback without c
   assert.ok(late.scale<early.scale,'death collapses toward the ground');
  }
 });
+
+test('health bars follow the grounded body top and width for every approved pose', async()=>{
+ const { enemyHealthBarBounds } = await import('../../app/components/engine/approvedHostiles');
+ for(const type of ['grunt','charger','sentry'] as const)for(const action of ['idle','walk','hurt','attack']){
+  const look=approvedHostilePresentation(enemy(type,action,100));
+  const bar=enemyHealthBarBounds({screenX:240,dist:2,size:214},look,714);
+  const bodyTop=Math.floor(714/2+714/4)-Math.floor(Math.floor(214*look.scale)*look.groundLine);
+  assert.equal(bar.y,Math.floor(bodyTop)-8);
+  assert.equal(bar.width,Math.floor(214*look.scale)*look.widthFactor*.6);
+  assert.equal(bar.x+bar.width/2,240);
+ }
+});

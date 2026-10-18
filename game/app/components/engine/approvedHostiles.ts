@@ -23,3 +23,16 @@ export function approvedHostilePresentation(enemy: FPEnemy) {
     groundLine: source.footRow / source.height,
   };
 }
+
+/** Use the rendered pose, including a loading fallback, for overlay placement. */
+export function enemyHealthBarBounds(
+  projection: { screenX: number; dist: number; size: number },
+  look: { scale: number; widthFactor: number; groundLine?: number },
+  viewportHeight: number,
+) {
+  const height = Math.floor(projection.size * look.scale);
+  const floor = Math.floor(viewportHeight / 2 + viewportHeight / (2 * projection.dist));
+  const top = floor - Math.floor(height * (look.groundLine ?? 1));
+  const width = height * look.widthFactor * 0.6;
+  return { x: projection.screenX - width / 2, y: top - 8, width };
+}

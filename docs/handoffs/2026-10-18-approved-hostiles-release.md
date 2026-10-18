@@ -5,7 +5,7 @@ User authorized merging to main and deploying game and companion site after veri
 
 ## Delivered scope
 
-- Approved grunt, charger and sentry PNGs are used by live first-person encounters. Their original aspect ratios and alpha-measured contact lines drive floor-anchored billboards. Existing map depth and lighting apply. The first runtime version is front-facing, with deterministic movement, attack, recoil and death deformation; directional animation sheets remain unfinished.
+- Approved grunt, charger and sentry PNGs are used by live first-person encounters. Their original aspect ratios and alpha-measured contact lines drive floor-anchored billboards. Existing map depth and lighting apply. Health bars use the exact rendered pose, including fallbacks, to stay above the head. The first runtime version is front-facing, with deterministic movement, attack, recoil and death deformation; directional animation sheets remain unfinished.
 - Scene residency requests only the three required type images (about 18 MiB decoded for the full family) rather than the old 35.5 MiB shared atlas bundle. Old static fallback art remains available while loading or after a source failure.
 - Kepler and Cinder Relay inherited an unreachable lower objective loop. A door at (12,14) connects it to the main route. The guard at (14,14), inside a wall, now occupies floor at (14,15). Another guard was on disconnected floor; connecting the route fixes its access too.
 - The objective tile remains a goal on Kepler replay, when the already-collected black box is absent. First clears still require Interact; walking onto that tile cannot bypass a live pickup.
@@ -13,8 +13,8 @@ User authorized merging to main and deploying game and companion site after veri
 
 ## Verification before push
 
-- TypeScript passed. Game static export passed.
-- 1,045 unit/asset tests passed. The initial audit failed 17 of 18 mission cases before the map fix; all 18 pass afterward.
+- TypeScript passed. Game and companion-site static exports passed.
+- 1,045 unit/asset tests passed before the health-overlay follow-up; its focused regression also passes. The initial audit failed 17 of 18 mission cases before the map fix; all 18 pass afterward.
 - Completion cases cover Kepler first clear/replay, Cinder Relay, Oathbreaker and Glassknife across five seeds, and the campaign station. Tests walk the computed route through real movement/collision updates, use Interact, and execute the completion-screen transition. Invincibility isolates navigation from combat difficulty; this is not a balance claim.
 - Four graphics browser acceptance tests passed, covering all inspection scenes, bounded image residency, fallback recovery, dialogue freeze, and actual combat states. The tightened clear-view combat test passed again.
 - Nine site browser checks passed with Node 20 and polling. The initial local site attempt hit macOS file-watcher exhaustion and timed out before running tests.

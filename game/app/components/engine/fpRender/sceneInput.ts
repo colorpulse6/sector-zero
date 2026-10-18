@@ -8,6 +8,7 @@ import { hslShiftToRgbMul, IDENTITY_TINT, type RgbMul, type LightGrid, type Ligh
 
 export interface BillboardInput {
   x: number; y: number;
+  enemyId?: number;    // lets health overlays use this exact rendered pose
   texId: number;
   scale: number;        // world-height scale (classic ×0.6 applied in core)
   alpha256: number;     // 256 = opaque; dying enemies fade
@@ -168,7 +169,7 @@ export class SceneBuilder {
       const alpha = e.deathTimer > 0 ? Math.min(256, Math.round((e.deathTimer / DEATH_FADE_FRAMES) * 256)) : 256;
       if (getSprite(approved.path)?.width) {
         const look = approvedHostilePresentation(e);
-        s.billboards.push({ x: e.x, y: e.y, texId: reg.idFor(approved.path, "billboard"), ...look, alpha256: alpha, vAnchor: "ground" });
+        s.billboards.push({ x: e.x, y: e.y, enemyId: e.id, texId: reg.idFor(approved.path, "billboard"), ...look, alpha256: alpha, vAnchor: "ground" });
         continue;
       }
       const frame = selectNpcAtlasFrame(e, fp.posX, fp.posY);
@@ -179,7 +180,7 @@ export class SceneBuilder {
       // The atlas cell and its static fallback share one framing, so the foot
       // line stands on the floor whichever one is resident this frame.
       const look = enemyBillboardPresentation(e);
-      s.billboards.push({ x: e.x, y: e.y, texId: atlasId >= 0 ? atlasId : reg.idFor(sprite, "billboard"), scale: look.scale, alpha256: alpha, widthFactor: 1, vAnchor: "ground", groundLine: look.groundLine });
+      s.billboards.push({ x: e.x, y: e.y, enemyId: e.id, texId: atlasId >= 0 ? atlasId : reg.idFor(sprite, "billboard"), scale: look.scale, alpha256: alpha, widthFactor: 1, vAnchor: "ground", groundLine: look.groundLine });
     }
     for (const n of fp.npcs) {
       const frame = selectNpcAtlasFrame(n, fp.posX, fp.posY);
