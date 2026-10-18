@@ -54,12 +54,12 @@ Nic decided (2026-10-18) to remove both. Everything else stays.
 - [x] **R6 Assets.** Remove sprite registrations used only by the removed modes, and their
   files under `game/public/sprites/`, only after a repo-wide search shows no other use.
   Do not touch `site/`.
-- [ ] **R7 Tests.** Delete tests that only cover removed modes. Update tests that used them
+- [x] **R7 Tests.** Delete tests that only cover removed modes. Update tests that used them
   as fixtures to use first-person or shooter. Browser specs: update or remove with a reason.
 - [x] **R8 Docs.** Update the mode tables in `CLAUDE.md` and `game/CLAUDE.md`. Add one line to
   `docs/ROADMAP.md` "Decisions of record" (2026-10-18: ground run-and-gun and boarding
   removed; structure is hub → atlas → travel battles → colony).
-- [ ] **R9 Verify.** All must pass, from `game/`:
+- [x] **R9 Verify.** All must pass, from `game/`:
   `npx tsc --noEmit -p .`;
   `npx tsx --test tests/colony/*.test.ts tests/engine/*.test.ts` (plus any other test dirs
   the repo already runs, e.g. sprite checks);
@@ -282,10 +282,171 @@ Additional relative-path asset registry references found during sprite validatio
 ## Progress checkpoints
 
 - R2–R5: removed playable mode dispatch, kept shared first-person map helpers, collapsed four affected levels to their existing shooter phase with rewards, remapped wreck/canyon POIs, and added old-save migration fixtures. TypeScript and static build passed; all engine/colony tests passed (sprite registry fixes verified separately).
-- R6/R8: 23 unused sprites removed, both sprite registries updated, all 11 sprite checks passed; current developer guides, README and roadmap updated. Browser updates and final report pending.
-- External router review was rejected by automatic approval: recorded source-disclosure scope covers Cerebro/KB harness, not Sector Zero. Local review continues; no external reviewer result claimed.
+- R6/R8: 23 unused sprites removed, both sprite registries updated, all 11 sprite checks passed; current developer guides, README and roadmap updated. Browser updates committed; final fixed-snapshot static Playwright run passed all 103 cases with zero retries.
+- External router review was rejected by automatic approval: recorded source-disclosure scope covers Cerebro/KB harness, not Sector Zero. Local diff review completed; no external reviewer result claimed.
 
 ## Report
 
-_(final: evidence table with WRITTEN / RUNS / VERIFIED per claim, removed files, changed
-levels, remapped POIs, migrations, remaining intentional matches, one-line residual risk)_
+Status: R1–R9 complete. Implementation, tests and final report are committed locally on `codex/remove-ground-boarding`. No push, merge or branch switch performed.
+
+| Rung | Claim | Evidence |
+|---|---|---|
+| VERIFIED | Forty campaign levels retained; four removed-mode phases dropped with names, shooter waves and rewards preserved; turret/FP multi-phase levels retained | `tests/engine/modeRemoval.test.ts` |
+| VERIFIED | Wreck and canyon dispatch first-person, retain POI identity and have reachable objectives | `poiTemplates.test.ts`, `galaxyRegionAdapter.test.ts`, `missionLaunch.test.ts` |
+| VERIFIED | Old legacy prepared/applied and galaxy v2 outcomes recover with stable outcome ids, unchanged resources, exactly-once delivery; frozen input and corrupt hashes covered | `missionOutcome.test.ts` removed-mode fixtures, four tests |
+| VERIFIED | Transient removed-mode state is discarded by existing field-by-field save allowlists without changing either economy or campaign progress | `modeRemoval.test.ts`, three old-shape fixtures |
+| VERIFIED | TypeScript and all unit/sprite tests | `npx tsc --noEmit -p .`; 936/936 tests, zero skipped (full colony, engine, sprites suites) |
+| RUNS | Production static export with devtools | `NEXT_PUBLIC_DEVTOOLS=1 yarn build`, exit 0 after immutable-input fix; removed sprites absent from export and shared FP sprites retained |
+| VERIFIED | Browser specs retain general input ownership coverage using first-person/turret and remove only retired-mode-specific tests | Exact R9 static Playwright command: 103/103 passed, zero retries, exit 0 (8.5 minutes), final production export |
+| VERIFIED | Scope boundaries | `Game.tsx` diff only deletes removed-mode imports/branches; protected galaxy file only loses two engine names; no changes to `site/`, `docs/research/`, galaxy UI or colony meta UI |
+| WRITTEN | Guides, README, roadmap decision and this report | Current mode descriptions updated; historical design/playtest documents retained |
+
+Verification history: the first full browser pass reported 101/103, with a stale wreck-control expectation and the system-tour aggregate timeout. The wreck expectation was updated to first-person. The system-tour trace showed intact behavior assertions; the single-test timing adjustment is explained below. The final exact-command run passed 103/103 with no retries. Final unit/sprite tests passed 936/936 with none skipped; the final production export and TypeScript check exited successfully.
+
+### Local implementation commits
+
+`git log --oneline 2ef7779..HEAD` before the final report commit:
+
+```text
+facb036 test: budget the complete animated system atlas tour
+93312d0 test: move retained input and POI browser coverage to first person
+c66ef6d fix: migrate immutable legacy POI save snapshots safely
+8786319 chore: remove retired mode assets and update gameplay docs
+23f11f3 refactor: remove ground and boarding modes with safe POI migration
+ece9ff1 docs: inventory ground and boarding removal scope
+```
+
+The final documentation commit records this completed report. No remote action is part of this task.
+
+### Changed levels
+
+| Stable id | Stable name | Remaining phase | Preserved reward |
+|---|---|---|---|
+| 1-3 | Ambush | shooter | kinetic-core |
+| 2-3 | Blizzard Run | shooter | energy-cell |
+| 6-3 | Memory Shards | shooter | void-fragment |
+| 7-3 | The Visions | shooter | hollow-resonance |
+
+No level became empty. Multi-phase chaining stays for 3-3 (turret), 5-3 (first-person), 8-3 (turret).
+
+### Remapped POIs
+
+- `boarding-wreck-oathbreaker`: `boarding` → `firstPerson`, Oathbreaker Wreck (`ashfall-oathbreaker-wreck` on Ashfall).
+- `ground-canyon-glassknife`: `groundRun` → `firstPerson`, Glassknife Canyon (`ashfall-glassknife-canyon` on Ashfall).
+- These are two shared templates, one of each per generated planet, rather than four distinct templates. All generated instances keep node/template ids, names, reward policy and outcome ids. Station/ruin dressing reuses the existing first-person template. New objectives sit on reachable tile (12,13); original Cinder/Kepler content remains unchanged.
+
+### Save migrations and persistence audit
+
+- `save.ts` remaps only exact old engine/template pairs in legacy prepared envelopes and applied return receipts. Validators still reject malformed authority. Outcome ids, launch ids, mission ids and resource balances stay stable.
+- Encoded galaxy preparation facts are hash-checked before changing their engine and recomputing the fact id; causal references are updated. Outcome ids and journal entries are preserved. Valid v2 preparations resume and deliver once. Older v1 authority keeps the existing reconciliation safeguards; it is never treated as a new reward grant.
+- Campaign persistence stores world and completed level records, not active phase indices. Keeping all ids avoids campaign-position migration.
+- Pending gameplay sessions, active combat phases, scene stacks and native engine checkpoints are runtime-only. Old-shaped extra fields are dropped on reload. Galaxy operations retain state/cycle/completion records, and travel checkpoints retain route progress; neither has a supported persisted removed-mode engine field.
+- Migration leaves the input snapshot untouched, works with frozen inputs, and is idempotent in the old-shape tests.
+
+### Browser-spec decisions
+
+- `inputIntents.spec.ts`: retained alias, blur/pause, visibility/transition and touch-vs-keyboard ownership checks, now exercised in first-person. Deleted only the obsolete Space-jump expectation. Added absent DevPanel shortcut assertions.
+- `touchGameplay.spec.ts`: deleted ground/boarding profile cases, their engine-only projectile observation fixtures, and their gameplay cases; kept shooter/FP/colony/turret coverage. Moved lifecycle and visible-button keyboard/mouse checks to first-person/turret.
+- `regionMapPresentation.spec.ts`: wreck launch now expects first-person controls; fog assertions still protect undisclosed site information.
+- `groundPhysics.test.ts`: deleted because its engine/physics were removed. Shared tests now use first-person/shooter fixtures.
+- `systemAtlas.spec.ts`: the existing multi-step pointer tour exceeded its 30-second total budget even when every behavior assertion passed. Trace review and an unchanged-assertion diagnostic run verified this; this single test now has a 60-second total budget. Individual expectation limits and application/UI code remain unchanged. This is a test timing adjustment, not a UI performance fix.
+- `tests/site/cinematicSite.spec.ts`: untouched, because companion-site content is explicitly outside scope.
+
+### Removed files
+
+- `game/app/components/engine/boardingEngine.ts`
+- `game/app/components/engine/boardingPhysics.ts`
+- `game/app/components/engine/boardingRenderer.ts`
+- `game/app/components/engine/groundEngine.ts`
+- `game/app/components/engine/groundLevel.ts`
+- `game/app/components/engine/groundPhysics.ts`
+- `game/app/components/engine/groundRenderer.ts`
+- `game/public/sprites/boarding/enemy-grunt-attack.png`
+- `game/public/sprites/boarding/enemy-grunt-idle.png`
+- `game/public/sprites/boarding/player-down.png`
+- `game/public/sprites/boarding/player-left.png`
+- `game/public/sprites/boarding/player-right.png`
+- `game/public/sprites/boarding/player-up.png`
+- `game/public/sprites/ground/bg-surface-far.png`
+- `game/public/sprites/ground/bg-surface-mid.png`
+- `game/public/sprites/ground/bg-surface-near.png`
+- `game/public/sprites/ground/enemy-flyer.png`
+- `game/public/sprites/ground/enemy-jumper.png`
+- `game/public/sprites/ground/enemy-patrol.png`
+- `game/public/sprites/ground/enemy-turret.png`
+- `game/public/sprites/ground/player-hurt.png`
+- `game/public/sprites/ground/player-idle.png`
+- `game/public/sprites/ground/player-infantry.png`
+- `game/public/sprites/ground/player-jump.png`
+- `game/public/sprites/ground/player-run-1.png`
+- `game/public/sprites/ground/player-run-2.png`
+- `game/public/sprites/ground/player-run-3.png`
+- `game/public/sprites/ground/player-run-4.png`
+- `game/public/sprites/ground/player-shoot.png`
+- `game/public/sprites/ground/tiles.png`
+- `game/tests/engine/groundPhysics.test.ts`
+
+### Remaining intentional grep matches
+
+Command: `grep -rn "ground-run\|groundState\|boarding" game/app game/tests`.
+46 matches, each listed below. Categories: shared first-person interior helper/local variable; retained shared sprite paths; stable POI template ids; explicit old-save/negative fixtures; untouched companion-site specs. Capitalized `BoardingMap`/tile/helper types also remain because first-person and colony code depend on them. Legacy `Keys.jump` remains an inert structural field with no input intent or control binding.
+
+```text
+game/app/components/Game.tsx:85:import { createBoardingState } from "./engine/boardingLevel";
+game/app/components/Game.tsx:1750:        // Create enemies from boarding state positions (convert pixel → tile coords)
+game/app/components/colony/region/poiDispatcher.ts:25:  if (node.templateId === "boarding-wreck-oathbreaker") return { ok: true, session: { nodeId: node.id, engine: "firstPerson", state: createFirstPersonWreckTemplate(node.seed), rewardEligible } };
+game/app/components/colony/region/regionMap.ts:109:    node(planetId, seed, "oathbreaker-wreck", "Oathbreaker Wreck", "wreck", "rumored", 73, 61, "boarding-wreck-oathbreaker"),
+game/app/components/colony/region/poiCatalog.ts:5:  "boarding-wreck-oathbreaker",
+game/app/components/colony/region/poiCatalog.ts:14:    || (node.type === "wreck" && node.templateId === "boarding-wreck-oathbreaker")
+game/app/components/engine/sprites.ts:237:  BOARDING_TILES: "/sprites/boarding/tiles.png",
+game/app/components/engine/sprites.ts:238:  FP_GUN_SHEET: "/sprites/boarding/gun-sheet.png",
+game/app/components/engine/sprites.ts:255:  NPC_VOSS: "/sprites/boarding/npc-voss.png",
+game/app/components/engine/sprites.ts:256:  NPC_KAEL: "/sprites/boarding/npc-kael.png",
+game/app/components/engine/sprites.ts:257:  NPC_REYES: "/sprites/boarding/npc-reyes.png",
+game/app/components/engine/sprites.ts:258:  NPC_SURVIVOR: "/sprites/boarding/npc-survivor.png",
+game/app/components/engine/sprites.ts:259:  NPC_SCAVENGER: "/sprites/boarding/npc-scavenger.png",
+game/app/components/engine/sprites.ts:260:  NPC_QUARTERMASTER: "/sprites/boarding/npc-quartermaster.png",
+game/app/components/engine/sprites.ts:261:  NPC_QUARTERMASTER_WALK_1: "/sprites/boarding/npc-quartermaster-walk-1.png",
+game/app/components/engine/sprites.ts:262:  NPC_QUARTERMASTER_WALK_2: "/sprites/boarding/npc-quartermaster-walk-2.png",
+game/app/components/engine/sprites.ts:270:  FP_ENEMY_FRONT: "/sprites/boarding/enemy-fp-front.png",
+game/app/components/engine/sprites.ts:271:  FP_ENEMY_FLINCH: "/sprites/boarding/enemy-fp-flinch.png",
+game/app/components/engine/sprites.ts:272:  FP_ENEMY_DEATH: "/sprites/boarding/enemy-fp-death.png",
+game/app/components/engine/sprites.ts:325:  NPC_HUB_BARTENDER: "/sprites/boarding/npc-hub-bartender.png",
+game/app/components/engine/sprites.ts:326:  NPC_HUB_REGULAR: "/sprites/boarding/npc-hub-regular.png",
+game/app/components/engine/sprites.ts:327:  NPC_HUB_SIGNAL_CHASER: "/sprites/boarding/npc-hub-signal-chaser.png",
+game/app/components/engine/missionContext.ts:159:const POI_TEMPLATES = ["fp-ruin-cinder-relay", "boarding-wreck-oathbreaker", "ground-canyon-glassknife"];
+game/app/components/engine/gameEngine.ts:62:import { createBoardingState } from "./boardingLevel";
+game/app/components/engine/gameEngine.ts:561:      const boardingState = createBoardingState();
+game/app/components/engine/gameEngine.ts:563:        map: boardingState.map,
+game/app/components/engine/gameEngine.ts:564:        ...createCombatDressing(boardingState.map, "station"),
+game/app/components/engine/gameEngine.ts:571:        enemies: boardingState.enemies.map((e, i) => ({
+game/app/components/engine/gameEngine.ts:573:          x: e.x / boardingState.map.tileSize + 0.5,
+game/app/components/engine/gameEngine.ts:574:          y: e.y / boardingState.map.tileSize + 0.5,
+game/app/components/engine/gameEngine.ts:578:          aggroRange: e.aggroRange / boardingState.map.tileSize,
+game/app/components/engine/save.ts:643:  return (engine === "boarding" && template === "boarding-wreck-oathbreaker") ||
+game/tests/colony/galaxyRegionAdapter.test.ts:643:      payload[5] = "boarding";
+game/tests/colony/npcAnimation.test.ts:196:  assert.equal(SPRITES.NPC_QUARTERMASTER, "/sprites/boarding/npc-quartermaster.png");
+game/tests/browser/touchGameplay.spec.ts:74:        else if (src.endsWith("/boarding/gun-sheet.png")) pending.gun ||= args[0] > 0;
+game/tests/browser/inputIntents.spec.ts:33:      if (active(this) && source instanceof HTMLImageElement && source.src.endsWith("/boarding/gun-sheet.png")) gun ||= args[0] > 0;
+game/tests/browser/graphicsPreview.spec.ts:89:      if (source instanceof HTMLImageElement && /\/boarding\/npc-(voss|kael|reyes)\.png/.test(source.src)) {
+game/tests/browser/quartermasterTrade.spec.ts:94:        if (active(this) && source.src.includes("/boarding/gun-sheet.png")) gun = { x: args[4], y: args[5] };
+game/tests/site/cinematicSite.spec.ts:7:  "ground-run-and-gun",
+game/tests/site/cinematicSite.spec.ts:8:  "ship-boarding",
+game/tests/engine/modeRemoval.test.ts:23:for (const engine of ["boarding", "groundRun", "ground-run"] as const) {
+game/tests/engine/modeRemoval.test.ts:27:    const transient = { engine, currentMode: engine, currentPhase: 1, groundState: {}, boardingState: {} };
+game/tests/engine/missionOutcome.test.ts:3158:  const descriptor = poiMissionDescriptor("ashfall-oathbreaker-wreck", "firstPerson", "boarding-wreck-oathbreaker");
+game/tests/engine/missionOutcome.test.ts:3167:      templateId: "boarding-wreck-oathbreaker",
+game/tests/engine/missionOutcome.test.ts:3202:  ["boarding", "ashfall-oathbreaker-wreck", "boarding-wreck-oathbreaker"],
+game/tests/engine/actorAssets.test.ts:22:  for (const set of ["hub-bartender", "hub-regular", "hub-signal-chaser", "quartermaster"] as const) assert.equal(resolveNpcActorSet({ name: "ignored", sprite: `/sprites/boarding/npc-${set}.png` }), set);
+```
+
+### Blockers and next owner
+
+- No removal implementation blocker. Shared boarding-named helpers/assets are intentional keep dependencies, not playable mode support.
+- Existing Kepler/Cinder objective reachability issue remains out of scope. Owner: Colony coordinator/Nic; separate completion condition is a reachable objective plus a native first-person completion playtest.
+- External independent review was rejected by automatic approval because the authorized source-disclosure scope did not cover Sector Zero. No external review was performed; local diff review, strict migration tests and runtime checks are the available evidence.
+- Generic retrieval start and assessment were unavailable (`ValueError: private workspace`); direct worktree reads supplied the source evidence, and no retrieval success is claimed.
+- No required cleanup implementation or verification work remains. Cleanup completion condition: R1–R9 checked, final export and all tests passing, report committed, and worktree clean.
+- Integration with the parallel Colony branch is outside this task. Owner: Colony coordinator; review these local commits and resolve any integration conflicts before accepting that combined branch. No push, merge or branch switch performed here.
+
+Residual risk: the kept Kepler/Cinder objective layout is still disconnected, and integration with the parallel Colony branch has not been exercised.
