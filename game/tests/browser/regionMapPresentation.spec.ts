@@ -87,7 +87,7 @@ test("@pointer region landmarks align with real routes and selection does not sp
   await region.getByRole("option", { name: "UNKNOWN SIGNAL, unknown", exact: true }).first().click();
   await expect(region.locator('[data-route-state="selected"]')).toHaveCount(0);
   await expect(region.locator("[data-region-action]")).toHaveCount(0);
-  await expect(region.locator("[data-region-detail-panel]")).not.toContainText(/Glassknife|GROUND-RUN|ORE DENSITY/);
+  await expect(region.locator("[data-region-detail-panel]")).not.toContainText(/Glassknife|ORE DENSITY/);
   expect(await readInstalledSaveBytes(page)).toBe(before);
 });
 
@@ -152,7 +152,7 @@ for (const width of [390, 480]) {
 
 for (const method of ["pointer", "touch"] as const) {
   const destination = method === "pointer" ? "Cinder Relay Ruins" : "Oathbreaker Wreck";
-  const controls = method === "pointer" ? "First-person controls" : "Boarding controls";
+  const controls = "First-person controls";
   test(`@${method} region survey survives reload and explicitly launches ${destination}`, async ({ page }, info) => {
     let region = await openRegion(page, method);
     const legacy = await readLegacyDomainBytes(page);

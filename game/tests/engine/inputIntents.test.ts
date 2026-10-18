@@ -14,8 +14,7 @@ import {
 } from "../../app/components/engine/inputIntents";
 import { createGameState, updateGame } from "../../app/components/engine/gameEngine";
 import { createTurretState, updateTurretEngine } from "../../app/components/engine/turretEngine";
-import { loadSprite, SPRITES } from "../../app/components/engine/sprites";
-import { AudioEvent, BULLET_SPEED, GameScreen, type GameMode, type GameState, type Keys } from "../../app/components/engine/types";
+import { AudioEvent, GameScreen, type GameMode, type GameState, type Keys } from "../../app/components/engine/types";
 
 const modes: GameMode[] = [
   "shooter", "first-person", "turret",
