@@ -12,9 +12,11 @@
   <a href="https://colorpulse6.github.io/sector-zero/site/news/">Read the mission logs</a>
 </p>
 
-A browser-based space adventure set in 2847. Fight through hostile sectors and step into the settlements holding the frontier together. Return to the **UEC Vanguard** to prepare for whatever comes next.
+A browser-based space adventure set in 2847. Travel through a persistent galaxy, step into frontier settlements, and take on the work that changes them. The **UEC Vanguard** and the mystery of the Hollow connect the journey.
 
-Choose **Begin Galaxy** to explore a persistent galaxy, or **Legacy Campaign** for 40 missions across eight sectors.
+Choose **Begin Galaxy** for the developing persistent-world experience. **Legacy Campaign** preserves the original 40 missions across eight sectors.
+
+Our direction is simple: **travel → explore → improve a colony → undertake local work → return to lasting consequences**. We are building that loop in Ashfall first, then expanding one finished place at a time.
 
 ## From the game
 
@@ -40,13 +42,15 @@ Choose **Begin Galaxy** to explore a persistent galaxy, or **Legacy Campaign** f
 
 ## A world between missions
 
-- **Colonies and buildings** — Found outposts, commission buildings, manage resources, and explore settlements in first person.
-- **NPCs and trading** — Talk to colonists, buy supplies from the quartermaster, and visit the cantina for drinks and rumors.
+- **Ashfall colony** — Descend from the Atlas, walk the outpost, speak with the Overseer and commission a Solar Array. Construction takes world cycles; new buildings appear on the next descent.
+- **Settlement development** — Housing, food, water and repeatable metal production are the next basic building loop. Galaxy trade, resupply and failure recovery remain unfinished; existing legacy services do not imply galaxy parity.
 - **Pilot progression** — Earn XP, develop your skills, upgrade your loadout, and build out your codex.
 - **Keyboard and touch** — Use mode-specific controls on desktop or on-screen controls on mobile.
 - **Saved progress** — Continue your journey with saves stored locally in your browser.
 
-See the [colony overview](https://colorpulse6.github.io/sector-zero/site/coming-soon/) for what's playable now and what's planned next.
+The streamlined game retains space combat, turret defense, first-person missions and colony exploration, with multi-phase operations connecting them. Ground run-and-gun and ship boarding have been removed.
+
+See the [master roadmap](docs/ROADMAP.md) for current implementation status, owners and completion gates. The feature branch can be ahead of the public build; pushing a branch does not deploy the game.
 
 ## Run locally
 

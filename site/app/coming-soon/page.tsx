@@ -3,21 +3,21 @@ import HudSection from "@/components/HudSection";
 import CtaButton from "@/components/CtaButton";
 import { withBasePath } from "@/lib/basePath";
 
-const playableFeatures = [
+const colonyFeatures = [
   {
-    name: "Make a foothold",
+    name: "Improve Ashfall",
     description:
-      "Found colonies, construct buildings, and manage the food, metal, power, and water that keep a settlement running.",
+      "Colony management starts with a Solar Array. Housing, food, water and metal production are the next step toward a populated settlement.",
   },
   {
     name: "Walk the frontier",
     description:
-      "Descend into settlements and explore their streets and interiors in first person.",
+      "Descend into Ashfall, walk the outpost, and visit the region to survey local sites and undertake expeditions.",
   },
   {
     name: "Meet the locals",
     description:
-      "Talk to residents, follow their routines, and visit the quartermaster to buy supplies. Faction standing shapes your welcome.",
+      "Meet the Overseer and Quartermaster. The Overseer reports colony conditions; a dependable earning, trading and resupply loop is still in development.",
   },
 ];
 
@@ -42,8 +42,8 @@ export default function ComingSoonPage() {
             coming back to.
           </h1>
           <p className="page-lead">
-            The Kepler colonists built lives at the edge of known space. Now
-            it’s your turn to make a foothold.
+            Start with Ashfall. Give one settlement a purpose, improve it,
+            and return to see what your work has changed.
           </p>
           <CtaButton href="https://colorpulse6.github.io/sector-zero/" external>
             Play in browser
@@ -51,9 +51,9 @@ export default function ComingSoonPage() {
         </div>
         <p className="art-caption">Colony concept art · Illustrative</p>
       </section>
-      <HudSection label="Playable today" title="More than a landing zone.">
+      <HudSection label="Ashfall · In active development" title="More than a landing zone.">
         <div className="feature-columns">
-          {playableFeatures.map((feature, index) => (
+          {colonyFeatures.map((feature, index) => (
             <div key={feature.name}>
               <span className="feature-number">0{index + 1}</span>
               <h3>{feature.name}</h3>
@@ -89,12 +89,14 @@ export default function ComingSoonPage() {
             </p>
             <h3>A living network of colonies.</h3>
             <p>
-              Future colony development is planned to deepen frontier threats,
-              raids, defense, and the supply networks connecting settlements.
+              We finish one useful settlement loop before opening the next world:
+              arrive, meet people, improve the colony, undertake local work,
+              use the rewards, leave and return.
             </p>
             <p>
-              Broader logistics and colony crises remain a work in progress.
-              Follow the updates for changes as they become playable.
+              Broader logistics, colony crises and a living civilization remain
+              long-term ambitions. Features are introduced as their foundations
+              become playable; the full frontier is not finished.
             </p>
             <CtaButton href="/news/" secondary>
               Follow development

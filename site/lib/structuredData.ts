@@ -27,8 +27,8 @@ export const VIDEO_GAME_JSON_LD = {
   name: "Sector Zero",
   url: `${SITE_URL}/`,
   description:
-    "Pilot a strike fighter through 8 sectors of hostile space. 6 gameplay modes, RPG progression, and the Hollow awaits.",
-  genre: ["Space shooter", "Roguelite"],
+    "Explore a persistent frontier in your browser. Travel between worlds, develop colonies, and take on space combat, turret defense and first-person missions.",
+  genre: ["Space adventure", "Space shooter"],
   gamePlatform: "Web browser",
   applicationCategory: "Game",
   operatingSystem: "Web",

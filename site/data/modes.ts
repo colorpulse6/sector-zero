@@ -20,19 +20,9 @@ export const GAME_MODES: GameMode[] = [
     imageDescription: "a fighter battles through the Hollow Core",
   },
   {
-    id: "boarding",
-    name: "Boarding actions",
-    tagline: "02",
-    description:
-      "Breach enemy ships. Fight through narrow corridors, break line of sight, and hunt for salvage.",
-    slug: "ship-boarding",
-    image: "/images/modes/boarding.png",
-    imageDescription: "a top-down view of an enemy ship interior",
-  },
-  {
     id: "raycaster",
     name: "First-person exploration",
-    tagline: "03",
+    tagline: "02",
     description:
       "Step out of the cockpit. Explore abandoned stations and face the threats waiting around the next corner.",
     slug: "first-person-raycaster",
@@ -40,19 +30,9 @@ export const GAME_MODES: GameMode[] = [
     imageDescription: "a first-person view down a station corridor",
   },
   {
-    id: "ground",
-    name: "Ground assault",
-    tagline: "04",
-    description:
-      "Take the fight planetside. Jump between platforms and push through hostile terrain on foot.",
-    slug: "ground-run-and-gun",
-    image: "/images/modes/ground.png",
-    imageDescription: "a pilot crosses a side-scrolling alien landscape",
-  },
-  {
     id: "turret",
     name: "Turret defense",
-    tagline: "05",
+    tagline: "03",
     description:
       "Take the Vanguard’s gunner seat. Track incoming fighters and hold the line through waves of attackers.",
     slug: "ship-turret",
@@ -62,9 +42,9 @@ export const GAME_MODES: GameMode[] = [
   {
     id: "multiphase",
     name: "Multi-phase missions",
-    tagline: "06",
+    tagline: "04",
     description:
-      "Go from space combat to boarding and beyond in connected missions that test every part of your loadout.",
+      "Move between space combat, turret defense and first-person encounters as an operation unfolds.",
     slug: "multi-phase-levels",
     image: "/images/modes/multiphase.png",
     imageDescription:
