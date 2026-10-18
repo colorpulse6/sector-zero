@@ -126,7 +126,7 @@ test("scene frames are protected before atlas use and preserve NPC/hostile aspec
     }
     const scene = new SceneBuilder().build(fp, new Registry());
     assert.deepEqual(order, ["begin", "frame", "frame"]);
-    assert.deepEqual(scene.billboards.map(b => [b.texId, b.widthFactor, b.vAnchor]), [[42, 1, "center"], [42, .5, "npc"]]);
+    assert.deepEqual(scene.billboards.map(b => [b.texId, b.widthFactor, b.vAnchor]), [[42, 1, "ground"], [42, .5, "npc"]]);
   } finally { releaseActorAssets(); globalThis.Image = previous; }
 });
 

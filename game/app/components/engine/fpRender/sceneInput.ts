@@ -2,7 +2,7 @@ import type { FirstPersonState, BoardingMap, FPEnvironmentArt } from "../types";
 import { SPRITES } from "../sprites";
 import { TextureRegistry } from "./textures";
 import { selectNpcAtlasFrame } from "./npcAtlas";
-import { retainedActorSpritePaths } from "../actorAssets";
+import { enemyBillboardPresentation, retainedActorSpritePaths } from "../actorAssets";
 import { hslShiftToRgbMul, IDENTITY_TINT, type RgbMul, type LightGrid, type LightGridPointLight } from "./lighting";
 
 export interface BillboardInput {
@@ -12,13 +12,18 @@ export interface BillboardInput {
   alpha256: number;     // 256 = opaque; dying enemies fade
   widthFactor: number;  // width = height × this. NPCs are portraits: 0.4 (classic
                         //   firstPersonRenderer.ts:493). Enemies/props: 1.
-  vAnchor: "center" | "npc" | "prop";
-                        // Characters retain classic framing; props contact the projected floor:
-                        //   center → sy0 = half − size/2 (enemies)
+  vAnchor: "center" | "npc" | "prop" | "ground";
+                        // Colonists retain classic framing; props and hostiles contact the projected floor:
+                        //   center → sy0 = half − size/2
                         //   npc    → sy0 = half − size/3
                         //   prop   → sy0 = floor(h/2 + h/(2*depth)) − size
+                        //   ground → sy0 = floor(h/2 + h/(2*depth)) − size × groundLine (hostiles)
+  groundLine?: number;  // ground: fraction of the billboard height, from its top, that meets the floor plane
   minSizeFrac?: number; // props: 20/714 of fb height (classic 20px floor, :344)
 }
+/** Dying hostiles stay opaque through the collapse (the six-frame death clip ends
+ *  at 480 ms of the 500 ms timer) and fade only over the last ten timer frames. */
+const DEATH_FADE_FRAMES = 10;
 
 export interface RenderScene {
   skyProjection?: import("./panorama").SkyProjection;
@@ -163,8 +168,11 @@ export class SceneBuilder {
       const sprite = e.deathTimer > 0 ? SPRITES.FP_ENEMY_DEATH
         : e.atlasAnimation?.action === "hurt" ? SPRITES.FP_ENEMY_FLINCH
         : SPRITES.FP_ENEMY_FRONT;
-      const alpha = e.deathTimer > 0 ? Math.round((e.deathTimer / 30) * 256) : 256;
-      s.billboards.push({ x: e.x, y: e.y, texId: atlasId >= 0 ? atlasId : reg.idFor(sprite, "billboard"), scale: 1, alpha256: alpha, widthFactor: 1, vAnchor: "center" });
+      const alpha = e.deathTimer > 0 ? Math.min(256, Math.round((e.deathTimer / DEATH_FADE_FRAMES) * 256)) : 256;
+      // The atlas cell and its static fallback share one framing, so the foot
+      // line stands on the floor whichever one is resident this frame.
+      const look = enemyBillboardPresentation(e);
+      s.billboards.push({ x: e.x, y: e.y, texId: atlasId >= 0 ? atlasId : reg.idFor(sprite, "billboard"), scale: look.scale, alpha256: alpha, widthFactor: 1, vAnchor: "ground", groundLine: look.groundLine });
     }
     for (const n of fp.npcs) {
       const frame = selectNpcAtlasFrame(n, fp.posX, fp.posY);

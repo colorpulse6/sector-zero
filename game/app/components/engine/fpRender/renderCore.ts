@@ -268,6 +268,10 @@ function drawBillboards(fb: Framebuffer, s: RenderScene, reg: TextureRegistry,
               // Ground-contact props use the inverse of the floor projection.
               // Changing asset height must not lift its base above that plane.
               : b.vAnchor === "prop" ? Math.floor(h * 0.5 + h / (2 * trY)) - size
+              // Ground-anchored actors put their authored foot line on that same
+              // plane; the rows below it (the cell's transparent margin, or a
+              // death slump) sink into the floor instead of hovering above it.
+              : b.vAnchor === "ground" ? Math.floor(h * 0.5 + h / (2 * trY)) - ((size * (b.groundLine ?? 1)) | 0)
               : half - (size >> 1);
     const sy1 = sy0 + size - 1;
     const cx0 = Math.max(0, sx0), cx1 = Math.min(w - 1, sx1);
