@@ -62,3 +62,27 @@ and Nic's aesthetic acceptance. Only then can Ashfall be locked and the next wor
 
 Finished building geometry appears on the next descent. Construction and arrivals advance
 with world-cycle actions, not real-time waiting. The user's seeded local save is preserved.
+
+## Browser CI runner correction
+
+The superseded run at `0488435` retained 3,944,079,850 bytes of browser artifacts. Its saved
+error contexts show mostly 30-second test deadlines (including moving Atlas-label clicks),
+plus a pickup-completion timeout. Local static-export routes pass; that alone does not prove
+hosted-runner success. CI now builds the export with `NEXT_PUBLIC_DEVTOOLS=1` for the existing
+DEV-entry tests and serves it with Python, matching the deployment format. Normal production
+builds do not enable that flag.
+
+Continuous full tracing imposed substantial overhead even locally: the same Overseer route
+ran in 13.7 seconds with full tracing, 11.3 without trace screenshots/source copies, and 7.5
+without DOM/network snapshots. The ordinary no-trace run was 7.3 seconds. An Atlas keyboard
+route fell from 10.2 to 0.9 seconds. CI retains JSON results, error contexts, failure screenshots
+and explicit gameplay receipts. Full traces are opt-in for an individual failing route; all
+122 tests and their assertions remain enabled, with one worker and no retries.
+
+Reproduce from `game/` with Node 20 and Python 3 installed:
+
+```sh
+NEXT_PUBLIC_DEVTOOLS=1 yarn build
+PLAYWRIGHT_STATIC_EXPORT=1 yarn browser:test --workers=1 --retries=0
+# For one failing route, add its spec/grep and --trace=on.
+```

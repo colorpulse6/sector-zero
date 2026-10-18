@@ -66,9 +66,17 @@ jobs:
         run: cd game && yarn install
       - name: Install Playwright Chromium
         run: cd game && yarn playwright install --with-deps chromium
-      - name: Browser tests
-        run: cd game && yarn browser:test --workers=1 --retries=0 --trace=retain-on-failure --reporter=list,json
+      - name: Build browser-test export
+        run: cd game && yarn build
         env:
+          NEXT_PUBLIC_DEVTOOLS: "1"
+      - name: Browser tests
+        # Keep screenshots, error contexts, receipts and JSON results. Recording
+        # every asset-heavy canvas route distorted timing and produced 4 GB traces.
+        # A failed route can be rerun individually with --trace=on for diagnosis.
+        run: cd game && yarn browser:test --workers=1 --retries=0 --reporter=list,json
+        env:
+          PLAYWRIGHT_STATIC_EXPORT: "1"
           PLAYWRIGHT_OUTPUT_DIR: ${{ runner.temp }}/sector-zero-browser-results
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/sector-zero-browser-results/report.json
       - name: Retain browser evidence
