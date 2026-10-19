@@ -12,8 +12,9 @@ import {
   type Player,
   type FormationType,
 } from "./types";
-import { getSprite, SPRITES } from "./sprites";
+import { SPRITES } from "./sprites";
 import { DEFAULT_ENEMY_CLASS, ENEMY_CLASS_PROFILES } from "./enemyClasses";
+import { drawGlow, drawPreparedFitted, preparedSprite } from "./fighterSprites";
 
 let enemyIdCounter = 0;
 let bulletIdCounter = 10000; // offset from player bullets
@@ -351,58 +352,66 @@ export const ENEMY_SPRITE_MAP: Record<EnemyType, string> = {
   [EnemyType.MIRROR]: SPRITES.ENEMY_MIRROR,
 };
 
+/** Class tint strength on the silhouette (clipped — never paints outside the art). */
+const CLASS_TINT_STRENGTH = 0.22;
+/** Frames of white hit-flash after `lastHitTimer` is set to 120 on impact. */
+const HIT_FLASH_FRAMES = 8;
+const HIT_TIMER_START = 120;
+
 export function drawEnemies(
   ctx: CanvasRenderingContext2D,
   enemies: Enemy[]
 ): void {
   for (const enemy of enemies) {
-    if (enemy.cloaked) {
-      ctx.globalAlpha = 0.15;
-    }
+    const baseAlpha = enemy.cloaked ? 0.15 : 1;
+    const spritePath = ENEMY_SPRITE_MAP[enemy.type];
+    const classProfile = ENEMY_CLASS_PROFILES[enemy.classId];
+    const sprite = spritePath
+      ? preparedSprite(spritePath, 0, 1, classProfile?.tint, CLASS_TINT_STRENGTH)
+      : null;
+    const cx = enemy.x + enemy.width / 2;
+    const cy = enemy.y + enemy.height / 2;
+    let top = enemy.y;
 
     ctx.save();
-
-    const spritePath = ENEMY_SPRITE_MAP[enemy.type];
-    const sprite = spritePath ? getSprite(spritePath) : null;
-
-    const pad = 4;
-    const dx = enemy.x - pad;
-    const dy = enemy.y - pad;
-    const dw = enemy.width + pad * 2;
-    const dh = enemy.height + pad * 2;
+    ctx.globalAlpha = baseAlpha;
 
     if (sprite) {
-      ctx.drawImage(sprite, dx, dy, dw, dh);
+      // Soft dark halo behind the silhouette keeps it readable over bright
+      // nebula and ice plates without a hard outline.
+      drawGlow(ctx, cx, cy + 2, Math.max(enemy.width, enemy.height) * 0.72, "#000000", 0.4);
+      const drawn = drawPreparedFitted(ctx, sprite, cx, cy, enemy.width, enemy.height);
+      top = drawn.y;
+
+      const flashAge = HIT_TIMER_START - enemy.lastHitTimer;
+      if (enemy.lastHitTimer > 0 && flashAge < HIT_FLASH_FRAMES) {
+        const flash = preparedSprite(spritePath, 0, 1, "#ffffff", 0.9);
+        if (flash) {
+          ctx.globalAlpha = baseAlpha * (1 - flashAge / HIT_FLASH_FRAMES);
+          ctx.drawImage(flash.canvas, drawn.x, drawn.y, drawn.w, drawn.h);
+          ctx.globalAlpha = baseAlpha;
+        }
+      }
     } else {
-      ctx.fillStyle = "#aa44ff";
+      ctx.fillStyle = classProfile?.tint ?? "#aa44ff";
       ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
     }
 
-    // Class tint overlay (subtle multiply blend)
-    const classProfile = ENEMY_CLASS_PROFILES[enemy.classId];
-    if (classProfile) {
-      const baseAlpha = enemy.cloaked ? 0.15 : 1;
-      ctx.globalCompositeOperation = "multiply";
-      ctx.globalAlpha = baseAlpha * 0.35;
-      ctx.fillStyle = classProfile.tint;
-      ctx.fillRect(dx, dy, dw, dh);
-      ctx.globalCompositeOperation = "source-over";
-      ctx.globalAlpha = baseAlpha;
-    }
-
-    ctx.restore();
-
-    // HP bar
+    // HP bar sits just above the drawn silhouette
     if (enemy.maxHp > 1 && enemy.hp < enemy.maxHp) {
       const barW = enemy.width;
       const barH = 3;
       const barX = enemy.x;
-      const barY = enemy.y - 6;
-      ctx.fillStyle = "#333";
+      const barY = top - 7;
+      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      ctx.fillStyle = "#3a1010";
       ctx.fillRect(barX, barY, barW, barH);
-      ctx.fillStyle = "#ff3333";
+      ctx.fillStyle = "#ff3b3b";
       ctx.fillRect(barX, barY, barW * (enemy.hp / enemy.maxHp), barH);
     }
+
+    ctx.restore();
 
     // Affinity indicator (arrow above enemy after hit)
     if (enemy.lastHitAffinity && enemy.lastHitTimer > 0 && enemy.lastHitAffinity !== "neutral") {
@@ -415,10 +424,8 @@ export function drawEnemies(
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
-      ctx.fillText(arrow, enemy.x + enemy.width / 2, enemy.y - 10);
+      ctx.fillText(arrow, enemy.x + enemy.width / 2, top - 11);
       ctx.restore();
     }
-
-    ctx.globalAlpha = 1;
   }
 }

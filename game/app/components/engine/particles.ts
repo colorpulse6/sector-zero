@@ -1,5 +1,6 @@
 import type { Particle, SpriteExplosion } from "./types";
 import { getSprite, SPRITES } from "./sprites";
+import { drawGlow, drawPreparedFitted, drawStreak, preparedSprite } from "./fighterSprites";
 
 export function createExplosion(
   x: number,
@@ -85,26 +86,41 @@ export function drawParticles(
   ctx: CanvasRenderingContext2D,
   particles: Particle[]
 ): void {
+  if (particles.length === 0) return;
+  ctx.save();
+  // Additive light: overlapping embers and trails brighten instead of muddying.
+  ctx.globalCompositeOperation = "lighter";
   for (const p of particles) {
     const alpha = p.life / p.maxLife;
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = 1;
 
     if (p.type === "explosion") {
-      ctx.fillStyle = p.color;
+      const r = p.size * (1 + (1 - alpha) * 1.5);
+      drawGlow(ctx, p.x, p.y, r * 2.4, p.color, alpha * 0.85);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#fff4dc";
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * (1 + (1 - alpha) * 1.5), 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, Math.max(0.6, r * 0.5), 0, Math.PI * 2);
       ctx.fill();
     } else if (p.type === "trail") {
+      drawGlow(ctx, p.x, p.y, 1.5 + p.size * 2.2 * alpha, p.color, alpha * 0.75);
+    } else if (p.type === "smoke") {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = alpha * 0.5;
       ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, p.size * (1 + (1 - alpha)), 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
     } else {
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x, p.y, p.size, p.size);
+      // Sparks: a hot pixel with a short streak back along its travel.
+      drawStreak(ctx, p.x, p.y, p.vx, p.vy, 3 + Math.hypot(p.vx, p.vy) * 2.5, Math.max(1, p.size), p.color, alpha);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(p.x, p.y, Math.max(1, p.size * 0.8), Math.max(1, p.size * 0.8));
     }
   }
-  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 // ─── Sprite Explosions ──────────────────────────────────────────────
@@ -142,23 +158,54 @@ export function updateSpriteExplosions(
     .filter((e) => e.frame < e.totalFrames);
 }
 
+/** Frames 0..FIRE_FRAMES-1 are the fireball (drawn additive); the rest is smoke. */
+const FIRE_FRAMES = 3;
+
 export function drawSpriteExplosions(
   ctx: CanvasRenderingContext2D,
   explosions: SpriteExplosion[]
 ): void {
+  if (explosions.length === 0) return;
   const sheet = getSprite(SPRITES.EXPLOSION);
   if (!sheet) return;
 
-  const frameW = sheet.width / EXPLOSION_FRAMES;
-  const frameH = sheet.height;
-  // Crop vertically to content (similar to player ship — content is in center ~60%)
-  const cropTop = Math.floor(frameH * 0.2);
-  const cropH = Math.floor(frameH * 0.6);
-
   for (const e of explosions) {
-    const sx = e.frame * frameW;
-    const drawX = e.x - e.size / 2;
-    const drawY = e.y - e.size / 2;
-    ctx.drawImage(sheet, sx, cropTop, frameW, cropH, drawX, drawY, e.size, e.size);
+    const frame = Math.max(0, Math.min(e.totalFrames - 1, e.frame));
+    const progress = frame / e.totalFrames;
+    const isFire = frame < FIRE_FRAMES;
+    // The blast grows a little as it burns out; smoke thins away.
+    const size = e.size * (1 + progress * 0.3);
+    const alpha = isFire ? 1 : Math.max(0.25, 1 - (frame - FIRE_FRAMES + 1) / (e.totalFrames - FIRE_FRAMES + 1));
+
+    ctx.save();
+    if (isFire) {
+      // Flash and shock ring are additive; the fireball art itself is composited
+      // normally so it keeps its colour over bright plates (ice, lava).
+      ctx.globalCompositeOperation = "lighter";
+      drawGlow(ctx, e.x, e.y, size * (0.9 - frame * 0.2), "#ffd9a0", 0.6 - frame * 0.2);
+      const ring = size * (0.25 + progress * 1.6);
+      ctx.globalAlpha = 0.4 * (1 - frame / FIRE_FRAMES);
+      ctx.strokeStyle = "#ffc078";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, ring, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+    } else {
+      ctx.globalAlpha = alpha;
+    }
+
+    const cell = preparedSprite(SPRITES.EXPLOSION, frame, EXPLOSION_FRAMES, undefined, 0, 160);
+    if (cell) {
+      drawPreparedFitted(ctx, cell, e.x, e.y, size, size);
+    } else {
+      // Sheet decoded but not yet sliced (first frame): equal-column crop.
+      const frameW = sheet.width / EXPLOSION_FRAMES;
+      const cropTop = Math.floor(sheet.height * 0.2);
+      const cropH = Math.floor(sheet.height * 0.6);
+      ctx.drawImage(sheet, frame * frameW, cropTop, frameW, cropH, e.x - size / 2, e.y - size / 2, size, size);
+    }
+    ctx.restore();
   }
 }

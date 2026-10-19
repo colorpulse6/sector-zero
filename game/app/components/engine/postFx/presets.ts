@@ -116,10 +116,28 @@ export const COMBAT: GradeParams = {
   grainStrength: 0.04,
 };
 
+/** Open-space grade for the top-down fighter. COMBAT's black point (0.05) and
+ *  contrast (1.22) were tuned for lit interiors; on a star field they crushed
+ *  the whole backdrop (measured 2026-10-19 on the fighter inspection route:
+ *  game-area mean luminance 18 → 6, near-black pixels 39% → 92%) and the brown
+ *  split-tone turned space mud. No crush, a cool shadow cast, a touch of warm
+ *  highlight, bloom kept for plasma and explosions, vignette near zero. */
+export const SPACE: GradeParams = {
+  blackPoint: 0.0,
+  contrast: 1.06,
+  shadowTint: [0.024, 0.043, 0.094], // #060b18 deep blue
+  highlightTint: [1.0, 0.93, 0.82], // warm white
+  tintStrength: 0.08,
+  bloomThreshold: 0.62,
+  bloomStrength: 0.5,
+  vignetteStrength: 0.06,
+  grainStrength: 0.025,
+};
+
 /** Mode → preset. Typed against the GameMode union so a renamed mode is a
  *  compile error here, not a silent fall-through to DEFAULT. */
 const MODE_PRESET: Record<GameMode, GradeParams> = {
-  "shooter": COMBAT,
+  "shooter": SPACE,
   "turret": COMBAT,
   "first-person": HELL,
   "colony-exploration": TECHBASE,
