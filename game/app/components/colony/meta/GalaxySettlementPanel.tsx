@@ -58,7 +58,7 @@ export function GalaxySettlementPanel({ colony, worldCycle }: GalaxySettlementPa
       </ul>
       {row("NEXT CYCLE", settlerLine(outlook.settlerChange, outlook.waiting))}
       {note("SETTLERS ARRIVE ONE PER CYCLE WHILE HAPPINESS IS OVER 60 AND HOUSING IS FREE")}
-      {note("TIME PASSES WITH SURVEYS, EXPEDITIONS, TRAVEL AND OPERATIONS · FINISHED BUILDINGS APPEAR IN THE WALK ON YOUR NEXT DESCENT")}
+      {note("TIME PASSES WITH SURVEYS, EXPEDITIONS, TRAVEL AND OPERATIONS, OR SALVAGE SHIFTS · FINISHED BUILDINGS APPEAR IN THE WALK ON YOUR NEXT DESCENT")}
     </section>
   );
 }

@@ -1,0 +1,11 @@
+# Ashfall recovery and pacing
+
+Approved by Nic through Cerebro request `ashfall-recovery-contract-20261019`: Build Salvage Shifts. After simulation disproved the original estimate, Nic selected 40 metal and the measured 25-shift bound through `ashfall-tested-pacing-20261019`.
+
+A Salvage Shift is repeatable non-combat work in Ashfall colony management. Each deliberate action advances one world cycle, then delivers 40 metal to Ashfall Primary and one travel supply to the galaxy vessel. There is no entry cost, building requirement or mission-success requirement. It is available only while parked at visited Ashfall, with no unresolved operation/outcome. Existing construction, production, upkeep and settler growth run normally. Rewards arrive after that cycle's simulation. No legacy progression, mission rewards or global building costs change.
+
+The UI displays the reward, duration, current travel supply and the fact that construction and settlers advance. Quotes bind to the displayed run identity, cycle, colony and supply state. Commit reads the canonical stored save, validates access and quote, calculates the complete result and persists once. A stale/replayed quote, malformed command or failed write cannot award resources. New clicks after a refreshed quote represent new shifts; a held keyboard key must not repeat shifts. No cross-tab transactional guarantee is claimed beyond the existing synchronous save boundary.
+
+Acceptance: a zero-resource, zero-supply fresh-arrival colony can build the five basic buildings and reach ten settlers within 25 shifts, without combat wins or fixture rewards. Verify a failed Ashfall sortie also recovers, travel can resume after earning supply, reload preserves results, mission records and legacy fields remain intact, stale/repeated commands are refused, and keyboard/touch controls work. The target concerns work shifts, not the total number of UI clicks; building orders remain separate actions.
+
+Quartermaster buying/selling, economy-wide balance, new buildings and directional enemy animation remain later milestones. Fighter-battle presentation runs independently under Fable ownership. Codex owns this implementation and verification; Ashfall is not locked by this increment alone.

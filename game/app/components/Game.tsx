@@ -117,6 +117,7 @@ import type { ColonyEvent, SceneStack } from "./colony";
 import { ColoniesScreen } from "./colony/meta";
 import { SystemAtlasScreen } from "./galaxy/system/SystemAtlasScreen";
 import { GalaxyColonyManagementScreen, PoiOutcomeScreen, RegionMapScreen } from "./colony/meta";
+import { commitGalaxySalvageToStore, quoteGalaxySalvage, SALVAGE_SHIFT } from "./engine/galaxy/galaxySalvage";
 import type { BuildOption } from "./colony/meta/ColonyCommissionMenu";
 import { foundOutpost } from "./colony/region/siteEconomy";
 import { dispatchPoi, regionExpeditionRequestId, startRegionExpedition } from "./colony/region/poiDispatcher";
@@ -1442,6 +1443,22 @@ export default function Game() {
     }
     handleGalaxyCommission(quoted.quote);
   }, [galaxyManagementQuotes, handleGalaxyCommission]);
+
+  const galaxySalvageQuote = useMemo(() => galaxyManagementColonyId === null
+    ? null : quoteGalaxySalvage(saveData, galaxyManagementColonyId), [galaxyManagementColonyId, saveData]);
+  const handleGalaxySalvage = useCallback(() => {
+    if (persistenceNavigationLocked || !galaxySalvageQuote?.ok) return;
+    const result = commitGalaxySalvageToStore(managementStore, galaxySalvageQuote.quote);
+    if (!result.ok) {
+      if (result.reconcile) adoptCanonicalSave(result.reconcile);
+      setGalaxyManagement(current => current && { ...current, status: result.message });
+      return;
+    }
+    clearHeldInput();
+    adoptCanonicalSave(result.save);
+    setGalaxyManagement(current => current && { ...current,
+      status: `SALVAGE COMPLETE · +${SALVAGE_SHIFT.metal} METAL · +${SALVAGE_SHIFT.supply} TRAVEL SUPPLY · 1 CYCLE PASSED` });
+  }, [persistenceNavigationLocked, galaxySalvageQuote, managementStore, adoptCanonicalSave, clearHeldInput]);
 
   const galaxyRegionView = useMemo(() => {
     if (regionMapSurface?.experience !== "galaxy") return null;
@@ -3448,6 +3465,10 @@ export default function Game() {
           supportedTypes={GALAXY_COMMISSION_TYPES}
           status={galaxyManagement.status}
           onCommission={handleGalaxyManagementBuild}
+          salvage={{ supply: saveData.galaxyRun.resources.supply,
+            blocked: persistenceNavigationLocked ? "FINISH THE CURRENT RETURN FIRST"
+              : galaxySalvageQuote?.ok ? null : galaxySalvageQuote?.message ?? "WORK UNAVAILABLE",
+            onWork: handleGalaxySalvage }}
           onExit={() => { if (!persistenceNavigationLocked) handleCloseGalaxyManagement(); }}
           focusActive={!pendingPoiPresentation && !persistenceNavigationLocked}
           onRestoreFocus={() => {
