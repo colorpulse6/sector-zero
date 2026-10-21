@@ -24,6 +24,6 @@ The command reads the canonical stored save, validates parked Ashfall access and
 
 This increment is locally verified, not yet merged or deployed. Quartermaster commerce and its earning/cost rules remain the next Ashfall systems milestone. The complete work/build/departure/return route is verified; useful trade and Nic's final place acceptance still prevent an Ashfall lock. Geometry still updates on the next descent.
 
-The independently requested Fable fighter presentation pass is in `/private/tmp/sector-zero-fighter-polish-20261019`, agent `A7B1A6E9-2AB9-49ED-8D47-E3EACA4314FF`, branch `design/fighter-battle-polish`. Its before/after preview and regression checks must be reviewed separately. Do not claim it is integrated from agent activity alone.
+The independently requested Fable fighter presentation pass is in `/private/tmp/sector-zero-fighter-polish-20261019`, agent `A7B1A6E9-2AB9-49ED-8D47-E3EACA4314FF`, branch `design/fighter-battle-polish`. Its commit `be645ff` was cherry-picked as `2e1a75f` into this branch. Combined verification and remaining review/release gates are recorded in [the fighter integration handoff](2026-10-19-fighter-integration-review.md).
 
 The primary checkout preserves unrelated `site/tsconfig.tsbuildinfo` and `docs/research/` changes. Local playtest server at `http://127.0.0.1:3198/` serves `game/out`; ownership PID is in `/tmp/sector-zero-recovery-preview.pid`. Retain it while Nic's playtest is pending. Test-owned servers and isolated browsers exit with Playwright.

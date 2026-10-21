@@ -85,7 +85,9 @@ test("@touch one salvage tap advances one cycle and delivers the displayed rewar
 });
 
 test("@pointer fresh galaxy reaches ten settlers through actual work/build controls, then departs and returns", async ({ page }, info) => {
-  test.setTimeout(120_000);
+  // CI completed the 25-shift route and final return capture at the old 120s
+  // deadline. Allow the full UI journey and capture to finish on software WebGL.
+  test.setTimeout(180_000);
   await installSaveFixture(page, freshGalaxy);
   await page.goto("/");
   await page.getByRole("button", { name: "CONTINUE GALAXY", exact: true }).click();

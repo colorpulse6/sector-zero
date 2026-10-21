@@ -1,6 +1,6 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-10-18.** Active integration: `feat/galaxy-colony`, PR #25. Solar Array,
+**Updated 2026-10-19.** Active integration: `codex/ashfall-recovery`, PR #26. PR #25 is deployed. Solar Array,
 Mine, Habitat Module, Farm and Water Purifier now form the basic settlement loop.
 The delivery handoff below records the exact verification boundary. This file owns direction, sequence and completion status. Detailed system
 specs own their contracts; individual agents do not maintain competing master roadmaps.
@@ -142,11 +142,13 @@ The command and fresh-save browser route are locally verified. See the
 [recovery handoff](handoffs/2026-10-19-ashfall-recovery.md). This increment is not part of
 the deployed `dc35da2` release until a later release receipt says so.
 
-Bounded parallel work: Nic requested a Fable fighter-battle polish pass on 2026-10-19.
-The Fighter Battle Designer owns shooter presentation: unwanted dimming, enemy image
-borders, obvious background repetition and readable combat effects. Codex owns integration
-and before/after runtime verification. This does not expand Ashfall's lock prerequisites
-or authorize changes to combat rewards, saves or campaign structure.
+The Fable fighter-battle presentation pass is integrated locally at `2e1a75f`, alongside
+Ashfall recovery in PR #26. It corrects the shooter color filter, clips enemy tint to
+silhouettes, trims sprite sheets, separates background scroll periods, and improves
+shots, exhaust and explosions. Codex owns combined verification and release; see the
+[manager integration handoff](handoffs/2026-10-19-fighter-integration-review.md).
+This does not expand Ashfall's lock prerequisites or alter combat rewards, saves or
+campaign structure. Independent review and deployment remain separate completion gates.
 
 Design work starts alongside systems work, rather than waiting for all GC2–GC4
 infrastructure. Runtime integration still follows the dependency contract. The exact
