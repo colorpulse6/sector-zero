@@ -22,7 +22,7 @@ User authorized merging to main and deploying game and companion site after veri
 
 ## Release gate and remaining work
 
-GitHub checks, main merge, deployment and live URL acceptance are still pending at this document's authoring. The manager owns those steps and must verify the deployed commit, game routes/assets and companion site.
+Release completed after the original handoff: PR #25 merged to main at `dc35da283c7dc9873b37ecab0903582ffcc04c26`. All seven checks passed on feature head `a7142c4714576a182b3558d88ea2a9d8d2d5d7c6`, including 122 game browser tests and nine site browser tests. Final local unit/asset count: 1,046 passing. Deployment [39163042227](https://github.com/colorpulse6/sector-zero/actions/runs/39163042227) succeeded for the main merge commit. Live game canvas, all three approved PNG hashes, the graphics preview, site homepage and updated article were verified with no observed page errors or failed HTTP responses. Nic authorized the one-release admin merge after all checks passed; branch protection was unchanged. This does not authorize future review overrides.
 
 Next art owner: designer, coordinated by Codex. Finish consistent directional views and real animation frames without changing the approved family identity. Codex verifies one complete enemy in maps before extending that animation production pass.
 

@@ -63,14 +63,29 @@ async function installObservation(page: Page) {
     let miniMap: Point | undefined;
     let fpDot: Point | undefined;
     const active = (ctx: CanvasRenderingContext2D) => ctx.canvas.id === "sector-zero-game-canvas";
+    // Follow image provenance through prepared sprite canvases. This observes
+    // real draws only; it does not read or replace simulation state.
+    const spriteSources = new WeakMap<HTMLCanvasElement, string>();
     const drawImage = CanvasRenderingContext2D.prototype.drawImage;
     CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, source: CanvasImageSource, ...args: number[]) {
-      if (active(this) && source instanceof HTMLImageElement) {
-        const src = source.currentSrc || source.src;
+      const src = source instanceof HTMLImageElement ? source.currentSrc || source.src
+        : source instanceof HTMLCanvasElement ? spriteSources.get(source) ?? "" : "";
+      if (!active(this) && /\/(ships\/player|bullets\/player-bullets)\.png$/.test(src)) {
+        spriteSources.set(this.canvas, src);
+      }
+      if (active(this) && src) {
         const offset = args.length === 8 ? 4 : 0;
         const point = { x: args[offset], y: args[offset + 1] };
-        if (src.endsWith("/ships/player.png")) pending.ship = point;
-        else if (src.endsWith("/bullets/player-bullets.png")) pending.shipShots.push(point);
+        const width = args[offset + 2] ?? (source as HTMLImageElement | HTMLCanvasElement).width;
+        const height = args[offset + 3] ?? (source as HTMLImageElement | HTMLCanvasElement).height;
+        const center = { x: point.x + width / 2, y: point.y + height / 2 };
+        // A banked hull changes its drawn bounds, but its center remains the
+        // movement anchor. Bullets now draw around a translated/rotated origin.
+        if (src.endsWith("/ships/player.png")) pending.ship = center;
+        else if (src.endsWith("/bullets/player-bullets.png")) {
+          const transformed = this.getTransform().transformPoint(center);
+          pending.shipShots.push({ x: transformed.x, y: transformed.y });
+        }
         else if (src.endsWith("/boarding/gun-sheet.png")) pending.gun ||= args[0] > 0;
         else if (src.endsWith("/turret/crosshair.png")) pending.turret = { x: point.x + 24, y: point.y + 24 };
       }
@@ -454,12 +469,11 @@ test("@touch shooter canvas drag owns position without firing and releases back 
   await openMode(page, "1-1");
   await withFingers(page, async (fingers) => {
     await fingers.down(1, await center(page.locator(CANVAS), 0.8, 0.4));
-    // Follow the observed ship to the actual canvas-touch destination. The
-    // 48px ship is offset above the finger, and its draw origin adds another 6px.
+    // The rendered hull center follows the finger with a 64px vertical offset.
     await page.waitForFunction((target) => {
       const ship = window.touchEvidence.frames.at(-1)?.ship;
       return ship && Math.hypot(ship.x - target.x, ship.y - target.y) <= 2.1;
-    }, { x: 480 * 0.8 - 30, y: 854 * 0.4 - 94 });
+    }, { x: 480 * 0.8, y: 854 * 0.4 - 64 });
     await fingers.down(2, action(page, "Move left"));
     const owned = await frames(page, "ship", 10);
     still(owned, "ship", 2);

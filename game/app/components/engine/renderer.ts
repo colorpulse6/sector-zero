@@ -14,6 +14,7 @@ import { drawFloatingLabels } from "./floatingLabels";
 import { drawPlayerBullets, drawEnemyBullets } from "./weapons";
 import { drawEnemies } from "./enemies";
 import { getSprite, SPRITES } from "./sprites";
+import { drawGlow, drawPreparedFitted, preparedSprite } from "./fighterSprites";
 import { getLevelData, WORLD_NAMES } from "./levels";
 import { drawDashboard } from "./dashboard";
 import { getTouchControlHint } from "./inputIntents";
@@ -108,7 +109,7 @@ export function drawGame(
 
   // Gameplay rendering (PLAYING and BOSS_FIGHT)
   drawPowerUps(ctx, state);
-  drawEnemyBullets(ctx, state.enemyBullets);
+  drawEnemyBullets(ctx, state.enemyBullets, state.frameCount);
   drawEnemies(ctx, state.enemies);
 
   // Boss
@@ -221,25 +222,18 @@ function drawPlayer(ctx: CanvasRenderingContext2D, state: GameState): void {
     }
   }
 
-  const sprite = getSprite(SPRITES.PLAYER);
+  // Player sheet: 3 ships side-by-side (bank-left, center, bank-right)
+  // 0 = bank-left, 1 = center, 2 = bank-right
+  const frameIdx = player.bankDir === -1 ? 0 : player.bankDir === 1 ? 2 : 1;
+  const shipCell = preparedSprite(SPRITES.PLAYER, frameIdx, 3, undefined, 0, 256);
 
-  if (sprite) {
-    // Player sheet: 3 ships side-by-side (bank-left, center, bank-right)
-    const frameW = sprite.width / 3;
-    const frameH = sprite.height;
-    // 0 = bank-left, 1 = center, 2 = bank-right
-    const frameIdx = player.bankDir === -1 ? 0 : player.bankDir === 1 ? 2 : 1;
+  // Engine exhaust is drawn first so the hull sits over the flame roots.
+  drawPlayerExhaust(ctx, state, cx, player.y + player.height - 4);
 
-    // Crop to ship content area — the ships sit in the center ~50% of each frame
-    // with large transparent padding above and below
-    const cropTop = Math.floor(frameH * 0.25);
-    const cropH = Math.floor(frameH * 0.50);
-    const sx = frameIdx * frameW;
-    const drawSize = player.width + 12;
-    const drawX = player.x - 6;
-    const drawY = player.y - 6;
-
-    ctx.drawImage(sprite, sx, cropTop, frameW, cropH, drawX, drawY, drawSize, drawSize);
+  if (shipCell) {
+    // Alpha-trimmed hull fitted to the hit box (+12px of visual margin, as before).
+    drawGlow(ctx, cx, cy + 3, player.width * 0.8, "#000000", 0.35);
+    drawPreparedFitted(ctx, shipCell, cx, cy, player.width + 12, player.height + 12);
   } else {
     // Fallback: placeholder ship
     ctx.save();
@@ -271,68 +265,64 @@ function drawPlayer(ctx: CanvasRenderingContext2D, state: GameState): void {
     ctx.fill();
     ctx.restore();
   }
+}
 
-  // Engine exhaust
+/** Twin-nozzle additive exhaust. Flicker is a sum of sines so it never
+ *  stutters in step with the frame counter; the speed power-up swaps the
+ *  cyan plasma for a longer amber burn plus streaking speed lines. */
+function drawPlayerExhaust(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  cx: number,
+  nozzleY: number,
+): void {
+  const { player } = state;
   const hasSpeed = state.activePowerUps.some((p) => p.type === PowerUpType.SPEED);
-  const exhaustFlicker = 0.5 + 0.5 * Math.sin(state.frameCount * 0.5);
-  const exhaustBottom = player.y + player.height;
+  const t = state.frameCount;
+  const flicker = 0.72 + 0.18 * Math.sin(t * 0.61) + 0.1 * Math.sin(t * 1.37 + 1.3);
+  const spread = player.width * 0.16;
+  const lean = player.bankDir * 2;
+  const glowColor = hasSpeed ? "#ffb347" : "#49c8ff";
+  const flameColor = hasSpeed ? "rgba(255, 190, 70, 0.85)" : "rgba(90, 210, 255, 0.8)";
+  const coreColor = hasSpeed ? "rgba(255, 248, 220, 0.95)" : "rgba(225, 250, 255, 0.95)";
+  const len = (hasSpeed ? 26 : 15) * flicker;
 
-  if (hasSpeed) {
-    // Speed boost — intense double exhaust with trail
-    const len = 14 + exhaustFlicker * 10;
-    // Outer glow
-    ctx.fillStyle = `rgba(255, 220, 0, ${exhaustFlicker * 0.3})`;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const side of [-1, 1]) {
+    const nx = cx + side * spread + lean;
+    drawGlow(ctx, nx, nozzleY + 4, (hasSpeed ? 14 : 10) * flicker, glowColor, 0.55);
+    // Outer plume
+    ctx.fillStyle = flameColor;
     ctx.beginPath();
-    ctx.moveTo(cx - 10, exhaustBottom - 2);
-    ctx.lineTo(cx, exhaustBottom + len + 4);
-    ctx.lineTo(cx + 10, exhaustBottom - 2);
+    ctx.moveTo(nx - 3.5, nozzleY);
+    ctx.quadraticCurveTo(nx - 2.5, nozzleY + len * 0.55, nx + lean * 0.4, nozzleY + len);
+    ctx.quadraticCurveTo(nx + 2.5, nozzleY + len * 0.55, nx + 3.5, nozzleY);
     ctx.closePath();
     ctx.fill();
-    // Left flame
-    ctx.fillStyle = `rgba(255, 180, 0, ${exhaustFlicker * 0.8})`;
+    // Hot core
+    ctx.fillStyle = coreColor;
     ctx.beginPath();
-    ctx.moveTo(cx - 8, exhaustBottom - 2);
-    ctx.lineTo(cx - 4, exhaustBottom + len);
-    ctx.lineTo(cx, exhaustBottom - 2);
-    ctx.closePath();
-    ctx.fill();
-    // Right flame
-    ctx.beginPath();
-    ctx.moveTo(cx, exhaustBottom - 2);
-    ctx.lineTo(cx + 4, exhaustBottom + len);
-    ctx.lineTo(cx + 8, exhaustBottom - 2);
-    ctx.closePath();
-    ctx.fill();
-    // Core white
-    ctx.fillStyle = `rgba(255, 255, 220, ${exhaustFlicker * 0.9})`;
-    ctx.beginPath();
-    ctx.moveTo(cx - 3, exhaustBottom);
-    ctx.lineTo(cx, exhaustBottom + len * 0.7);
-    ctx.lineTo(cx + 3, exhaustBottom);
-    ctx.closePath();
-    ctx.fill();
-
-    // Speed lines behind ship
-    ctx.strokeStyle = `rgba(255, 220, 100, ${0.15 + exhaustFlicker * 0.1})`;
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 4; i++) {
-      const lx = player.x - 6 + i * 18;
-      const ly = exhaustBottom + 8 + ((state.frameCount * 3 + i * 40) % 30);
-      ctx.beginPath();
-      ctx.moveTo(lx, ly);
-      ctx.lineTo(lx, ly + 12 + exhaustFlicker * 6);
-      ctx.stroke();
-    }
-  } else {
-    // Normal exhaust
-    ctx.fillStyle = `rgba(68, 204, 255, ${exhaustFlicker * 0.7})`;
-    ctx.beginPath();
-    ctx.moveTo(cx - 5, exhaustBottom - 2);
-    ctx.lineTo(cx, exhaustBottom + 6 + exhaustFlicker * 5);
-    ctx.lineTo(cx + 5, exhaustBottom - 2);
+    ctx.moveTo(nx - 1.5, nozzleY);
+    ctx.lineTo(nx + lean * 0.3, nozzleY + len * 0.6);
+    ctx.lineTo(nx + 1.5, nozzleY);
     ctx.closePath();
     ctx.fill();
   }
+
+  if (hasSpeed) {
+    ctx.strokeStyle = `rgba(255, 220, 120, ${0.2 + flicker * 0.15})`;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const lx = player.x - 6 + i * 18;
+      const ly = nozzleY + 8 + ((t * 3 + i * 40) % 30);
+      ctx.beginPath();
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(lx, ly + 12 + flicker * 6);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 // ─── Side Gunners ────────────────────────────────────────────────────
@@ -342,21 +332,17 @@ function drawSideGunners(ctx: CanvasRenderingContext2D, state: GameState): void 
   if (!hasSideGunners) return;
 
   const { player } = state;
-  const sprite = getSprite(SPRITES.PLAYER);
+  const cell = preparedSprite(SPRITES.PLAYER, 1, 3, "#66ff88", 0.25, 256);
 
   const leftX = player.x - 22;
   const rightX = player.x + player.width + 2;
   const gunY = player.y + 10;
   const size = 20;
 
-  if (sprite) {
-    const frameW = sprite.width / 3;
-    const frameH = sprite.height;
-    ctx.globalAlpha = 0.8;
-    ctx.drawImage(sprite, frameW, 0, frameW, frameH,
-      leftX, gunY, size, size);
-    ctx.drawImage(sprite, frameW, 0, frameW, frameH,
-      rightX, gunY, size, size);
+  if (cell) {
+    ctx.globalAlpha = 0.85;
+    drawPreparedFitted(ctx, cell, leftX + size / 2, gunY + size / 2, size, size);
+    drawPreparedFitted(ctx, cell, rightX + size / 2, gunY + size / 2, size, size);
     ctx.globalAlpha = 1;
   } else {
     ctx.fillStyle = "#44cc44";
@@ -375,37 +361,22 @@ function drawSideGunners(ctx: CanvasRenderingContext2D, state: GameState): void 
     ctx.fill();
   }
 
-  // Side gunner exhaust trails
+  // Side gunner exhaust trails + green tether glow (additive, no shadowBlur)
   const flicker = 0.5 + 0.5 * Math.sin(state.frameCount * 0.6);
-  ctx.fillStyle = `rgba(68, 255, 100, ${flicker * 0.6})`;
   const exLen = 4 + flicker * 3;
-  // Left exhaust
-  ctx.beginPath();
-  ctx.moveTo(leftX + size / 2 - 2, gunY + size);
-  ctx.lineTo(leftX + size / 2, gunY + size + exLen);
-  ctx.lineTo(leftX + size / 2 + 2, gunY + size);
-  ctx.closePath();
-  ctx.fill();
-  // Right exhaust
-  ctx.beginPath();
-  ctx.moveTo(rightX + size / 2 - 2, gunY + size);
-  ctx.lineTo(rightX + size / 2, gunY + size + exLen);
-  ctx.lineTo(rightX + size / 2 + 2, gunY + size);
-  ctx.closePath();
-  ctx.fill();
-
-  // Green glow on gunners
-  ctx.shadowBlur = 8;
-  ctx.shadowColor = "#44ff44";
-  ctx.strokeStyle = `rgba(68, 255, 68, ${0.25 + flicker * 0.15})`;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(leftX + size / 2, gunY + size / 2, size / 2 + 2, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(rightX + size / 2, gunY + size / 2, size / 2 + 2, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.shadowBlur = 0;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = `rgba(68, 255, 100, ${flicker * 0.6})`;
+  for (const gx of [leftX + size / 2, rightX + size / 2]) {
+    ctx.beginPath();
+    ctx.moveTo(gx - 2, gunY + size);
+    ctx.lineTo(gx, gunY + size + exLen);
+    ctx.lineTo(gx + 2, gunY + size);
+    ctx.closePath();
+    ctx.fill();
+    drawGlow(ctx, gx, gunY + size / 2, size * 0.9, "#44ff66", 0.2 + flicker * 0.15);
+  }
+  ctx.restore();
 }
 
 // ─── Power-Ups ───────────────────────────────────────────────────────
@@ -421,26 +392,29 @@ const POWERUP_FRAME_MAP: Record<string, number> = {
   [PowerUpType.RAPID_FIRE]: 5,
 };
 
+const POWERUP_GLOW: Record<string, string> = {
+  [PowerUpType.SHIELD]: "#4488ff",
+  [PowerUpType.SPEED]: "#ffdd00",
+  [PowerUpType.BOMB]: "#ff3333",
+  [PowerUpType.MAGNET]: "#aa44ff",
+  [PowerUpType.SIDE_GUNNERS]: "#44ff44",
+  [PowerUpType.RAPID_FIRE]: "#ff8800",
+};
+
 function drawPowerUps(ctx: CanvasRenderingContext2D, state: GameState): void {
-  const sheet = getSprite(SPRITES.POWERUPS);
-
   for (const pu of state.powerUps) {
-    if (sheet) {
-      const frameIdx = POWERUP_FRAME_MAP[pu.type] ?? 0;
-      const frameW = sheet.width / 6;
-      const frameH = sheet.height;
-
-      const pulse = 1 + 0.05 * Math.sin(state.frameCount * 0.1);
-      const drawW = pu.width * pulse;
-      const drawH = pu.height * pulse;
-      const drawX = pu.x + (pu.width - drawW) / 2;
-      const drawY = pu.y + (pu.height - drawH) / 2;
-
-      ctx.drawImage(
-        sheet,
-        frameIdx * frameW, 0, frameW, frameH,
-        drawX, drawY, drawW, drawH
-      );
+    const frameIdx = POWERUP_FRAME_MAP[pu.type] ?? 0;
+    // The icon sheet's six items are not on an equal-column grid; slice by alpha.
+    const cell = preparedSprite(SPRITES.POWERUPS, frameIdx, 6, undefined, 0, 96);
+    if (cell) {
+      const pulse = 1 + 0.06 * Math.sin(state.frameCount * 0.1 + pu.id);
+      const pcx = pu.x + pu.width / 2;
+      const pcy = pu.y + pu.height / 2;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      drawGlow(ctx, pcx, pcy, pu.width * 0.95 * pulse, POWERUP_GLOW[pu.type] ?? "#ffffff", 0.35);
+      ctx.restore();
+      drawPreparedFitted(ctx, cell, pcx, pcy, pu.width, pu.height, pulse);
     } else {
       const pcx = pu.x + pu.width / 2;
       const pcy = pu.y + pu.height / 2;
@@ -512,10 +486,13 @@ function drawBoss(
   ctx.save();
 
   const spritePath = BOSS_SPRITE_MAP[boss.id] || SPRITES.BOSS_ROCKJAW;
-  const sprite = getSprite(spritePath);
+  const sprite = preparedSprite(spritePath, 0, 1, undefined, 0, 512);
 
   if (sprite) {
-    ctx.drawImage(sprite, boss.x, boss.y, boss.width, boss.height);
+    const bcx = boss.x + boss.width / 2;
+    const bcy = boss.y + boss.height / 2;
+    drawGlow(ctx, bcx, bcy + 6, boss.width * 0.7, "#000000", 0.45);
+    drawPreparedFitted(ctx, sprite, bcx, bcy, boss.width, boss.height);
   } else {
     // Fallback: procedural boss shape with themed colors
     const colors = BOSS_FALLBACK_COLORS[boss.id] || BOSS_FALLBACK_COLORS[1];
@@ -541,15 +518,14 @@ function drawBoss(
     const pulse = 0.5 + 0.5 * Math.sin(frameCount * 0.15);
     const coreColor = BOSS_FALLBACK_COLORS[boss.id]?.core || "#ff4400";
 
-    ctx.globalAlpha = 0.4 + pulse * 0.3;
-    ctx.shadowBlur = 20;
-    ctx.shadowColor = coreColor;
+    ctx.globalCompositeOperation = "lighter";
+    drawGlow(ctx, coreX, coreY, Math.max(wp.width, wp.height) * 0.9, coreColor, 0.35 + pulse * 0.3);
     ctx.fillStyle = coreColor;
-    ctx.globalAlpha = 0.3 + pulse * 0.2;
+    ctx.globalAlpha = 0.25 + pulse * 0.2;
     ctx.beginPath();
     ctx.ellipse(coreX, coreY, wp.width / 2, wp.height / 2, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
   }
 

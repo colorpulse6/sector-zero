@@ -6,6 +6,7 @@ import {
   type WeaponType,
 } from "./types";
 import { getSprite, SPRITES } from "./sprites";
+import { drawGlow, drawPreparedRotated, drawStreak, preparedSprite } from "./fighterSprites";
 
 let bulletIdCounter = 0;
 
@@ -128,42 +129,37 @@ function getPlayerBulletFrame(weaponLevel: number): number {
   return 3;
 }
 
+const PLAYER_BULLET_FRAMES = 4;
+/** Direction each sheet item points in its own frame: crystals point up, the missile points right. */
+const PLAYER_BULLET_FORWARD = [-Math.PI / 2, -Math.PI / 2, -Math.PI / 2, 0];
+
 export function drawPlayerBullets(
   ctx: CanvasRenderingContext2D,
   bullets: Bullet[],
   weaponLevel: number = 1,
   hasRapidFire: boolean = false
 ): void {
+  if (bullets.length === 0) return;
   const sheet = getSprite(SPRITES.PLAYER_BULLETS);
+  const frameIdx = getPlayerBulletFrame(weaponLevel);
+  const cell = sheet ? preparedSprite(SPRITES.PLAYER_BULLETS, frameIdx, PLAYER_BULLET_FRAMES, undefined, 0, 128) : null;
 
-  if (sheet) {
-    const frameCount = 4;
-    const frameW = sheet.width / frameCount;
-    const frameH = sheet.height;
-    const frameIdx = getPlayerBulletFrame(weaponLevel);
-    // Crop to content center (similar to player ship — content in center ~50%)
-    const cropTop = Math.floor(frameH * 0.2);
-    const cropH = Math.floor(frameH * 0.6);
-
-    const glowColor = hasRapidFire ? "#ff6600" : "#44ccff";
+  if (cell) {
+    const glowColor = hasRapidFire ? "#ff7a1a" : "#5fd6ff";
+    const boxW = 14 + weaponLevel * 3;
+    const boxH = 24 + weaponLevel * 4;
+    const streakLen = 16 + weaponLevel * 4;
 
     for (const b of bullets) {
+      const cx = b.x + b.width / 2;
+      const cy = b.y + b.height / 2;
+      const heading = Math.atan2(b.vy, b.vx);
       ctx.save();
-      // Glow effect behind the sprite
-      ctx.shadowBlur = 6 + weaponLevel * 2;
-      ctx.shadowColor = glowColor;
-
-      const drawW = b.width + 16;
-      const drawH = b.height + 16;
-      const drawX = b.x + b.width / 2 - drawW / 2;
-      const drawY = b.y + b.height / 2 - drawH / 2;
-
-      // Tint orange during rapid fire
-      if (hasRapidFire) {
-        ctx.globalAlpha = 0.85;
-      }
-
-      ctx.drawImage(sheet, frameIdx * frameW, cropTop, frameW, cropH, drawX, drawY, drawW, drawH);
+      ctx.globalCompositeOperation = "lighter";
+      drawStreak(ctx, cx, cy, b.vx, b.vy, streakLen, 3, glowColor, 0.6);
+      drawGlow(ctx, cx, cy, 9 + weaponLevel * 2, glowColor, hasRapidFire ? 0.7 : 0.5);
+      ctx.globalCompositeOperation = "source-over";
+      drawPreparedRotated(ctx, cell, cx, cy, boxW, boxH, heading - PLAYER_BULLET_FORWARD[frameIdx]);
       ctx.restore();
     }
   } else {
@@ -222,32 +218,50 @@ const ENEMY_BULLET_GLOW: Record<string, string> = {
   acid: "#44cc44",
 };
 
+const ENEMY_BULLET_FRAMES = 4;
+/** Items that have a direction in the sheet (comet head right, bolt up-right); orbs/acid spin instead. */
+const ENEMY_BULLET_FORWARD: Record<string, number | null> = {
+  orb: null,
+  bolt: -Math.PI / 4,
+  fire: 0,
+  acid: null,
+};
+
 export function drawEnemyBullets(
   ctx: CanvasRenderingContext2D,
-  bullets: Bullet[]
+  bullets: Bullet[],
+  frameCount: number = 0
 ): void {
+  if (bullets.length === 0) return;
   const sheet = getSprite(SPRITES.ENEMY_BULLETS);
 
   if (sheet) {
-    const frameCount = 4;
-    const frameW = sheet.width / frameCount;
-    const frameH = sheet.height;
-    // Crop to content center
-    const cropTop = Math.floor(frameH * 0.2);
-    const cropH = Math.floor(frameH * 0.6);
-
     for (const b of bullets) {
-      ctx.save();
       const variant = b.variant ?? "orb";
       const frameIdx = ENEMY_BULLET_FRAME[variant] ?? 0;
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = ENEMY_BULLET_GLOW[variant] ?? "#ff4444";
+      const cell = preparedSprite(SPRITES.ENEMY_BULLETS, frameIdx, ENEMY_BULLET_FRAMES, undefined, 0, 96);
+      const glow = ENEMY_BULLET_GLOW[variant] ?? "#ff4444";
+      const cx = b.x + b.width / 2;
+      const cy = b.y + b.height / 2;
+      const size = b.width + 14;
+      const forward = ENEMY_BULLET_FORWARD[variant];
+      const angle = forward === null || forward === undefined
+        ? ((frameCount + b.id * 7) % 120) * (Math.PI / 60)
+        : Math.atan2(b.vy, b.vx) - forward;
 
-      const drawSize = b.width + 12;
-      const drawX = b.x + b.width / 2 - drawSize / 2;
-      const drawY = b.y + b.height / 2 - drawSize / 2;
-
-      ctx.drawImage(sheet, frameIdx * frameW, cropTop, frameW, cropH, drawX, drawY, drawSize, drawSize);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      drawStreak(ctx, cx, cy, b.vx, b.vy, 10, 3, glow, 0.45);
+      drawGlow(ctx, cx, cy, size * 0.75, glow, 0.6);
+      ctx.globalCompositeOperation = "source-over";
+      if (cell) {
+        drawPreparedRotated(ctx, cell, cx, cy, size, size, angle);
+      } else {
+        const frameW = sheet.width / ENEMY_BULLET_FRAMES;
+        const cropTop = Math.floor(sheet.height * 0.2);
+        const cropH = Math.floor(sheet.height * 0.6);
+        ctx.drawImage(sheet, frameIdx * frameW, cropTop, frameW, cropH, cx - size / 2, cy - size / 2, size, size);
+      }
       ctx.restore();
     }
   } else {

@@ -9,6 +9,7 @@ import { ColonyBuildingsList } from "./ColonyBuildingsList";
 import { ColonyCommissionMenu, PHASE_1_BUILD_OPTIONS, type BuildOption } from "./ColonyCommissionMenu";
 import { GalaxySettlementPanel } from "./GalaxySettlementPanel";
 import { settlementCommissionBlock } from "../../engine/galaxy/galaxySettlement";
+import { GalaxySalvagePanel } from "./GalaxySalvagePanel";
 
 export interface GalaxyColonyManagementScreenProps {
   colony: ColonyState;
@@ -19,6 +20,7 @@ export interface GalaxyColonyManagementScreenProps {
   onExit: () => void;
   focusActive?: boolean;
   onRestoreFocus?: () => void;
+  salvage?: { supply: number; blocked: string | null; onWork: () => void };
 }
 
 /**
@@ -27,7 +29,7 @@ export interface GalaxyColonyManagementScreenProps {
  * `supportedTypes` order, and a button names the same settlement rule the command applies.
  */
 export function GalaxyColonyManagementScreen({
-  colony, worldCycle, supportedTypes, status, onCommission, onExit, focusActive = true, onRestoreFocus,
+  colony, worldCycle, supportedTypes, status, onCommission, onExit, focusActive = true, onRestoreFocus, salvage,
 }: GalaxyColonyManagementScreenProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   useModalFocus({ active: focusActive, rootRef, onEscape: onExit, restoreFocus: onRestoreFocus,
@@ -51,6 +53,7 @@ export function GalaxyColonyManagementScreen({
         letterSpacing: "0.1em", color: hudColors.cyanAccent,
       }}>{status ?? ""}</p>
       <ColonyResourcePanel colony={colony} />
+      {salvage && <GalaxySalvagePanel {...salvage} />}
       <ColonyMetrics colony={colony} />
       <GalaxySettlementPanel colony={colony} worldCycle={worldCycle} />
       <ColonyBuildingsList colony={colony} />

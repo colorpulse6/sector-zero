@@ -1,6 +1,6 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-10-18.** Active integration: `feat/galaxy-colony`, PR #25. Solar Array,
+**Updated 2026-10-19.** Active integration: `codex/ashfall-recovery`, PR #26. PR #25 is deployed. Solar Array,
 Mine, Habitat Module, Farm and Water Purifier now form the basic settlement loop.
 The delivery handoff below records the exact verification boundary. This file owns direction, sequence and completion status. Detailed system
 specs own their contracts; individual agents do not maintain competing master roadmaps.
@@ -80,7 +80,11 @@ Management must translate into people, visible changes or playable opportunities
 The approved enemy family and map-completion release is recorded in
 [the release handoff](handoffs/2026-10-18-approved-hostiles-release.md). The three
 concepts are accepted; the initial front-facing runtime integration and reachable
-mission routes are verified locally. Main/deployment remain a separate release gate.
+mission routes are verified and released. PR #25 merged at `dc35da2`; deployment
+[39163042227](https://github.com/colorpulse6/sector-zero/actions/runs/39163042227)
+succeeded for that commit. Production game, approved assets and companion site were
+checked after deployment. The final release passed 1,046 local unit/asset tests,
+122 game browser tests and nine site browser tests.
 
 
 The current delivery adds five-building management, planned-power and mine-first safeguards,
@@ -88,7 +92,7 @@ settler guidance, and explicit E/touch FPS pickup. The site and README follow th
 travel/settlement direction. See [settlement/FPS delivery](handoffs/2026-10-18-settlement-fps-delivery.md)
 for integration checks and the enemy-art handback. The earlier evidence below remains historical.
 
-These are local branch statements, not deployment claims. At runtime `44111cf`, Manager
+The following records the earlier integration boundary. At runtime `44111cf`, Manager
 verified **990/990 unit tests**, clean typechecking and successful static export. **Nine
 focused integrated browser checks passed**: seven management/Overseer checks plus two
 held-input regressions. Before the NPC integration, Colony's full browser run passed
@@ -106,26 +110,45 @@ This is a verified runtime increment, not the full Ashfall lock.
 | G0 galaxy foundation | Implemented: fresh run, coordinates, seeded discovery, travel commitments, located operations and recovery | Bounded local-sector proof; not a whole simulated civilization |
 | Region and Atlas presentation | Region chart plus Babylon sector/system scenes implemented | Procedural display planets are not all playable destinations |
 | GC1 galaxy colony descent | Implemented: parked Ashfall -> walk -> region/Take Off -> Atlas | Only Ashfall Primary is mapped for descent; ordinary reload returns to Atlas |
-| Colony economy/building/NPC foundation | Five basic buildings available from Atlas and landing pad; planned-power/mine-first safeguards, next-cycle settler guidance and strict stored-save commits | Recoverable earning/resupply, fuller services and ordinary end-to-end gameplay remain open; building geometry updates on next descent |
+| Colony economy/building/NPC foundation | Five basic buildings released; repeatable salvage recovery and supply locally verified in the next increment | Quartermaster commerce and full place acceptance remain open; building geometry updates on next descent |
 | Merchant services | Quartermaster purchase path exists | Fresh galaxy consumables remain legacy-unlock-dependent |
 | M3 hubs | Cantina runtime/assets exist; first-person utility interiors exist | Fresh Ashfall outpost has no cantina; Marketplace partial branch is not integrated; Town Hall remains future |
 | Combat and outcomes | Retained modes and outcome/persistence machinery exist; ground/boarding cleanup merged locally | Broader located campaign and travel battle mapping remain GC4 |
 | M2 visuals | Shooter/NPC/hub asset work and the existing first-person presentation are reusable | Asset acceptance is per runtime consumer; no blanket colony 3D migration is approved |
 | Civilization layer | Strategic cycle and history foundations exist | Full decay, syndicates, generations, Houses, governance and long-interval catch-up remain future |
 
-Local `origin/main` is `9bf52a2` (PR #24 merge), not refreshed remote evidence. Nothing
-in this consolidation publishes or merges the integration branch to main. Preserve the
+Remote `main` was verified at `dc35da2` (PR #25 merge) after release. Preserve the
 partial Marketplace branch (`feat/m3-marketplace-runtime`, `289f4eb`) for a scoped reuse
-review. Do not clean up old branches/worktrees merely because they look stale.
+review. Fourteen clean integrated worktrees were removed after merge/patch verification;
+their branches remain. Ashfall design notes and unmatched mission-presentation work remain
+preserved. Clean up completed task environments only after ownership and recovery checks.
 
 ## Active parallel milestone: Ashfall
 
 | Lane | Owner | Current assignment | Finish condition |
 | --- | --- | --- | --- |
-| Systems | Existing Colony agent | Basic settlement loop integrated. Next: GC2-B failure recovery and early-economy pacing, then useful trade/resupply | Useful trade and recovery work from an ordinary galaxy save, preserve ownership and survive reload without duplicated rewards or costs |
-| Place, art and conversations | Claude Ashfall Designer | Overseer integrated. Current delivery: FPS enemy presentation. Next: bounded Quartermaster presentation and trade guidance against accepted rules | Arrival and both roles are readable at gameplay size, statements reflect real state, one persistent consequence is visible, and Nic accepts the aesthetic |
+| Systems | Codex Manager; Colony lane for subsequent commerce | Basic settlement loop released. Salvage recovery/pacing locally verified; next useful Quartermaster trade | Useful trade and recovery work from an ordinary galaxy save, preserve ownership and survive reload without duplicated rewards or costs |
+| Place, art and conversations | Claude Ashfall Designer | Overseer integrated; approved initial FPS enemy presentation released. Next: bounded Quartermaster presentation and trade guidance against accepted rules | Arrival and both roles are readable at gameplay size, statements reflect real state, one persistent consequence is visible, and Nic accepts the aesthetic |
 | Market and bartering | Designer proposes experience; Colony owns rules; Manager reconciles | Define first useful trade and its dependencies | Stock, price/exchange, refusal, cost and result are real, persistent and safe under repeated/stale input; distinguish buying/selling, exchange and negotiation |
-| Integration and lock | Codex Manager; Nic accepts the aesthetic | Integrate and verify settlement/FPS increment; next freeze recovery and pacing, then complete the ordinary gameplay route | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
+| Integration and lock | Codex Manager; Nic accepts the aesthetic | Settlement/FPS increment released; fresh work/build/departure/return route verified locally. Next: trade and place acceptance | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
+
+The next recovery contract is approved: repeatable **Salvage Shifts** at parked Ashfall,
+one world cycle for 40 colony metal and one travel supply, with no entry cost. Existing
+building costs, production and settler growth stay unchanged. The initial estimate of
+20 shifts was disproved by simulation; Nic accepted the measured **25-shift** route from
+zero stock to five operational buildings and ten settlers. See the
+[approved design](superpowers/specs/2026-10-19-ashfall-recovery-design.md).
+The command and fresh-save browser route are locally verified. See the
+[recovery handoff](handoffs/2026-10-19-ashfall-recovery.md). This increment is not part of
+the deployed `dc35da2` release until a later release receipt says so.
+
+The Fable fighter-battle presentation pass is integrated locally at `2e1a75f`, alongside
+Ashfall recovery in PR #26. It corrects the shooter color filter, clips enemy tint to
+silhouettes, trims sprite sheets, separates background scroll periods, and improves
+shots, exhaust and explosions. Codex owns combined verification and release; see the
+[manager integration handoff](handoffs/2026-10-19-fighter-integration-review.md).
+This does not expand Ashfall's lock prerequisites or alter combat rewards, saves or
+campaign structure. Independent review and deployment remain separate completion gates.
 
 Design work starts alongside systems work, rather than waiting for all GC2–GC4
 infrastructure. Runtime integration still follows the dependency contract. The exact
@@ -136,10 +159,10 @@ The active implementation boundary remains one useful Ashfall loop. Marketplace,
 Town Hall, a full dialogue engine, procedural city generation, all campaign chapters
 and a renderer replacement must not become hidden prerequisites.
 
-The GC2-A investigation identified finite starting credit/supply income and a metal
-recovery dependency on a unique mission outcome. A sustainable earning/trade/resupply
-path and a practical recovery path after failure are required for the full Ashfall
-lock. They are not silently solved by unlocking a shop item or wiring a build button.
+The GC2-A investigation identified finite starting income and a metal recovery dependency
+on a unique mission outcome. The new salvage increment removes that dependency for metal
+and travel supply; credits and useful commerce remain open. A sustainable trade path is
+still required for the full Ashfall lock.
 
 ## Ashfall delivery order
 
@@ -151,10 +174,11 @@ lock. They are not silently solved by unlocking a shop item or wiring a build bu
    Designer next prepares the Quartermaster slice and remaining arrival/consequence
    treatment; Manager assigns runtime consumers. Done when arrival, the two NPC roles
    and one visible consequence are readable in the actual viewport and Nic accepts them.
-3. **GC2-B recovery, pacing and commerce.** First remove the failed-sortie bootstrap dead end and the roughly 45-cycle path to ten settlers. Colony defines a recoverable earning/resupply path with
-   Designer's trade experience. Manager reviews the failure route, resource ownership,
-   displayed quotes and repeated-intent behavior before implementation. Done when useful
-   trade works from an ordinary save and failure does not strand progression.
+3. **GC2-B recovery, pacing and commerce.** Recovery/pacing is locally verified: repeatable
+   salvage advances one ordinary cycle, earns 40 metal and one travel supply, and reaches ten
+   settlers from zero colony stock in 25 shifts. Failure recovery, quote replay/refusal,
+   storage failures and reload are covered. Next, Colony defines the credit/trade rules with
+   Designer's Quartermaster experience. Done when useful trade also works from an ordinary save.
 4. **Lock review.** Manager verifies one complete fresh-save visit, improvement, work,
    trade, departure and return. Nic accepts the presentation. Record the accepted place
    contract and only then open production on the next destination.
