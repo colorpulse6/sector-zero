@@ -345,7 +345,8 @@ export function drawFPDialogBox(
     ctx.font = "9px monospace";
     if (canBuy) {
       ctx.textAlign = "right";
-      const headerHint = selectedIndex === leaveIndex ? `[${interactionKey}] LEAVE` : `[${interactionKey}] BUY  ↑↓ SELECT`;
+      const action = ds.shopItems.some(item => item.type === "galaxy-trade") ? "TRADE" : "BUY";
+      const headerHint = selectedIndex === leaveIndex ? `[${interactionKey}] LEAVE` : `[${interactionKey}] ${action}  ↑↓ SELECT`;
       ctx.fillText(headerHint, boxX + boxW - 12, boxY + 12);
       ctx.textAlign = "left";
     } else {
@@ -388,7 +389,7 @@ export function drawFPDialogBox(
       ctx.fillStyle = "#44ff88";
       ctx.font = "bold 10px monospace";
       ctx.textAlign = "right";
-      ctx.fillText(`◆ ${item.cost}`, boxX + boxW - 16, iy + 14);
+      ctx.fillText(item.costLabel ?? `◆ ${item.cost}`, boxX + boxW - 16, iy + 14);
       ctx.textAlign = "left";
     }
 
@@ -411,6 +412,16 @@ export function drawFPDialogBox(
       ctx.font = "bold 11px monospace";
       ctx.textAlign = "left";
       ctx.fillText("LEAVE", boxX + 16, ly + 7);
+    }
+
+    if (ds.shopBalanceText) {
+      ctx.fillStyle = "#b4c8d0";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(ds.shopBalanceText, boxX + 16, boxY + boxH - 64, boxW - 32);
+      ctx.fillStyle = "#889999";
+      ctx.font = "9px monospace";
+      ctx.fillText("Earn metal: Manage Colony > Work a Salvage Shift", boxX + 16, boxY + boxH - 46);
     }
 
     // Transient purchase feedback (§I + typed services)

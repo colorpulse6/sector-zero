@@ -1,9 +1,14 @@
 # Sector Zero — Master Roadmap
 
-**Updated 2026-10-19.** Active integration: `codex/ashfall-recovery`, PR #26. PR #25 is deployed. Solar Array,
-Mine, Habitat Module, Farm and Water Purifier now form the basic settlement loop.
-The delivery handoff below records the exact verification boundary. This file owns direction, sequence and completion status. Detailed system
-specs own their contracts; individual agents do not maintain competing master roadmaps.
+**Updated 2026-10-24.** PR #26 merged at `95add54` and deployment
+[39730235392](https://github.com/colorpulse6/sector-zero/actions/runs/39730235392)
+succeeded. Five-building settlement, salvage recovery and fighter polish are released.
+The active `feat/ashfall-lock` increment adds the useful Quartermaster exchange and
+complete reference-world acceptance route. It remains a **lock candidate** pending
+normal review/release and Nic's final in-game visual acceptance.
+
+This file owns direction, sequence and completion status. Detailed system specs own
+their contracts; individual agents do not maintain competing master roadmaps.
 
 ## The current commitment: lock Ashfall
 
@@ -110,82 +115,54 @@ This is a verified runtime increment, not the full Ashfall lock.
 | G0 galaxy foundation | Implemented: fresh run, coordinates, seeded discovery, travel commitments, located operations and recovery | Bounded local-sector proof; not a whole simulated civilization |
 | Region and Atlas presentation | Region chart plus Babylon sector/system scenes implemented | Procedural display planets are not all playable destinations |
 | GC1 galaxy colony descent | Implemented: parked Ashfall -> walk -> region/Take Off -> Atlas | Only Ashfall Primary is mapped for descent; ordinary reload returns to Atlas |
-| Colony economy/building/NPC foundation | Five basic buildings released; repeatable salvage recovery and supply locally verified in the next increment | Quartermaster commerce and full place acceptance remain open; building geometry updates on next descent |
-| Merchant services | Quartermaster purchase path exists | Fresh galaxy consumables remain legacy-unlock-dependent |
+| Colony economy/building/NPC foundation | Five basic buildings and repeatable salvage recovery released in PR #26 | Useful exchange implemented in the lock candidate; visual acceptance pending; geometry updates on next descent |
+| Merchant services | Galaxy Quartermaster offers metal for travel supply in the lock candidate | Consumables need a Galaxy equip/use route before they can be useful stock |
 | M3 hubs | Cantina runtime/assets exist; first-person utility interiors exist | Fresh Ashfall outpost has no cantina; Marketplace partial branch is not integrated; Town Hall remains future |
 | Combat and outcomes | Retained modes and outcome/persistence machinery exist; ground/boarding cleanup merged locally | Broader located campaign and travel battle mapping remain GC4 |
 | M2 visuals | Shooter/NPC/hub asset work and the existing first-person presentation are reusable | Asset acceptance is per runtime consumer; no blanket colony 3D migration is approved |
 | Civilization layer | Strategic cycle and history foundations exist | Full decay, syndicates, generations, Houses, governance and long-interval catch-up remain future |
 
-Remote `main` was verified at `dc35da2` (PR #25 merge) after release. Preserve the
+Remote `main` is now `95add54` (PR #26 merge); the PR #25 receipts above remain historical. Preserve the
 partial Marketplace branch (`feat/m3-marketplace-runtime`, `289f4eb`) for a scoped reuse
 review. Fourteen clean integrated worktrees were removed after merge/patch verification;
 their branches remain. Ashfall design notes and unmatched mission-presentation work remain
 preserved. Clean up completed task environments only after ownership and recovery checks.
 
-## Active parallel milestone: Ashfall
+## Active milestone: Ashfall lock candidate
 
-| Lane | Owner | Current assignment | Finish condition |
+The [lock contract](ashfall/08-lock-contract.md) fixes this milestone's scope.
+The [delivery handoff](handoffs/2026-10-24-ashfall-lock-candidate.md) records checks,
+screenshots and remaining acceptance gates.
+
+| Lane | Owner | Current status | Finish condition |
 | --- | --- | --- | --- |
-| Systems | Codex Manager; Colony lane for subsequent commerce | Basic settlement loop released. Salvage recovery/pacing locally verified; next useful Quartermaster trade | Useful trade and recovery work from an ordinary galaxy save, preserve ownership and survive reload without duplicated rewards or costs |
-| Place, art and conversations | Claude Ashfall Designer | Overseer integrated; approved initial FPS enemy presentation released. Next: bounded Quartermaster presentation and trade guidance against accepted rules | Arrival and both roles are readable at gameplay size, statements reflect real state, one persistent consequence is visible, and Nic accepts the aesthetic |
-| Market and bartering | Designer proposes experience; Colony owns rules; Manager reconciles | Define first useful trade and its dependencies | Stock, price/exchange, refusal, cost and result are real, persistent and safe under repeated/stale input; distinguish buying/selling, exchange and negotiation |
-| Integration and lock | Codex Manager; Nic accepts the aesthetic | Settlement/FPS increment released; fresh work/build/departure/return route verified locally. Next: trade and place acceptance | Functional proof plus runtime visual acceptance and an ordinary playthrough; record remaining defects and compatibility obligations |
+| Settlement and recovery | Codex Manager | Released in PR #26: five buildings, mine income, growth, repeatable salvage and failure recovery | Preserve the zero-stock, 25-shift route to ten settlers |
+| Useful commerce | Codex Manager | Implemented: Quartermaster exchanges 20 colony metal for one ship travel supply; fresh Galaxy needs no Legacy unlock | Exact costs/rewards, refusals, single-intent commits and reload verified in the real shop |
+| Place and presentation | Existing designer baseline; Codex integrates | Existing Overseer, animated Quartermaster, work station and building silhouettes retained; balances and factual trade guidance added | Review captured desktop/mobile gameplay; Nic accepts the final feel |
+| Integration and release | Codex Manager | Fresh new-game work/build/trade/departure/return route passes locally | Complete regressions, normal PR review, deployment and public checks |
+| Final place acceptance | Nic | Pending in-game review | Accept the playable result; then mark the reference world locked |
 
-The next recovery contract is approved: repeatable **Salvage Shifts** at parked Ashfall,
-one world cycle for 40 colony metal and one travel supply, with no entry cost. Existing
-building costs, production and settler growth stay unchanged. The initial estimate of
-20 shifts was disproved by simulation; Nic accepted the measured **25-shift** route from
-zero stock to five operational buildings and ten settlers. See the
-[approved design](superpowers/specs/2026-10-19-ashfall-recovery-design.md).
-The command and fresh-save browser route are locally verified. See the
-[recovery handoff](handoffs/2026-10-19-ashfall-recovery.md). This increment is not part of
-the deployed `dc35da2` release until a later release receipt says so.
+**Economy:** Salvage still costs one world cycle and earns 40 colony metal plus one
+travel supply, with no entry cost. Building prices, mine production and growth stay
+unchanged. The new repeatable exchange spends 20 colony metal for one ship travel
+supply, takes no cycle and has no artificial reserve cap. It is a fixed exchange,
+not a negotiation or credits marketplace. This manager decision under Nic's October
+24 lock instruction supersedes the older unapproved cap-twelve proposal. Galaxy
+consumable sales stay deferred until normal equipping/use exists.
 
-The Fable fighter-battle presentation pass is integrated locally at `2e1a75f`, alongside
-Ashfall recovery in PR #26. It corrects the shooter color filter, clips enemy tint to
-silhouettes, trims sprite sheets, separates background scroll periods, and improves
-shots, exhaust and explosions. Codex owns combined verification and release; see the
-[manager integration handoff](handoffs/2026-10-19-fighter-integration-review.md).
-This does not expand Ashfall's lock prerequisites or alter combat rewards, saves or
-campaign structure. Independent review and deployment remain separate completion gates.
+**Presentation:** preserve the accepted frontier-industrial direction. The Overseer
+reports the current settlement; the Quartermaster explains work, cost and travel
+supply. Finished buildings appear on the next descent. Fixed 07:00 remains the
+current world-clock projection. Neither new lore nor a night renderer is required.
 
-Design work starts alongside systems work, rather than waiting for all GC2–GC4
-infrastructure. Runtime integration still follows the dependency contract. The exact
-first barter mechanic, merchant unlock, sustainable supply path and visible colony
-consequence remain decisions for the bounded designs, not silently committed features.
+**Proof:** a fresh browser profile can BEGIN GALAXY, travel, receive an empty-stock
+trade refusal, work/build to ten settlers, trade twice with held-input protection,
+meet the Overseer, Take Off, travel to Vanguard and back, reload and descend.
+The [acceptance route](ashfall/06-acceptance-route.md) separates this functional proof
+from Nic's visual acceptance and from production deployment.
 
-The active implementation boundary remains one useful Ashfall loop. Marketplace,
-Town Hall, a full dialogue engine, procedural city generation, all campaign chapters
-and a renderer replacement must not become hidden prerequisites.
-
-The GC2-A investigation identified finite starting income and a metal recovery dependency
-on a unique mission outcome. The new salvage increment removes that dependency for metal
-and travel supply; credits and useful commerce remain open. A sustainable trade path is
-still required for the full Ashfall lock.
-
-## Ashfall delivery order
-
-1. **Basic settlement: implemented.** Five-building management, mine income, growth to ten settlers, planned power and bootstrap safeguards extend GC2-A. Solar Array management, persistence refusals,
-   construction/cycle/reload and input ownership are verified. The expedition reward
-   segment uses an outcome-authority fixture; Manager still owns the successful ordinary
-   expedition-to-improvement playthrough. Fixed 07:00 and next-descent geometry remain.
-2. **Place slice, in parallel.** The Overseer slice is integrated and browser-verified.
-   Designer next prepares the Quartermaster slice and remaining arrival/consequence
-   treatment; Manager assigns runtime consumers. Done when arrival, the two NPC roles
-   and one visible consequence are readable in the actual viewport and Nic accepts them.
-3. **GC2-B recovery, pacing and commerce.** Recovery/pacing is locally verified: repeatable
-   salvage advances one ordinary cycle, earns 40 metal and one travel supply, and reaches ten
-   settlers from zero colony stock in 25 shifts. Failure recovery, quote replay/refusal,
-   storage failures and reload are covered. Next, Colony defines the credit/trade rules with
-   Designer's Quartermaster experience. Done when useful trade also works from an ordinary save.
-4. **Lock review.** Manager verifies one complete fresh-save visit, improvement, work,
-   trade, departure and return. Nic accepts the presentation. Record the accepted place
-   contract and only then open production on the next destination.
-
-The large Marketplace interior, social negotiation, night simulation and additional
-worlds are separate later work unless a focused slice explicitly needs them. The
-first barter proposal remains a proposal until its economy prerequisites are resolved.
+The Marketplace interior, negotiated prices, new destinations and extra asset passes
+are optional later milestones. They do not move this finish line.
 
 ## What locking a world or system means
 

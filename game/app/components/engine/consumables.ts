@@ -49,7 +49,7 @@ export function applyShopPurchase(
   if (request.kind === "consumable") {
     return purchaseConsumable(save, request.itemId, buyRank);
   }
-  return purchaseService(save, request.serviceId);
+  return request.kind === "service" ? purchaseService(save, request.serviceId) : null;
 }
 
 export function equipConsumable(

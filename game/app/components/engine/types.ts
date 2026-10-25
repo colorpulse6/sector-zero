@@ -886,9 +886,11 @@ export interface FPShopItemBase {
   name: string;
   description: string;
   cost: number;
+  costLabel?: string;
 }
 
 export type FPShopItem =
+  | (FPShopItemBase & { type: "galaxy-trade"; quoteKey: string; itemId?: never; serviceId?: never })
   | (FPShopItemBase & {
       type: "consumable" | "material" | "upgrade";
       itemId?: string;  // ConsumableId or MaterialId
@@ -939,6 +941,7 @@ export interface FPNPC {
 // supported shop row. Drained by Game.tsx and applied to SaveData via the
 // audited purchase helpers. Legacy material/upgrade rows stay display-only.
 export type FPShopPurchaseRequest =
+  | { kind: "galaxy-trade"; quoteKey: string }
   | { kind: "consumable"; itemId: ConsumableId }
   | { kind: "service"; serviceId: FPServiceId };
 
@@ -951,6 +954,7 @@ export interface FPDialogState {
   shopItems?: FPShopItem[];
   // ── Phase 5a §I shop-purchase fields (all additive optional) ──
   selectedIndex?: number;   // Highlighted shop row: 0..shopItems.length (last = LEAVE)
+  shopBalanceText?: string;
   shopCanBuy?: boolean;     // true when a canBuy merchant opens its typed purchase shop
   shopNavCooldown?: number; // Debounce (frames) for up/down shop navigation
   shopSeen?: boolean;       // Per-session gate: shop has opened once this dialog. Replaces
@@ -1024,6 +1028,7 @@ export interface FirstPersonState {
   objectiveCollected?: boolean;
   /** Holding Interact before approaching must not claim a pickup. */
   interactHeld?: boolean;
+  shopConfirmHeld?: boolean;
   enemies: FPEnemy[];
   gunFireTimer: number;   // Frames since last shot (for muzzle flash)
   gunCooldown: number;    // Frames until can fire again

@@ -145,6 +145,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
   syncActorAssets(fp);
   const interactPressed = keys.interact === true && fp.interactHeld !== true;
   fp.interactHeld = keys.interact === true;
+  const shopConfirmPressed = keys.shoot && !fp.shopConfirmHeld;
+  fp.shopConfirmHeld = keys.shoot;
   if (gs.levelCompleteTimer > 0) return;
 
   // Frame-rate-independence factor: 1.0 at 60fps (dtMs = 16.67), capped at 3
@@ -231,7 +233,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
       // Nav and buy are mutually exclusive per frame: if the selection moved this
       // frame, don't also act on it — a held direction landing on LEAVE the same
       // frame shoot fires must not close the shop instead of buying the prior row.
-      if (!navigated && (keys.shoot || interactPressed) && fp.gunCooldown <= 0) {
+      const galaxyShop = ds.shopItems.some(item => item.type === "galaxy-trade");
+      if (!navigated && ((galaxyShop ? shopConfirmPressed : keys.shoot) || interactPressed) && fp.gunCooldown <= 0) {
         fp.gunCooldown = 15; // Debounce
         const idx = ds.selectedIndex ?? 0;
         if (idx === leaveIndex) {
@@ -242,6 +245,8 @@ export function updateFirstPerson(gs: GameState, keys: Keys, dtMs: number = 16.6
             // One-shot buy signal; Game.tsx drains it. The shop stays open for
             // more purchases. Legacy material/upgrade rows emit nothing.
             fp.shopPurchaseRequest = { kind: "consumable", itemId: item.itemId as ConsumableId };
+          } else if (item?.type === "galaxy-trade") {
+            fp.shopPurchaseRequest = { kind: "galaxy-trade", quoteKey: item.quoteKey };
           } else if (item?.type === "service") {
             fp.shopPurchaseRequest = { kind: "service", serviceId: item.serviceId };
           }

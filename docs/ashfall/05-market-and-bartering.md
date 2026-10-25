@@ -1,5 +1,10 @@
 # 05 — Market and bartering: three modes, kept apart
 
+> Historical design proposal. The [October 24 lock contract](08-lock-contract.md)
+> supersedes the initial exchange proposal: 20 colony metal for one travel supply,
+> repeatable with no reserve cap. Negotiation and Galaxy consumable sales are deferred.
+
+
 Vocabulary used throughout, so nobody ships one thing while calling it another:
 
 | Mode | Meaning | Status on `30b0726` |
