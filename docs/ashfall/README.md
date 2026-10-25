@@ -1,5 +1,9 @@
 # Ashfall production packet — first pass
 
+**Current scope:** [October 24 lock contract](08-lock-contract.md) and
+[acceptance route](06-acceptance-route.md). The original design packet below remains
+historical; its proposed prices, lore and landmarks are not automatically runtime commitments.
+
 Date: 2026-10-18. Lane: Claude Ashfall Designer. Branch `design/ashfall-lock`, baseline `30b0726`.
 Manager: Codex Manager. Companion lane: Colony (GC2-A management slice).
 Brief: `docs/handoffs/2026-10-18-ashfall-parallel-brief.md`. Baseline: `docs/handoffs/2026-10-18-consolidation-baseline.md`.

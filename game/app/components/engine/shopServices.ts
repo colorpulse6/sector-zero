@@ -56,6 +56,8 @@ export function shopPurchaseFeedback(
   switch (request.kind) {
     case "service":
       return { text: "HOUSE POUR SERVED", tone: "success", frames: 90 };
+    case "galaxy-trade":
+      return { text: "TRADE COMPLETE", tone: "success", frames: 90 };
     case "consumable":
       return null;
     default: {

@@ -1,5 +1,6 @@
 "use client";
 
+import { commitGalaxyTradeToStore, galaxyQuartermasterView } from "./engine/galaxy/galaxyTrade";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type TouchEvent as ReactTouchEvent } from "react";
 import {
   CANVAS_WIDTH,
@@ -157,7 +158,6 @@ import {
 } from "./engine/galaxy/travelResolver";
 import { projectGalaxyRunToLegacySave } from "./engine/galaxy/galaxyProjection";
 import {
-  applyGalaxyColonyPurchase,
   galaxyColonyContactId,
   openGalaxyColony,
 } from "./engine/galaxy/galaxyColony";
@@ -423,6 +423,7 @@ export default function Game() {
 
   const heldInputRef = useRef(createEmptyInputState());
   const pendingInteractionRef = useRef(false);
+  const pendingColonyActionRef = useRef(false);
   const keysRef = useRef<Keys>(toEngineKeys(heldInputRef.current));
   const touchPosRef = useRef<{ x: number; y: number } | null>(null);
   const touchActiveRef = useRef(false);
@@ -430,6 +431,10 @@ export default function Game() {
   const turretAimRef = useRef<{ position: NormalizedAim; held: boolean } | null>(null);
   const commitHeldInput = useCallback((next: HeldInputState) => {
     const nextKeys = toEngineKeys(next);
+    if (gameStateRef.current?.currentMode === "colony-exploration" &&
+      nextKeys.shoot && !toEngineKeys(heldInputRef.current).shoot) {
+      pendingColonyActionRef.current = true;
+    }
     if (nextKeys.interact && !toEngineKeys(heldInputRef.current).interact) {
       pendingInteractionRef.current = true;
     }
@@ -437,10 +442,12 @@ export default function Game() {
     // Retain a brief E/touch press until a simulation tick can consume it.
     // Releasing its source must not erase a tap between animation frames.
     if (pendingInteractionRef.current) nextKeys.interact = true;
+    if (pendingColonyActionRef.current) nextKeys.shoot = true;
     keysRef.current = nextKeys;
   }, []);
   const clearHeldInput = useCallback(() => {
     pendingInteractionRef.current = false;
+    pendingColonyActionRef.current = false;
     commitHeldInput(createEmptyInputState());
     turretAimRef.current = null;
     touchPosRef.current = null;
@@ -1422,6 +1429,9 @@ export default function Game() {
     const opened = openGalaxyColony(saveData, galaxyColonyId);
     return opened.ok ? opened.projectedSave : null;
   }, [galaxyColonyId, saveData]);
+
+  const galaxyTradeView = useMemo(() => galaxyColonyId === null ? null
+    : galaxyQuartermasterView(saveData, galaxyColonyId), [saveData, galaxyColonyId]);
 
   // GC2-A: quotes come from the rendered canonical save. The commit re-reads the stored save and
   // re-derives them, so a click on an outdated screen is refused as stale.
@@ -2557,6 +2567,24 @@ export default function Game() {
             shoot: false, bomb: false, jump: false }
         : keysRef.current;
 
+      // Attach Galaxy-only stock from the displayed canonical save. Never infer
+      // Galaxy authority from a legacy-shaped projection or persist this UI data.
+      if (galaxyTradeView && sceneStack) {
+        const exterior = sceneStack.current.kind === "exterior" ? sceneStack.current : sceneStack.parent;
+        const merchantId = exterior?.npcSidecar?.find(npc => npc.kind === "quartermaster")?.id;
+        const merchant = exterior?.state.npcs.find(npc => npc.id === merchantId);
+        if (merchant) {
+          merchant.shopItems = galaxyTradeView.items;
+          merchant.dialog = galaxyTradeView.dialog;
+          merchant.canBuy = true;
+          const dialog = exterior?.state.dialogState;
+          if (dialog && dialog.npcId === merchantId) {
+            dialog.shopItems = galaxyTradeView.items;
+            dialog.shopBalanceText = galaxyTradeView.balance;
+          }
+        }
+      }
+
       // End catch-up at an input boundary so later ticks cannot reuse keys
       // captured on the previous surface. Retain their time for the next frame.
       const frame = advanceInputFrame(gameState, simAccumulatorRef.current, STEP_MS, (state) => {
@@ -2579,8 +2607,9 @@ export default function Game() {
       simAccumulatorRef.current = frame.remainingMs;
       let newState = frame.state;
       const simMs = frame.simulatedMs;
-      if (simMs > 0 && pendingInteractionRef.current) {
+      if (simMs > 0 && (pendingInteractionRef.current || pendingColonyActionRef.current)) {
         pendingInteractionRef.current = false;
+        pendingColonyActionRef.current = false;
         keysRef.current = toEngineKeys(heldInputRef.current);
       }
       if (frame.boundaryChanged) clearHeldInput();
@@ -2624,20 +2653,19 @@ export default function Game() {
           // the buy rank from the explored colony's primary faction — the same
           // rank the shop's displayed costs were built with, so the charge
           // always equals the display for consumables. Services ignore rank.
-          const nextSave = galaxyColonyId !== null
-            ? applyGalaxyColonyPurchase(saveData, galaxyColonyId, buyReq)
-            : applyShopPurchase(
-              saveData,
-              buyReq,
-              colonyMerchantRank(saveData.colonies, saveData.factionStandings, sceneStack?.colonyId),
-            );
-          if (nextSave) {
-            saveSave(nextSave);
-            adoptCanonicalSave(nextSave);
-          }
-          const feedback = shopPurchaseFeedback(buyReq, nextSave !== null);
-          if (fpBuy.dialogState) {
-            setShopPurchaseFeedback(fpBuy.dialogState, feedback);
+          if (galaxyColonyId !== null) {
+            const result = buyReq.kind === "galaxy-trade"
+              ? commitGalaxyTradeToStore(managementStore, galaxyColonyId, buyReq.quoteKey)
+              : { ok: false as const, message: "ITEM NOT STOCKED HERE", reconcile: null };
+            if (result.ok) adoptCanonicalSave(result.save);
+            else if (result.reconcile) adoptCanonicalSave(result.reconcile);
+            if (fpBuy.dialogState) setShopPurchaseFeedback(fpBuy.dialogState,
+              { text: result.message, tone: result.ok ? "success" : "error", frames: 180 });
+          } else {
+            const nextSave = applyShopPurchase(saveData, buyReq,
+              colonyMerchantRank(saveData.colonies, saveData.factionStandings, sceneStack?.colonyId));
+            if (nextSave) { saveSave(nextSave); adoptCanonicalSave(nextSave); }
+            if (fpBuy.dialogState) setShopPurchaseFeedback(fpBuy.dialogState, shopPurchaseFeedback(buyReq, nextSave !== null));
           }
         }
       }
@@ -2662,7 +2690,7 @@ export default function Game() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [adoptCanonicalSave, clearHeldInput, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface, galaxyManagement, galaxyColonyId, colonyEngineSave]);
+  }, [adoptCanonicalSave, clearHeldInput, gameState, showStartScreen, showCockpit, showMap, showGalaxyAtlas, saveData, sceneStack, exitMenuOpen, regionMapSurface, galaxyManagement, galaxyColonyId, colonyEngineSave, galaxyTradeView, managementStore]);
 
   // Auto-trigger ending when game engine sets ENDING screen (final boss defeated)
   useEffect(() => {

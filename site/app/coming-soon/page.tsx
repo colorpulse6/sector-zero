@@ -17,7 +17,7 @@ const colonyFeatures = [
   {
     name: "Meet the locals",
     description:
-      "Meet the Overseer and Quartermaster. The Overseer reports colony conditions; a dependable earning, trading and resupply loop is still in development.",
+      "The Overseer reports colony conditions. Work salvage for metal and travel supply, then exchange surplus metal with the Quartermaster to prepare your next journey.",
   },
 ];
 

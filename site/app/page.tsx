@@ -79,8 +79,8 @@ export default function Home() {
             </p>
             <p>
               Ashfall is our first reference world: a place to explore, improve and
-              return to. Colony development, useful trade and lasting consequences
-              are being connected in small, playable steps.
+              return to. Work salvage, raise a settlement, trade surplus metal for
+              travel supply, and return to the colony you built.
             </p>
             <CtaButton href="/coming-soon/" secondary>
               Explore the colonies
